@@ -4,13 +4,14 @@ pragma solidity ^0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
+
 /**
  * @title Sanity
  * @notice Stage A "is the toolchain wired correctly" fork test.
  * @dev This test does NOT deploy anything. It only forks mainnet, instantiates
  *      IVault at the live Balancer V3 mainnet Vault address, and calls one safe
  *      view function. If this passes, Stage A is verifiably done:
- *        - forge can compile against @balancer-labs/v3-interfaces imports from
+ *        - forge can compile against the Balancer V3 interface imports from
  *          the pinned submodule
  *        - the remappings are correct
  *        - the mainnet fork RPC is wired and responsive
@@ -20,9 +21,13 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
  *          source .env
  *          forge test --fork-url $MAINNET_RPC_URL -vv
  *
- *      If this test fails, STOP. Copy the exact error and ask Claude — do not
+ *      If this test fails, STOP. Copy the exact error and ask Claude - do not
  *      try to fix it by guessing.
  */
+
+
+
+
 contract SanityTest is Test {
     /// @notice Canonical Balancer V3 Vault on Ethereum mainnet.
     /// @dev Deployed Dec 4, 2024 via the VaultFactory at

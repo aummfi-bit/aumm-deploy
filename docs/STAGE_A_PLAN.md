@@ -386,7 +386,7 @@ Fill this in as you progress.
 | 2026-04-09 | A4 — Skeleton committed            | ✅      | `fb0216a` | extracted from tarball, pushed to origin/main                                                                                                                      |
 | 2026-04-09 | A5 — Submodule pinned              | ✅      | `b60492f` | submodule at `68057fda` (Dec 3 2024, last pre-mainnet VaultFactory commit, visually diffed against Etherscan source at 0xAc27df81663d139072E615855eF9aB0Af3FBD281) |
 |            | A6 — Libraries installed           |        |           |                                                                                                                                                                    |
-|            | A7 — `forge build` green           |        |           |                                                                                                                                                                    |
+| 2026-04-09 | A7 — forge build green | ✅ | (same commit, 283847f) | 35 files, 581ms |
 |            | A8 — Sanity fork test passes       |        |           | RPC provider used:                                                                                                                                                 |
 |            | A9 — `stage-a-complete` tag pushed |        |           |                                                                                                                                                                    |
 
