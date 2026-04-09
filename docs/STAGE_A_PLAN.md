@@ -388,7 +388,7 @@ Fill this in as you progress.
 |            | A6 — Libraries installed           |        |           |                                                                                                                                                                    |
 | 2026-04-09 | A7 — forge build green | ✅ | (same commit, 283847f) | 35 files, 581ms |
 | 2026-04-09 | A8 — Sanity fork test passes | ✅ | 25b9298 | RPC: Ankr; both tests pass in 1.31s |used:                                                                                                                                                 |
-|            | A9 — `stage-a-complete` tag pushed |        |           |                                                                                                                                                                    |
+| 2026-04-09 | A9 — stage-a-complete tag pushed | ✅ | 9afb636 | tag pushed to origin, Stage A frozen |
 
 When the last row is filled in, Stage A is done and Stage B starts.
 When the last row is filled in, Stage A is done and Stage B starts.
