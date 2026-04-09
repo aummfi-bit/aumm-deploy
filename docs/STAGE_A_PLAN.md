@@ -387,7 +387,7 @@ Fill this in as you progress.
 | 2026-04-09 | A5 — Submodule pinned              | ✅      | `b60492f` | submodule at `68057fda` (Dec 3 2024, last pre-mainnet VaultFactory commit, visually diffed against Etherscan source at 0xAc27df81663d139072E615855eF9aB0Af3FBD281) |
 |            | A6 — Libraries installed           |        |           |                                                                                                                                                                    |
 | 2026-04-09 | A7 — forge build green | ✅ | (same commit, 283847f) | 35 files, 581ms |
-|            | A8 — Sanity fork test passes       |        |           | RPC provider used:                                                                                                                                                 |
+| 2026-04-09 | A8 — Sanity fork test passes | ✅ | 25b9298 | RPC: Ankr; both tests pass in 1.31s |used:                                                                                                                                                 |
 |            | A9 — `stage-a-complete` tag pushed |        |           |                                                                                                                                                                    |
 
 When the last row is filled in, Stage A is done and Stage B starts.
