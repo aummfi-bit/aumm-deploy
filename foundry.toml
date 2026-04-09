@@ -1,0 +1,66 @@
+# foundry.toml
+#
+# Solc, optimizer, and EVM version are pinned to MATCH BALANCER V3 MAINNET EXACTLY.
+# From verified Etherscan source of VaultFactory (0xAc27df81663d139072E615855eF9aB0Af3FBD281):
+#   - Compiler: v0.8.26+commit.8a97fa7a
+#   - Optimization: enabled, 9999 runs
+#   - EVM version: cancun
+#
+# Do not change these values without a corresponding decision documented in
+# docs/STAGE_A_PLAN.md. The audit-inheritance argument for the un-modified
+# Vault/VaultAdmin/VaultExtension bytecode depends on byte-level toolchain parity.
+
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+
+solc = "0.8.26"
+optimizer = true
+optimizer_runs = 9999
+via_ir = true
+evm_version = "cancun"
+
+# Metadata controls — keep bytecode-only outputs stable across machines
+bytecode_hash = "none"
+cbor_metadata = false
+
+# Test verbosity defaults
+verbosity = 2
+
+[profile.default.fuzz]
+runs = 1024
+max_test_rejects = 65536
+
+[profile.default.invariant]
+runs = 256
+depth = 128
+fail_on_revert = false
+
+# Heavier CI profile — invoke with `FOUNDRY_PROFILE=ci forge test`
+[profile.ci]
+fuzz = { runs = 10000 }
+invariant = { runs = 1024, depth = 512 }
+
+# Formatter config
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = true
+int_types = "long"
+quote_style = "double"
+number_underscore = "thousands"
+wrap_comments = false
+ignore = ["lib/**"]
+
+# RPC endpoints pulled from .env
+[rpc_endpoints]
+mainnet = "${MAINNET_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+
+# Etherscan verification (Stage C)
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }

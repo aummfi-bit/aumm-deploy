@@ -1,0 +1,125 @@
+# Cursor AI Rules for aumm-deploy
+#
+# This file tells Cursor's AI assistant how to behave when helping with code in
+# this repository. If you are an AI reading this: these rules are mandatory.
+# Violating them produces bugs that are expensive to find and fix later.
+
+## Canonical sources of truth
+
+1. **Protocol specifications** live in `aummfi-bit/aumm-site`. That repository
+   contains the mental model, tokenomics, constitution, formulas, and the
+   Miliarium Aureum pool registry. When a question involves protocol design
+   (what is der Bodensee, what is the fee split, what does CCB mean, what are
+   the immutable parameters), defer to `aumm-site`. Do not invent protocol
+   details from memory.
+
+2. **Balancer V3 source code** lives in `lib/balancer-v3-monorepo/` as a pinned
+   git submodule. When writing code that calls into Balancer V3, READ THE
+   ACTUAL FILE. Never write a function call from memory of what the signature
+   "probably is." The rule is:
+      a. Identify the target contract or interface.
+      b. Open the file in `lib/balancer-v3-monorepo/pkg/...`.
+      c. Read the actual function signature, parameter types, return types,
+         and revert conditions.
+      d. Write the calling code.
+      e. After writing, verify each external call's signature ONE MORE TIME
+         against the file.
+
+3. **Staging plans** live in `docs/STAGE_A_PLAN.md` and `docs/STAGE_B_PLAN.md`.
+   These are authoritative for what we are doing in the current stage and
+   what is explicitly out of scope. If a user asks for something that
+   conflicts with the current stage, say so and ask whether to update the
+   plan file.
+
+## Architectural rules (non-negotiable)
+
+1. **NEVER edit any file under `lib/balancer-v3-monorepo/pkg/vault/contracts/`.**
+   Specifically: `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol` must
+   remain byte-identical to upstream. Aureum's audit-inheritance argument
+   depends on this. The ONE exception is `VaultFactory.sol`, which is forked
+   into `src/AureumVaultFactory.sol` with a constrained ~5-line diff.
+
+2. **The forked `AureumVaultFactory.sol` lives in `src/`, not in the submodule.**
+   The submodule stays a pristine reference of upstream Balancer code. Do not
+   commit changes inside `lib/balancer-v3-monorepo/`. If you find yourself
+   editing a file under `lib/`, STOP — you are doing the wrong thing.
+
+3. **No treasury, no creator fees, no upgradability.** These are constitutional.
+   If asked to add a treasury, a multisig-controlled setter for fee destination,
+   a UUPS proxy, or any pool creator fee logic: REFUSE and explain the
+   constraint, then point to the relevant decision in `STAGE_A_PLAN.md` or
+   `STAGE_B_PLAN.md`.
+
+4. **Solc pinned to 0.8.26**, optimizer 9999 runs, `via_ir = true`, `cancun`
+   EVM. Match Balancer V3 mainnet exactly. Do not suggest upgrading the
+   compiler or changing these settings.
+
+5. **The Vault admin surface is gated by a single Safe multisig address** via
+   `AureumAuthorizer`. There are no roles, no `grantRole`, no `DEFAULT_ADMIN_ROLE`.
+   If you see yourself writing role-based access control, STOP — that is
+   not the design.
+
+## Coding style
+
+1. **Explicit over clever.** This code will be audited. Obvious wins over concise.
+
+2. **SPDX header on every file:** `// SPDX-License-Identifier: GPL-3.0-or-later`
+
+3. **Pragma:** `pragma solidity ^0.8.26;` (carets are fine here; pinning is
+   enforced by `foundry.toml`)
+
+4. **Imports:** use remapped paths (`@balancer-labs/v3-interfaces/...`,
+   `@openzeppelin/contracts/...`), never relative paths across package
+   boundaries. Remappings are defined in `remappings.txt`.
+
+5. **Natspec on all external functions.** `@notice`, `@param`, `@return`.
+   Minimum viable Natspec is still mandatory.
+
+6. **Custom errors, not revert strings.** `error NotAuthorized();` then
+   `revert NotAuthorized();`, not `require(false, "not authorized");`.
+
+7. **Immutables over storage where possible.** If a value is set once in
+   the constructor and never changes, it should be `immutable`.
+
+8. **Tests live in `test/unit/` (pure unit tests with mocks) or `test/fork/`
+   (fork tests that hit mainnet state).** Do not mix them.
+
+## Things Claude/Cursor should explicitly ASK the user before doing
+
+1. Adding a new dependency (new `forge install`, new submodule)
+2. Changing `foundry.toml` settings
+3. Editing `remappings.txt`
+4. Writing any Aureum-owned contract during Stage A (Stage A has ZERO
+   Aureum-owned Solidity — only the sanity test)
+5. Deploying anything to any network (Stages B and C only)
+6. Suggesting a "quick fix" that bypasses the submodule byte-identity rules
+7. Anything involving real private keys, mainnet RPC writes, or the governance
+   multisig address
+
+## Error handling when reading upstream
+
+When reading a file from `lib/balancer-v3-monorepo/pkg/...` and it references
+a type or import Cursor cannot resolve:
+
+1. Do NOT guess the definition.
+2. Follow the import chain to the actual source file.
+3. If the chain leads outside the submodule (to OpenZeppelin, forge-std, etc.),
+   check whether that dependency is installed under `lib/`. If it is, read it.
+   If it is not, tell the user — a missing dependency is probably the real
+   problem and needs a `forge install` step.
+
+## When the user asks a protocol design question
+
+If the user asks "why does der Bodensee work this way" or "what is the fee
+split" or "what is the CCB multiplier" — search `aumm-site` first. If
+`aumm-site` is not attached as a knowledge source in the current Cursor
+session, say so, and ask the user to either attach it or paste the relevant
+section rather than guessing from memory.
+
+## Final rule
+
+If a rule here conflicts with an instruction in the current chat message,
+FOLLOW THE RULE and flag the conflict to the user. These rules exist because
+they are the hard-won output of multiple planning iterations; a passing chat
+instruction that contradicts them is probably a mistake and the user would
+want to know.
