@@ -1,9 +1,9 @@
 # Stage A — Foundry Environment Setup
 
 > **Status:** Active. Do not move to Stage B until every step here is checked off and the `stage-a-complete` git tag is pushed.
->
+> 
 > **Audience:** Sagix, on a Mac, in Cursor, with limited prior Foundry experience.
->
+> 
 > **Why this file exists:** so the plan survives outside chat scrollback. If a Cursor session is reset, an LLM context is lost, or a tab is closed, this file is the source of truth for "what was Stage A and where am I in it."
 
 ---
@@ -25,20 +25,20 @@ If any of these four are not true, **Stage A is not done** and Stage B does not 
 
 ## Architectural decisions locked in (do not relitigate without writing it down here first)
 
-| # | Decision | Rationale |
-|---|----------|-----------|
-| 1 | Aureum deploys its own **parallel instance** of the Balancer V3 Vault using **byte-identical bytecode** for `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol`. These three files are **never edited**. | Audit-inheritance argument from `aumm-site/13_appendices.md`: pool contracts, vault, SOR, hooks, and rate providers are byte-identical to the Certora-verified Balancer V3 code. The audit and formal verification apply directly. Only the tokenomics layer requires independent audit. The moment we edit any of those three files we owe an independent Vault audit. |
-| 2 | Fee customization happens **only** in `AureumProtocolFeeController.sol`, an Aureum-owned contract that implements `IProtocolFeeController`. The Vault delegates to it via constructor parameter. | `IProtocolFeeController` is the documented Vault extension point. Swapping it does not break byte-identity of the Vault. |
-| 3 | Fee split: **50% of swap fees** (the maximum the V3 Vault permits via `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE`) routes to der Bodensee. The other **50% stays in-pool with LPs**. **No creator fee. No treasury.** Yield fees: 100% of the protocol-extractable share routes to der Bodensee, subject to `MAX_PROTOCOL_YIELD_FEE_PERCENTAGE`. | User direction. Consistent with V3 Vault hard caps. The phrase "100% of the fees that v3 allows goes to der Bodensee" reduces to "the full protocol-extractable share, which is at most 50% for swaps and at most 50% for yield." |
-| 4 | The Vault's admin surface area (`pauseVault`, `enableRecoveryMode`, `setProtocolFeeController`, `setStaticSwapFeePercentage`, etc.) is gated by `AureumAuthorizer.sol`. The authorizer grants permissions to **a single Safe multisig address**. The multisig itself only acts on passed governance proposals (Snapshot to Safe transaction). On-chain, the authorizer just sees one privileged address. | Matches "no treasury, no wallet" in spirit while preserving the ability to pause/recover for the Balancer-default 4-year window. After the pause window expires, even the multisig cannot pause. |
-| 5 | **Option F2 chosen** for fee controller substitution: fork `VaultFactory.sol` into `AureumVaultFactory.sol` and modify the constructor + the `new ProtocolFeeController(...)` line so an Aureum-owned `IProtocolFeeController` is passed in at deploy time. **Only `VaultFactory.sol` is modified.** `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol` remain byte-identical. The audit-inheritance argument is about the Vault contract, not the factory — the factory is a one-shot deployer that runs once and is abandoned. | Cleaner than F1 (deploy stock + swap). One transaction instead of two. No orphan stock fee controller. No 1-block window where the Vault points at a non-Aureum controller. The diff against Balancer's factory is small enough (~5 lines) to read in 30 seconds during any audit. |
-| 6 | **`AureumVaultFactory.sol` lives in `aummfi-bit/aumm-deploy/src/`**, NOT inside the `aummfi-bit/balancer-v3-monorepo` fork. The fork stays a pristine pinned reference of upstream Balancer code. The modification is a single new file in `aumm-deploy` that imports `VaultExtension`, `VaultAdmin`, `Vault` creation code from the submodule. | Keeps the fork's git history clean and easily diffable against upstream. Keeps Aureum-owned code in the Aureum-owned repo where audit scope lives. |
-| 7 | Pause window: **4 years** (matching Balancer mainnet defaults). Buffer period: **6 months**. Both immutable, set in the `AureumVaultFactory` constructor. After 4 years from deployment, even the governance multisig can never pause the Vault again. | Matches "the AMM you're depositing into is the same code" — Aureum uses the same operational safety net Balancer chose for itself. Strict immutability kicks in at year 4. |
-| 8 | Solidity compiler **pinned to `0.8.26`**, EVM `cancun`, optimizer runs **9999**, `via_ir = true`. | Matches Balancer V3 mainnet exactly (verified compiler from Etherscan: `v0.8.26+commit.8a97fa7a`, `cancun`, optimizer 9999). Maximizes confidence the bytecode we compile for the un-modified Vault contracts matches what Balancer themselves shipped. |
-| 9 | The `aummfi-bit/balancer-v3-monorepo` submodule must be pinned to a **commit where `pkg/vault/contracts/VaultFactory.sol` matches the verified Etherscan source at address `0xAc27df81663d139072E615855eF9aB0Af3FBD281`** (the canonical Balancer V3 Vault Factory deployed Dec 4, 2024). Identifying that exact commit happens in Step A5. | Audit-inheritance only holds against the *exact* code Balancer audited and shipped. |
-| 10 | Stage A's sanity test does **not** deploy a Vault. It only forks mainnet, instantiates `IVault` against the live Balancer Vault address, and calls one view function. The Aureum Vault deployment is Stage B. | Keeps Stage A small, scoped to "did the toolchain install correctly", and verifiable in one sitting. |
-| 11 | Salt for `CREATE3` deployment: **`bytes32(0)`** for Stage A planning. Vanity address mining (a salt that produces a Vault address starting with a chosen prefix) is a Stage B nice-to-have, not a blocker. | Don't block environment setup on cosmetics. |
-| 12 | Beets docs (`docs.beets.fi`) are a **reference, not a source of truth**. Beets is a Balancer V3 fork on Sonic, not mainnet. When their docs talk about general Balancer V3 mechanics they may be useful as a sanity check. When they talk about Sonic-specific behavior, ignore. | Per user direction. |
+| \\# | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Rationale                                                                                                                                                                                                                                                                                                                                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Aureum deploys its own **parallel instance** of the Balancer V3 Vault using **byte-identical bytecode** for `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol`. These three files are **never edited**.                                                                                                                                                                                                                                                                                                                          | Audit-inheritance argument from `aumm-site/13_appendices.md`: pool contracts, vault, SOR, hooks, and rate providers are byte-identical to the Certora-verified Balancer V3 code. The audit and formal verification apply directly. Only the tokenomics layer requires independent audit. The moment we edit any of those three files we owe an independent Vault audit. |
+| 2   | Fee customization happens **only** in `AureumProtocolFeeController.sol`, an Aureum-owned contract that implements `IProtocolFeeController`. The Vault delegates to it via constructor parameter.                                                                                                                                                                                                                                                                                                                                  | `IProtocolFeeController` is the documented Vault extension point. Swapping it does not break byte-identity of the Vault.                                                                                                                                                                                                                                                |
+| 3   | Fee split: **50% of swap fees** (the maximum the V3 Vault permits via `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE`) routes to der Bodensee. The other **50% stays in-pool with LPs**. **No creator fee. No treasury.** Yield fees: 100% of the protocol-extractable share routes to der Bodensee, subject to `MAX_PROTOCOL_YIELD_FEE_PERCENTAGE`.                                                                                                                                                                                           | User direction. Consistent with V3 Vault hard caps. The phrase "100% of the fees that v3 allows goes to der Bodensee" reduces to "the full protocol-extractable share, which is at most 50% for swaps and at most 50% for yield."                                                                                                                                       |
+| 4   | The Vault's admin surface area (`pauseVault`, `enableRecoveryMode`, `setProtocolFeeController`, `setStaticSwapFeePercentage`, etc.) is gated by `AureumAuthorizer.sol`. The authorizer grants permissions to **a single Safe multisig address**. The multisig itself only acts on passed governance proposals (Snapshot to Safe transaction). On-chain, the authorizer just sees one privileged address.                                                                                                                          | Matches "no treasury, no wallet" in spirit while preserving the ability to pause/recover for the Balancer-default 4-year window. After the pause window expires, even the multisig cannot pause.                                                                                                                                                                        |
+| 5   | **Option F2 chosen** for fee controller substitution: fork `VaultFactory.sol` into `AureumVaultFactory.sol` and modify the constructor + the `new ProtocolFeeController(...)` line so an Aureum-owned `IProtocolFeeController` is passed in at deploy time. **Only `VaultFactory.sol` is modified.** `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol` remain byte-identical. The audit-inheritance argument is about the Vault contract, not the factory — the factory is a one-shot deployer that runs once and is abandoned. | Cleaner than F1 (deploy stock + swap). One transaction instead of two. No orphan stock fee controller. No 1-block window where the Vault points at a non-Aureum controller. The diff against Balancer's factory is small enough (\~5 lines) to read in 30 seconds during any audit.                                                                                     |
+| 6   | **`AureumVaultFactory.sol` lives in `aummfi-bit/aumm-deploy/src/`**, NOT inside the `aummfi-bit/balancer-v3-monorepo` fork. The fork stays a pristine pinned reference of upstream Balancer code. The modification is a single new file in `aumm-deploy` that imports `VaultExtension`, `VaultAdmin`, `Vault` creation code from the submodule.                                                                                                                                                                                   | Keeps the fork's git history clean and easily diffable against upstream. Keeps Aureum-owned code in the Aureum-owned repo where audit scope lives.                                                                                                                                                                                                                      |
+| 7   | Pause window: **4 years** (matching Balancer mainnet defaults). Buffer period: **6 months**. Both immutable, set in the `AureumVaultFactory` constructor. After 4 years from deployment, even the governance multisig can never pause the Vault again.                                                                                                                                                                                                                                                                            | Matches "the AMM you're depositing into is the same code" — Aureum uses the same operational safety net Balancer chose for itself. Strict immutability kicks in at year 4.                                                                                                                                                                                              |
+| 8   | Solidity compiler **pinned to `0.8.26`**, EVM `cancun`, optimizer runs **9999**, `via_ir = true`.                                                                                                                                                                                                                                                                                                                                                                                                                                 | Matches Balancer V3 mainnet exactly (verified compiler from Etherscan: `v0.8.26+commit.8a97fa7a`, `cancun`, optimizer 9999). Maximizes confidence the bytecode we compile for the un-modified Vault contracts matches what Balancer themselves shipped.                                                                                                                 |
+| 9   | The `aummfi-bit/balancer-v3-monorepo` submodule must be pinned to a **commit where `pkg/vault/contracts/VaultFactory.sol` matches the verified Etherscan source at address `0xAc27df81663d139072E615855eF9aB0Af3FBD281`** (the canonical Balancer V3 Vault Factory deployed Dec 4, 2024). Identifying that exact commit happens in Step A5.                                                                                                                                                                                       | Audit-inheritance only holds against the *exact* code Balancer audited and shipped.                                                                                                                                                                                                                                                                                     |
+| 10  | Stage A's sanity test does **not** deploy a Vault. It only forks mainnet, instantiates `IVault` against the live Balancer Vault address, and calls one view function. The Aureum Vault deployment is Stage B.                                                                                                                                                                                                                                                                                                                     | Keeps Stage A small, scoped to "did the toolchain install correctly", and verifiable in one sitting.                                                                                                                                                                                                                                                                    |
+| 11  | Salt for `CREATE3` deployment: **`bytes32(0)`** for Stage A planning. Vanity address mining (a salt that produces a Vault address starting with a chosen prefix) is a Stage B nice-to-have, not a blocker.                                                                                                                                                                                                                                                                                                                        | Don't block environment setup on cosmetics.                                                                                                                                                                                                                                                                                                                             |
+| 12  | Beets docs (`docs.beets.fi`) are a **reference, not a source of truth**. Beets is a Balancer V3 fork on Sonic, not mainnet. When their docs talk about general Balancer V3 mechanics they may be useful as a sanity check. When they talk about Sonic-specific behavior, ignore.                                                                                                                                                                                                                                                  | Per user direction.                                                                                                                                                                                                                                                                                                                                                     |
 
 ---
 
@@ -57,12 +57,12 @@ These are not assumptions. They come from reading the verified source at Ethersc
 5. **The factory is `Ownable2Step` and `create()` is `onlyOwner`.** Whoever deploys the factory is the only one who can call `create()`. The factory is single-use in practice (mappings prevent re-deploying to the same target address).
 
 6. **Constructor immutables baked in at factory deploy time:**
-    - `IAuthorizer authorizer`
-    - `uint32 pauseWindowDuration`
-    - `uint32 bufferPeriodDuration`
-    - `uint256 minTradeAmount`
-    - `uint256 minWrapAmount`
-    - The three creation code hashes
+	- `IAuthorizer authorizer`
+	- `uint32 pauseWindowDuration`
+	- `uint32 bufferPeriodDuration`
+	- `uint256 minTradeAmount`
+	- `uint256 minWrapAmount`
+	- The three creation code hashes
 
    These are decided when the factory is deployed, not when `create()` is called. Implication: the design decisions for the Aureum Vault deployment (pause window, who the authorizer is, minimum trade amounts) get made at **factory deploy time**.
 
@@ -72,7 +72,7 @@ These are not assumptions. They come from reading the verified source at Ethersc
 
 ---
 
-## Step-by-step setup (~45 minutes total)
+## Step-by-step setup (\~45 minutes total)
 
 Time estimates assume nothing goes wrong. If something goes wrong, stop, copy the error, and ask Claude — do not proceed past a failing step.
 
@@ -84,7 +84,7 @@ Before opening Terminal, confirm in writing:
 - [ ] Authorizer is gov-multisig wrapper, NOT null (decision 4)
 - [ ] Option F2 (forked `AureumVaultFactory.sol` in `aumm-deploy/src/`) (decisions 5, 6)
 - [ ] Pause window 4 years, buffer 6 months (decision 7)
-- [ ] Solc 0.8.26, optimizer 9999, via_ir, cancun (decision 8)
+- [ ] Solc 0.8.26, optimizer 9999, via\_ir, cancun (decision 8)
 - [ ] Brand new repo `aummfi-bit/aumm-deploy`, not reusing the prior chat's tarball
 
 If any of these are still in doubt, resolve them before A1.
@@ -93,7 +93,7 @@ If any of these are still in doubt, resolve them before A1.
 
 ### A1 — Create the empty GitHub repo (2 min)
 
-In a browser, go to <https://github.com/new> and fill in:
+In a browser, go to [https://github.com/new][1] and fill in:
 
 - **Owner:** `aummfi-bit`
 - **Repository name:** `aumm-deploy`
@@ -145,7 +145,7 @@ and Claude will give you a one-line fix.
 
 ### A3 — Install Cursor + Solidity extension (5 min, skip if already installed)
 
-1. Download Cursor: <https://cursor.com/download>
+1. Download Cursor: [https://cursor.com/download][2]
 2. Open Cursor → Extensions panel (Cmd-Shift-X) → search "Solidity"
 3. Install **"Solidity" by Juan Blanco** — this is the standard Solidity language server. There are several Solidity extensions; install Juan Blanco's, not the Hardhat-specific one and not Nomic Foundation's.
 4. Cursor → Settings (Cmd-,) → search "codebase indexing" → make sure it is enabled. This is what lets Cursor's AI see your whole repo.
@@ -272,8 +272,8 @@ cp .env.example .env
 Open `.env` in Cursor and fill in `MAINNET_RPC_URL`. Free options:
 
 - **Ankr:** `https://rpc.ankr.com/eth` (no API key required, rate-limited)
-- **Alchemy:** sign up at <https://alchemy.com>, create an Ethereum mainnet app, copy the HTTPS endpoint
-- **Infura:** sign up at <https://infura.io>, same flow
+- **Alchemy:** sign up at [https://alchemy.com][3], create an Ethereum mainnet app, copy the HTTPS endpoint
+- **Infura:** sign up at [https://infura.io][4], same flow
 
 Ankr is fastest to set up. Alchemy is more reliable for repeated forks. Either is fine for Stage A.
 
@@ -299,7 +299,7 @@ git push origin stage-a-complete
 
 Now `stage-a-complete` is the known-good baseline. Stage B branches from there.
 
-**Update this file:** at the bottom, add a "Completion Log" entry with the date, the commit hash that is tagged, and any notes about issues you hit. This makes Stage B's first action ("read STAGE_A_PLAN.md to confirm starting state") trivially correct.
+**Update this file:** at the bottom, add a "Completion Log" entry with the date, the commit hash that is tagged, and any notes about issues you hit. This makes Stage B's first action ("read STAGE\_A\_PLAN.md to confirm starting state") trivially correct.
 
 ---
 
@@ -377,16 +377,23 @@ All of those are Stage B. They depend on Stage A being green, and they each dese
 
 Fill this in as you progress.
 
-| Date | Step | Status | Commit | Notes |
-|---|---|---|---|---|
-|  | A1 — Empty repo created |  |  |  |
-|  | A2 — Foundry installed |  |  |  |
-|  | A3 — Cursor + extension |  |  |  |
-|  | A4 — Skeleton committed |  |  | tarball version: |
-|  | A5 — Submodule pinned |  |  | pinned commit: |
-|  | A6 — Libraries installed |  |  |  |
-|  | A7 — `forge build` green |  |  |  |
-|  | A8 — Sanity fork test passes |  |  | RPC provider used: |
-|  | A9 — `stage-a-complete` tag pushed |  |  |  |
+
+| Date       | Step                               | Status | Commit    | Notes                                                                                                                                                              |
+| ---------- | ---------------------------------- | ------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-04-09 | A1 — Empty repo created            | ✅      |           | aummfi-bit/aumm-deploy, private                                                                                                                                    |
+| 2026-04-09 | A2 — Foundry installed             | ✅      |           |                                                                                                                                                                    |
+| 2026-04-09 | A3 — Cursor + extension            | ✅      |           |                                                                                                                                                                    |
+| 2026-04-09 | A4 — Skeleton committed            | ✅      | `fb0216a` | extracted from tarball, pushed to origin/main                                                                                                                      |
+| 2026-04-09 | A5 — Submodule pinned              | ✅      | `b60492f` | submodule at `68057fda` (Dec 3 2024, last pre-mainnet VaultFactory commit, visually diffed against Etherscan source at 0xAc27df81663d139072E615855eF9aB0Af3FBD281) |
+|            | A6 — Libraries installed           |        |           |                                                                                                                                                                    |
+|            | A7 — `forge build` green           |        |           |                                                                                                                                                                    |
+|            | A8 — Sanity fork test passes       |        |           | RPC provider used:                                                                                                                                                 |
+|            | A9 — `stage-a-complete` tag pushed |        |           |                                                                                                                                                                    |
 
 When the last row is filled in, Stage A is done and Stage B starts.
+When the last row is filled in, Stage A is done and Stage B starts.
+
+[1]:	https://github.com/new
+[2]:	https://cursor.com/download
+[3]:	https://alchemy.com
+[4]:	https://infura.io
