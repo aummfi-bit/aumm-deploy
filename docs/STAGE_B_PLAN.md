@@ -357,7 +357,7 @@ Fill this in as you progress.
 
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
-|  | B0 — branch + slither |  |  |  |
+| 2026-04-09 | B0 — branch + slither | ✅ | `1a7e44b` | slither 0.11.4, .venv already gitignored from Stage A, empty marker commit |
 |  | B1 — read upstream |  |  | notes file: |
 |  | B2 — Authorizer |  |  |  |
 |  | B3 — Factory fork |  |  | diff line count: |
