@@ -120,6 +120,12 @@ All function signatures below are **preserved** because `IProtocolFeeController`
 
 ---
 
+## Plan divergences (small, intentional)
+
+- **B2 — `AureumAuthorizer.sol`:** immutable renamed `governanceMultisig` → `GOVERNANCE_MULTISIG` (Foundry lint `screaming-snake-case-immutable`); constructor param renamed `_governanceMultisig` → `governanceMultisig_` (matches upstream Balancer V3 trailing-underscore convention). Functional behavior identical to plan source.
+
+---
+
 ## Open Stage B decisions (added during B1)
 
 More rows will land here over Stage B (e.g. factory mapping → likely **B11**, auth inheritance in **B4** → **B12**). Options later: subsections (“added during B3”), or a **Stage** column — not decided yet.
