@@ -66,6 +66,7 @@ These are in addition to the 12 decisions in `STAGE_A_PLAN.md`. They concern thi
 | B7 | **The deploy script uses `vm.startBroadcast()` / `vm.stopBroadcast()` for mainnet compatibility**, but the fork test uses plain calls. The script is structured so the same logic runs in both modes. | Foundry script convention. Same code, two run modes. |
 | B8 | **No upgradability of any Aureum-owned contract.** No proxies, no UUPS, no Transparent. If a bug is found in `AureumProtocolFeeController` after deployment, the fix is: deploy a new fee controller, governance proposal to call `Vault.setProtocolFeeController(newController)`. | Matches "immutable contracts" in the constitution. Migration via re-deploy is acceptable; in-place upgrade is not. |
 | B9 | **CREATE3 salt for Stage B fork tests: `bytes32(uint256(0xAEEC))`** (vanity-ish but trivial). Stage C will mine a longer vanity salt if desired, or use a clean random salt. | Distinguishes the Aureum Vault from any other CREATE3 deployment in the fork test logs. Easy to grep for. |
+| B10 | **`withdrawProtocolFees` / `withdrawProtocolFeesForToken`: revert if `recipient != derBodenseePool`.** Interface signatures stay identical to `IProtocolFeeController` for compilation; the implementation does not silently ignore `recipient`. Custom error e.g. `InvalidRecipient(address expected, address provided)`. | Silently routing while accepting an arbitrary `recipient` is a footgun for governance operators. Explicit revert documents where funds actually go and catches mis-formed Safe transactions. |
 
 ---
 
@@ -358,7 +359,7 @@ Fill this in as you progress.
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
 | 2026-04-09 | B0 — branch + slither | ✅ | `1a7e44b` | slither 0.11.4, .venv already gitignored from Stage A, empty marker commit |
-|  | B1 — read upstream |  |  | notes file: |
+| 2026-04-09 | B1 — read upstream | ✅ | `45d160c` | notes file: `docs/STAGE_B_NOTES.md`; confirmed no on-chain callers of `withdrawProtocolFees` or creator fee functions (greps clean); B10 added (recipient revert-if-mismatch); README fee-split wording flagged for deferred cleanup |
 |  | B2 — Authorizer |  |  |  |
 |  | B3 — Factory fork |  |  | diff line count: |
 |  | B4 — FeeController |  |  |  |
