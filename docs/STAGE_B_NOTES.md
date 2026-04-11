@@ -14,7 +14,7 @@ All of that is stored as **immutables**: the three public `...CreationCodeHash` 
 
 The four **mappings** (`deployedProtocolFeeControllers`, `deployedVaultExtensions`, `deployedVaultAdmins`, `isDeployed`) start empty — not set in the constructor.
 
-**Precision:** upstream both **constructs** `ProtocolFeeController` inline **and** stores it in `deployedProtocolFeeControllers[vault]` on each successful `create()`. A fork that passes a controller in from outside must decide whether to keep that mapping (introspection / parity) or drop it (caller already knows the address). **B3** (factory fork) design call — do not confuse with **B4** (`AureumProtocolFeeController` body / interface divergences below).
+**Precision:** upstream both **constructs** `ProtocolFeeController` inline **and** stores it in `deployedProtocolFeeControllers[vault]` on each successful `create()`. **Aureum fork:** drop that mapping; expose **`INITIAL_FEE_CONTROLLER`** instead (`public immutable`). See **B11**.
 
 ### 2. `create()` — step by step (verified order)
 
@@ -123,13 +123,16 @@ All function signatures below are **preserved** because `IProtocolFeeController`
 ## Plan divergences (small, intentional)
 
 - **B2 — `AureumAuthorizer.sol`:** immutable renamed `governanceMultisig` → `GOVERNANCE_MULTISIG` (Foundry lint `screaming-snake-case-immutable`); constructor param renamed `_governanceMultisig` → `governanceMultisig_` (matches upstream Balancer V3 trailing-underscore convention). Functional behavior identical to plan source.
+- **B3 — `AureumVaultFactory.sol`:** `ProtocolFeeController` import replaced with `IProtocolFeeController` from interfaces — no `new` in the fork, so the concrete type is unnecessary. **`INITIAL_FEE_CONTROLLER`** is typed as the interface; upstream’s local was the concrete contract. **`abi.encode` of an interface-typed address and of a concrete-typed address are identical** (both encode the 20-byte address in 32 bytes), so Vault init bytecode matches upstream’s for that argument.
+- **B3 — immutable naming vs lint:** upstream’s forked immutables keep Balancer’s camelCase (`vaultCreationCodeHash`, `_authorizer`, `_pauseWindowDuration`, etc.) so the diff against `VaultFactory.sol` stays small and future merges from the submodule stay mechanical. Renaming all eight to `SCREAMING_SNAKE_CASE` would inflate the diff and create avoidable merge conflicts for no runtime benefit. The **Aureum-only** immutable **`INITIAL_FEE_CONTROLLER`** uses `SCREAMING_SNAKE_CASE` (no upstream name to preserve). Foundry’s linter otherwise emits `screaming-snake-case-immutable` **notes** on the upstream-named lines; those are **suppressed for this file only** via `foundry.toml` `[lint] ignore = ["src/AureumVaultFactory.sol"]` so `forge build` stays quiet without touching the contract body.
 
 ---
 
 ## Open Stage B decisions (added during B1)
 
-More rows will land here over Stage B (e.g. factory mapping → likely **B11**, auth inheritance in **B4** → **B12**). Options later: subsections (“added during B3”), or a **Stage** column — not decided yet.
+More rows will land here over Stage B (e.g. auth inheritance in **B4** → **B12**). Options later: subsections (“added during B3”), or a **Stage** column — not decided yet.
 
 | ID | Decision |
 |----|----------|
 | **B10** | **`withdrawProtocolFees` / `withdrawProtocolFeesForToken`:** revert if `recipient != derBodenseePool` rather than silently ignoring the parameter. Rationale: the interface signature must stay fixed for compilation, but silently ignoring an explicit `recipient` is a footgun for governance operators. Use a custom error such as `InvalidRecipient(address expected, address provided)` so behavior is self-documenting and mis-formed Safe transactions fail loud. *(STAGE_B_PLAN already assigns **B8** to “no upgradability”; this rule is **B10**.)* |
+| **B11** | **Drop `deployedProtocolFeeControllers` mapping from `AureumVaultFactory`.** Upstream stores the freshly deployed controller per vault; Aureum’s fork does not deploy a controller per vault — it accepts one shared controller via constructor immutable. Keeping the mapping would be structurally misleading (the name implies a per-vault relationship that does not exist in the fork). The same information is exposed via **`public immutable INITIAL_FEE_CONTROLLER`** on the factory (constructor param **`initialFeeController_`**). The `INITIAL_` prefix is semantic: it is the controller the Vault was *initialized* with, which may diverge from `vault.getProtocolFeeController()` if governance ever calls `setProtocolFeeController` on the Vault post-deployment. Cleaner diff vs upstream, smaller bytecode, no false surface area. Decided in B3 design phase. |

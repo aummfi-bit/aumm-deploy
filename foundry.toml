@@ -55,6 +55,12 @@ number_underscore = "thousands"
 wrap_comments = false
 ignore = ["lib/**"]
 
+# B3: `AureumVaultFactory` preserves upstream Balancer `VaultFactory` camelCase immutables to keep the fork diff
+# minimal; forge lint would otherwise emit `screaming-snake-case-immutable` notes on those lines only.
+# See docs/STAGE_B_NOTES.md (Plan divergences, B3).
+[lint]
+ignore = ["src/AureumVaultFactory.sol"]
+
 # RPC endpoints pulled from .env
 [rpc_endpoints]
 mainnet = "${MAINNET_RPC_URL}"

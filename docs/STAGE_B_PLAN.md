@@ -219,12 +219,14 @@ This is the high-stakes file because the diff against upstream must be small and
 
 1. Copy `lib/balancer-v3-monorepo/pkg/vault/contracts/VaultFactory.sol` into `src/AureumVaultFactory.sol`.
 2. Rename the contract from `VaultFactory` to `AureumVaultFactory`.
-3. Add `IProtocolFeeController _initialFeeController` to the constructor parameter list.
-4. Add `IProtocolFeeController public immutable initialFeeController;` to the storage.
-5. Initialize it in the constructor.
-6. **Delete** the line `ProtocolFeeController protocolFeeController = new ProtocolFeeController(IVault(vaultAddress));`
-7. **Delete** the line `deployedProtocolFeeControllers[vaultAddress] = protocolFeeController;` (and the mapping itself, since we no longer need it).
-8. Replace `protocolFeeController` in the `CREATE3.deploy(...)` call with `initialFeeController`.
+3. Point `./VaultAdmin.sol` and `./VaultExtension.sol` at `@balancer-labs/v3-vault/contracts/VaultAdmin.sol` and `@balancer-labs/v3-vault/contracts/VaultExtension.sol`. Upstream’s relative imports only work beside those files in the monorepo; in `aumm-deploy/src/` they break `forge build` until rewired.
+4. Replace `import { ProtocolFeeController } from "./ProtocolFeeController.sol"` with `import { IProtocolFeeController } from "@balancer-labs/v3-interfaces/contracts/vault/IProtocolFeeController.sol"` (the fork does not `new` the concrete type; see **B11** and `STAGE_B_NOTES` — `abi.encode` of the fee controller address is unchanged).
+5. Add `IProtocolFeeController public immutable INITIAL_FEE_CONTROLLER;` immediately after the three bytecode-hash immutables (same “factory config at deploy time” grouping as the hashes).
+6. Add **`IProtocolFeeController initialFeeController_` as the ninth constructor parameter**, appended after `vaultAdminCreationCodeHash_` (keeps upstream’s first eight parameters and the three hash parameters contiguous).
+7. In the constructor body, assign `INITIAL_FEE_CONTROLLER = initialFeeController_;` (e.g. after the hash assignments, alongside the other immutables).
+8. **Delete** the line `ProtocolFeeController protocolFeeController = new ProtocolFeeController(IVault(vaultAddress));`
+9. **Delete** the line `deployedProtocolFeeControllers[vaultAddress] = protocolFeeController;` and remove the **`deployedProtocolFeeControllers` mapping** declaration entirely.
+10. In `CREATE3.deploy(...)`, replace `protocolFeeController` with **`INITIAL_FEE_CONTROLLER`** in `abi.encode(vaultExtension, _authorizer, …)` (third constructor arg to the Vault — same tuple position as upstream).
 
 That should be it. Then run `git diff --no-index lib/balancer-v3-monorepo/pkg/vault/contracts/VaultFactory.sol src/AureumVaultFactory.sol` and verify the diff is small enough to read in 30 seconds. If it is not, you have done extra work that should not be there — revert and try again.
 
