@@ -95,7 +95,7 @@ Disaggregated “owed” amounts live here after collection runs; the Vault keep
 - **Collected:** same `collectAggregateFees` flow; amounts land in `_poolCreatorFeeAmounts` after `_receiveAggregateFees` splits.
 - **Withdraw:** `withdrawPoolCreatorFees` (to chosen recipient or default registered creator).
 
-Per **B3**, `AureumProtocolFeeController` **reverts** creator-facing setters (see Interface divergences below); upstream allows them.
+Per **B4**, `AureumProtocolFeeController` **reverts** creator-facing setters (see Interface divergences below); upstream allows them.
 
 ### Protocol fees — withdraw and destination (upstream)
 
@@ -130,9 +130,17 @@ All function signatures below are **preserved** because `IProtocolFeeController`
 
 ## Open Stage B decisions (added during B1)
 
-More rows will land here over Stage B (e.g. auth inheritance in **B4** → **B12**). Options later: subsections (“added during B3”), or a **Stage** column — not decided yet.
+More rows may land here as Stage B progresses; B12 and B13 (resolved during B4 pre-design grep phase) live in the section below.
 
 | ID | Decision |
 |----|----------|
 | **B10** | **`withdrawProtocolFees` / `withdrawProtocolFeesForToken`:** revert if `recipient != derBodenseePool` rather than silently ignoring the parameter. Rationale: the interface signature must stay fixed for compilation, but silently ignoring an explicit `recipient` is a footgun for governance operators. Use a custom error such as `InvalidRecipient(address expected, address provided)` so behavior is self-documenting and mis-formed Safe transactions fail loud. *(STAGE_B_PLAN already assigns **B8** to “no upgradability”; this rule is **B10**.)* |
 | **B11** | **Drop `deployedProtocolFeeControllers` mapping from `AureumVaultFactory`.** Upstream stores the freshly deployed controller per vault; Aureum’s fork does not deploy a controller per vault — it accepts one shared controller via constructor immutable. Keeping the mapping would be structurally misleading (the name implies a per-vault relationship that does not exist in the fork). The same information is exposed via **`public immutable INITIAL_FEE_CONTROLLER`** on the factory (constructor param **`initialFeeController_`**). The `INITIAL_` prefix is semantic: it is the controller the Vault was *initialized* with, which may diverge from `vault.getProtocolFeeController()` if governance ever calls `setProtocolFeeController` on the Vault post-deployment. Cleaner diff vs upstream, smaller bytecode, no false surface area. Decided in B3 design phase. |
+
+---
+
+## B4 design decisions (resolved during pre-design grep phase, 2026-04-09)
+
+**B12 — Authorization inheritance.** `AureumProtocolFeeController` inherits `SingletonAuthentication` from upstream Balancer V3 (matches `lib/balancer-v3-monorepo/pkg/vault/contracts/ProtocolFeeController.sol:51`). `SingletonAuthentication` itself inherits only `Authentication` (verified: `lib/balancer-v3-monorepo/pkg/vault/contracts/SingletonAuthentication.sol:16`). Authorization flows: `authenticate` modifier → `Authentication._canPerform()` → `Vault.getAuthorizer()` → `AureumAuthorizer.canPerform()` → `account == GOVERNANCE_MULTISIG`. No competing auth system (no OZ `AccessControl`, no `Ownable`, no per-role mappings).
+
+**B13 — Reentrancy guard inheritance.** `AureumProtocolFeeController` inherits `ReentrancyGuardTransient` from `@balancer-labs/v3-solidity-utils/contracts/openzeppelin/ReentrancyGuardTransient.sol` to mirror upstream `ProtocolFeeController:52`. The `nonReentrant` modifier is applied to **zero** functions, matching upstream's zero applications (verified: `grep -n "nonReentrant" ProtocolFeeController.sol` returned empty). Verified that this inheritance is **not** transitively required: neither `SingletonAuthentication` (inherits only `Authentication`) nor `VaultGuard` (no inheritance at all) pulls in `ReentrancyGuardTransient`. Upstream lists it explicitly and deliberately. The reentrancy story for fee collection lives at the Vault layer: `collectAggregateFees` calls `Vault.unlock(...)`, which the Vault gates via its own transient lock and intentionally allows authorized reentrant token-transfer callbacks during the unlocked context. Adding `nonReentrant` on the controller would either no-op (if it permits the unlock-reentry) or break fee collection (if it blocks it). Mirror upstream exactly; preserve audit-inheritance argument; document the absence of the modifier as a *deliberate* choice rather than an oversight.
