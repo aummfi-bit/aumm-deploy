@@ -68,8 +68,9 @@ aumm-deploy/
 │   ├── openzeppelin-contracts/
 │   └── forge-std/
 ├── docs/
-│   ├── STAGE_A_PLAN.md               # Current stage
-│   ├── STAGE_B_PLAN.md               # Next stage (blocked on Stage A completion)
+│   ├── STAGE_A_PLAN.md               # Stage A setup plan and completion log
+│   ├── STAGE_B_NOTES.md              # Stage B design notes and working log
+│   ├── STAGE_B_PLAN.md               # Stage B plan and completion log
 │   └── balancer_v3_reference.md      # Manifest of V3 files and key constraints
 ├── foundry.toml
 ├── remappings.txt
