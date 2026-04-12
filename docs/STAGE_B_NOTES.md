@@ -128,6 +128,21 @@ All function signatures below are **preserved** because `IProtocolFeeController`
 
 ---
 
+## Branch model deviation (2026-04-09)
+
+During the B3→B4 transition, Stage B work was fast-forwarded onto `main` (originally intended to stay frozen at the Stage A baseline until B7's PR merge). Decision: accept the deviation and continue Stage B directly on `main`. Driven by token-budget constraints — the cost of fixing was real in chat tokens, the benefit was contingent on a future audit step.
+
+Cost accepted:
+
+- No PR-as-review-gate at B7
+- No single-diff artifact for audit review of "what is Stage B"
+- Harder rollback if Stage B work needs to be reverted wholesale
+- B7 in STAGE_B_PLAN.md is partially defunct — it becomes "tag stage-b-complete and update completion log" only, no PR step
+
+The `stage-b` branch still exists on origin and can serve as a snapshot of "Stage B as a coherent unit" if needed, but main is now the working trunk for the rest of Stage B and Stage C will branch from main as-is.
+
+---
+
 ## Open Stage B decisions (added during B1)
 
 More rows may land here as Stage B progresses; B12 and B13 (resolved during B4 pre-design grep phase) live in the section below.
