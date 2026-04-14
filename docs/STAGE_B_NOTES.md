@@ -159,3 +159,118 @@ More rows may land here as Stage B progresses; B12 and B13 (resolved during B4 p
 **B12 — Authorization inheritance.** `AureumProtocolFeeController` inherits `SingletonAuthentication` from upstream Balancer V3 (matches `lib/balancer-v3-monorepo/pkg/vault/contracts/ProtocolFeeController.sol:51`). `SingletonAuthentication` itself inherits only `Authentication` (verified: `lib/balancer-v3-monorepo/pkg/vault/contracts/SingletonAuthentication.sol:16`). Authorization flows: `authenticate` modifier → `Authentication._canPerform()` → `Vault.getAuthorizer()` → `AureumAuthorizer.canPerform()` → `account == GOVERNANCE_MULTISIG`. No competing auth system (no OZ `AccessControl`, no `Ownable`, no per-role mappings).
 
 **B13 — Reentrancy guard inheritance.** `AureumProtocolFeeController` inherits `ReentrancyGuardTransient` from `@balancer-labs/v3-solidity-utils/contracts/openzeppelin/ReentrancyGuardTransient.sol` to mirror upstream `ProtocolFeeController:52`. The `nonReentrant` modifier is applied to **zero** functions, matching upstream's zero applications (verified: `grep -n "nonReentrant" ProtocolFeeController.sol` returned empty). Verified that this inheritance is **not** transitively required: neither `SingletonAuthentication` (inherits only `Authentication`) nor `VaultGuard` (no inheritance at all) pulls in `ReentrancyGuardTransient`. Upstream lists it explicitly and deliberately. The reentrancy story for fee collection lives at the Vault layer: `collectAggregateFees` calls `Vault.unlock(...)`, which the Vault gates via its own transient lock and intentionally allows authorized reentrant token-transfer callbacks during the unlocked context. Adding `nonReentrant` on the controller would either no-op (if it permits the unlock-reentry) or break fee collection (if it blocks it). Mirror upstream exactly; preserve audit-inheritance argument; document the absence of the modifier as a *deliberate* choice rather than an oversight.
+
+---
+
+## B4 implementation notes (post-implementation, 2026-04-12)
+
+`AureumProtocolFeeController` was implemented over six grep-verified passes against a compile-clean baseline forked from `lib/balancer-v3-monorepo/pkg/vault/contracts/ProtocolFeeController.sol` (upstream). Final file: `src/AureumProtocolFeeController.sol`, **622 lines** (upstream is 587 lines), with **12 diff hunks** totaling ~35 changed/added lines. The audit-inheritance argument is embedded in two `// AUREUM NOTE:` provenance annotations inside the contract source itself, at post-implementation lines 222–228 and 536–538.
+
+### Six-pass implementation summary
+
+| Pass | What | Line delta | Hunks added |
+|------|------|---|---|
+| 1 | Fork upstream verbatim; rename contract; rewrite two relative imports; update `abi.encodeCall` self-reference | 0 | 3 |
+| 2 | Add `DER_BODENSEE_POOL` immutable + constructor `derBodenseePool_` parameter + zero-address check + three custom error declarations in new "Aureum-Added State" block | +19 | 1 |
+| 3 | Insert `InvalidRecipient` precondition check at line 1 of both `withdrawProtocolFees` and `withdrawProtocolFeesForToken` (B10 enforcement at the public boundary) | +6 | 2 |
+| 4 | Replace bodies of all four creator-fee functions with `revert CreatorFeesDisabled();`; strip all modifiers; comment out unused parameter names | 0 | 4 |
+| 5 | Add two `// AUREUM NOTE:` provenance annotations above `_receiveAggregateFees` (three-arg private overload) and `_withdrawProtocolFees` | +10 | 2 |
+| 6 | `foundry.toml` lint suppression + this notes section (no contract source changes) | 0 | 0 |
+
+### Design decisions locked in *during* implementation (added to the open decisions list)
+
+The B1–B3 decisions **B10** (recipient revert-if-mismatch) and **B11** (drop `deployedProtocolFeeControllers` mapping) plus the B4 pre-design decisions **B12** (inherit `SingletonAuthentication`) and **B13** (inherit `ReentrancyGuardTransient`, apply `nonReentrant` to zero functions) were all resolved before Pass 1. The following additional decisions were made during Passes 2–5:
+
+| ID | Decision |
+|----|----------|
+| **B14** | **Unused-parameter commenting style for creator-fee revert stubs.** The four stubbed functions use `address /* pool */` and `uint256 /* poolCreatorSwapFeePercentage */` (comment-out-the-name) rather than leading-underscore, no-name, or named-with-suppression patterns. Rationale: matches Balancer V3's own pattern for unused interface parameters; silences the `unused-parameter` warning at source without requiring lint suppression; self-documenting — the `/* */` comment signals "ABI slot, deliberately ignored" more explicitly than alternatives. Verified warning-free in Pass 4's `forge build`. |
+| **B15** | **Per-function signature shape preservation in Pass 4.** When stubbing the four creator-fee functions, the upstream per-function signature layout was preserved exactly: multi-line for the two setters (`setPoolCreatorSwapFeePercentage`, `setPoolCreatorYieldFeePercentage`) because upstream wrote them multi-line; single-line for the two withdraw overloads because upstream wrote them single-line. No cosmetic reformatting for symmetry across the four stubs. Rationale: smaller diff against upstream; stylistic changes made purely for symmetry cost diff-legibility without buying anything semantic. |
+| **B16** | **`// AUREUM NOTE:` prefix convention for provenance annotations.** Plain `//` comments (not NatSpec `///`), uppercase `AUREUM NOTE:` prefix, no decorative borders. Applied in Pass 5 above `_receiveAggregateFees` and `_withdrawProtocolFees`. Rationale: internal implementation notes belong in `//` not `///` (NatSpec `///` gets pulled into `forge doc` output as public API documentation, which is the wrong audience for audit-provenance notes); the uppercase `AUREUM NOTE:` prefix gives visual salience without decorative noise and is grep-able via `grep -n "AUREUM NOTE:" src/AureumProtocolFeeController.sol`. |
+| **B17** | **Public-boundary enforcement of B10, not internal-helper enforcement.** The `InvalidRecipient` precondition check lives in the two public wrapper functions (`withdrawProtocolFees` and `withdrawProtocolFeesForToken`), **not** in the internal `_withdrawProtocolFees` helper. The helper stays byte-identical to upstream including the `safeTransfer` call and the `_protocolFeeAmounts[pool][token] = 0` storage zeroing. The `recipient` parameter is passed through to the helper but has already been validated to equal `DER_BODENSEE_POOL` by the public wrapper. Rationale: the internal helper is the function that does the actual money movement and storage updates, and its byte-identity to upstream is the load-bearing part of the audit-inheritance argument for the money-movement path. The public wrapper is a thin validation layer above it. The `// AUREUM NOTE:` annotation above the helper documents this boundary explicitly so an auditor reading the helper alone doesn't wonder where `recipient` got validated. |
+| **B18** | **All three new custom errors declared together in Pass 2.** `InvalidRecipient`, `CreatorFeesDisabled`, and `ZeroBodenseeAddress` are all declared in a single block at the top of the "Aureum-Added State" section inserted by Pass 2, even though `InvalidRecipient` isn't used until Pass 3 and `CreatorFeesDisabled` isn't used until Pass 4. Rationale: one canonical location for "errors Aureum introduced" improves audit readability over scattering them across the passes that first use them; pure declarations have no runtime side effects until invoked, so there's no semantic drift from declaring them early; future readers scanning for "what errors does this contract define beyond upstream" find the answer in one place. |
+| **B19** | **Modifier stripping from creator-fee revert stubs.** All modifiers (`onlyPoolCreator`, `withValidPoolCreatorFee`, `withLatestFees`) removed from the four stubbed functions in Pass 4. Rationale: `withLatestFees` invokes `collectAggregateFees` → `_vault.unlock(...)`, which is an external Vault call that could fail or revert for reasons unrelated to the "creator fees are disabled" story (unregistered pool, Vault paused, transient-storage lock contention). Leaving the modifier in place would mean callers with typo'd pool addresses or calls during unusual Vault states could see a Vault-internal error *before* hitting `CreatorFeesDisabled`, which is confusing. Stripping all modifiers makes the revert fire cold with no dependencies on Vault state — the "this function doesn't exist in Aureum" story is deterministic regardless of any on-chain condition. `onlyPoolCreator(pool)` and `withValidPoolCreatorFee` are stripped for the same reason (uniform policy: disabled functions have zero modifiers). |
+| **B20** | **`pure` mutability on the four creator-fee revert stubs.** After Pass 4 replaced the four creator-fee function bodies with unconditional `revert CreatorFeesDisabled();`, `solc` (not `forge lint`) emits Warning 2018 — "Function state mutability can be restricted to pure" — because the new bodies read no state, write no state, and call nothing that does. Pass 6.5 adds `pure` to all four function signatures (`external pure`) to silence the warning at source. This narrows the declared mutability relative to upstream's implicit `nonpayable`, which is legal Solidity (implementations may use stricter mutability than their interface) and cosmetically shifts the ABI's `stateMutability` field from `nonpayable` to `pure` for these four functions. The shift has no practical effect because the functions revert unconditionally regardless of how callers dispatch them — the tightened mutability is a source-level signal that matches the semantic truth ("this function does nothing"), not a behavior change. `solc` Warning 2018 was not caught during Pass 4 because Pass 4 verification checked `forge lint` output but not `forge build --force` output; Pass 6's `--force` rebuild surfaced it, and Pass 6.5 is the retroactive fix. |
+| **B21** | **Test mock surface strategy.** The test suite for `AureumProtocolFeeController` uses `vm.mockCall` to intercept Vault method calls rather than deploying a real `MockVault` contract. Each Vault method the controller calls has its own `_mockXxx` helper in the test file. Exact-argument matching is used for tests that care about specific call values (e.g. `getPoolTokens(pool)` is matched on the exact pool address); selector-only matching is used for catch-all interception (e.g. `safeTransfer` is matched only by selector regardless of recipient/amount). The auth chain is **not** mocked — a real `AureumAuthorizer` is deployed in `setUp()` and its `canPerform` is called live during every governance-gated test. This exercises the actual Aureum auth logic end-to-end rather than stubbing it out, and the gas numbers from the test runs empirically demonstrate that the auth chain runs through real contract code (~10k gas per auth check, vs ~1k for mocked Vault calls). For invariant testing, a separate `AureumProtocolFeeControllerHandler` contract is defined inline in the test file as the fuzz target; the handler swallows expected reverts via `try/catch` so the fuzz sequence can continue across calls that are designed to revert. |
+| **B22** | **Storage operation strategy.** The test suite uses raw `vm.store` and `vm.load` with manually-computed keccak slots rather than `stdstore`. Reason: the controller's mappings are `internal`, not `public`, so they don't have auto-generated public getters, and `stdstore`'s slot detection requires a public getter that returns the mapping value directly. Manually computing slots from the storage layout dump (`forge inspect AureumProtocolFeeController storageLayout`) is two lines of test code per slot and is unambiguous. The captured slot map for `AureumProtocolFeeController` (relative to slot 0 of its own state, which starts at slot 0 because the inherited contracts `SingletonAuthentication`, `VaultGuard`, and `ReentrancyGuardTransient` only declare immutables and no storage variables): slot 0 = `_globalProtocolSwapFeePercentage`, slot 1 = `_globalProtocolYieldFeePercentage`, slot 2 = `_poolProtocolSwapFeePercentages` (mapping → `PoolFeeConfig` struct), slot 3 = `_poolProtocolYieldFeePercentages` (mapping → `PoolFeeConfig` struct), slot 4 = `_poolCreators` (mapping → address), slot 5 = `_poolCreatorSwapFeePercentages` (mapping → uint256), slot 6 = `_poolCreatorYieldFeePercentages` (mapping → uint256), slot 7 = `_protocolFeeAmounts` (nested mapping → uint256), slot 8 = `_poolCreatorFeeAmounts` (nested mapping → uint256). For nested mapping slot computation: `inner = keccak256(abi.encode(token, keccak256(abi.encode(pool, baseSlot))))`. For the `PoolFeeConfig` struct unpacking: `uint64 feePercentage = uint64(packed)` (low 64 bits), `bool isOverride = ((packed >> 64) & 1) == 1`. |
+| **B23** | **Lint suppression for intentional narrowing casts in test code.** The `_readPoolFeeConfig` helper in the test file performs an intentional narrowing cast `uint64(packed)` to extract the low 64 bits of a packed `PoolFeeConfig` struct read from storage. Forge lint emits an `unsafe-typecast` note on this cast because narrowing casts can lose data. The cast is suppressed via `// forge-lint: disable-next-line(unsafe-typecast)` on the line immediately above, which is the canonical Forge lint per-line suppression directive. The suppression scope is one line, the intent is documented inline by the surrounding comment, and the discipline ("clean warnings for Aureum code, suppressions only for upstream-preserved patterns or documented narrow exceptions") is preserved. **Pattern for future Aureum code:** when a narrowing cast is intentional and unavoidable (e.g. unpacking a packed storage struct), use this directive on the line above rather than refactoring around the lint rule. If the same pattern appears in multiple places, consider an explicit mask (`uint64(packed & type(uint64).max)`) as an alternative that doesn't need suppression — but for one-off cases the directive is the smaller, cleaner fix. |
+
+### Test file architecture (post-Test-Spec-3b, 2026-04-13)
+
+The test file `test/unit/AureumProtocolFeeController.t.sol` is **628 lines** and contains:
+- **24 named tests** covering divergence, preservation, positive paths, and constructor validation
+- **4 invariants** running at 256 × 128 = 32,768 controller-touching calls each (131,072 total per `forge test` invocation)
+- **1 inline handler contract** (`AureumProtocolFeeControllerHandler`) as the invariant fuzz target
+- **7 mock helpers** for Vault method interception
+- **2 storage helpers** for slot computation and `PoolFeeConfig` struct unpacking
+
+Operator-facing documentation lives in `test/README.md`, including the test architecture, the mock surface table, the storage slot map, the invariant framework explanation, run commands, and a "What the tests prove" subsection that maps each structural property of the contract to the specific tests that demonstrate it. The "What the tests prove" subsection is intended as a navigation aid for anyone reading the test file with audit eyes — including future Aureum contributors and Stage D auditors.
+
+The test suite was developed across four sequential test specs (Test Spec 1 — scaffolding + smoke test; Test Spec 2 — pure-revert tests; Test Spec 3a — positive-path withdraw tests; Test Spec 3b — invariant suite + fee-setter happy path + nonzero-balance withdraw). Each spec was applied and verified independently before moving to the next, following the same paired-pass-and-verify discipline used for the contract source itself. All four specs landed first-try with the exception of one minor amendment (Test Spec 1 had an unused `IAuthorizer` import that was removed before sign-off).
+
+**Run command for the full test suite:**
+
+```bash
+forge test --match-path test/unit/AureumProtocolFeeController.t.sol -vv
+```
+
+Expected output: `24 passed; 0 failed; 0 skipped; finished in ~14s` (the invariants take most of the runtime; the 20 named tests finish in ~50ms).
+
+### Lint notes suppressed by `foundry.toml` (point-in-time snapshot, post-Pass-5)
+
+The following six upstream-preserved lint notes are suppressed via the `foundry.toml` `[lint] ignore` entry added in Pass 6. Line numbers are current as of the post-Pass-5 state (622-line file):
+
+| Note | Line | Source | Why preserved |
+|------|------|--------|---------------|
+| `unused-import` | L9 | Upstream imports `MAX_FEE_PERCENTAGE` from `VaultTypes.sol` but never uses it | Removing would be a gratuitous divergence from upstream |
+| `unwrapped-modifier-logic` | L128 | Upstream's `withValidSwapFee` modifier is inline | Refactoring into an internal helper would save bytecode at the cost of byte-divergence |
+| `unwrapped-modifier-logic` | L137 | Upstream's `withValidYieldFee` modifier is inline | Same rationale |
+| `unwrapped-modifier-logic` | L145 | Upstream's `withValidPoolCreatorFee` modifier is inline | Same rationale |
+| `divide-before-multiply` | L389 | Precision-truncation idiom `(x / FEE_SCALING_FACTOR) * FEE_SCALING_FACTOR` inside `computeAggregateFeePercentage` or similar helper | The divide-then-multiply is deliberate — it truncates to a precision boundary. False positive on this idiom |
+| `divide-before-multiply` | L618 | Same idiom in `_ensureValidPrecision` or similar | Same rationale |
+
+These line numbers will drift if any future Stage B or Stage C commit shifts the file contents. The stable information — the *kinds* of notes being suppressed and why — lives in the `foundry.toml` comment block.
+
+### Provenance annotations in the source
+
+Two `// AUREUM NOTE:` annotations inside `src/AureumProtocolFeeController.sol` serve as in-source audit pointers. Grep-able via `grep -n "AUREUM NOTE:" src/AureumProtocolFeeController.sol`:
+
+| Location (post-Pass-5) | Target function | Upstream range | What it says |
+|---|---|---|---|
+| L222–228 | `_receiveAggregateFees(address pool, ProtocolFeeType feeType, uint256[] memory feeAmounts) private` | Upstream L203–259 | Function is byte-identical to upstream; the Aureum short-circuit makes the creator-fee split branch always dead because the creator-fee percentage mappings are never written |
+| L536–538 | `_withdrawProtocolFees(address pool, address recipient, IERC20 token) internal` | Upstream L504–512 | Function is byte-identical to upstream; B10 recipient enforcement happens at the public boundary, not in this helper — the helper "trusts the public boundary" |
+
+### Open Stage B housekeeping todos
+
+The following items are real and worth doing before `stage-b-complete`, but are out of scope for B4's commit and are logged here as reminders for a separate housekeeping commit:
+
+1. **Harmonize `AureumAuthorizer.sol`'s zero-address check with the controller's custom-error idiom.** Currently the Authorizer uses `require(governanceMultisig_ != address(0), "AureumAuthorizer: zero multisig")` (Pass B2 convention), while the controller uses `error ZeroBodenseeAddress()` + `if (...) revert ZeroBodenseeAddress()` (Pass B4 convention). Options: (a) add `error ZeroMultisig()` to the Authorizer and swap the `require` for a `revert`, plus update the unit test's `vm.expectRevert` assertion; (b) document the divergence and leave both as-is. **Recommended path: (a).** Target commit message: `stage-b housekeeping: harmonize zero-address check idiom across Aureum contracts`. Target location: between B4 and B5, or between B6 and B7.
+
+2. **Update the main `README.md` repository layout to reflect post-B0–B4 state.** The current `README.md` shows the test directory with placeholder content (`test/unit/` says "Stage B+" with no files listed). After B2 and B4, the actual contents are `test/unit/AureumAuthorizer.t.sol` and `test/unit/AureumProtocolFeeController.t.sol`. Update the layout block to show the real files. Also update the "Current status" line which still says "Stage A" — it should say "Stage B (in progress, B0-B4 complete)" or similar. Target: separate `stage-b housekeeping: refresh main README repository layout and status` commit, or fold into a combined housekeeping commit.
+
+3. **Reconcile the architecture-table description of `AureumProtocolFeeController` in the main `README.md` with the actual implemented behavior.** The current table row says "Routes 50% of swap fees + 100% of protocol-extractable yield fees to der Bodensee Pool." The actual Aureum behavior (verified by the contract source and the test suite) is "Routes 100% of protocol-extractable fees (both swap and yield, per the protocol fee percentage set per pool by governance up to a 50% cap) to der Bodensee Pool. Pool creator fees are structurally disabled — all four pool-creator-fee functions revert unconditionally with `CreatorFeesDisabled()`." The "50% of swap fees" phrasing in the README is a remnant of an earlier design or a misread of the upstream cap and should be corrected for accuracy.
+
+### Commit chain reference (post-Pass-6, pre-B4-work-commit)
+
+The chain of commits on `main` from the Stage A skeleton to the pre-B4-work-commit tip, for navigation:
+
+```
+fb0216a  Stage A: Foundry skeleton, Cursor rules, planning docs
+b60492f  Pin balancer-v3-monorepo submodule to 68057fda
+283847f  A6: install openzeppelin-contracts v5.6.1 and forge-std v1.15.0
+25b9298  A7: fix Natspec parser issue in Sanity.t.sol
+9afb636  STAGE_A_PLAN: log A6-A8 complete, RPC sanity test green
+c198739  STAGE_A_PLAN: log A9 complete, stage-a-complete tagged
+1a7e44b  B0: stage-b branch opened, slither installed (.venv already gitignored in Stage A)
+9b91c49  B0: log completion in Stage B plan
+45d160c  B1: notes from reading upstream VaultFactory and ProtocolFeeController
+758183b  B1: log completion in Stage B plan
+e792f09  B2: AureumAuthorizer + unit test (4 tests, all green)
+5e2156a  B2: log completion in Stage B plan
+a4e4ed2  B3: AureumVaultFactory fork + lint ignore + notes
+4680179  B3: log completion in Stage B plan
+93f557d  B4 prep: add B12/B13 design decisions from pre-design grep phase
+defb2d5  docs: list all docs/ files in README repository layout
+3c065ab  Stage B branch model deviation: documented, working on main
+```
+
+B4's work commit (next) will add the new `src/AureumProtocolFeeController.sol`, its unit+invariant test file `test/unit/AureumProtocolFeeController.t.sol`, and these `foundry.toml` + STAGE_B_NOTES updates. B4's log commit will follow, updating `docs/STAGE_B_PLAN.md`'s Completion Log.

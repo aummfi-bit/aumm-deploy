@@ -58,8 +58,23 @@ ignore = ["lib/**"]
 # B3: `AureumVaultFactory` preserves upstream Balancer `VaultFactory` camelCase immutables to keep the fork diff
 # minimal; forge lint would otherwise emit `screaming-snake-case-immutable` notes on those lines only.
 # See docs/STAGE_B_NOTES.md (Plan divergences, B3).
+#
+# B4: `AureumProtocolFeeController` preserves upstream Balancer `ProtocolFeeController` code patterns
+# byte-for-byte where semantically identical. Forge lint would otherwise emit three categories of notes,
+# all attributable to upstream's own design choices that the fork deliberately preserves to keep the
+# audit-inheritance diff minimal:
+#   (a) `divide-before-multiply` on the precision-truncation idiom
+#       `(x / FEE_SCALING_FACTOR) * FEE_SCALING_FACTOR` used in two places. The divide-then-multiply
+#       is the point — it truncates to a precision boundary — and is deliberate upstream arithmetic.
+#   (b) `unused-import` on `MAX_FEE_PERCENTAGE` from `VaultTypes.sol`. The import is unused in upstream
+#       and remains unused in the fork; removing it would be a gratuitous divergence.
+#   (c) `unwrapped-modifier-logic` on the three inline modifier bodies for `withValidSwapFee`,
+#       `withValidYieldFee`, and `withValidPoolCreatorFee`. Upstream writes them inline; wrapping them
+#       into internal helper functions would save a few bytes of bytecode at the cost of byte-level
+#       divergence from upstream for no runtime benefit.
+# See docs/STAGE_B_NOTES.md (B4 implementation notes) for the per-note line-number snapshot.
 [lint]
-ignore = ["src/AureumVaultFactory.sol"]
+ignore = ["src/AureumVaultFactory.sol", "src/AureumProtocolFeeController.sol"]
 
 # RPC endpoints pulled from .env
 [rpc_endpoints]
