@@ -364,7 +364,7 @@ Fill this in as you progress.
 | 2026-04-09 | B1 — read upstream | ✅ | `45d160c` | notes file: `docs/STAGE_B_NOTES.md`; confirmed no on-chain callers of `withdrawProtocolFees` or creator fee functions (greps clean); B10 added (recipient revert-if-mismatch); README fee-split wording flagged for deferred cleanup |
 | 2026-04-09 | B2 — Authorizer | ✅ | `e792f09` | 4 tests pass (2 fuzz @ 1024 runs); GOVERNANCE_MULTISIG rename noted in STAGE_B_NOTES.md |
 | 2026-04-09 | B3 — Factory fork | ✅ | `a4e4ed2` | diff line count: 25; INITIAL_FEE_CONTROLLER immutable + Option C lint ignore in foundry.toml; deployedProtocolFeeControllers mapping dropped per B11 |
-|  | B4 — FeeController |  |  |  |
+| 2026-04-13 | B4 — FeeController | ✅ | `2c9072a` | 24 named tests + 4 invariants pass (256×128 calls each, ~14s); B4 spanned 6 implementation passes + 4 test specs + pre-commit notes amendment; B14-B23 design decisions in STAGE_B_NOTES.md; test architecture in test/README.md |
 |  | B5 — Deploy script + fork test |  |  |  |
 |  | B6 — Slither |  |  | findings: |
 |  | B7 — `stage-b-complete` tag |  |  |  |
