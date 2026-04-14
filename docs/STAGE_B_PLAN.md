@@ -366,7 +366,7 @@ Fill this in as you progress.
 | 2026-04-09 | B3 — Factory fork | ✅ | `a4e4ed2` | diff line count: 25; INITIAL_FEE_CONTROLLER immutable + Option C lint ignore in foundry.toml; deployedProtocolFeeControllers mapping dropped per B11 |
 | 2026-04-13 | B4 — FeeController | ✅ | `2c9072a` | 24 named tests + 4 invariants pass (256×128 calls each, ~14s); B4 spanned 6 implementation passes + 4 test specs + pre-commit notes amendment; B14-B23 design decisions in STAGE_B_NOTES.md; test architecture in test/README.md |
 | 2026-04-14 | B5 — Deploy script + fork test | ✅ | `ba24ac7` | deploy script + fork test land in single commit; resolves three-way address dependency loop via vm.computeCreateAddress + CREATE3.getDeployed(salt, predictedFactory); 6 assertions verified on mainnet fork (gas 34,975,764, identical across Alchemy + llamarpc); B5 spanned 3 passes (1 + 1.5 refactor for testability + 2) |
-|  | B6 — Slither |  |  | findings: |
+| 2026-04-14 | B6 — Slither | ✅ | `1f461de` | 32 findings / 11 detectors triaged; 31 suppressed inline with site-local rationale, 1 accepted residual (`unindexed-event-address` on `VaultCreated`, unsuppressable due to Slither 0.11.4 empty-elements parser bug — see STAGE_B_NOTES.md "B6 — Slither triage"); zero Aureum-introduced bugs; all suppressions are comment-only additions (100 insertions, 0 deletions across 3 src files) |
 |  | B7 — `stage-b-complete` tag |  |  |  |
 
 When the last row is filled, Stage B is done. Stage C (mainnet deployment) will get its own plan file.
