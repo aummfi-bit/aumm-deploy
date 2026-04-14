@@ -8,7 +8,7 @@ Foundry project for deploying Aureum's parallel instance of the Balancer V3 Vaul
 
 ## Current status
 
-**Stage A (Foundry environment setup).** See [`docs/STAGE_A_PLAN.md`](docs/STAGE_A_PLAN.md) for the step-by-step setup plan and the Completion Log. When Stage A is tagged `stage-a-complete`, work proceeds to [`docs/STAGE_B_PLAN.md`](docs/STAGE_B_PLAN.md).
+**Stage B (B0–B4 complete, B5–B7 in progress).** Stage A is tagged `stage-a-complete`. See [`docs/STAGE_B_PLAN.md`](docs/STAGE_B_PLAN.md) for the step-by-step plan and the Completion Log; design decisions and implementation notes live in [`docs/STAGE_B_NOTES.md`](docs/STAGE_B_NOTES.md).
 
 **Nothing in this repository is audited, deployed to mainnet, or production-ready.**
 
@@ -20,9 +20,9 @@ Aureum owns four contracts in this repository:
 
 | Contract | Role | Stage |
 |---|---|---|
-| `AureumVaultFactory.sol` | Forked `VaultFactory` — one-shot deployer. Diff against upstream: ~5 lines to accept an external `IProtocolFeeController` via constructor rather than deploying the stock one inline. | B |
+| `AureumVaultFactory.sol` | Forked `VaultFactory` — one-shot deployer. Diff against upstream: ~25 lines; accepts an external `IProtocolFeeController` via constructor (`INITIAL_FEE_CONTROLLER` immutable) instead of deploying one inline, drops the `deployedProtocolFeeControllers` mapping (per B11). | B |
 | `AureumAuthorizer.sol` | Implements `IAuthorizer`. Grants all Vault admin permissions to a single governance Safe multisig address. Binary: multisig can do anything, no one else can do anything. | B |
-| `AureumProtocolFeeController.sol` | Implements `IProtocolFeeController`. Routes 50% of swap fees + 100% of protocol-extractable yield fees to der Bodensee Pool. Rejects all pool creator fee calls. No treasury. | B |
+| `AureumProtocolFeeController.sol` | Implements `IProtocolFeeController`. Routes 100% of protocol-extractable fees (both swap and yield, per the protocol fee percentage set per pool by governance up to a 50% cap) to the immutable der Bodensee Pool address set at deploy time. Pool creator fees structurally disabled — all four creator-fee functions revert unconditionally with `CreatorFeesDisabled()`. No treasury, no post-deploy destination setter. | B |
 | `script/DeployAureumVault.s.sol` | Foundry deploy script. Deploys authorizer + factory, computes future Vault address via CREATE3, deploys fee controller with that address, calls `factory.create()`. | B |
 
 ## Quick start
