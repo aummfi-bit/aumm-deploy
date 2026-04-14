@@ -61,12 +61,28 @@ contract DeployAureumVaultForkTest is Test {
     // ---------------------------------------------------------------------
 
     function setUp() public {
+        // Rationale: vm.setEnv is flagged by forge-lint as an "unsafe
+        // cheatcode" because it mutates process environment state. In this
+        // test it is the intentional harness mechanism for parameterizing
+        // DeployAureumVault.s.sol — the script reads deployment config via
+        // vm.envString / vm.envUint, so the fork test must populate those
+        // env vars before calling deploy(). Scoped to setUp() in a fork
+        // test; no production code path touches vm.setEnv. Per Foundry
+        // lint best-practice ("Minimize Scope"), each call is suppressed
+        // individually with a targeted disable-next-line directive.
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNANCE_MULTISIG));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("DER_BODENSEE_POOL", vm.toString(DER_BODENSEE_POOL));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("SALT", vm.toString(SALT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("PAUSE_WINDOW_DURATION", vm.toString(PAUSE_WINDOW_DURATION));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("BUFFER_PERIOD_DURATION", vm.toString(BUFFER_PERIOD_DURATION));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MIN_TRADE_AMOUNT", vm.toString(MIN_TRADE_AMOUNT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MIN_WRAP_AMOUNT", vm.toString(MIN_WRAP_AMOUNT));
     }
 
