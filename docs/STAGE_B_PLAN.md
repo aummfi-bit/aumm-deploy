@@ -365,7 +365,7 @@ Fill this in as you progress.
 | 2026-04-09 | B2 — Authorizer | ✅ | `e792f09` | 4 tests pass (2 fuzz @ 1024 runs); GOVERNANCE_MULTISIG rename noted in STAGE_B_NOTES.md |
 | 2026-04-09 | B3 — Factory fork | ✅ | `a4e4ed2` | diff line count: 25; INITIAL_FEE_CONTROLLER immutable + Option C lint ignore in foundry.toml; deployedProtocolFeeControllers mapping dropped per B11 |
 | 2026-04-13 | B4 — FeeController | ✅ | `2c9072a` | 24 named tests + 4 invariants pass (256×128 calls each, ~14s); B4 spanned 6 implementation passes + 4 test specs + pre-commit notes amendment; B14-B23 design decisions in STAGE_B_NOTES.md; test architecture in test/README.md |
-|  | B5 — Deploy script + fork test |  |  |  |
+| 2026-04-14 | B5 — Deploy script + fork test | ✅ | `ba24ac7` | deploy script + fork test land in single commit; resolves three-way address dependency loop via vm.computeCreateAddress + CREATE3.getDeployed(salt, predictedFactory); 6 assertions verified on mainnet fork (gas 34,975,764, identical across Alchemy + llamarpc); B5 spanned 3 passes (1 + 1.5 refactor for testability + 2) |
 |  | B6 — Slither |  |  | findings: |
 |  | B7 — `stage-b-complete` tag |  |  |  |
 
