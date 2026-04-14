@@ -169,6 +169,10 @@ contract AureumProtocolFeeController is
     ///      per Aureum protocol decision B10. There is no setter and no governance
     ///      path to change this address. See docs/STAGE_B_NOTES.md for the full
     ///      rationale.
+    // Rationale: Aureum-introduced immutable; SCREAMING_CASE matches the
+    // upstream Balancer V3 convention for protocol-critical addresses used
+    // throughout this forked file.
+    // slither-disable-next-line naming-convention
     address public immutable DER_BODENSEE_POOL;
 
     constructor(IVault vault_, address derBodenseePool_) SingletonAuthentication(vault_) VaultGuard(vault_) {
@@ -184,6 +188,9 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    // Rationale: upstream pattern. The hook writes state directly; the
+    // returned bytes from _vault.unlock() are unused by design.
+    // slither-disable-next-line unused-return
     function collectAggregateFees(address pool) public {
         _vault.unlock(abi.encodeCall(AureumProtocolFeeController.collectAggregateFeesHook, pool));
     }
@@ -193,6 +200,9 @@ contract AureumProtocolFeeController is
      * for each token. Then have the Vault transfer tokens to this contract, debiting each token for the amount
      * transferred so that the transaction settles when the hook returns.
      */
+    // Rationale: hook executes inside Vault unlock context; Vault reentrancy
+    // lock held throughout the external calls and subsequent event emissions.
+    // slither-disable-next-line reentrancy-events
     function collectAggregateFeesHook(address pool) external onlyVault {
         (uint256[] memory totalSwapFees, uint256[] memory totalYieldFees) = _vault.collectAggregateFees(pool);
         _receiveAggregateFees(pool, totalSwapFees, totalYieldFees);
@@ -210,6 +220,11 @@ contract AureumProtocolFeeController is
      * @param swapFeeAmounts An array with the total swap fees collected, sorted in token registration order
      * @param yieldFeeAmounts An array with the total yield fees collected, sorted in token registration order
      */
+    // Rationale: upstream Balancer V3 fee-collection pattern. The Vault holds
+    // its reentrancy lock during sendTo() because this code path executes
+    // inside an unlock() context. No reentrant observer can act on emitted
+    // events within the same transaction.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function _receiveAggregateFees(
         address pool,
         uint256[] memory swapFeeAmounts,
@@ -226,6 +241,11 @@ contract AureumProtocolFeeController is
     // false and the else-branch always fires: 100% of collected fees accumulate
     // in _protocolFeeAmounts. Creator fee storage is never written. See
     // docs/STAGE_B_NOTES.md (Part 2, Interface divergences) for full analysis.
+    // Rationale: upstream Balancer V3 fee-collection pattern. The Vault holds
+    // its reentrancy lock during sendTo() because this code path executes
+    // inside an unlock() context. No reentrant observer can act on emitted
+    // events within the same transaction.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
     function _receiveAggregateFees(address pool, ProtocolFeeType feeType, uint256[] memory feeAmounts) private {
         // There are two cases when we don't need to split fees (in which case we can save gas and avoid rounding
         // errors by skipping calculations) if either the protocol or pool creator fee percentage is zero.
@@ -238,6 +258,9 @@ contract AureumProtocolFeeController is
             ? _poolCreatorSwapFeePercentages[pool]
             : _poolCreatorYieldFeePercentages[pool];
 
+        // Rationale: uint256 default-initializes to 0, then assigned before
+        // first use below. Upstream Balancer pattern.
+        // slither-disable-next-line uninitialized-local
         uint256 aggregateFeePercentage;
 
         bool needToSplitFees = poolCreatorFeePercentage > 0 && protocolFeePercentage > 0;
@@ -251,6 +274,9 @@ contract AureumProtocolFeeController is
             if (feeAmounts[i] > 0) {
                 IERC20 token = poolTokens[i];
 
+                // Rationale: pool tokens are validated at pool registration;
+                // the loop iterates over a controlled set. Upstream Balancer pattern.
+                // slither-disable-next-line calls-loop
                 _vault.sendTo(token, address(this), feeAmounts[i]);
 
                 // It should be easier for off-chain processes to handle two events, rather than parsing the type
@@ -337,20 +363,30 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function updateProtocolSwapFeePercentage(address pool) external withLatestFees(pool) {
         PoolFeeConfig memory feeConfig = _poolProtocolSwapFeePercentages[pool];
         uint256 globalProtocolSwapFee = _globalProtocolSwapFeePercentage;
 
+        // Rationale: stylistic. Upstream-verbatim; preserved to minimize fork diff.
+        // slither-disable-next-line boolean-equal
         if (feeConfig.isOverride == false && globalProtocolSwapFee != feeConfig.feePercentage) {
             _updatePoolSwapFeePercentage(pool, globalProtocolSwapFee, false);
         }
     }
 
     /// @inheritdoc IProtocolFeeController
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function updateProtocolYieldFeePercentage(address pool) external withLatestFees(pool) {
         PoolFeeConfig memory feeConfig = _poolProtocolYieldFeePercentages[pool];
         uint256 globalProtocolYieldFee = _globalProtocolYieldFeePercentage;
 
+        // Rationale: stylistic. Upstream-verbatim; preserved to minimize fork diff.
+        // slither-disable-next-line boolean-equal
         if (feeConfig.isOverride == false && globalProtocolYieldFee != feeConfig.feePercentage) {
             _updatePoolYieldFeePercentage(pool, globalProtocolYieldFee, false);
         }
@@ -386,9 +422,16 @@ contract AureumProtocolFeeController is
         // However, the pool creator fee is entirely controlled by the pool creator, and it is possible to craft a
         // valid pool creator fee percentage that would cause the aggregate fee percentage to fail the precision check.
         // This case should be rare, so we ensure this can't happen by truncating the final value.
+        // Rationale: intentional precision-truncation idiom (round down to a
+        // multiple of FEE_SCALING_FACTOR). Upstream Balancer fee math pattern.
+        // slither-disable-next-line divide-before-multiply
         aggregateFeePercentage = (aggregateFeePercentage / FEE_SCALING_FACTOR) * FEE_SCALING_FACTOR;
     }
 
+    // Rationale: orphaned by Aureum B19 design — public entry points were
+    // replaced with revert stubs to disable pool-creator fees, but internal
+    // helpers are preserved to minimize diff vs upstream Balancer V3.
+    // slither-disable-next-line dead-code
     function _ensureCallerIsPoolCreator(address pool) internal view {
         address poolCreator = _poolCreators[pool];
 
@@ -455,6 +498,9 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function setProtocolSwapFeePercentage(
         address pool,
         uint256 newProtocolSwapFeePercentage
@@ -463,6 +509,9 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function setProtocolYieldFeePercentage(
         address pool,
         uint256 newProtocolYieldFeePercentage
@@ -486,6 +535,11 @@ contract AureumProtocolFeeController is
         revert CreatorFeesDisabled();
     }
 
+    // Rationale (dead-code): orphaned by B19 revert-stub design; preserved
+    // to minimize diff vs upstream Balancer V3.
+    // Rationale (reentrancy-events): events emitted after Vault calls inside
+    // unlock context; Vault reentrancy lock held throughout (moot since dead).
+    // slither-disable-next-line dead-code,reentrancy-events
     function _setPoolCreatorFeePercentage(
         address pool,
         uint256 poolCreatorFeePercentage,
@@ -529,6 +583,9 @@ contract AureumProtocolFeeController is
             revert InvalidRecipient(DER_BODENSEE_POOL, recipient);
         }
         // Revert if the pool is not registered or if the token does not belong to the pool.
+        // Rationale: called for its revert side effect (validates token belongs
+        // to pool); return values intentionally unused. Upstream pattern.
+        // slither-disable-next-line unused-return
         _vault.getPoolTokenCountAndIndexOfToken(pool, token);
         _withdrawProtocolFees(pool, recipient, token);
     }
@@ -556,6 +613,10 @@ contract AureumProtocolFeeController is
         revert CreatorFeesDisabled();
     }
 
+    // Rationale: orphaned by Aureum B19 design — public entry points were
+    // replaced with revert stubs to disable pool-creator fees, but internal
+    // helpers are preserved to minimize diff vs upstream Balancer V3.
+    // slither-disable-next-line dead-code
     function _withdrawPoolCreatorFees(address pool, address recipient) private {
         (IERC20[] memory poolTokens, uint256 numTokens) = _getPoolTokensAndCount(pool);
 
@@ -573,6 +634,9 @@ contract AureumProtocolFeeController is
     }
 
     /// @dev Common code shared between set/update. `isOverride` will be true if governance is setting the percentage.
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function _updatePoolSwapFeePercentage(address pool, uint256 newProtocolSwapFeePercentage, bool isOverride) private {
         // Update local storage of the raw percentage.
         //
@@ -590,6 +654,9 @@ contract AureumProtocolFeeController is
     }
 
     /// @dev Common code shared between set/update. `isOverride` will be true if governance is setting the percentage.
+    // Rationale: events emitted after Vault calls inside the unlock context;
+    // Vault reentrancy lock prevents observer action within the same tx.
+    // slither-disable-next-line reentrancy-events
     function _updatePoolYieldFeePercentage(
         address pool,
         uint256 newProtocolYieldFeePercentage,
@@ -615,6 +682,10 @@ contract AureumProtocolFeeController is
         // corresponds to 0.00001% resolution (i.e., a fee can be 1%, 1.00001%, 1.00002%, but not 1.000005%).
         // Ensure there will be no precision loss in the Vault - which would lead to a discrepancy between the
         // aggregate fee calculated here and that stored in the Vault.
+        // Rationale: intentional precision-truncation idiom (round down to a
+        // multiple of FEE_SCALING_FACTOR, then check equality). Upstream
+        // Balancer fee math pattern.
+        // slither-disable-next-line divide-before-multiply
         if ((feePercentage / FEE_SCALING_FACTOR) * FEE_SCALING_FACTOR != feePercentage) {
             revert IVaultErrors.FeePrecisionTooHigh();
         }

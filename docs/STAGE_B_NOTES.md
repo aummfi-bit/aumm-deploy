@@ -257,6 +257,16 @@ The following items are real and worth doing before `stage-b-complete`, but are 
   Flagged during B5 Pass 1: the values are currently env vars without a pinned
   source because B1/B2/B3 grepped the types but not the mainnet values.
 
+- **Slither 0.11.4 accepted residual: `unindexed-event-address` on
+  `AureumVaultFactory.VaultCreated`.** The event is upstream-verbatim from
+  `balancer-v3-monorepo/pkg/vault/contracts/VaultFactory.sol#42` and cannot
+  be suppressed inline due to a Slither 0.11.4 parser bug where this detector
+  emits findings with empty `elements`, bypassing the ignore-comment check in
+  `slither/core/slither_core.py` `has_ignore_comment`. The finding persists
+  in every Slither run as `1 result(s) found` and is documented in full in
+  the B6 triage section below. Reconsider on Slither upgrade — if the bug is
+  fixed, replace the accept-and-document with an inline suppression.
+
 ### Commit chain reference (post-Pass-6, pre-B4-work-commit)
 
 The chain of commits on `main` from the Stage A skeleton to the pre-B4-work-commit tip, for navigation:
@@ -282,3 +292,122 @@ defb2d5  docs: list all docs/ files in README repository layout
 ```
 
 B4's work commit (next) will add the new `src/AureumProtocolFeeController.sol`, its unit+invariant test file `test/unit/AureumProtocolFeeController.t.sol`, and these `foundry.toml` + STAGE_B_NOTES updates. B4's log commit will follow, updating `docs/STAGE_B_PLAN.md`'s Completion Log.
+
+---
+
+## B6 — Slither triage
+
+Slither 0.11.4 was run per the plan's prescribed invocation:
+
+```bash
+slither . --filter-paths "lib|test"
+```
+
+The `--filter-paths` excludes the submodule and the test directory. With
+`foundry.toml`'s `--skip ./test/** ./script/**` passed through crytic-compile,
+the effective scope is the three Aureum source files:
+
+- `src/AureumAuthorizer.sol`
+- `src/AureumVaultFactory.sol`
+- `src/AureumProtocolFeeController.sol`
+
+**Initial run: 32 findings across 11 detectors. Final run after B6 suppressions: 1 finding (accepted, see below).**
+
+### Triage summary
+
+| Detector | Count | Disposition |
+| --- | --- | --- |
+| reentrancy-events | 11 | Suppressed inline — upstream Balancer V3 Vault-unlock pattern; Vault reentrancy lock held during external calls and subsequent event emissions |
+| encode-packed-collision | 3 | Suppressed inline — `Create2.deploy` / `CREATE3.deploy` initcode construction with constant bytecode + `abi.encode` of constructor args (collision-safe); standard Balancer V3 deployment pattern |
+| dead-code | 3 | Suppressed inline — three internal pool-creator-fee helpers (`_ensureCallerIsPoolCreator`, `_setPoolCreatorFeePercentage`, `_withdrawPoolCreatorFees`) orphaned by B19 design (public entry points replaced with revert stubs). Preserved rather than deleted to minimize diff vs upstream |
+| naming-convention | 3 | Suppressed inline — Aureum immutables `GOVERNANCE_MULTISIG`, `DER_BODENSEE_POOL`, `INITIAL_FEE_CONTROLLER` use SCREAMING_CASE matching Balancer V3 upstream convention for protocol-critical addresses. Consistent with `foundry.toml` `[lint] ignore` decisions for forked files |
+| reentrancy-no-eth | 3 | Suppressed inline — two on fee-controller `_receiveAggregateFees` overloads (Vault lock held in unlock context), one on factory `CREATE3.deploy` followed by `isDeployed = true` (fresh contract, no caller can reenter) |
+| divide-before-multiply | 2 | Suppressed inline — intentional precision-truncation idiom `(x / FEE_SCALING_FACTOR) * FEE_SCALING_FACTOR`. Upstream fee math |
+| unused-return | 2 | Suppressed inline — `_vault.unlock()` return (hook writes state directly), `_vault.getPoolTokenCountAndIndexOfToken()` (called for revert side effect, validates token belongs to pool) |
+| boolean-equal | 2 | Suppressed inline — `isOverride == false` stylistic nit. Upstream-verbatim |
+| uninitialized-local | 1 | Suppressed inline — `uint256 aggregateFeePercentage;` default-initializes to 0, then assigned before first use. Upstream pattern |
+| calls-loop | 1 | Suppressed inline — `_vault.sendTo` inside fee-distribution loop. Pool tokens validated at pool registration; controlled iteration set. Upstream pattern |
+| unindexed-event-address | 1 | **Accepted unsuppressable.** See below |
+
+**Totals:** 32 findings initially → 31 suppressed inline → 1 accepted residual.
+
+### Zero Aureum-introduced bugs
+
+Every finding was classified as either upstream-inherited from the forked
+Balancer V3 code, or as a deliberate Aureum design choice (the three
+SCREAMING_CASE immutables and the three B19-orphaned dead-code helpers).
+No finding revealed a real Aureum-introduced bug. This is the expected
+outcome for forked-and-minimally-modified upstream code, but the triage
+was performed finding-by-finding rather than waved through — the
+classification rationale is attached inline as a site-local comment at
+every suppression site.
+
+### The accepted residual finding
+
+`Detector: unindexed-event-address` on
+`AureumVaultFactory.VaultCreated(address)` cannot be suppressed inline in
+Slither 0.11.4 due to a parser bug.
+
+**Reproduction.** The `unindexed-event-address` detector emits findings
+with an empty `elements` array. In
+`slither/core/slither_core.py`, `has_ignore_comment` iterates over
+`r["elements"]` to check each element's source mapping against the
+preceding-line directive. If `elements` is empty, the loop body never
+runs, the function falls through to `return False`, and
+`valid_result` considers the finding valid.
+
+Verified via:
+
+```python
+import json, subprocess
+
+r = subprocess.run(
+    ["slither", ".", "--filter-paths", "lib|test", "--json", "-"],
+    capture_output=True,
+    text=True,
+)
+d = json.loads(r.stdout)
+for det in d["results"]["detectors"]:
+    if det["check"] == "unindexed-event-address":
+        print("elements:", det["elements"])
+```
+
+Output: `elements: []`.
+
+**Why accept rather than suppress via alternative means.** Four options
+were considered:
+
+1. `slither.config.json` with `detectors_to_exclude: unindexed-event-address`
+   — disables the detector globally, losing coverage on any future Aureum
+   event with an unindexed address.
+2. Patch the `VaultCreated` event to `event VaultCreated(address indexed vault)`
+   — breaks upstream-verbatim invariant; `lib/balancer-v3-monorepo/pkg/vault/contracts/VaultFactory.sol#42`
+   is the source of truth and we preserve its signature to minimize fork diff.
+3. Upgrade Slither to a version that fixes the empty-elements bug —
+   out of scope for Stage B; affects the rest of B6 if the new version
+   changes other detector outputs.
+4. **Chosen: accept and document.** The finding stays visible in every
+   Slither run as `1 result(s) found`. The inline rationale comment at
+   the event declaration references this `STAGE_B_NOTES.md` section.
+
+**What changes if Slither is upgraded.** If a future Slither version fixes
+the empty-elements bug, `unindexed-event-address` becomes suppressable
+inline like every other detector. The remediation is a single edit:
+add `// slither-disable-next-line unindexed-event-address` immediately
+above the `event VaultCreated(address vault);` declaration, and remove the
+"accepted residual" bullet from the housekeeping queue above. The inline
+rationale comment can stay — it still documents why the event is not
+changed to use `indexed`.
+
+### Verification command for future runs
+
+From project root, with `.venv` activated:
+
+```bash
+slither . --filter-paths "lib|test" 2>&1 | grep "result(s) found"
+```
+
+Expected output: `INFO:Slither:. analyzed (81 contracts with 100 detectors), 1 result(s) found`.
+Anything other than `1 result(s) found` means either a new finding has
+appeared (investigate) or the Slither empty-elements bug has been fixed
+and the `VaultCreated` suppression needs to be applied inline (see above).

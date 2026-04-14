@@ -26,6 +26,10 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
 
     /// @notice The protocol fee controller this factory was deployed with, wired into every Vault produced by `create()`.
     /// @dev The Vault's *current* controller may diverge from this if governance later calls `Vault.setProtocolFeeController`.
+    // Rationale: matches Balancer V3 immutable naming (SCREAMING_CASE for
+    // protocol-critical addresses). Consistent with foundry.toml [lint]
+    // ignore decision on the forked portion of this file.
+    // slither-disable-next-line naming-convention
     IProtocolFeeController public immutable INITIAL_FEE_CONTROLLER;
 
     mapping(address vaultAddress => VaultExtension) public deployedVaultExtensions;
@@ -42,6 +46,11 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
      * @notice Emitted when the Vault is deployed.
      * @param vault The Vault's address
      */
+    // Rationale: upstream-verbatim from balancer-v3-monorepo/pkg/vault/
+    // contracts/VaultFactory.sol line 42. This finding (unindexed-event-address)
+    // cannot be suppressed inline due to a Slither 0.11.4 bug where the
+    // detector emits findings with empty `elements`, bypassing the ignore-
+    // comment check. Accepted as documented in docs/STAGE_B_NOTES.md (B6).
     event VaultCreated(address vault);
 
     /// @notice The given salt does not match the generated address when attempting to create the Vault.
@@ -118,6 +127,10 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
             revert VaultAddressMismatch();
         }
 
+        // Rationale: dynamic args are upstream creation bytecode (constant)
+        // plus abi.encode of constructor args (collision-safe); standard
+        // Balancer V3 deployment pattern.
+        // slither-disable-next-line encode-packed-collision
         VaultAdmin vaultAdmin = VaultAdmin(
             payable(
                 Create2.deploy(
@@ -138,6 +151,10 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
         );
         deployedVaultAdmins[vaultAddress] = vaultAdmin;
 
+        // Rationale: dynamic args are upstream creation bytecode (constant)
+        // plus abi.encode of constructor args (collision-safe); standard
+        // Balancer V3 deployment pattern.
+        // slither-disable-next-line encode-packed-collision
         VaultExtension vaultExtension = VaultExtension(
             payable(
                 Create2.deploy(
@@ -149,6 +166,13 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
         );
         deployedVaultExtensions[vaultAddress] = vaultExtension;
 
+        // Rationale (encode-packed-collision): dynamic args are upstream creation
+        // bytecode (constant) plus abi.encode of constructor args (collision-safe);
+        // standard Balancer V3 deployment pattern.
+        // Rationale (reentrancy-no-eth): CREATE3.deploy creates a fresh contract
+        // at a deterministic address with no prior code; no caller exists to
+        // reenter the factory before isDeployed is set later in this function.
+        // slither-disable-next-line encode-packed-collision,reentrancy-no-eth
         address deployedAddress = CREATE3.deploy(
             salt,
             abi.encodePacked(vaultCreationCode, abi.encode(vaultExtension, _authorizer, INITIAL_FEE_CONTROLLER)),
