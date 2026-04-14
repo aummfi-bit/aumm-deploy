@@ -249,6 +249,14 @@ The following items are real and worth doing before `stage-b-complete`, but are 
 
 3. **Reconcile the architecture-table description of `AureumProtocolFeeController` in the main `README.md` with the actual implemented behavior.** The current table row says "Routes 50% of swap fees + 100% of protocol-extractable yield fees to der Bodensee Pool." The actual Aureum behavior (verified by the contract source and the test suite) is "Routes 100% of protocol-extractable fees (both swap and yield, per the protocol fee percentage set per pool by governance up to a 50% cap) to der Bodensee Pool. Pool creator fees are structurally disabled — all four pool-creator-fee functions revert unconditionally with `CreatorFeesDisabled()`." The "50% of swap fees" phrasing in the README is a remnant of an earlier design or a misread of the upstream cap and should be corrected for accuracy.
 
+- **Stage C pre-deploy: pin mainnet Vault constructor params.** Before running
+  `DeployAureumVault.s.sol` against real mainnet, `cast call` the Balancer V3
+  mainnet VaultFactory for `_pauseWindowDuration`, `_bufferPeriodDuration`,
+  `_minTradeAmount`, `_minWrapAmount` and record the values in `.env.example`
+  as the recommended Stage C defaults (replacing the B5 placeholder values).
+  Flagged during B5 Pass 1: the values are currently env vars without a pinned
+  source because B1/B2/B3 grepped the types but not the mainnet values.
+
 ### Commit chain reference (post-Pass-6, pre-B4-work-commit)
 
 The chain of commits on `main` from the Stage A skeleton to the pre-B4-work-commit tip, for navigation:
