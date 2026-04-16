@@ -1134,7 +1134,7 @@ Fill this in as you progress.
 
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
-|  | C0 — branch + notes scaffold |  |  |  |
+| 2026-04-16 | C0 — branch + notes scaffold | ✅ | `15e7b29` | baseline green (28 unit + 3 fork tests), branch opened from `6a1be15` (three docs-only commits past `stage-b-complete`); notes scaffold includes C10 + C11 findings |
 |  | C1 — directory reorg to `src/vault/` |  |  |  |
 |  | C2 — spec read + constants recorded in notes |  |  |  |
 |  | C3 — `src/lib/AureumTime.sol` |  |  |  |
