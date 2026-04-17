@@ -15,6 +15,7 @@ Same as Stage B per `STAGE_B_NOTES.md` "Branch model deviation" (2026-04-09): ta
 | **C10** | **Baseline deviation from plan's recorded tip.** `STAGE_C_PLAN.md` prerequisites section says `git log --oneline -1` must match `b627a92`. At Stage C kickoff on 2026-04-16, `main`'s actual tip was `6a1be15` — three commits past `b627a92`: `96d1d1c` (B7 Completion Log fill, 1 line), `42543fd` (docs upload of root-level `STAGE_C_PLAN.md` via GitHub web UI), `324a4ed` (docs upload of `docs/STAGE_C_PLAN.md` via GitHub web UI), then `6a1be15` (housekeeping: removed the stray root-level duplicate). All four are docs-only, zero Solidity/config/test changes. `stage-b-complete` tag unchanged at `b627a92`. Stage B baseline therefore remained correctly green; Stage C branches from `6a1be15`. |
 | **C11** | **Prerequisites check invocation corrected post hoc.** `STAGE_C_PLAN.md` line 114 reads `forge test --fork-url $MAINNET_RPC_URL -vv` as a single invocation. On forge 1.5.1-stable against Alchemy mainnet, that one-liner routes the local-only `AureumProtocolFeeController` handler-based invariant runs through RPC, inflating wall time from ~14s (local, no RPC) to 2+ minutes. Split invocation reproduces Stage B timings: `forge test --no-match-path 'test/fork/**' -vv` for local unit tests (~14s, 28 tests), then `forge test --match-path 'test/fork/**' --fork-url $MAINNET_RPC_URL -vv` for fork tests (~3s, 3 tests). Total 31 tests passed, 0 failed at Stage C kickoff. Carry this split-invocation pattern into Stage D-onward prerequisites checks. The plan file itself is not edited mid-stage; this note serves as the correction of record. |
 | **C12** | **STAGE_C_PLAN.md inaccurately lists `src/AureumVault.sol` as a Stage B artifact to move.** `git ls-tree -r main \| grep '^src/'` at Stage C kickoff returned three files: `AureumAuthorizer.sol`, `AureumProtocolFeeController.sol`, `AureumVaultFactory.sol`. No `AureumVault.sol` has ever existed in this repo (`git log --all --oneline -- src/AureumVault.sol` empty). The error appears in three places in the plan: scope (line 42), C1.1 `git mv` list (line 171), and "Files Stage C produces" block (line 1113). Root cause: `AureumVault.sol` is the *Balancer* vault in `lib/balancer-v3-monorepo/pkg/vault/contracts/Vault.sol`, which is byte-identical-deployed-unforked per cursorrules rule 1 — the plan's author appears to have conflated the Balancer vault with a nonexistent Aureum fork of it. Resolution: C1 moves three files, not four. The three ghost-file references in STAGE_C_PLAN.md (line 42 scope list, line 171 git mv block, line 1113 'Files Stage C produces' tree) are corrected in-place in the C1 work commit. README.md repo layout is updated in C1.6 to list three. This note documents the plan-authoring error; the plan itself is also edited to prevent future readers from tripping on the same ghost. Also: `STAGES_OVERVIEW.md`'s Scope section says "Stage B built the substrate — forked `AureumVault.sol` with 22-line authorizer redirect" — that phrase is equally wrong (the 22-line authorizer redirect is in `AureumVaultFactory.sol`) but the overview fix is deferred out of Stage C scope. |
+| **C13** | **C4.6b log-completion commit landed with non-plan-conformant message.** **Commit:** `5f336fe` on `stage-c`, pushed 2026-04-17. **Plan convention** (plan line 1038 and mirror patterns at C0/C1/C2/C3): commit message format is `"C<N>: log completion in Stage C plan"`. **Actual message landed:** `"log-completion: Stage C plan — C4 AureumTime.t.sol row"`. **Cause:** Cursor's agent loop performed the file edit, `git add`, `git commit`, and `git push` autonomously during the C4.6b direction. The commit's own message template did not match the plan's template. The subsequent manual `git add` / `git commit` directed in chat was a no-op (Cursor had already staged, committed, and pushed — working tree was clean). **Commit content:** correct. The C4 row in STAGE_C_PLAN.md was filled with the content directed in chat (long-form version), matching `d3979b7` as the referenced C4 work commit. No row-content drift. **Resolution:** history not rewritten — `5f336fe` is already on origin, and amend-then-force-push would rewrite shared history for cosmetic cleanup only. Message drift is documented here instead of erased. Future log-completion commits (C5 through C9) should go through the terminal so their output routes through the chat verification loop, per grep discipline. Cursor's autonomous git operations are to be suppressed for the remainder of Stage C. |
 
 (populated further as implementation surfaces questions)
 
@@ -67,3 +68,119 @@ so clamping at 255 is purely defensive.
 
 21M cap: MAX_SUPPLY = 21_000_000e18. Enforced at mint() regardless of what blockEmissionRate says —
 this is the constitutional backstop.
+
+## C5 — AuMM design
+
+### Constructor
+
+constructor(
+    uint256 genesisBlock_,
+    address minterAdmin_
+)
+    ERC20("Aureum Market Maker", "AuMM")
+{
+    if (minterAdmin_ == address(0)) revert ZeroAddress();  // per C-D12
+    GENESIS_BLOCK = genesisBlock_;
+    _minterAdmin = minterAdmin_;  // address authorised to call setMinter() exactly once
+}
+
+- genesisBlock_: can be the future block at which AuMM emission begins. Typically passed in
+  by the Stage R deployment script at mainnet launch. For Stage C unit tests and Stage H
+  fork tests, any non-zero block number works. Not validated against block.number — the
+  deployment script is responsible for sanity (per C-D12).
+- minterAdmin_: the one-shot setter principal. Typically the deployer EOA or the Stage K
+  governance multisig. After setMinter() is called, this address has no further authority.
+  Zero address reverts at construction (permanent brick prevention, per C-D12).
+- Constructor does not mint any tokens. No pre-mine. No treasury allocation.
+
+### Storage
+
+address public  minter;         // zero until setMinter called; set-once via one-shot setter
+address private _minterAdmin;   // zero'd out after setMinter called (self-destruct the authority)
+
+### State machine
+
+State 0 (post-deploy):    minter == address(0), _minterAdmin != address(0). mint() reverts.
+State 1 (post-setMinter): minter == distributorAddress, _minterAdmin == address(0).
+                          mint() gated by minter. setMinter() reverts on either check.
+
+Transition 0 → 1: setMinter(address), callable only by _minterAdmin when minter == address(0).
+
+### setMinter flow
+
+function setMinter(address newMinter) external {
+    if (msg.sender != _minterAdmin) revert NotMinterAdmin();
+    if (minter != address(0))       revert MinterAlreadySet();
+    if (newMinter == address(0))    revert ZeroAddress();
+
+    minter = newMinter;
+    _minterAdmin = address(0);   // self-lock; no second caller can ever reach this function
+    emit MinterSet(newMinter);
+}
+
+Two-flag locking (per C-D11): both `minter != address(0)` and `_minterAdmin == address(0)`
+independently prevent a second call. Either alone is sufficient; together they make the
+"already set" condition trivially greppable and defence-in-depth.
+
+### mint flow
+
+function mint(address to, uint256 amount) external {
+    if (msg.sender != minter)                revert NotMinter();
+    if (totalSupply() + amount > MAX_SUPPLY) revert SupplyCapExceeded();
+    _mint(to, amount);  // emits Transfer(address(0), to, amount) via OZ ERC20
+}
+
+No _update override. The cap check lives in mint(), not in the _update hook — avoids
+accidentally blocking transfers in any future extension.
+
+### blockEmissionRate
+
+function blockEmissionRate(uint256 blockNumber) external view returns (uint256) {
+    if (blockNumber < GENESIS_BLOCK) return 0;
+    uint256 era = (blockNumber - GENESIS_BLOCK) / AureumTime.BLOCKS_PER_ERA;
+    if (era >= 256) return 0;   // defensive; rate is zero long before this
+    return GENESIS_RATE >> era;
+}
+
+### Constants
+
+uint256 public constant MAX_SUPPLY   = 21_000_000e18;
+uint256 public constant GENESIS_RATE = 1e18;   // 1 AuMM per block in Era 0
+
+### Errors
+
+error NotMinterAdmin();
+error NotMinter();
+error MinterAlreadySet();
+error ZeroAddress();
+error SupplyCapExceeded();
+
+### Events
+
+event MinterSet(address indexed minter);
+// Transfer is inherited from ERC20; mint() auto-emits Transfer(address(0), to, amount).
+
+### IAuMM.sol
+
+interface IAuMM is IERC20 {
+    // immutable / constant getters
+    function GENESIS_BLOCK() external view returns (uint256);
+    function MAX_SUPPLY() external view returns (uint256);
+    function GENESIS_RATE() external view returns (uint256);
+
+    // emission schedule
+    function blockEmissionRate(uint256 blockNumber) external view returns (uint256);
+
+    // minter state
+    function minter() external view returns (address);   // matches auto-generated getter for `address public minter`
+
+    // state-changing
+    function mint(address to, uint256 amount) external;
+    function setMinter(address newMinter) external;
+
+    // events (declared for interface parity; implementations inherit from ERC20 + declare MinterSet)
+    event MinterSet(address indexed minter);
+}
+
+Purpose: Stage H's distributor imports IAuMM instead of the concrete AuMM contract. Matches the
+Stage B pattern where AureumVaultFactory took IProtocolFeeController.
