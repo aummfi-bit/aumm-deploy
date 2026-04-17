@@ -1129,7 +1129,7 @@ Fill this in as you progress.
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
 | 2026-04-16 | C0 — branch + notes scaffold | ✅ | `15e7b29` | baseline green (28 unit + 3 fork tests), branch opened from `6a1be15` (three docs-only commits past `stage-b-complete`); notes scaffold includes C10 + C11 findings |
-|  | C1 — directory reorg to `src/vault/` |  |  |  |
+| 2026-04-16 | C1 — directory reorg to `src/vault/` | ✅ | `c4aa836` | Three files moved (per C12 finding — `AureumVault.sol` never existed, 4th move was a ghost); 31/31 tests pass post-reorg, byte-identical gas on `test_DeployAureumVault` (34975764). Two commits: `9cb3d8e` (prep + moves + C12 log) and `c4aa836` (path updates + README layout + plan ghost cleanup). |
 |  | C2 — spec read + constants recorded in notes |  |  |  |
 |  | C3 — `src/lib/AureumTime.sol` |  |  |  |
 |  | C4 — `test/unit/AureumTime.t.sol` |  |  |  |
