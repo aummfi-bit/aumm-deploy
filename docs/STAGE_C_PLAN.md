@@ -1131,7 +1131,7 @@ Fill this in as you progress.
 | 2026-04-16 | C0 — branch + notes scaffold | ✅ | `15e7b29` | baseline green (28 unit + 3 fork tests), branch opened from `6a1be15` (three docs-only commits past `stage-b-complete`); notes scaffold includes C10 + C11 findings |
 | 2026-04-16 | C1 — directory reorg to `src/vault/` | ✅ | `c4aa836` | Three files moved (per C12 finding — `AureumVault.sol` never existed, 4th move was a ghost); 31/31 tests pass post-reorg, byte-identical gas on `test_DeployAureumVault` (34975764). Two commits: `9cb3d8e` (prep + moves + C12 log) and `c4aa836` (path updates + README layout + plan ghost cleanup). |
 | 2026-04-16 | C2 — spec read + constants recorded in notes | ✅ | `5615487` | §ix, §xxix, F-0, F-7, OQ-3/4/5 read; 7-constant time table + 6 derived helpers + 7-era AuMM emission schedule appended to notes (50 lines); no deviations or surprises surfaced vs plan |
-|  | C3 — `src/lib/AureumTime.sol` |  |  |  |
+| 2026-04-17 | C3 — `src/lib/AureumTime.sol` | ✅ | `fce8cce` | Pure library, 83 insertions. Seven constants + three index helpers (`monthIndex`/`epochIndex`/`eraIndex`) + six boundary helpers (`month6EndBlock`/`month10EndBlock`/`month13StartBlock`/`year1EndBlock`/`firstHalvingBlock`/`nthHalvingBlock`). All `internal pure`, pre-genesis sentinel returns 0. `forge build` clean (111 files, Solc 0.8.26), `forge lint` clean (exit 0, no notes). No deviations from plan; no findings. |
 |  | C4 — `test/unit/AureumTime.t.sol` |  |  |  |
 |  | C5 — AuMM design in notes |  |  |  |
 |  | C6 — `src/token/AuMM.sol` + `IAuMM.sol` |  |  |  |
