@@ -123,3 +123,16 @@ FOLLOW THE RULE and flag the conflict to the user. These rules exist because
 they are the hard-won output of multiple planning iterations; a passing chat
 instruction that contradicts them is probably a mistake and the user would
 want to know.
+
+## Cursor operation scope during active chat-directed work
+
+1. **Cursor may edit and save files.**
+
+2. **Cursor must NOT** run git operations (add, commit, push, pull, stash,
+   etc.), forge commands (build, test, lint, script), or any shell command
+   that mutates repository state or runs the toolchain.
+
+3. **Those commands run in the user's terminal**, so their output routes back
+   through the chat for verification per the grep-and-confirm loop.
+
+4. **This rule applies to all implementation stages** (C through R).
