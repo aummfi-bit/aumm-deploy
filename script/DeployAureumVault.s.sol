@@ -13,9 +13,9 @@ import { Vault } from "@balancer-labs/v3-vault/contracts/Vault.sol";
 import { VaultAdmin } from "@balancer-labs/v3-vault/contracts/VaultAdmin.sol";
 import { VaultExtension } from "@balancer-labs/v3-vault/contracts/VaultExtension.sol";
 
-import { AureumAuthorizer } from "../src/AureumAuthorizer.sol";
-import { AureumProtocolFeeController } from "../src/AureumProtocolFeeController.sol";
-import { AureumVaultFactory } from "../src/AureumVaultFactory.sol";
+import { AureumAuthorizer } from "../src/vault/AureumAuthorizer.sol";
+import { AureumProtocolFeeController } from "../src/vault/AureumProtocolFeeController.sol";
+import { AureumVaultFactory } from "../src/vault/AureumVaultFactory.sol";
 
 /**
  * @title DeployAureumVault

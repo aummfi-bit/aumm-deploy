@@ -13,8 +13,8 @@ import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaul
 import { IVaultExtension } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
 import { IVaultMain } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultMain.sol";
 
-import { AureumAuthorizer } from "../../src/AureumAuthorizer.sol";
-import { AureumProtocolFeeController } from "../../src/AureumProtocolFeeController.sol";
+import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
+import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
 
 // ─── Invariant handler ─────────────────────────────────────────────────────
 // Exposes a constrained set of controller entry points to the Foundry invariant

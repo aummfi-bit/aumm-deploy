@@ -5,9 +5,9 @@ import { Test } from "forge-std/Test.sol";
 
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
-import { AureumAuthorizer } from "../../src/AureumAuthorizer.sol";
-import { AureumProtocolFeeController } from "../../src/AureumProtocolFeeController.sol";
-import { AureumVaultFactory } from "../../src/AureumVaultFactory.sol";
+import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
+import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
+import { AureumVaultFactory } from "../../src/vault/AureumVaultFactory.sol";
 
 import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 

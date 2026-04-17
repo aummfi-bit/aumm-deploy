@@ -74,7 +74,7 @@ ignore = ["lib/**"]
 #       divergence from upstream for no runtime benefit.
 # See docs/STAGE_B_NOTES.md (B4 implementation notes) for the per-note line-number snapshot.
 [lint]
-ignore = ["src/AureumVaultFactory.sol", "src/AureumProtocolFeeController.sol"]
+ignore = ["src/vault/AureumVaultFactory.sol", "src/vault/AureumProtocolFeeController.sol"]
 
 # RPC endpoints pulled from .env
 [rpc_endpoints]

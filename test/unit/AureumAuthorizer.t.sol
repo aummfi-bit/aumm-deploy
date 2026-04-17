@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
-import { AureumAuthorizer } from "../../src/AureumAuthorizer.sol";
+import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
 
 contract AureumAuthorizerTest is Test {
     AureumAuthorizer internal authorizer;

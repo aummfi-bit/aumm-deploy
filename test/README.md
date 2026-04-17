@@ -6,8 +6,8 @@ This directory contains the test suite for `aumm-deploy`. Each test file mirrors
 
 | File | Tests | Kind | Targets |
 |---|---|---|---|
-| `unit/AureumAuthorizer.t.sol` | 4 | Unit | `src/AureumAuthorizer.sol` |
-| `unit/AureumProtocolFeeController.t.sol` | 24 named tests + 4 invariants | Unit | `src/AureumProtocolFeeController.sol` |
+| `unit/AureumAuthorizer.t.sol` | 4 | Unit | `src/vault/AureumAuthorizer.sol` |
+| `unit/AureumProtocolFeeController.t.sol` | 24 named tests + 4 invariants | Unit | `src/vault/AureumProtocolFeeController.sol` |
 | `fork/Sanity.t.sol` | 1 | Fork | Toolchain wiring (Stage A) |
 
 Total as of B4: **29 named tests + 4 invariants** across the three files.

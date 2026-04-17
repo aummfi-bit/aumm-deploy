@@ -39,7 +39,6 @@
 
 Move existing Stage B Solidity from `src/*.sol` to `src/vault/*.sol`:
 
-- `src/AureumVault.sol` → `src/vault/AureumVault.sol`
 - `src/AureumVaultFactory.sol` → `src/vault/AureumVaultFactory.sol`
 - `src/AureumProtocolFeeController.sol` → `src/vault/AureumProtocolFeeController.sol`
 - `src/AureumAuthorizer.sol` → `src/vault/AureumAuthorizer.sol`
@@ -168,7 +167,6 @@ git push -u origin stage-c
 
 ```bash
 mkdir -p src/vault
-git mv src/AureumVault.sol src/vault/AureumVault.sol
 git mv src/AureumVaultFactory.sol src/vault/AureumVaultFactory.sol
 git mv src/AureumProtocolFeeController.sol src/vault/AureumProtocolFeeController.sol
 git mv src/AureumAuthorizer.sol src/vault/AureumAuthorizer.sol
@@ -178,7 +176,6 @@ git mv src/AureumAuthorizer.sol src/vault/AureumAuthorizer.sol
 
 For each moved file, check whether it imports any sibling Aureum file using a relative path. If any do, rewrite those imports to use the new path. Most likely candidates:
 
-- `AureumVaultFactory.sol` referencing `AureumVault.sol` creation-code hash — verify no relative import, it's a hash check not an import.
 - `AureumProtocolFeeController.sol` and `AureumAuthorizer.sol` — pure leaves, unlikely to import siblings.
 
 Grep to confirm:
@@ -236,7 +233,6 @@ Open `README.md`, find the directory-tree diagram in the "Repository layout" sec
 
 ```
 src/
-├── AureumVault.sol
 ├── AureumVaultFactory.sol
 ├── AureumProtocolFeeController.sol
 └── AureumAuthorizer.sol
@@ -247,7 +243,6 @@ with:
 ```
 src/
 ├── vault/                    # Stage B
-│   ├── AureumVault.sol
 │   ├── AureumVaultFactory.sol
 │   ├── AureumProtocolFeeController.sol
 │   └── AureumAuthorizer.sol
@@ -1109,7 +1104,6 @@ aumm-deploy/
 │   └── STAGE_C_NOTES.md          — living design-decision log (new)
 ├── src/
 │   ├── vault/                    — Stage B contracts, moved here
-│   │   ├── AureumVault.sol
 │   │   ├── AureumVaultFactory.sol
 │   │   ├── AureumProtocolFeeController.sol
 │   │   └── AureumAuthorizer.sol

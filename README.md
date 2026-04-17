@@ -57,21 +57,38 @@ Full walkthrough: [`docs/STAGE_A_PLAN.md`](docs/STAGE_A_PLAN.md).
 
 ```
 aumm-deploy/
-├── src/                              # Aureum-owned Solidity (Stage B+)
-├── script/                           # Foundry deployment scripts (Stage B+)
+├── src/
+│   ├── vault/                        # Stage B contracts (forked/implemented)
+│   │   ├── AureumVaultFactory.sol
+│   │   ├── AureumAuthorizer.sol
+│   │   └── AureumProtocolFeeController.sol
+│   ├── lib/                          # Stage C
+│   │   └── AureumTime.sol            # Block-number math library
+│   └── token/                        # Stage C
+│       ├── AuMM.sol                  # ERC-20: 21M cap, geometric halving
+│       └── IAuMM.sol                 # Interface
+├── script/                           # Foundry deployment scripts
+│   └── DeployAureumVault.s.sol
 ├── test/
-│   ├── unit/                         # Unit tests (Stage B+)
+│   ├── unit/
+│   │   ├── AureumAuthorizer.t.sol
+│   │   ├── AureumProtocolFeeController.t.sol
+│   │   ├── AureumTime.t.sol          # Stage C
+│   │   └── AuMM.t.sol                # Stage C
 │   └── fork/
-│       └── Sanity.t.sol              # Stage A: toolchain-wired-correctly check
+│       ├── Sanity.t.sol              # Stage A: toolchain check
+│       └── DeployAureumVault.t.sol   # Stage B: integration
 ├── lib/
 │   ├── balancer-v3-monorepo/         # Submodule (aummfi-bit fork)
 │   ├── openzeppelin-contracts/
 │   └── forge-std/
 ├── docs/
-│   ├── STAGE_A_PLAN.md               # Stage A setup plan and completion log
-│   ├── STAGE_B_NOTES.md              # Stage B design notes and working log
-│   ├── STAGE_B_PLAN.md               # Stage B plan and completion log
-│   └── balancer_v3_reference.md      # Manifest of V3 files and key constraints
+│   ├── STAGE_A_PLAN.md
+│   ├── STAGE_B_NOTES.md
+│   ├── STAGE_B_PLAN.md
+│   ├── STAGE_C_NOTES.md              # Stage C
+│   ├── STAGE_C_PLAN.md               # Stage C
+│   └── balancer_v3_reference.md
 ├── foundry.toml
 ├── remappings.txt
 ├── .env.example
