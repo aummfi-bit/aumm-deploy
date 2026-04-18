@@ -333,18 +333,21 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-18, post-C6.3 (AuMM.sol compile-clean and lint-clean, awaiting C6.4 commit and this CLAUDE.md revision commit).
+**Last update:** 2026-04-18, post-C6 (AuMM.sol + IAuMM.sol committed and pushed, Completion Log filled through C6, ready for C7).
 
 **Branch:** `stage-c` (ahead of `main`, fast-forward-mergeable on C9 completion).
 
 **Latest commits on origin/stage-c:**
 
 ```
+6dd092a C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule
+fdaa07f docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)
 f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future sessions
 751f699 C6.1: src/token/IAuMM.sol — interface for AuMM ERC-20 (per C5.2)
 1b39d35 docs: add Argot Collective tooling to Stages P, Q, R (hevm, Act, Sourcify)
 a8ec19c docs: sync STAGES_OVERVIEW.md + FINDINGS.md into repo (verbatim from project knowledge)
 fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during chat-directed work)
+140107b C14: log Cursor autonomous execution finding; Stage C lockdown enacted
 ```
 
 **Last completed tag:** `stage-b-complete` (commit `b627a92`, 2026-04-14).
@@ -357,16 +360,11 @@ fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during ch
 - C3 complete — `src/lib/AureumTime.sol`
 - C4 complete — `test/unit/AureumTime.t.sol` (33/33 green)
 - C5 complete — AuMM design in notes
-- C6.1 complete — `src/token/IAuMM.sol` at `751f699`
-- C6.2 complete — `src/token/AuMM.sol` written by Claude Code, verified byte-for-byte by user terminal (131 lines, SHA `f81ef4de142be5814b9099f446da8963a8b79030f1cddf7c5e3dafa01ec3db3c`, 5 em-dashes)
-- C6.3 complete — `forge build` green across 115 files; `forge clean && forge lint src/token/` zero findings on fresh compile
-- **Pending commits (two, separate, in this order):**
-  1. `docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)` — this CLAUDE.md update itself; first commit to land under the new 8e pattern (Cursor executes the write)
-  2. `C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule` — the C6.4 commit, plan-verbatim message (covers both files; IAuMM.sol already landed at C6.1, re-covered in this message per plan)
-- C7 next — unit + invariant tests for AuMM, under the section 8e delegation pattern
-- C8, C9 — remaining
+- C6 complete — `src/token/IAuMM.sol` (C6.1 at `751f699`) + `src/token/AuMM.sol` (131 lines, 5 em-dashes, SHA `f81ef4de142be5814b9099f446da8963a8b79030f1cddf7c5e3dafa01ec3db3c`); umbrella commit `6dd092a` plan-verbatim; `fdaa07f` lands §6 / §8 / §9 / §11 revisions including section 8e (Cursor executor, Claude Code no writes)
+- **C7 next** — `test/unit/AuMM.t.sol` per plan, under section 8e (draft in chat → Cursor save → terminal integrity checks)
+- C8, C9 — Slither triage, then `stage-c-complete` tag
 
-**How to resume after these two pending commits land:**
+**How to resume (C7):**
 
 1. Read `docs/STAGE_C_PLAN.md` section C7 in full — the named test list, invariant-test handler, fuzz-test signatures.
 2. Read `docs/STAGE_C_NOTES.md` C5 design — the state machine and invariants the tests must cover.
@@ -377,7 +375,7 @@ fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during ch
 
 - `.cursorrules` was amended at `fcde1b0` with the "Cursor operation scope during active chat-directed work" section. This is the post-C14 lockdown. Respect it.
 - Cursor is in text-editor-only mode with Auto-Run set to "Ask Every Time," Command Allowlist empty, Browser / MCP / File-Deletion / External-File Protection all on.
-- **Claude Code does not write files as of this CLAUDE.md revision (C7 onward per section 8e).** All file writes flow through Cursor. Claude Code's role is planning, drafting in chat, running non-mutating verifications (8a), and confirming results of user-run commands.
+- **Claude Code does not write files as of `fdaa07f` (section 8e).** All file writes flow through Cursor. Claude Code's role is planning, drafting in chat, running non-mutating verifications (8a), and confirming results of user-run commands.
 - Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code.
 - Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
 
