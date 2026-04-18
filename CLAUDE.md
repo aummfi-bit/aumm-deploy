@@ -150,17 +150,24 @@ This text is lifted verbatim from the project's working agreement. It is non-neg
 >
 > If Claude forgets this loop and starts directing multi-step batches, Sagix should say "grep discipline" and Claude reverts to one step at a time.
 
-### How this applies to Claude Code specifically
+### Verification is never self-done by the writing tool
 
-Claude Code can run shell commands itself. That does not weaken the loop — it *accelerates* it. The loop becomes:
+**Every file write, by any tool, must be followed by a read-back from the user's terminal in the same turn.** Not a tool-level self-check by the tool that did the writing, and not a "head and tail match" smell test. The authoritative verification is:
 
-1. Claude Code reads the plan, identifies the next sub-step, reads relevant files.
-2. Claude Code drafts the change (file edit, command to run, whatever the sub-step calls for).
-3. **Before executing anything that mutates repo state**, Claude Code presents the planned change to the user and waits for approval (see section 8).
-4. Claude Code runs the verification command itself, reads the output, reports result. If the result deviates from expectation, it stops and flags.
-5. Next sub-step.
+```
+wc -l <path>
+shasum -a 256 <path>
+cat <path>       # or grep / targeted view on the relevant section
+grep -c "—" <path>   # em-dash count as copy-paste-corruption sentinel
+```
 
-Approval is per-sub-step. Approval of C6.2 is not approval of C6.3. If the user says "proceed" once, that covers the one pending action, not a queue.
+Run by the user from terminal, pasted back into the relevant chat. The reason this is a structural rule rather than a convention:
+
+- Chat-visible drafts are not proof of disk content. Write tools can silently differ from displayed content via whitespace normalization, trailing-newline handling, encoding quirks, or internal buffer desync.
+- The writer verifying its own output is the same class of circularity as a reviewer reviewing their own code. It catches nothing the writer wouldn't have caught before writing.
+- The user's terminal is the single authoritative source of truth about what's on disk. Every grep-and-confirm checkpoint is built on that fact; source-tree writes are no exception.
+
+This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files at all as of C7 (see section 8e), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
 
 ---
 
@@ -172,9 +179,9 @@ Cursor is configured as a text editor only during active chat-directed work. Age
 
 **Summary:**
 
-- Cursor edits and saves files when directed by the chat-side Claude. No autonomous edits, no autonomous "improvements."
+- Cursor edits and saves files when directed by the chat-side Claude or by Claude Code via the user. No autonomous edits, no autonomous "improvements."
 - Cursor does **not** run `git`, `forge`, shell commands, or any action outside text editing. The user runs all of these in terminal.
-- When Claude Code is active in the repo, Cursor's role shrinks further — it's a backup editor for manual inspection or for user-initiated edits that don't involve Claude at all.
+- Cursor's role in the C7-onward pattern (section 8e) is executor-of-file-writes: receives content from Claude Code via the user, saves to the target path, no mutations beyond that.
 
 ---
 
@@ -182,27 +189,33 @@ Cursor is configured as a text editor only during active chat-directed work. Age
 
 Claude Code has tools that go beyond a chat window: it can read files, write files, run commands, call external services. This is useful and risky. The rules below bound that power to what's safe.
 
-### 8a. Allowed without asking (non-mutating reads)
+### 8a. Allowed without asking (non-mutating reads only)
 
 Claude Code can execute these freely and report results:
 
-- File reads: `view`, `cat`, `head`, `tail`, `wc`, `grep`, `find`, `ls`, `file`, `od`
-- Git state queries: `git status`, `git log`, `git diff`, `git show`, `git branch`, `git ls-files`, `git remote -v`
-- Foundry read-only: `forge build`, `forge test`, `forge lint`, `forge fmt --check`, `forge config`, `forge tree`, `forge remappings`
-- Slither analysis (non-installing): `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
-- Hashing / integrity checks: `shasum`, `md5`, `diff`
+- File reads: `view`, `cat`, `head`, `tail`, `wc`, `grep`, `find`, `ls`, `file`, `od`, `shasum`, `md5`, `diff`, `stat`
+- Git state queries: `git status`, `git log`, `git diff`, `git show`, `git branch`, `git ls-files`, `git remote -v`, `git worktree list`
+- Foundry read-only: `forge build`, `forge test`, `forge lint`, `forge fmt --check`, `forge config`, `forge tree`, `forge remappings`, `forge clean`
+- Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
 - Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
+
+**`forge clean` is in 8a** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
+
+**File writes are NOT in 8a**, under any circumstance or path. See section 8e.
 
 ### 8b. Requires explicit chat approval before each execution
 
 Claude Code must present the planned action and wait for user approval — **every time**, not "once per session" — before:
 
-- Writing to any file (create, edit, delete). This includes files in `docs/`, `src/`, `test/`, `script/`, config files, and this `CLAUDE.md`.
-- Any mutating git command: `git add`, `git commit`, `git push`, `git tag`, `git checkout -b`, `git merge`, `git rebase`, `git reset`, `git restore`, `git rm`, `git mv`, `git stash`.
+- Any mutating git command: `git add`, `git commit`, `git push`, `git tag`, `git checkout -b`, `git merge`, `git rebase`, `git reset`, `git restore`, `git rm`, `git mv`, `git stash`, `git worktree add`, `git worktree remove`.
 - Running anything that hits the network: `forge install`, `pip install`, `npm install`, `curl`, `wget`, `forge script --rpc-url`, `forge test --fork-url`.
 - Any `forge script` run (even against a local anvil — the script itself is the contract being executed).
 - Running commands as root / with `sudo`.
-- Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident (mini-C14) showed that untracked-file cleanup still deserves a chat beat before the `rm`.
+- Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident showed that untracked-file cleanup still deserves a chat beat before the `rm`.
+
+**Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by 8b but practically never done.
+
+**File writes are handled separately in section 8e**, not here. Earlier versions of this document placed "writing to any file" in 8b ("ask before each write"). The C6.2 episode showed that approval-to-write combined with write-and-self-verify by the writing tool leaves the verification gap 8a/b/c cannot close. Source-tree writes are now delegated per 8e.
 
 ### 8c. Banned — do not do these even with user approval in this session's chat
 
@@ -218,36 +231,63 @@ Some actions require a higher bar than a single chat line. If any of these come 
 
 ### 8d. When uncertain
 
-If Claude Code is uncertain whether an action falls in 8a, 8b, or 8c, treat it as 8b. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
+If Claude Code is uncertain whether an action falls in 8a, 8b, 8c, or 8e, treat it as 8b. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
 
 Never fabricate output. If a tool fails or returns something unexpected, say so. If Claude Code catches itself inferring what the user "probably" wants instead of asking, stop and ask.
 
+### 8e. Execution delegation — Claude Code does not write files
+
+**Claude Code does not use `Write`, `Edit`, `Create-File`, or any other file-mutating tool against this repo.** Not on source files, not on test files, not on docs, not on config, not on `CLAUDE.md`, not on scratch paths, not on `/tmp`. Zero file writes, period.
+
+File writes by Claude Code were permitted under an earlier version of this document and were the proximate source of the C6.2 verification gap (section 9). The rule is now structural, not "ask each time."
+
+The execution pattern for any change that would have been a file write:
+
+1. **Claude Code drafts the full file content in chat.** Complete content in a single code block, end-to-end, no placeholders. For edits to an existing file, Claude Code presents either the full replacement content or a clearly-marked patch (with unambiguous `old_text` / `new_text` blocks).
+2. **The user reviews the draft** — either directly or by routing to a chat Claude session for a second opinion on anything non-trivial. Review happens before anything touches disk.
+3. **The user pastes the approved content into Cursor**, which saves to the target path. Cursor is locked to text-editor-only (section 7), so "save" means "transcribe to disk verbatim" — no reformatting, no smart quotes, no line-ending conversions, no content changes.
+4. **The user runs integrity checks in terminal** against the saved file:
+   - `wc -l <path>` — line count matches Claude Code's stated line count
+   - `shasum -a 256 <path>` — hash for the record (useful for future drift detection)
+   - `cat <path>` — full file content, for user or chat-Claude to read against the approved draft
+   - `grep -c "—" <path>` — em-dash count, as a copy-paste-corruption sentinel (this codebase uses em-dashes heavily; they're the most commonly mangled character)
+5. **The user pastes the terminal output back to Claude Code.** Claude Code compares against its draft and either confirms byte-match or flags drift.
+
+The user (and chat-Claude) provide review; Cursor provides transcription; the terminal provides verification; Claude Code provides drafting and post-write confirmation. Four independent roles, each doing one thing.
+
+**Rationale for the delegation split (beyond the verification gap):**
+
+- **Token economics.** Cursor is a subscription-paid tool the user already owns; routing file writes through it avoids metered-API consumption on large file content. Claude Code's token budget is preserved for the work it's uniquely good at (planning, verification, multi-step reasoning).
+- **Safety.** Claude Code's reasoning and Cursor's transcription are independent failure surfaces. If Claude Code drafts wrong content, the user catches it at review. If Cursor corrupts during paste-and-save, the terminal integrity check catches it. Either failure alone is visible; both would have to happen the same way at the same time to slip through.
+- **Reviewability.** Every file change is visible as text in chat before it hits disk. `git diff` after the fact is not the first time the user sees the content.
+
+**For commits, pushes, and tags** — also user-terminal, per the convention noted in 8b. The user runs git mutations in their own terminal with their own hands on the keyboard. Claude Code drafts commit messages and confirms expected `git status` state before and after; does not run git mutations itself.
+
 ---
 
-## 9. Why the rules exist — the C14 lesson
+## 9. Why the rules exist — the C14 lineage of incidents
 
-### The incident (2026-04-17)
+### C14 — Cursor autonomous execution (2026-04-17)
 
 Cursor was in Auto-Run Mode with a permissive command allowlist. During what should have been a chat-directed Stage C5 step (record AuMM design in `STAGE_C_NOTES.md`), Cursor executed the step autonomously — generating the notes content itself and committing without chat-level direction. The commit was reasonable content but the process was wrong: no chat instruction, no verification loop, no opportunity to check the content matched the C5 design spec.
 
-The finding is logged as **C14** in `docs/STAGE_C_NOTES.md`. The immediate fix was turning Cursor's Auto-Run to "Ask Every Time," emptying the command allowlist, and adding the "Cursor operation scope during active chat-directed work" section to `.cursorrules` at commit `fcde1b0`.
+Logged as **C14** in `docs/STAGE_C_NOTES.md`. Immediate fix: Cursor's Auto-Run set to "Ask Every Time," command allowlist emptied, added the "Cursor operation scope during active chat-directed work" section to `.cursorrules` at commit `fcde1b0`.
+
+### Mini-incident — Cursor stub-invention (2026-04-18, earlier)
+
+The user asked Cursor (text-editor-only mode) to edit `docs/STAGES_OVERVIEW.md` by adding three bullets at three specific anchors. Cursor found the file didn't exist in the repo (it had been living only in project knowledge), and instead of reporting "file not found, stopping," *created* a new file with a stub of the anchor context plus the three bullets. Wrong content, but caught at the next `git diff` because the lockdown prevented auto-commit. Fix: `rm` the stub, sync the real `STAGES_OVERVIEW.md` from project knowledge into the repo, apply the three bullets to the real file as a separate commit.
+
+### Mini-incident — Claude Code self-verification gap (2026-04-18, later)
+
+During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude Code's own follow-up was a `wc -l` line count plus a "head and tail match" claim, and it proposed proceeding directly to C6.3 without a full read-back. The user caught the gap and ran `cat src/token/AuMM.sol` from their own terminal against the approved draft — the file was byte-perfect, but the verification gap was the point. A self-check by the writing tool is not the same as an external read-back. Fix: section 6 now explicitly requires terminal-side read-back for every write; section 8e eliminates Claude Code writes entirely.
 
 ### The principle
 
-**In this repo, autonomous helpfulness by AI tools is a failure mode.**
+**Autonomous helpfulness by AI tools is a failure mode in this repo.**
 
-Agentic tools (Cursor Composer, Claude Code with loose allowlists, any "write file and commit" combined action) treat forward progress as the goal. They generate plausible next-steps ahead of direction. Most of the time those next-steps are correct-looking; occasionally they are wrong; the user cannot tell which without reading the diff. When the protocol will hold real money post-Stage R, "occasionally wrong" is not acceptable.
+Agentic tools — Cursor Composer, Claude Code with loose allowlists, any "write file and move on" combined action — treat forward progress as the goal. They generate plausible next-steps ahead of direction. Most of the time those next-steps are correct-looking; occasionally they are wrong; the user cannot tell which without reading the diff. When the protocol will hold real money post-Stage R, "occasionally wrong" is not acceptable.
 
-The grep-and-confirm loop exists so that every mutating action passes through human attention before it lands. Slower by design. Cheaper than recovering from an unnoticed drift at C7 or C8.
-
-### The mini-incident (2026-04-18, today)
-
-During the setup for switching from the chat-only loop to Claude Code, the user asked Cursor (still in text-editor-only mode per the post-C14 rules) to edit `docs/STAGES_OVERVIEW.md` by adding three bullets at three specific anchors. Cursor found the file didn't exist in the repo (it had been living only in project knowledge), and rather than reporting "file not found, stopping," it *created* a new file with a stub of the anchor context plus the three bullets. The stub was wrong content, but — because the lockdown held — it was untracked, never committed, and caught at the next `git diff` grep.
-
-Two lessons from this:
-
-1. **The lockdown works.** A pre-lockdown Cursor would have committed the stub. The post-lockdown one couldn't, so the damage was reversible via one `rm`.
-2. **AI tools still default to "make progress" over "stop and report."** Even a text-editor-only Cursor invented a stub file rather than surfacing the missing-file condition. Claude Code will have the same bias. The rules in section 8 exist to counter that bias.
+Three data points in three days, same underlying pattern: **AI tools default to self-verification even when given instructions to the contrary, and default to making progress when stopping-and-reporting would be the more disciplined move.** The cure is structural: separate the tool that acts from the tool that verifies. That is what sections 6, 7, and 8e now encode.
 
 ---
 
@@ -293,13 +333,14 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-18, post-C6.1.
+**Last update:** 2026-04-18, post-C6.3 (AuMM.sol compile-clean and lint-clean, awaiting C6.4 commit and this CLAUDE.md revision commit).
 
 **Branch:** `stage-c` (ahead of `main`, fast-forward-mergeable on C9 completion).
 
-**Latest commits (origin/stage-c):**
+**Latest commits on origin/stage-c:**
 
 ```
+f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future sessions
 751f699 C6.1: src/token/IAuMM.sol — interface for AuMM ERC-20 (per C5.2)
 1b39d35 docs: add Argot Collective tooling to Stages P, Q, R (hevm, Act, Sourcify)
 a8ec19c docs: sync STAGES_OVERVIEW.md + FINDINGS.md into repo (verbatim from project knowledge)
@@ -316,25 +357,28 @@ fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during ch
 - C3 complete — `src/lib/AureumTime.sol`
 - C4 complete — `test/unit/AureumTime.t.sol` (33/33 green)
 - C5 complete — AuMM design in notes
-- **C6.1 complete** — `src/token/IAuMM.sol` committed at `751f699`, `forge build` green (10 files, solc 0.8.26)
-- **C6.2 next** — implement `src/token/AuMM.sol` per the C5 design recorded in `STAGE_C_NOTES.md`
-- C6.3 — `forge build` + `forge lint src/token/` both green
-- C6.4 — commit with message `"C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule"` (plan-verbatim; note this message covers both files even though IAuMM landed separately in C6.1)
-- C7, C8, C9 — remaining
+- C6.1 complete — `src/token/IAuMM.sol` at `751f699`
+- C6.2 complete — `src/token/AuMM.sol` written by Claude Code, verified byte-for-byte by user terminal (131 lines, SHA `f81ef4de142be5814b9099f446da8963a8b79030f1cddf7c5e3dafa01ec3db3c`, 5 em-dashes)
+- C6.3 complete — `forge build` green across 115 files; `forge clean && forge lint src/token/` zero findings on fresh compile
+- **Pending commits (two, separate, in this order):**
+  1. `docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)` — this CLAUDE.md update itself; first commit to land under the new 8e pattern (Cursor executes the write)
+  2. `C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule` — the C6.4 commit, plan-verbatim message (covers both files; IAuMM.sol already landed at C6.1, re-covered in this message per plan)
+- C7 next — unit + invariant tests for AuMM, under the section 8e delegation pattern
+- C8, C9 — remaining
 
-**How to resume at C6.2:**
+**How to resume after these two pending commits land:**
 
-1. Read `docs/STAGE_C_PLAN.md` section C6 in full — sub-step C6.2 is the C6 design text plus "full implementation per C5 design."
-2. Read `docs/STAGE_C_NOTES.md` section C5 in full — this is the canonical AuMM design. Constructor signature, storage layout, state machine, `setMinter` flow, `mint` flow, `blockEmissionRate`, constants, errors, events — all specified.
-3. Read `src/token/IAuMM.sol` (committed at C6.1) — AuMM must match this interface.
-4. Read `src/lib/AureumTime.sol` — AuMM imports `BLOCKS_PER_ERA` from it.
-5. Draft `src/token/AuMM.sol`. Present the full file in chat for approval before writing to disk (section 8b).
+1. Read `docs/STAGE_C_PLAN.md` section C7 in full — the named test list, invariant-test handler, fuzz-test signatures.
+2. Read `docs/STAGE_C_NOTES.md` C5 design — the state machine and invariants the tests must cover.
+3. Read `src/token/AuMM.sol` and `src/token/IAuMM.sol` — what the tests are testing against.
+4. Claude Code drafts `test/unit/AuMM.t.sol` in chat per section 8e. User reviews, pastes into Cursor, saves, runs terminal integrity checks.
 
-### Housekeeping notes for resuming
+### Housekeeping notes
 
 - `.cursorrules` was amended at `fcde1b0` with the "Cursor operation scope during active chat-directed work" section. This is the post-C14 lockdown. Respect it.
 - Cursor is in text-editor-only mode with Auto-Run set to "Ask Every Time," Command Allowlist empty, Browser / MCP / File-Deletion / External-File Protection all on.
-- Claude Code, when used, operates under section 8. Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code.
+- **Claude Code does not write files as of this CLAUDE.md revision (C7 onward per section 8e).** All file writes flow through Cursor. Claude Code's role is planning, drafting in chat, running non-mutating verifications (8a), and confirming results of user-run commands.
+- Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code.
 - Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
 
 ---
@@ -346,7 +390,7 @@ This is the fallback rule that subsumes everything else. If any of the following
 - The plan is ambiguous about the current sub-step.
 - An expected file or path doesn't exist.
 - A command fails or returns unexpected output.
-- An action seems like it might fall into section 8b or 8c but you're not sure.
+- An action seems like it might fall into section 8b, 8c, or 8e but you're not sure.
 - The user said something that contradicts the plan.
 - You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
 
