@@ -349,6 +349,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 - Composition challenge dry-run: deploy a replacement candidate, submit proposal, pass supermajority, verify replacement.
 - Authorizer migration: execute the `Vault.setAuthorizer` transaction, verify governance now holds authorizer power.
 - Halving boundary (if feasible given Holesky's block rate and time-budget): simulate a halving transition.
+- Symbolic-execution pass (pre-audit): run hevm (Argot Collective) against the Aureum-owned contracts — especially the OQ-1 fee-routing hook, CCB multiplier/EMA engine, and the authorizer-migration window invariants — as cheap shakeout before Stage Q's code freeze. Intent is to catch the class of issues the tier-1 audit would otherwise find on billed hours.
 
 **Mainnet-fork complement:** during this stage, also run the Aureum stack against a Tenderly mainnet-fork devnet for integration testing against real Frankencoin / Aave V3 / Reserve Protocol DTF / Sky / Flux behavior. Not publicly accessible; used by the founding team and (in Stage Q) the audit firm.
 
@@ -366,6 +367,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 - **Code freeze in effect throughout.** No new features. Only fixes for audit findings.
 - Patches land as numbered sub-steps Q1, Q2, ... — each with its own commit, test updates, and completion-log row. Regression-test against mainnet fork after each patch.
 - The OQ-1 hook is explicitly on the audit hot path — dedicated review pass recommended.
+- Evaluate Act (Argot Collective formal-specification language) for load-bearing tokenomics invariants where exhaustive coverage matters: 21M AuMM cap never exceeded, halving-era boundaries produce the documented emission curve, no admin-key redirect path exists for emissions. Scope decided at audit-firm kickoff — not every invariant warrants a formal spec, only the ones whose property space the tier-1 audit can't sweep exhaustively.
 
 **Duration:** 6-10 weeks calendar time per FINDINGS OQ-17. Your work during this stage is patch turnaround, not new implementation.
 
@@ -385,6 +387,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 - Stage B authorizer's 4-year pause window starts ticking.
 - New governance authorizer's 12-month emergency clause (`EMERGENCY_WINDOW_BLOCKS = 2_628_000`) starts ticking at the authorizer-migration transaction.
 - Der Bodensee remains unannounced / unsurfaced per OQ-6 until `MONTH_6_END_BLOCK + 1`.
+- Verify all Aureum-owned contracts on Sourcify (Argot Collective) in addition to Etherscan. For the byte-identical-to-Balancer-V3 audit-inheritance claim, Sourcify provides independent, decentralised source verification that doesn't depend on one block-explorer's database continuing to serve the source — materially hardens the inheritance argument and costs effectively nothing to do at deployment time.
 
 **Testing strategy:** dry-run the entire deployment against the Tenderly mainnet-fork devnet one final time immediately before mainnet execution. Verify every contract's constructor parameters, every immutable address, every token mainnet address resolved correctly. The dry-run is the last checkpoint; mainnet execution is one-shot.
 
