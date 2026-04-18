@@ -244,7 +244,7 @@ File writes by Claude Code were permitted under an earlier version of this docum
 The execution pattern for any change that would have been a file write:
 
 1. **Claude Code drafts the full file content in chat.** Complete content in a single code block, end-to-end, no placeholders. For edits to an existing file, Claude Code presents either the full replacement content or a clearly-marked patch (with unambiguous `old_text` / `new_text` blocks).
-2. **The user reviews the draft** — either directly or by routing to a chat Claude session for a second opinion on anything non-trivial. Review happens before anything touches disk.
+2. **The user reviews the draft directly.** Chat Claude is not a default reviewer — user review is sufficient for the vast majority of sub-steps, and adding a chat-Claude round-trip per sub-step reintroduces the friction §8e was meant to reduce. Escalate to a chat-Claude session only when: Claude Code flags drift between its draft and the post-save file; `forge build` / `forge test` / `forge lint` fails unexpectedly; Claude Code's draft deviates from the C5 design, stage plan, or CLAUDE.md conventions; the user's own instinct flags something as off; or any §8b / §8c action surfaces. Default path: user reviews the draft in Claude Code's chat, pastes to Cursor, runs terminal integrity check, pastes output back to Claude Code — no third-party chat round-trip needed.
 3. **The user pastes the approved content into Cursor**, which saves to the target path. Cursor is locked to text-editor-only (section 7), so "save" means "transcribe to disk verbatim" — no reformatting, no smart quotes, no line-ending conversions, no content changes.
 4. **The user runs integrity checks in terminal** against the saved file:
    - `wc -l <path>` — line count matches Claude Code's stated line count
@@ -253,7 +253,7 @@ The execution pattern for any change that would have been a file write:
    - `grep -c "—" <path>` — em-dash count, as a copy-paste-corruption sentinel (this codebase uses em-dashes heavily; they're the most commonly mangled character)
 5. **The user pastes the terminal output back to Claude Code.** Claude Code compares against its draft and either confirms byte-match or flags drift.
 
-The user (and chat-Claude) provide review; Cursor provides transcription; the terminal provides verification; Claude Code provides drafting and post-write confirmation. Four independent roles, each doing one thing.
+The user provides review (with chat-Claude as an escalation channel, not a default one); Cursor provides transcription; the terminal provides verification; Claude Code provides drafting and post-write confirmation. Four independent roles, each doing one thing, with escalation to chat-Claude reserved for the cases enumerated above.
 
 **Rationale for the delegation split (beyond the verification gap):**
 
