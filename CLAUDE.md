@@ -333,13 +333,16 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-18, post-C6 (AuMM.sol + IAuMM.sol committed and pushed, Completion Log filled through C6, ready for C7).
+**Last update:** 2026-04-18, post-C7 (`test/unit/AuMM.t.sol` at `91c0bb5`, Completion Log filled through C7, ready for C8).
 
 **Branch:** `stage-c` (ahead of `main`, fast-forward-mergeable on C9 completion).
 
 **Latest commits on origin/stage-c:**
 
 ```
+91c0bb5 C7: test/unit/AuMM.t.sol — cap, minter, halving, invariants
+22f85b7 docs: §8e — chat-Claude is escalation, not default reviewer
+60ad451 docs: log Stage C C0–C6 completion and advance CLAUDE.md §11 anchor to C7
 6dd092a C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule
 fdaa07f docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)
 f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future sessions
@@ -353,7 +356,6 @@ fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during ch
 **Last completed tag:** `stage-b-complete` (commit `b627a92`, 2026-04-14).
 
 **Stage C position:**
-
 - C0 complete — branch + notes scaffold
 - C1 complete — directory reorg to `src/vault/`
 - C2 complete — canonical constants + AuMM emission schedule in notes
@@ -361,15 +363,15 @@ fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during ch
 - C4 complete — `test/unit/AureumTime.t.sol` (33/33 green)
 - C5 complete — AuMM design in notes
 - C6 complete — `src/token/IAuMM.sol` (C6.1 at `751f699`) + `src/token/AuMM.sol` (131 lines, 5 em-dashes, SHA `f81ef4de142be5814b9099f446da8963a8b79030f1cddf7c5e3dafa01ec3db3c`); umbrella commit `6dd092a` plan-verbatim; `fdaa07f` lands §6 / §8 / §9 / §11 revisions including section 8e (Cursor executor, Claude Code no writes)
-- **C7 next** — `test/unit/AuMM.t.sol` per plan, under section 8e (draft in chat → Cursor save → terminal integrity checks)
-- C8, C9 — Slither triage, then `stage-c-complete` tag
+- C7 complete — `test/unit/AuMM.t.sol` (`91c0bb5`; 297 lines; 28/28 green including `AuMMInvariantTest` + handler); doc chain includes `60ad451` (Completion Log + §11→C7) and `22f85b7` (§8e escalation note)
+- **C8 next** — Slither triage gate: `source .venv/bin/activate`, `slither . --filter-paths "lib|test"`, per `STAGE_C_PLAN.md` C8.2–C8.3
+- C9 — `stage-c-complete` tag after C8 is logged
 
-**How to resume (C7):**
-
-1. Read `docs/STAGE_C_PLAN.md` section C7 in full — the named test list, invariant-test handler, fuzz-test signatures.
-2. Read `docs/STAGE_C_NOTES.md` C5 design — the state machine and invariants the tests must cover.
-3. Read `src/token/AuMM.sol` and `src/token/IAuMM.sol` — what the tests are testing against.
-4. Claude Code drafts `test/unit/AuMM.t.sol` in chat per section 8e. User reviews, pastes into Cursor, saves, runs terminal integrity checks.
+**How to resume (C8):**
+1. Read `docs/STAGE_C_PLAN.md` section C8 — activation, triage discipline, C8.4 commit pattern.
+2. Run Slither (C8.1); capture full output; triage each finding per C8.2.
+3. Re-run to verify clean (C8.3); record accepted residuals in `docs/STAGE_C_NOTES.md` under `## C8 — Slither triage` if needed.
+4. Commit triage output per C8.4 — `git add` suppressions and notes, plan-verbatim commit message, `git push`, then log C8 in the Completion Log.
 
 ### Housekeeping notes
 

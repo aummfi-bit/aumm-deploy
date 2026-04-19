@@ -1135,7 +1135,7 @@ Fill this in as you progress.
 | 2026-04-17 | C4 — `test/unit/AureumTime.t.sol` | ✅ | `d3979b7` | unit + fuzz coverage, 33/33 green; no separate log-completion commit (see C13 in `STAGE_C_NOTES.md` re: C4.6b log-completion drift; backfilled today as part of the C6 log-update commit) |
 | 2026-04-17 | C5 — AuMM design in notes | ✅ | `d6099b2` | constructor signature, two-flag minter state machine, `setMinter` / `mint` flows, `blockEmissionRate` math, constants, errors, events, IAuMM interface design all recorded in `STAGE_C_NOTES.md`; plan-verbatim commit message |
 | 2026-04-18 | C6 — `src/token/AuMM.sol` + `IAuMM.sol` | ✅ | `6dd092a` | C6.1 interface at `751f699`; C6.2 contract at `6dd092a` (131 lines, 5 em-dashes, SHA `f81ef4de...`); immutable GENESIS_BLOCK, inherit MinterSet from IAuMM (no redeclare), `ERC20, IAuMM` linearisation order, three load-bearing `@dev` blocks (C-D7 cap-in-mint, C-D11 two-flag lock, pure-function property). C6.3 `forge build` green across 115 files, `forge clean && forge lint src/token/` zero findings. Commit chain also includes `f8d6076` (add CLAUDE.md) and `fdaa07f` (revise CLAUDE.md §6 §8 §9 §11 for §8e Cursor-executor pattern — activated from C7 onward) |
-|  | C7 — `test/unit/AuMM.t.sol` |  |  |  |
+| 2026-04-18 | C7 — `test/unit/AuMM.t.sol` | ✅ | `91c0bb5` | Plan C7.2–C7.4: constructor / `setMinter` / `mint` / `blockEmissionRate` / era-boundary coverage; `AuMMInvariantTest` + handler; 28/28 green (2 invariants × 256 runs). Doc lead-ins `60ad451` (Completion Log + §11→C7), `22f85b7` (§8e escalation); umbrella test commit `91c0bb5` |
 |  | C8 — Slither triage |  |  |  |
 |  | C9 — `stage-c-complete` tag pushed |  |  |  |
 
