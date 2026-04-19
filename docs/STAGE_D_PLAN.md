@@ -679,7 +679,7 @@ Fill this in as you progress.
 
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
-|  | D0 — branch + notes scaffold + baseline | ⏳ |  |  |
+| 2026-04-19 | D0 — branch + notes scaffold + baseline | ✅ | `b08abdb` | `stage-d` preserved on origin as working branch per D-D14 (branched from `main` at `e5ceb7a`). D0.2: `STAGE_D_PLAN.md` (691 lines) + `STAGE_D_NOTES.md` (67 lines, D-D1..D-D14 planning codes cross-referenced) scaffolded and landed together at `b08abdb`. D0.3: baseline `forge build` cache-hit (`No files changed, compilation skipped`) — Solidity surface byte-identical to the 30-file / 92-test prereq baseline at `e5ceb7a` |
 |  | D1 — design decisions (D10, D11, …) | ⏳ |  |  |
 |  | D2 — `src/fee_router/IAureumFeeRoutingHook.sol` | ⏳ |  |  |
 |  | D3 — `src/fee_router/AureumFeeRoutingHook.sol` | ⏳ |  |  |
