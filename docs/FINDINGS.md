@@ -361,7 +361,9 @@ Numbered, with proposed options where I have them. Need human resolution before 
 
 ### OQ-1 (RESOLVED): Fee routing architecture — Balancer V3 hook on `onAfterSwap`, atomic settlement
 
-**Decision (2026-04-15):** Swap fees on Miliarium and other gauged non-Bodensee pools route to der Bodensee via a Balancer V3 `IHooks` contract attached to every gauged pool. The hook fires on `onAfterSwap`, takes the protocol's cut atomically (Balancer V3 hooks are reentrant — they can call `swap` and `addLiquidity` during their own execution), swaps the cut to whichever stablecoin (sUSDS/svZCHF) is currently underweight in der Bodensee, and one-sided-adds it. **Settlement is atomic per swap. No off-chain triggering, no LP "click to redeem" step.**
+**Decision (2026-04-15, mechanics clarified 2026-04-19):** Swap fees on Miliarium and other gauged non-Bodensee pools route to der Bodensee via a Balancer V3 `IHooks` contract attached to every gauged pool. Each gauged pool registers with `protocolSwapFeePercentage = 50e16` — saturating the Vault's `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap — and that value is immutable at registration: no on-chain setter, no governance adjustment (the split is constitutional per CLAUDE.md §2). The hook fires on `onAfterSwap`, settles the Vault's accrued protocol-fee share (100% of what the cap allows; 50% of the swap's total fee) to der Bodensee via a swap-to-svZCHF-then-one-sided-add primitive (per OQ-2), atomically per swap. **No off-chain triggering, no LP "click to redeem" step.** The remaining 50% of the swap fee stays with the originating pool's LPs by Vault design — a consequence of the cap, not an Aureum allocation choice — which reconciles cleanly with Stage A decision #3 ("50% to Bodensee, 50% to LPs").
+
+The precise framing: **100% of the protocol-extractable share, up to the Vault's 50% cap.** The hook saturates the cap; it does not bypass it.
 
 ERC-4626 yield fees can't ride a swap hook — they accrue continuously through the underlying vault's `convertToAssets()` rate. The existing `AureumProtocolFeeController` continues to collect aggregate yield fees via `collectAggregateFees()`, with its withdraw target pointed at the hook contract (or a small router paired with it) which uses the same swap-and-one-sided-deposit primitive. Same for governance proposal deposits and Incendiary Boost deposits — they call the shared primitive directly.
 
@@ -369,43 +371,45 @@ ERC-4626 yield fees can't ride a swap hook — they accrue continuously through 
 
 | Layer | Trigger | Mechanism |
 |---|---|---|
-| Swap-fee leg (Miliarium + gauged non-Bodensee pools) | Every `swap` on a hooked pool | `onAfterSwap` hook → swap to stablecoin → one-sided add to Bodensee, atomic |
+| Swap-fee leg (Miliarium + gauged non-Bodensee pools) | Every `swap` on a hooked pool | `onAfterSwap` hook → settle the Vault's 50% protocol-fee share → swap to svZCHF → one-sided add to Bodensee, atomic |
 | Yield-fee leg (ERC-4626 10% skim) | `collectAggregateFees(pool)` (callable by anyone) | Existing fee controller withdraws to hook/router → same swap-and-deposit primitive |
 | Governance & Incendiary deposits | Explicit user call (proposal submission, Incendiary boost) | Direct call to the shared swap-and-deposit primitive |
 
 **Why this is better than the originally-proposed Option B (separate `FeeRouter` invoked manually):**
 - **Atomic.** Swap fees settle to der Bodensee in the same transaction that produced them. No accumulator, no settlement lag, no "anyone can call routePending()" UX issue.
-- **Sidesteps Balancer V3's `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap.** The hook takes the entire fee; the Vault-side protocol fee can be set to 0 on Miliarium pools. This means "100% of swap fees route to Bodensee" as the spec says, **not** "100% of the 50%-capped extractable share" as Stage A decision #3 framed it. **This is also the cleanest fix for the F2/Stage-A-decision-#3 fee-split confusion.** The decision-#3 framing was a workaround for the cap; the hook design removes the cap entirely.
+- **Saturates the Vault's 50% protocol-fee cap at registration.** Each gauged pool registers with `protocolSwapFeePercentage = 50e16`, immutable thereafter. The hook then settles 100% of the Vault's protocol share to Bodensee on every swap. Consistent with Stage A decision #3 and with CLAUDE.md §2's "50% to Bodensee, 50% to LPs" hard rule — the split is encoded as an immutable Vault parameter, not as runtime logic.
 - **Existing Stage B `AureumProtocolFeeController` work is preserved.** Stays as the yield-fee collection point, with B10 enforcement target updated from `DER_BODENSEE_POOL` to the hook/router address. Small modification, not a replacement.
 - **Aureum-owned hook is "new tokenomics layer" code per `13_appendices.md` §xxxvi** — clean audit-scope boundary. Existing Balancer V3 hooks (StableSurge etc.) stay byte-identical.
 
 **Concrete contract changes:**
 - **New:** `AureumFeeRoutingHook.sol` (`src/fee_router/`) — implements `IHooks.onAfterSwap` plus the shared swap-and-one-sided-deposit primitive used by all three layers.
-- **Modified:** `AureumProtocolFeeController.sol` — change B10 enforcement target from `DER_BODENSEE_POOL` to the hook/router address (one immutable rename, one error message update). Everything else preserved.
-- **Modified:** the 28 Miliarium pool deployment scripts — each pool's registration must point at `AureumFeeRoutingHook`. der Bodensee Pool itself does **NOT** use this hook (it has its own 0.75% in-pool fee). External non-Miliarium pools opt in to the hook to be eligible for emissions — the hook is a soft requirement for gauge approval.
+- **Modified:** `AureumProtocolFeeController.sol` — (a) B10 enforcement target renamed from `DER_BODENSEE_POOL` to the hook/router address (one immutable rename, one error-message update); (b) no public setter for `protocolSwapFeePercentage` — the value is fixed at 50e16 on every gauged pool at registration time and has no runtime adjustment surface (Stage K governance does not touch this split; it only tunes the per-pool swap-fee *rate* within OQ-11's band); (c) Stage D edits for the OQ-11 Bodensee fee band and the OQ-2 Bodensee yield-leg guard (D4). Everything else preserved.
+- **Modified:** the 28 Miliarium pool deployment scripts — each pool's registration must point at `AureumFeeRoutingHook` and set `protocolSwapFeePercentage = 50e16`. der Bodensee Pool itself does **NOT** use this hook (it has its own 0.75% in-pool fee) and registers with `protocolSwapFeePercentage = 0` per OQ-2. External non-Miliarium pools opt in to the hook to be eligible for emissions — the hook is a soft requirement for gauge approval.
 
-**Stage A decision #3 is also superseded** — the "50% to Bodensee, 50% stays with LPs" framing was driven by the Vault cap. Under the hook design, 100% of swap fees go to Bodensee, full stop. Spec wins; old workaround framing retired.
+**Stage A decision #3 stands.** The "50% to Bodensee, 50% stays with LPs" framing in Stage A was correct in outcome; the OQ-1 hook provides the mechanism by (i) registering every gauged pool with `protocolSwapFeePercentage = 50e16` (saturating the Vault cap) and (ii) atomically settling that protocol share to Bodensee via `onAfterSwap`. The LP residual is the Vault's own design constant, not an Aureum allocation. No "supersedes" relationship; OQ-1 is the mechanical realization of Stage A decision #3.
 
 **Open implementation concerns (move to design doc when this stage is planned):**
-- **Gas cost on every swap.** The hook adds (a) fee calc, (b) an internal swap to stablecoin, (c) a one-sided add to Bodensee — easily 200k+ extra gas per swap. May make small swaps uneconomic at the aggregator level. Worth modeling at design time.
-- **Recursion guard.** Routing a fee swap *through* a Miliarium pool that itself has the hook attached re-triggers the hook. Either the hook special-cases its own internal swaps (e.g. trusted-router check on `params.router`), or fee swaps route directly through der Bodensee (only viable if the input/output tokens are present in Bodensee), or accept geometric-series overhead. Solvable; needs care.
+- **Gas cost on every swap.** The hook adds (a) protocol-fee settlement, (b) an internal swap to stablecoin, (c) a one-sided add to Bodensee — easily 200k+ extra gas per swap. May make small swaps uneconomic at the aggregator level. Worth modeling at design time.
+- **Recursion guard.** Routing a fee swap *through* a Miliarium pool that itself has the hook attached re-triggers the hook. Either the hook special-cases its own internal swaps (e.g. trusted-router check on `params.router`), or fee swaps route directly through der Bodensee (only viable if the input/output tokens are present in Bodensee), or accept geometric-series overhead. Solvable; needs care. Tracked as D-D4.
 - **Hook is on the audit hot path.** Every swap on every Miliarium pool runs through it. A bug in the hook is a protocol-wide bug. Higher audit attention than a separate occasional-call FeeRouter would have needed.
 
 These are real concerns for the implementation stage but not architectural blockers. Settled here.
 
-### OQ-1a (RESOLVED): LP fee residual on Miliarium pools — there is none
+### OQ-1a (RESOLVED): LP fee residual on Miliarium pools — 50%, via BAL v3 split
 
-**Decision (2026-04-15):** 100% of every swap fee on every non-Bodensee pool routes to der Bodensee. **Miliarium LPs earn from (a) AuMM emissions and (b) ERC-4626 native vault yield on the yield-core component, NOT from swap fees on their own pool.** Only der Bodensee LPs earn swap fees directly (the 0.75% in-pool tier on the AuMM/sUSDS/svZCHF three-token pool).
+**Decision (2026-04-15, mechanics clarified 2026-04-19):** Each swap fee on non-Bodensee gauged pools is split by the Vault: 50% to the protocol (routed to der Bodensee via the OQ-1 hook on `onAfterSwap`), 50% to the LPs of the originating pool. Miliarium LPs thus earn from (a) AuMM emissions, (b) ERC-4626 native vault yield on the yield-core component, and (c) the 50% swap-fee residual that the Vault holds back from the protocol cut. der Bodensee LPs also earn swap fees directly via the 0.75% in-pool tier on the AuMM/sUSDS/svZCHF three-token pool.
+
+**Earlier framing (superseded 2026-04-19):** The original OQ-1a resolution claimed Miliarium LPs earn *"NOT from swap fees on their own pool"* on the premise that the OQ-1 hook captures 100% of every swap fee. The 2026-04-19 BAL v3 mechanics review confirmed that Aureum's hook operates within the Vault's protocol-fee accounting pipeline — it saturates the `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap, does not bypass it. The 50% LP residual is a Vault-imposed consequence of saturating the cap, not an explicit Aureum design choice. Miliarium LPs keep 50% of swap-fee volume on their own pool.
 
 **Spec edits required in `aumm-site` (no code impact, pure doc-side):**
 
-- **`13_appendices.md` xxxix LP Advantage table (line 1886):** *"Yield sources | Swap fees + vault yield + cross-pool arb fees + AuMM mining"* — remove "Swap fees" for Aureum Pool LPs, or qualify it as "Bodensee LPs only."
-- **`02_mental_model.md` and/or `04_tokenomics.md` §x-a:** add a one-sentence clarification, e.g. *"Miliarium LP returns: AuMM emissions + ERC-4626 native yield. Swap fees on these pools are 100% protocol revenue and route to der Bodensee. Only der Bodensee LPs (40/30/30 AuMM/sUSDS/svZCHF pool) earn swap fees directly, on the 0.75% tier."*
-- **Any other place in the spec that lists swap fees as an LP yield source for Miliarium pools** — sweep and correct.
+- **`13_appendices.md` xxxix LP Advantage table (line 1886):** *"Yield sources | Swap fees + vault yield + cross-pool arb fees + AuMM mining"* — "Swap fees" is correct for Miliarium LPs at the 50% residual rate; clarify in a footnote or parenthetical that the figure is 50% of the pool's swap fee (the other 50% routes to Bodensee via the OQ-1 hook). Der Bodensee LPs keep the full 0.75% in-pool tier on the AuMM/sUSDS/svZCHF three-token pool.
+- **`02_mental_model.md` and/or `04_tokenomics.md` §x-a:** add a one-sentence clarification, e.g. *"Miliarium LP returns: AuMM emissions + ERC-4626 native yield + 50% residual of swap fees on the pool (the BAL v3 Vault's LP share; the other 50% routes to der Bodensee via the OQ-1 hook). Der Bodensee LPs additionally earn the full 0.75% in-pool swap-fee tier on the AuMM/sUSDS/svZCHF three-token pool."*
+- **Any other place in the spec that previously said Miliarium LPs earn *zero* from swap fees** — sweep and correct to 50% residual.
 
-**Knock-on:** the 0.01–0.05% per-pool swap-fee tier mentioned in `13_appendices.md` line 1884 is the **rate at which pools charge swaps**, not what LPs keep. The protocol can still set the swap-fee rate on Miliarium pools (governance scope per `04_tokenomics.md` §ix line 535), but 100% of whatever is collected goes to der Bodensee.
+**Knock-on:** the 0.01–0.30% per-pool swap-fee tier from OQ-11 is the **rate at which pools charge swaps**. The 50/50 protocol/LP split applies on top of that rate — governance can adjust the rate within OQ-11's band but cannot adjust the split.
 
-**OQ-11 is now narrower:** the per-pool fee *rate* is governable within bounds; the *destination* is immutable (always 100% to Bodensee). Pinning the bound (min/max swap-fee rate for Miliarium pools) is still open.
+**OQ-11 scope is unchanged:** the per-pool swap-fee *rate* is governable within bounds; the *destination* of the protocol share is immutable (always 100% of the 50% cap to Bodensee); the LP residual of 50% is a Vault invariant.
 
 ### OQ-2 (RESOLVED): Fee-routing swap target = svZCHF
 
