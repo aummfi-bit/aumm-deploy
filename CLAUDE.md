@@ -14,7 +14,7 @@ Public site: <https://aumm.fi>. GitHub org: `aummfi-bit`. This repo: `aumm-deplo
 
 The Vault contracts (`Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol`) remain **byte-identical** to audited Balancer V3 code. All Aureum customisation is isolated to a small, reviewable surface:
 
-* `AureumProtocolFeeController.sol` — the fee-routing contract. 50% of swap fees route to der Bodensee pool (the Vault's maximum possible allocation), 50% stay with LPs, **no creator fees, ever**.
+* `AureumProtocolFeeController.sol` — the fee-routing contract. 50% of swap fees route to der Bodensee pool (the OQ-1 hook saturates BAL v3's `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap at pool registration; the split is Vault-imposed, not Aureum-chosen), 50% stay with LPs, **no creator fees, ever**.
 * `AureumVaultFactory.sol` — a ~5-line diff fork of Balancer's `VaultFactory.sol` that accepts an external `IProtocolFeeController` via constructor (Option F2).
 * `AureumAuthorizer.sol` — governance Safe multisig during Stages A–K, handed off to on-chain governance at Stage K.
 
@@ -42,7 +42,7 @@ These are settled. Do not re-litigate without explicit user direction.
 | Foundry libs | `forge-std v1.15.0` |
 | Slither | `0.11.4` (inside `.venv/`) |
 | RPC for mainnet fork | Ankr |
-| Fee routing | 50% to der Bodensee, 50% to LPs, 0% creator fees — hard rule |
+| Fee routing | 50% to der Bodensee (Vault's 50% protocol-fee cap saturated via OQ-1 hook), 50% LP residual (Vault-imposed), 0% creator fees — hard rule |
 
 **Beets (`docs.beets.fi`) is a minor reference only.** It's a Balancer V3 fork on Sonic, not Ethereum mainnet, not a source of truth. Don't cite Beets docs as authoritative.
 
