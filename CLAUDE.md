@@ -14,16 +14,16 @@ Public site: <https://aumm.fi>. GitHub org: `aummfi-bit`. This repo: `aumm-deplo
 
 The Vault contracts (`Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol`) remain **byte-identical** to audited Balancer V3 code. All Aureum customisation is isolated to a small, reviewable surface:
 
-- `AureumProtocolFeeController.sol` — the fee-routing contract. 50% of swap fees route to der Bodensee pool (the Vault's maximum possible allocation), 50% stay with LPs, **no creator fees, ever**.
-- `AureumVaultFactory.sol` — a ~5-line diff fork of Balancer's `VaultFactory.sol` that accepts an external `IProtocolFeeController` via constructor (Option F2).
-- `AureumAuthorizer.sol` — governance Safe multisig during Stages A–K, handed off to on-chain governance at Stage K.
+* `AureumProtocolFeeController.sol` — the fee-routing contract. 50% of swap fees route to der Bodensee pool (the Vault's maximum possible allocation), 50% stay with LPs, **no creator fees, ever**.
+* `AureumVaultFactory.sol` — a ~5-line diff fork of Balancer's `VaultFactory.sol` that accepts an external `IProtocolFeeController` via constructor (Option F2).
+* `AureumAuthorizer.sol` — governance Safe multisig during Stages A–K, handed off to on-chain governance at Stage K.
 
 Any change that would perturb the Vault bytecode is load-bearing and requires explicit chat-level discussion before it lands. If Claude Code finds itself editing anything under the Balancer submodule or suggesting a Vault modification, stop and ask.
 
 ### Token design
 
-- **AuMM** (Aureum Market Maker) — ERC-20, 21M fixed cap, Bitcoin-style geometric halving on block-number era boundaries (`BLOCKS_PER_ERA = 10_512_000`). No treasury, no pre-mine, no owner. Emissions routed through a per-pool distributor that respects gauge eligibility and CCB (Compound Centrifugal Balance) scoring.
-- **AuMT** (Aureum Market Tessera) — per-pool LP receipt. Used for governance weight (with qualification period and withdrawal-reset) and for claiming the pool's emission share.
+* **AuMM** (Aureum Market Maker) — ERC-20, 21M fixed cap, Bitcoin-style geometric halving on block-number era boundaries (`BLOCKS_PER_ERA = 10_512_000`). No treasury, no pre-mine, no owner. Emissions routed through a per-pool distributor that respects gauge eligibility and CCB (Compound Centrifugal Balance) scoring.
+* **AuMT** (Aureum Market Tessera) — per-pool LP receipt. Used for governance weight (with qualification period and withdrawal-reset) and for claiming the pool's emission share.
 
 ---
 
@@ -32,7 +32,7 @@ Any change that would perturb the Vault bytecode is load-bearing and requires ex
 These are settled. Do not re-litigate without explicit user direction.
 
 | Subject | Decision |
-|---|---|
+| --- | --- |
 | Factory pattern | Option F2 — `AureumVaultFactory.sol`, ~5-line diff fork of `VaultFactory.sol`, accepts external `IProtocolFeeController` via constructor |
 | Authorizer | Governance Safe multisig for Stages A–K; migrates to on-chain governance at Stage K |
 | Compiler | `solc 0.8.26`, optimizer `9999` runs, `via_ir = true`, EVM version `cancun` — **exact match to Balancer's mainnet deployment** |
@@ -55,15 +55,16 @@ These are settled. Do not re-litigate without explicit user direction.
 ```
 aumm-deploy/
 ├── CLAUDE.md                     — this file
-├── .cursorrules                  — Cursor editor conventions + lockdown rules (section 7)
+├── .cursorrules                  — Cursor editor conventions + executor-role rules (section 7)
 ├── foundry.toml                  — compiler config matching Balancer mainnet
 ├── foundry.lock                  — pinned dep versions for reproducibility
 ├── docs/
-│   ├── STAGES_OVERVIEW.md        — master C-through-R stage sequence (424 lines)
-│   ├── FINDINGS.md               — resolved + deferred open questions, OQ-1 through OQ-19 (1074 lines)
+│   ├── STAGES_OVERVIEW.md        — master C-through-R stage sequence
+│   ├── FINDINGS.md               — resolved + deferred open questions, OQ-1 through OQ-19
 │   ├── STAGE_A_PLAN.md           — complete, tagged stage-a-complete
 │   ├── STAGE_B_PLAN.md / _NOTES.md — complete, tagged stage-b-complete
-│   ├── STAGE_C_PLAN.md / _NOTES.md — in progress (see section 11)
+│   ├── STAGE_C_PLAN.md / _NOTES.md — complete, tagged stage-c-complete
+│   ├── STAGE_D_PLAN.md / _NOTES.md — in progress (see section 11)
 │   └── balancer_v3_reference.md  — working reference, Balancer V3 substrate notes
 ├── src/
 │   ├── vault/                    — Stage B contracts (AureumVault, Factory, FeeController, Authorizer)
@@ -92,19 +93,19 @@ A stage that doesn't yet exist has no directory under `src/` until its first fil
 ### In-repo (Claude Code can read directly)
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `docs/STAGES_OVERVIEW.md` | Master stage sequence, stage summaries, dependency graph, testing strategy per stage, tags |
 | `docs/FINDINGS.md` | All 19 resolved Open Questions (OQ-1 through OQ-19) plus deferred items. Cross-referenced constantly from stage plans |
 | `docs/STAGE_X_PLAN.md` | Per-stage detailed plan: numbered sub-steps, time estimates, commands, tests, completion log |
 | `docs/STAGE_X_NOTES.md` | Per-stage living design-decision log + findings log |
 | `docs/balancer_v3_reference.md` | Balancer V3 substrate working notes |
-| `.cursorrules` | Cursor editor conventions + the "Cursor operation scope during active chat-directed work" lockdown |
+| `.cursorrules` | Cursor editor conventions + the "Cursor operation scope — executor under Claude Code planning" rules |
 
 ### Project-knowledge-only (invisible to Claude Code)
 
 These files exist in the `claude.ai` project sidebar but **are not in the repo**. Claude Code cannot read them directly.
 
-- **`aumm-specs.md`** and the **18 numbered spec docs** (`01_intro.md`, `02_*.md`, ..., `18_*.md`), plus the **28 pool-profile documents**. These are the protocol's canonical specification: tokenomics (§ix in `04_tokenomics.md`), constitution (§xxix in `10_constitution.md`), formulas F-0 through F-10 (`11_formulas.md`), bootstrap rules (`08_bootstrap.md`), appendices (`13_appendices.md`).
+* **`aumm-specs.md`** and the **18 numbered spec docs** (`01_intro.md`, `02_*.md`, ..., `18_*.md`), plus the **28 pool-profile documents**. These are the protocol's canonical specification: tokenomics (§ix in `04_tokenomics.md`), constitution (§xxix in `10_constitution.md`), formulas F-0 through F-10 (`11_formulas.md`), bootstrap rules (`08_bootstrap.md`), appendices (`13_appendices.md`).
 
 When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — Claude Code does not have these files. The correct move is to **ask the user to paste the relevant section into chat**, not to guess or fabricate the content. FINDINGS.md often quotes or summarises the relevant spec passages; check there first.
 
@@ -114,45 +115,45 @@ When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constit
 
 The plan and notes files use short reference codes. Know them on sight.
 
-- **`OQ-N`** — Open Question N from `docs/FINDINGS.md`. Example: `per OQ-5` means "see OQ-5 in FINDINGS.md" — typically a resolved canonical constant or a settled architectural choice.
-- **`C-Dn`** — Planning-stage design decision n from `docs/STAGE_C_PLAN.md` (similarly `B-Dn` for Stage B, etc.). These are the *choices* made while writing the plan, before implementation. Example: `per C-D12` means "see decision C-D12 in STAGE_C_PLAN.md."
-- **`Cn`** (two-digit, like `C10`, `C11`, `C14`) — Implementation-stage finding n from `docs/STAGE_C_NOTES.md`. Numbered from 10 to avoid collision with the `C-D*` planning codes. Example: `C14` is the Cursor autonomous execution incident (section 9).
-- **`F-n`** — Formula n from `aumm-site/11_formulas.md` (project-knowledge-only). Example: `F-0 piecewise bootstrap emission decay`.
-- **`§xxix`** — Section xxix in an `aumm-site` numbered spec. Project-knowledge-only.
-- **Block-number constants** — canonical, defined in FINDINGS OQ-3/OQ-4/OQ-5. `BLOCKS_PER_DAY = 7_200`, `BLOCKS_PER_EPOCH = 100_800`, `BLOCKS_PER_MONTH = 219_000`, `BLOCKS_PER_QUARTER = 657_000`, `BLOCKS_PER_YEAR = 2_628_000`, `BLOCKS_PER_ERA = 10_512_000`. **Block numbers are canonical time units everywhere in the protocol.** Calendar terms ("month," "year," "14 days") are aliases.
+* **`OQ-N`** — Open Question N from `docs/FINDINGS.md`. Example: `per OQ-5` means "see OQ-5 in FINDINGS.md" — typically a resolved canonical constant or a settled architectural choice.
+* **`C-Dn`** — Planning-stage design decision n from `docs/STAGE_C_PLAN.md` (similarly `B-Dn` for Stage B, `D-Dn` for Stage D, etc.). These are the *choices* made while writing the plan, before implementation. Example: `per C-D12` means "see decision C-D12 in STAGE_C_PLAN.md."
+* **`Cn`** (two-digit, like `C10`, `C11`, `C14`) — Implementation-stage finding n from `docs/STAGE_C_NOTES.md`. Numbered from 10 to avoid collision with the `C-D*` planning codes. Example: `C14` is the Cursor autonomous execution incident (section 9).
+* **`F-n`** — Formula n from `aumm-site/11_formulas.md` (project-knowledge-only). Example: `F-0 piecewise bootstrap emission decay`.
+* **`§xxix`** — Section xxix in an `aumm-site` numbered spec. Project-knowledge-only.
+* **Block-number constants** — canonical, defined in FINDINGS OQ-3/OQ-4/OQ-5. `BLOCKS_PER_DAY = 7_200`, `BLOCKS_PER_EPOCH = 100_800`, `BLOCKS_PER_MONTH = 219_000`, `BLOCKS_PER_QUARTER = 657_000`, `BLOCKS_PER_YEAR = 2_628_000`, `BLOCKS_PER_ERA = 10_512_000`. **Block numbers are canonical time units everywhere in the protocol.** Calendar terms ("month," "year," "14 days") are aliases.
 
 ---
 
 ## 6. Working discipline — the grep-and-confirm loop
 
-This text is lifted verbatim from the project's working agreement. It is non-negotiable for Stage C and every subsequent stage.
+This text is lifted verbatim from the project's working agreement. It is non-negotiable for every implementation stage.
 
-> Sagix runs Cursor locally and Claude in a chat window. These are two separate AI sessions. The working loop is:
+> Sagix runs Cursor and Claude Code as two independent AI sessions tied to the same repo. The working loop is:
 >
-> 1. Claude (chat) directs one small step, citing the plan sub-step (e.g., "C3.2").
-> 2. Sagix tells Cursor to execute that step.
-> 3. Sagix runs a verification command — usually `grep`, `git status`, `git diff`, `forge build`, or `forge test` — and pastes the output back into chat.
-> 4. Claude reads the grep/diff/build output and directs the next step, or flags a deviation.
+> 1. Claude Code reads repo state and authors one small sub-step prompt for Cursor, citing the plan sub-step (e.g., "D1.3").
+> 2. Sagix hands the prompt to Cursor. Cursor executes exactly that one sub-step — generates content, saves file(s), stops.
+> 3. Sagix runs a verification command in terminal — usually `grep`, `git status`, `git diff`, `forge build`, `forge test`, or `slither` — and pastes the output back to Claude Code.
+> 4. Claude Code reads the grep/diff/build/slither output, validates against the plan, and either authors the next sub-step prompt or authors a fix prompt.
 >
-> This loop is NON-NEGOTIABLE for Stage C and every subsequent stage. The reason: a drift of one import path, one pragma, one misnamed constant compounds silently across sub-steps. Catching drift at the next grep is cheap; catching it at C7 or C8 is expensive.
+> This loop is NON-NEGOTIABLE for every implementation stage. The reason: a drift of one import path, one pragma, one misnamed constant compounds silently across sub-steps. Catching drift at the next grep is cheap; catching it at the stage tag is expensive.
 >
 > **Concrete rules:**
 >
-> - Never chain sub-steps in a single direction ("do C3.2 and C3.3 and C3.4"). One sub-step per direction.
-> - Never claim a command succeeded without seeing the output. If Sagix hasn't pasted the output, the step is not done.
-> - After any `git commit`, ask for `git log --oneline -3` output to confirm the commit landed on the right branch with the right message.
-> - After any file creation or edit, ask for a targeted `grep` or the output of `view` on the file — not "looks good, move on."
-> - After any `forge build`, ask for the tail of the output even if Sagix says it's green. "Green" sometimes means "warnings only" or "compiled stale cached artifacts"; the output tells the truth.
+> * Never chain sub-steps in a single prompt ("do D1.2 and D1.3 and D1.4"). One sub-step per prompt.
+> * Never claim a command succeeded without seeing the output. If Sagix hasn't pasted the output, the step is not done.
+> * After any `git commit` (run by the user in terminal), ask for `git log --oneline -3` output to confirm the commit landed on the right branch with the right message.
+> * After any file creation or edit, ask for a targeted `grep` or the output of `cat` on the file — not "Cursor reported the save, move on."
+> * After any `forge build`, ask for the tail of the output even if Sagix says it's green. "Green" sometimes means "warnings only" or "compiled stale cached artifacts"; the output tells the truth.
 >
-> **Plan sub-steps that already contain explicit grep commands** (STAGE_C_PLAN.md C1.2, C1.3, C1.4, C1.5, etc.) are the minimum. Sub-steps that don't contain a grep still need a verification command — Claude picks the right one at direction time.
+> **Plan sub-steps that already contain explicit grep commands** (STAGE_D_PLAN.md D1.1, D1.2, etc.) are the minimum. Sub-steps that don't contain a grep still need a verification command — Claude Code picks the right one at prompt-authoring time.
 >
-> **Exception:** the only sub-steps that can combine are purely mechanical pairs where the second is a direct continuation of the first with no decision surface (e.g., `mkdir -p src/vault` followed immediately by the four `git mv` commands in C1.1). Anything involving an import path, a pragma, a constant value, a test assertion, or a commit message is one-at-a-time.
+> **Exception:** the only sub-steps that can combine are purely mechanical pairs where the second is a direct continuation of the first with no decision surface (e.g., `mkdir -p src/fee_router` followed immediately by a single file creation inside that directory). Anything involving an import path, a pragma, a constant value, a test assertion, or a commit message is one-at-a-time.
 >
-> If Claude forgets this loop and starts directing multi-step batches, Sagix should say "grep discipline" and Claude reverts to one step at a time.
+> If Claude Code forgets this loop and starts authoring multi-step prompts, Sagix should say "grep discipline" and Claude Code reverts to one step at a time.
 
 ### Verification is never self-done by the writing tool
 
-**Every file write, by any tool, must be followed by a read-back from the user's terminal in the same turn.** Not a tool-level self-check by the tool that did the writing, and not a "head and tail match" smell test. The authoritative verification is:
+**Every file write, by Cursor, must be followed by a read-back from the user's terminal in the same turn.** Not a Cursor-level self-check, and not a "save reported, move on" smell test. The authoritative verification is:
 
 ```
 wc -l <path>
@@ -161,27 +162,28 @@ cat <path>       # or grep / targeted view on the relevant section
 grep -c "—" <path>   # em-dash count as copy-paste-corruption sentinel
 ```
 
-Run by the user from terminal, pasted back into the relevant chat. The reason this is a structural rule rather than a convention:
+Run by the user from terminal, pasted back to Claude Code. The reason this is a structural rule rather than a convention:
 
-- Chat-visible drafts are not proof of disk content. Write tools can silently differ from displayed content via whitespace normalization, trailing-newline handling, encoding quirks, or internal buffer desync.
-- The writer verifying its own output is the same class of circularity as a reviewer reviewing their own code. It catches nothing the writer wouldn't have caught before writing.
-- The user's terminal is the single authoritative source of truth about what's on disk. Every grep-and-confirm checkpoint is built on that fact; source-tree writes are no exception.
+* Cursor-visible saves are not proof of disk content. Save operations can silently differ from generated content via whitespace normalization, trailing-newline handling, encoding quirks, or internal buffer desync.
+* The writer verifying its own output is the same class of circularity as a reviewer reviewing their own code. It catches nothing the writer wouldn't have caught before writing.
+* The user's terminal is the single authoritative source of truth about what's on disk. Every grep-and-confirm checkpoint is built on that fact; Cursor's saves are no exception.
 
-This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files at all as of C7 (see section 8e), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
+This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see section 8e), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
 
 ---
 
-## 7. Cursor editor and its lockdown
+## 7. Cursor editor and its operating posture
 
-Cursor is configured as a text editor only during active chat-directed work. Agentic modes (Auto-Run, Composer autonomous execution) are disabled.
+Cursor is the **executor** in the project's current workflow: it receives a single baby-step sub-step prompt from Claude Code (via the user), generates and saves the content for that sub-step, and stops.
 
-**Full rules:** `.cursorrules` at the repo root, including the section "Cursor operation scope during active chat-directed work" added at commit `fcde1b0`.
+**Full rules:** `.cursorrules` at the repo root, including the "Cursor operation scope — executor under Claude Code planning" section. This replaces the earlier "text-editor only" lockdown effective 2026-04-19.
 
 **Summary:**
 
-- Cursor edits and saves files when directed by the chat-side Claude or by Claude Code via the user. No autonomous edits, no autonomous "improvements."
-- Cursor does **not** run `git`, `forge`, shell commands, or any action outside text editing. The user runs all of these in terminal.
-- Cursor's role in the C7-onward pattern (section 8e) is executor-of-file-writes: receives content from Claude Code via the user, saves to the target path, no mutations beyond that.
+* Cursor generates and saves file content for exactly one sub-step per prompt, then stops. Does not chain, does not advance, does not propose the next sub-step.
+* Cursor does **not** run `git`, `forge`, `slither`, or any shell command outside text editing. The user runs all of these in terminal so output routes back to Claude Code for auditing.
+* Cursor does not invent files. If a referenced file does not exist, Cursor stops and reports "file not found" — it does not create a stub in its place (this is the 2026-04-18 STAGES_OVERVIEW.md lesson; see §9).
+* Auto-Run stays "Ask Every Time"; Command Allowlist stays empty; Browser / MCP / File-Deletion / External-File Protection toggles stay on.
 
 ---
 
@@ -193,11 +195,11 @@ Claude Code has tools that go beyond a chat window: it can read files, write fil
 
 Claude Code can execute these freely and report results:
 
-- File reads: `view`, `cat`, `head`, `tail`, `wc`, `grep`, `find`, `ls`, `file`, `od`, `shasum`, `md5`, `diff`, `stat`
-- Git state queries: `git status`, `git log`, `git diff`, `git show`, `git branch`, `git ls-files`, `git remote -v`, `git worktree list`
-- Foundry read-only: `forge build`, `forge test`, `forge lint`, `forge fmt --check`, `forge config`, `forge tree`, `forge remappings`, `forge clean`
-- Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
-- Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
+* File reads: `view`, `cat`, `head`, `tail`, `wc`, `grep`, `find`, `ls`, `file`, `od`, `shasum`, `md5`, `diff`, `stat`
+* Git state queries: `git status`, `git log`, `git diff`, `git show`, `git branch`, `git ls-files`, `git remote -v`, `git worktree list`
+* Foundry read-only: `forge build`, `forge test`, `forge lint`, `forge fmt --check`, `forge config`, `forge tree`, `forge remappings`, `forge clean`
+* Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
+* Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
 
 **`forge clean` is in 8a** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
 
@@ -207,11 +209,11 @@ Claude Code can execute these freely and report results:
 
 Claude Code must present the planned action and wait for user approval — **every time**, not "once per session" — before:
 
-- Any mutating git command: `git add`, `git commit`, `git push`, `git tag`, `git checkout -b`, `git merge`, `git rebase`, `git reset`, `git restore`, `git rm`, `git mv`, `git stash`, `git worktree add`, `git worktree remove`.
-- Running anything that hits the network: `forge install`, `pip install`, `npm install`, `curl`, `wget`, `forge script --rpc-url`, `forge test --fork-url`.
-- Any `forge script` run (even against a local anvil — the script itself is the contract being executed).
-- Running commands as root / with `sudo`.
-- Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident showed that untracked-file cleanup still deserves a chat beat before the `rm`.
+* Any mutating git command: `git add`, `git commit`, `git push`, `git tag`, `git checkout -b`, `git merge`, `git rebase`, `git reset`, `git restore`, `git rm`, `git mv`, `git stash`, `git worktree add`, `git worktree remove`.
+* Running anything that hits the network: `forge install`, `pip install`, `npm install`, `curl`, `wget`, `forge script --rpc-url`, `forge test --fork-url`.
+* Any `forge script` run (even against a local anvil — the script itself is the contract being executed).
+* Running commands as root / with `sudo`.
+* Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident showed that untracked-file cleanup still deserves a chat beat before the `rm`.
 
 **Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by 8b but practically never done.
 
@@ -221,13 +223,13 @@ Claude Code must present the planned action and wait for user approval — **eve
 
 Some actions require a higher bar than a single chat line. If any of these come up, stop and escalate — don't execute, don't offer to execute, don't construct a plan that would execute them.
 
-- Editing anything under `lib/balancer-v3-monorepo/` (the Balancer submodule). **Byte-identical to audited source is load-bearing.**
-- Editing anything under `lib/openzeppelin-contracts/` or `lib/forge-std/`. Upstream code stays upstream.
-- Pushing directly to `main` or force-pushing anywhere.
-- Creating or deleting GitHub releases, tags, or branches on the remote.
-- Running any transaction-broadcasting command against Ethereum mainnet (`--broadcast` flag on `forge script` with a mainnet RPC).
-- Bumping dep versions (`forge install X@new-version`, editing `foundry.lock`, editing `package.json` if any). Dep bumps are a chat-level architectural discussion, not an operational step.
-- Installing new dependencies without explicit chat-level approval and discussion of need. "Ask before adding a new dependency" is a standing rule.
+* Editing anything under `lib/balancer-v3-monorepo/` (the Balancer submodule). **Byte-identical to audited source is load-bearing.**
+* Editing anything under `lib/openzeppelin-contracts/` or `lib/forge-std/`. Upstream code stays upstream.
+* Pushing directly to `main` or force-pushing anywhere.
+* Creating or deleting GitHub releases, tags, or branches on the remote.
+* Running any transaction-broadcasting command against Ethereum mainnet (`--broadcast` flag on `forge script` with a mainnet RPC).
+* Bumping dep versions (`forge install X@new-version`, editing `foundry.lock`, editing `package.json` if any). Dep bumps are a chat-level architectural discussion, not an operational step.
+* Installing new dependencies without explicit chat-level approval and discussion of need. "Ask before adding a new dependency" is a standing rule.
 
 ### 8d. When uncertain
 
@@ -235,33 +237,46 @@ If Claude Code is uncertain whether an action falls in 8a, 8b, 8c, or 8e, treat 
 
 Never fabricate output. If a tool fails or returns something unexpected, say so. If Claude Code catches itself inferring what the user "probably" wants instead of asking, stop and ask.
 
-### 8e. Execution delegation — Claude Code does not write files
+### 8e. Execution delegation — Claude Code plans and audits; Cursor executes
 
 **Claude Code does not use `Write`, `Edit`, `Create-File`, or any other file-mutating tool against this repo.** Not on source files, not on test files, not on docs, not on config, not on `CLAUDE.md`, not on scratch paths, not on `/tmp`. Zero file writes, period.
 
-File writes by Claude Code were permitted under an earlier version of this document and were the proximate source of the C6.2 verification gap (section 9). The rule is now structural, not "ask each time."
+This rule is structural. File writes by Claude Code were the proximate source of the C6.2 verification gap (section 9). The earlier replacement pattern — Claude Code drafts content, Cursor transcribes verbatim — worked mechanically but produced a different failure mode on 2026-04-19: Claude Code chasing its tail during planning, re-reading files, re-scoping, re-proposing, and burning tokens without producing executable prompts. The current model inverts that split.
 
-The execution pattern for any change that would have been a file write:
+### Roles
 
-1. **Claude Code drafts the full file content in chat.** Complete content in a single code block, end-to-end, no placeholders. For edits to an existing file, Claude Code presents either the full replacement content or a clearly-marked patch (with unambiguous `old_text` / `new_text` blocks).
-2. **The user reviews the draft directly.** Chat Claude is not a default reviewer — user review is sufficient for the vast majority of sub-steps, and adding a chat-Claude round-trip per sub-step reintroduces the friction §8e was meant to reduce. Escalate to a chat-Claude session only when: Claude Code flags drift between its draft and the post-save file; `forge build` / `forge test` / `forge lint` fails unexpectedly; Claude Code's draft deviates from the C5 design, stage plan, or CLAUDE.md conventions; the user's own instinct flags something as off; or any §8b / §8c action surfaces. Default path: user reviews the draft in Claude Code's chat, pastes to Cursor, runs terminal integrity check, pastes output back to Claude Code — no third-party chat round-trip needed.
-3. **The user pastes the approved content into Cursor**, which saves to the target path. Cursor is locked to text-editor-only (section 7), so "save" means "transcribe to disk verbatim" — no reformatting, no smart quotes, no line-ending conversions, no content changes.
-4. **The user runs integrity checks in terminal** against the saved file:
-   - `wc -l <path>` — line count matches Claude Code's stated line count
-   - `shasum -a 256 <path>` — hash for the record (useful for future drift detection)
-   - `cat <path>` — full file content, for user or chat-Claude to read against the approved draft
-   - `grep -c "—" <path>` — em-dash count, as a copy-paste-corruption sentinel (this codebase uses em-dashes heavily; they're the most commonly mangled character)
-5. **The user pastes the terminal output back to Claude Code.** Claude Code compares against its draft and either confirms byte-match or flags drift.
+* **Claude Code — planner and auditor.** Reads repo state, authors one baby-step sub-step prompt at a time for Cursor, hands the prompt to the user. After Cursor executes, reads the result (via the user pasting `cat` / `grep` / `git diff` / `forge build` / `slither` output from terminal), validates against the stage plan, and either signs off and authors the next sub-step prompt or authors a fix prompt. Claude Code also drafts commit messages as part of sub-step prompts and drafts the exact terminal commands (git, forge, slither) the user needs to run for verification.
+* **Cursor — executor.** Receives a single-sub-step prompt, generates the content, saves the target file(s), stops. Does not chain, does not commit, does not run forge or git. See `.cursorrules` "Cursor operation scope — executor under Claude Code planning" for the full executor rules.
+* **User (Sagix) — conductor.** Passes prompts from Claude Code to Cursor and pastes Cursor's results plus terminal output back to Claude Code. Runs all git mutations (`add`, `commit`, `push`, `tag`), all forge commands, and all slither runs in their own terminal. Owns the final decision when Claude Code and Cursor disagree.
+* **Chat-Claude — out of the operational loop.** Not a default reviewer, not a drafter, not an auditor. Present only for (a) stage-planning sessions that produce new `STAGE_X_PLAN.md` files, and (b) explicit escalations the user chooses to raise — for example when Claude Code's audit and Cursor's output disagree and neither can resolve it, or when a §8b / §8c action surfaces a judgment call the user wants a third perspective on.
 
-The user provides review (with chat-Claude as an escalation channel, not a default one); Cursor provides transcription; the terminal provides verification; Claude Code provides drafting and post-write confirmation. Four independent roles, each doing one thing, with escalation to chat-Claude reserved for the cases enumerated above.
+### Sub-step prompt authoring (Claude Code's job)
 
-**Rationale for the delegation split (beyond the verification gap):**
+Every prompt Claude Code hands the user for Cursor must be:
 
-- **Token economics.** Cursor is a subscription-paid tool the user already owns; routing file writes through it avoids metered-API consumption on large file content. Claude Code's token budget is preserved for the work it's uniquely good at (planning, verification, multi-step reasoning).
-- **Safety.** Claude Code's reasoning and Cursor's transcription are independent failure surfaces. If Claude Code drafts wrong content, the user catches it at review. If Cursor corrupts during paste-and-save, the terminal integrity check catches it. Either failure alone is visible; both would have to happen the same way at the same time to slip through.
-- **Reviewability.** Every file change is visible as text in chat before it hits disk. `git diff` after the fact is not the first time the user sees the content.
+1. **One baby-step sub-step.** Named by its plan code (e.g., D1.3). No "and then," no "after that," no chaining. If the plan sub-step is itself too large, Claude Code breaks it into `D1.3a`, `D1.3b`, etc. and hands one at a time.
+2. **Scoped to a specific file or file set.** The prompt names the target path(s) explicitly.
+3. **Self-contained.** Cursor should not need to ask clarifying questions. If the sub-step depends on a design decision that isn't yet recorded, Claude Code resolves the decision first (or asks the user) before authoring the prompt.
+4. **Paired with explicit stop criteria.** The prompt ends with a clear "stop after saving the file(s); do not commit, do not run forge, do not advance."
+5. **Followed in the same turn by the terminal commands the user will run for audit.** Claude Code drafts the `wc -l` / `shasum` / `cat` / `grep` / `forge build` / `slither` commands the user pastes into terminal after Cursor saves.
 
-**For commits, pushes, and tags** — also user-terminal, per the convention noted in 8b. The user runs git mutations in their own terminal with their own hands on the keyboard. Claude Code drafts commit messages and confirms expected `git status` state before and after; does not run git mutations itself.
+### Audit cycle (Claude Code's job, after Cursor executes)
+
+1. User pastes Cursor's report + terminal output back to Claude Code.
+2. Claude Code validates: file path correct, line count plausible, em-dash count plausible, content matches the prompt, `forge build` green if run, `slither` clean if run, `git diff` shows only the intended changes.
+3. Claude Code reports verdict in one of two forms:
+   * **✅ Proceed** — confirms the sub-step landed clean, drafts the commit message if the sub-step closes a plan-defined work unit, drafts the next sub-step prompt for Cursor.
+   * **❌ Fix** — identifies what's wrong, drafts a fix-prompt for Cursor. The fix-prompt follows the same one-sub-step discipline; "fix A and B" chains and is not allowed.
+
+### Why this division
+
+* **Token economics.** Cursor is a subscription-paid tool the user already owns; routing content generation through it avoids metered-API consumption on large file content. Claude Code's token budget goes to planning and auditing, which is where its multi-step reasoning is most valuable.
+* **Safety.** Cursor's generation and Claude Code's auditing are independent failure surfaces. If Cursor generates wrong content, Claude Code catches it at audit. If Claude Code's plan is wrong, Cursor's scope-stopping behavior (and the user) catches it before damage compounds. Either failure alone is visible; both would have to happen the same way at the same time to slip through.
+* **Progress discipline.** The 2026-04-19 planning failure demonstrated that Claude Code in a pure-planning role without a forcing function chases its tail. The forcing function is Cursor's executor cycle: each prompt must be small enough for Cursor to execute in one pass, which forces Claude Code to commit to concrete next steps rather than re-scoping indefinitely.
+
+### Git mutations
+
+The user runs all `git add`, `git commit`, `git push`, `git tag` in their own terminal. Claude Code drafts the exact commands (including full commit message) and confirms expected `git status` state before and after. Neither Claude Code nor Cursor runs git mutations.
 
 ---
 
@@ -297,11 +312,11 @@ Three data points in three days, same underlying pattern: **AI tools default to 
 
 Match the register of the existing stage plans. Characteristics:
 
-- Dense, declarative, precise. No marketing voice, no hedging with "potentially" / "might" / "could possibly" where a direct statement fits.
-- Em-dashes (`—`, Unicode U+2014), not double-hyphens, not hyphen-minus. The whole codebase uses em-dashes; stay consistent.
-- No emojis. No decorative formatting. Lists when lists clarify, prose when prose clarifies.
-- Code in backticks. File paths in backticks. Cross-references as `OQ-N` / `C-Dn` / `§xxix` (section 5).
-- Assume the reader is a competent protocol engineer. Don't re-explain what a pool factory is or what `block.number` means. Do explain Aureum-specific decisions (why F2, why one-shot setter, why no `_update` override).
+* Dense, declarative, precise. No marketing voice, no hedging with "potentially" / "might" / "could possibly" where a direct statement fits.
+* Em-dashes (`—`, Unicode U+2014), not double-hyphens, not hyphen-minus. The whole codebase uses em-dashes; stay consistent.
+* No emojis. No decorative formatting. Lists when lists clarify, prose when prose clarifies.
+* Code in backticks. File paths in backticks. Cross-references as `OQ-N` / `C-Dn` / `§xxix` (section 5).
+* Assume the reader is a competent protocol engineer. Don't re-explain what a pool factory is or what `block.number` means. Do explain Aureum-specific decisions (why F2, why one-shot setter, why no `_update` override).
 
 ### Commit-message conventions
 
@@ -309,17 +324,17 @@ Two families:
 
 **1. Plan sub-step commits.** Format: `<stage><step>: <specific change>`. The stage plan specifies the exact message for each numbered sub-step — use it verbatim. Examples:
 
-- `C3: src/lib/AureumTime.sol`
-- `C6.1: src/token/IAuMM.sol — interface for AuMM ERC-20 (per C5.2)`
-- `C7: test/unit/AuMM.t.sol — cap, minter, halving, invariants`
+* `C3: src/lib/AureumTime.sol`
+* `C6.1: src/token/IAuMM.sol — interface for AuMM ERC-20 (per C5.2)`
+* `C7: test/unit/AuMM.t.sol — cap, minter, halving, invariants`
 
 When the plan specifies a message, it is canonical. Don't rephrase.
 
 **2. Ad-hoc commits** (planning-doc edits, cursorrules updates, tooling). Format: `<category>: <change>`. Categories: `docs:`, `cursorrules:`, `foundry:`, `tooling:`. Examples:
 
-- `docs: sync STAGES_OVERVIEW.md + FINDINGS.md into repo (verbatim from project knowledge)`
-- `docs: add Argot Collective tooling to Stages P, Q, R (hevm, Act, Sourcify)`
-- `cursorrules: add Cursor operation scope rule (text-editor only during chat-directed work)`
+* `docs: sync STAGES_OVERVIEW.md + FINDINGS.md into repo (verbatim from project knowledge)`
+* `docs: add Argot Collective tooling to Stages P, Q, R (hevm, Act, Sourcify)`
+* `cursorrules: add Cursor operation scope rule (text-editor only during chat-directed work)`
 
 ### Commit discipline
 
@@ -333,50 +348,42 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-18, post-C9 / **Stage C complete** (`stage-c-complete` tag at `5342126`; fast-forward merge to `main`; Completion Logs + STAGES_OVERVIEW.md finalised).
+**Last update:** 2026-04-19, mid-Stage D, post-D0. Stage C remains complete at `stage-c-complete` (commit `5342126`). Stage D workflow inversion landed today (see §§6, 7, 8e).
 
-**Branch:** `stage-c` preserved on origin as snapshot marker per C0 Branch model; `main` advanced to `5342126` (Stage C tip).
+**Branch:** `stage-d` is the working branch, at `b08abdb` (D0 complete — `STAGE_D_PLAN.md` + `STAGE_D_NOTES.md` scaffold). `main` is at `e5ceb7a` (C9 log-completion commit on top of the Stage C tag). Merge of `stage-d` → `main` is deferred to D9 per D-D14.
 
-**Latest commits on `main` (top of Stage C):**
+**Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Previous: `stage-b-complete` (commit `b627a92`, 2026-04-14). Next expected tag: `stage-d-complete` at D9.
 
-```
-5342126 C8: Slither findings triaged (or suppressed with rationale)
-d5db5cf docs: log C7 completion (91c0bb5) and advance CLAUDE.md §11 to C8
-91c0bb5 C7: test/unit/AuMM.t.sol — cap, minter, halving, invariants
-22f85b7 docs: §8e — chat-Claude is escalation, not default reviewer
-60ad451 docs: log Stage C C0–C6 completion and advance CLAUDE.md §11 anchor to C7
-6dd092a C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule
-fdaa07f docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)
-f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future sessions
-```
+**Stage D position:**
 
-(This §11 update lands as a separate docs-only commit on top of `5342126`; the closing commit is not part of the `stage-c-complete` tag target.)
+* D0 — complete (`b08abdb`). `stage-d` branched from `main` at `e5ceb7a`; plan and notes scaffolded; baseline `forge build` cache-hit green against 30-file / 92-test prereq state.
+* D1 — next. Design-only sub-step: read OQ-1 / OQ-2 / OQ-11 in `FINDINGS.md`, read `IHooks.sol` surface in the Balancer submodule, resolve D-D4 (recursion guard) as D10, resolve D-D5 (Rate Providers) as D11, record Bodensee deployment parameters in notes. No Solidity.
+* D2 through D9 — not started. See `docs/STAGE_D_PLAN.md` for full sub-step breakdown.
 
-**Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Previous: `stage-b-complete` (commit `b627a92`, 2026-04-14).
+**Open items flagged before D1 execution** (from the 2026-04-19 BAL v3 setup clarification session):
 
-**Stage C position:** all sub-steps complete.
+* FINDINGS OQ-1 wording: choose between (X) "50/50 explicit" and (Y) "100% of the protocol-extractable share, up to the Vault's 50% cap." The fee controller currently implements (Y) by upstream inheritance; the spec shorthand across docs reads (X).
+* Controller model: options (1) upstream setter preserved (current Stage B behavior), (2) setter accepts only `50e16`, (3) no setter / immutable at registration. CLAUDE.md §2 "hard rule" language reads as (3); Stage B code is (1) by inheritance.
+* If option (3): retrofit placement — own commit batch + tag pre-Stage-D, or as a Stage D "D0.5" pre-flight.
 
-- C0–C6 — see Completion Log in `docs/STAGE_C_PLAN.md` and summary in `docs/STAGES_OVERVIEW.md`
-- C7 — `test/unit/AuMM.t.sol` (`91c0bb5`; 297 lines; 28/28 green)
-- C8 — Slither triage (`5342126`; 4 inline-suppressed, 1 accepted Stage B residual; C15 documents the `slither-disable-next-line` directive-placement finding)
-- C9 — `stage-c-complete` tagged at `5342126`; fast-forward merge to `main`; cross-doc logs filled
-
-**Stage C output:** `src/lib/AureumTime.sol` (83), `src/token/AuMM.sol` (133), `src/token/IAuMM.sol` (92) — ~308 LOC Aureum-authored Solidity; `test/unit/AureumTime.t.sol` (178, 33 tests), `test/unit/AuMM.t.sol` (297, 28 tests) — 61 Stage C tests + 3 Stage B fork tests = 64/64 green. Directory reorg to `src/vault/` / `src/lib/` / `src/token/`. Slither surface clean modulo Stage B `unindexed-event-address` carry-over.
+These decisions sit upstream of D1.1 and should be resolved before D1.1 reads OQ-1.
 
 **How to resume (Stage D — Fee-routing hook + der Bodensee):**
 
-1. Read `docs/STAGES_OVERVIEW.md` "Stage D — Fee-routing hook + der Bodensee" section in full.
-2. Create `docs/STAGE_D_PLAN.md` in the Stage B / Stage C format: numbered sub-steps, time estimates, commands, tests, Completion Log table. Stage D hinges on `AureumProtocolFeeController.sol` (Stage B) plus a new fee-hook contract routing 50% to der Bodensee / 50% to LPs / 0% creator — cross-reference FINDINGS OQ items and settled spec sections.
-3. Open `stage-d` branch from current `main` (`5342126`): `git checkout -b stage-d main && git push -u origin stage-d`. Scaffold `docs/STAGE_D_NOTES.md` (implementation findings continue from D10 per per-stage reset).
-4. Continue under §8e (Cursor-executor file writes, terminal integrity checks), §6 (grep-and-confirm loop), §8b (git mutations in user terminal), and the rest of the established discipline.
+1. Resolve the three open items above if not yet decided.
+2. Open a Claude Code session pointed at this repo. Claude Code reads `docs/STAGE_D_PLAN.md`, `docs/STAGE_D_NOTES.md`, `docs/FINDINGS.md` OQ-1 / OQ-2 / OQ-11, and this file.
+3. Claude Code authors the D1.1 sub-step prompt (one baby step) for Cursor, paired with the terminal audit commands.
+4. User passes the prompt to Cursor; Cursor executes and stops; user pastes results plus terminal output back to Claude Code.
+5. Claude Code audits, verdicts ✅ or ❌, and either authors D1.2's prompt or a fix prompt for D1.1. Loop.
+6. All git mutations run in the user's terminal. All forge / slither runs in the user's terminal. Claude Code never touches disk.
 
 ### Housekeeping notes
 
-- `.cursorrules` was amended at `fcde1b0` with the "Cursor operation scope during active chat-directed work" section. This is the post-C14 lockdown. Respect it.
-- Cursor is in text-editor-only mode with Auto-Run set to "Ask Every Time," Command Allowlist empty, Browser / MCP / File-Deletion / External-File Protection all on.
-- **Claude Code does not write files as of `fdaa07f` (section 8e).** All file writes flow through Cursor. Claude Code's role is planning, drafting in chat, running non-mutating verifications (8a), and confirming results of user-run commands.
-- Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code.
-- Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
+* `.cursorrules` was amended on 2026-04-19 to replace the "text-editor only" lockdown with the "Cursor operation scope — executor under Claude Code planning" section. Respect it.
+* Cursor Auto-Run stays "Ask Every Time," Command Allowlist stays empty, Browser / MCP / File-Deletion / External-File Protection toggles stay on.
+* **Claude Code does not write files.** All file writes flow through Cursor. Claude Code plans, authors prompts, audits Cursor's output, drafts commit messages and terminal commands for the user.
+* Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
+* Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
 
 ---
 
@@ -384,11 +391,11 @@ f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future s
 
 This is the fallback rule that subsumes everything else. If any of the following is true, stop and ask in chat rather than proceeding:
 
-- The plan is ambiguous about the current sub-step.
-- An expected file or path doesn't exist.
-- A command fails or returns unexpected output.
-- An action seems like it might fall into section 8b, 8c, or 8e but you're not sure.
-- The user said something that contradicts the plan.
-- You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
+* The plan is ambiguous about the current sub-step.
+* An expected file or path doesn't exist.
+* A command fails or returns unexpected output.
+* An action seems like it might fall into section 8b, 8c, or 8e but you're not sure.
+* The user said something that contradicts the plan.
+* You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
 
 The cost of asking is a round-trip. The cost of guessing wrong is a rollback plus the time to figure out what was guessed wrong. The grep-and-confirm loop is built on the same principle at the micro-scale; this rule is the same principle at the macro-scale.

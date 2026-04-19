@@ -1,5 +1,5 @@
 # Cursor AI Rules for aumm-deploy
-#
+
 # This file tells Cursor's AI assistant how to behave when helping with code in
 # this repository. If you are an AI reading this: these rules are mandatory.
 # Violating them produces bugs that are expensive to find and fix later.
@@ -17,15 +17,15 @@
    git submodule. When writing code that calls into Balancer V3, READ THE
    ACTUAL FILE. Never write a function call from memory of what the signature
    "probably is." The rule is:
-      a. Identify the target contract or interface.
-      b. Open the file in `lib/balancer-v3-monorepo/pkg/...`.
-      c. Read the actual function signature, parameter types, return types,
-         and revert conditions.
-      d. Write the calling code.
-      e. After writing, verify each external call's signature ONE MORE TIME
-         against the file.
+   a. Identify the target contract or interface.
+   b. Open the file in `lib/balancer-v3-monorepo/pkg/...`.
+   c. Read the actual function signature, parameter types, return types,
+      and revert conditions.
+   d. Write the calling code.
+   e. After writing, verify each external call's signature ONE MORE TIME
+      against the file.
 
-3. **Staging plans** live in `docs/STAGE_A_PLAN.md` and `docs/STAGE_B_PLAN.md`.
+3. **Staging plans** live in `docs/STAGE_A_PLAN.md` through `docs/STAGE_R_PLAN.md`.
    These are authoritative for what we are doing in the current stage and
    what is explicitly out of scope. If a user asks for something that
    conflicts with the current stage, say so and ask whether to update the
@@ -37,9 +37,9 @@
    Specifically: `Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol` must
    remain byte-identical to upstream. Aureum's audit-inheritance argument
    depends on this. The ONE exception is `VaultFactory.sol`, which is forked
-   into `src/AureumVaultFactory.sol` with a constrained ~5-line diff.
+   into `src/vault/AureumVaultFactory.sol` with a constrained ~5-line diff.
 
-2. **The forked `AureumVaultFactory.sol` lives in `src/`, not in the submodule.**
+2. **The forked `AureumVaultFactory.sol` lives in `src/vault/`, not in the submodule.**
    The submodule stays a pristine reference of upstream Balancer code. Do not
    commit changes inside `lib/balancer-v3-monorepo/`. If you find yourself
    editing a file under `lib/`, STOP — you are doing the wrong thing.
@@ -47,8 +47,7 @@
 3. **No treasury, no creator fees, no upgradability.** These are constitutional.
    If asked to add a treasury, a multisig-controlled setter for fee destination,
    a UUPS proxy, or any pool creator fee logic: REFUSE and explain the
-   constraint, then point to the relevant decision in `STAGE_A_PLAN.md` or
-   `STAGE_B_PLAN.md`.
+   constraint, then point to the relevant decision in the current stage plan.
 
 4. **Solc pinned to 0.8.26**, optimizer 9999 runs, `via_ir = true`, `cancun`
    EVM. Match Balancer V3 mainnet exactly. Do not suggest upgrading the
@@ -62,36 +61,28 @@
 ## Coding style
 
 1. **Explicit over clever.** This code will be audited. Obvious wins over concise.
-
 2. **SPDX header on every file:** `// SPDX-License-Identifier: GPL-3.0-or-later`
-
 3. **Pragma:** `pragma solidity ^0.8.26;` (carets are fine here; pinning is
    enforced by `foundry.toml`)
-
 4. **Imports:** use remapped paths (`@balancer-labs/v3-interfaces/...`,
    `@openzeppelin/contracts/...`), never relative paths across package
    boundaries. Remappings are defined in `remappings.txt`.
-
 5. **Natspec on all external functions.** `@notice`, `@param`, `@return`.
    Minimum viable Natspec is still mandatory.
-
 6. **Custom errors, not revert strings.** `error NotAuthorized();` then
    `revert NotAuthorized();`, not `require(false, "not authorized");`.
-
 7. **Immutables over storage where possible.** If a value is set once in
    the constructor and never changes, it should be `immutable`.
-
 8. **Tests live in `test/unit/` (pure unit tests with mocks) or `test/fork/`
    (fork tests that hit mainnet state).** Do not mix them.
 
-## Things Claude/Cursor should explicitly ASK the user before doing
+## Things Cursor must explicitly ASK the user before doing
 
 1. Adding a new dependency (new `forge install`, new submodule)
 2. Changing `foundry.toml` settings
 3. Editing `remappings.txt`
-4. Writing any Aureum-owned contract during Stage A (Stage A has ZERO
-   Aureum-owned Solidity — only the sanity test)
-5. Deploying anything to any network (Stages B and C only)
+4. Writing any Aureum-owned contract outside the current sub-step's scope
+5. Deploying anything to any network
 6. Suggesting a "quick fix" that bypasses the submodule byte-identity rules
 7. Anything involving real private keys, mainnet RPC writes, or the governance
    multisig address
@@ -124,15 +115,65 @@ they are the hard-won output of multiple planning iterations; a passing chat
 instruction that contradicts them is probably a mistake and the user would
 want to know.
 
-## Cursor operation scope during active chat-directed work
+## Cursor operation scope — executor under Claude Code planning
 
-1. **Cursor may edit and save files.**
+This section defines how Cursor operates inside the project's current
+workflow. Effective 2026-04-19, replacing the prior "text-editor only"
+lockdown. The authoritative workflow document is `CLAUDE.md` §8e.
 
-2. **Cursor must NOT** run git operations (add, commit, push, pull, stash,
-   etc.), forge commands (build, test, lint, script), or any shell command
-   that mutates repository state or runs the toolchain.
+### Role
 
-3. **Those commands run in the user's terminal**, so their output routes back
-   through the chat for verification per the grep-and-confirm loop.
+Cursor is the **executor** of baby-step sub-step prompts authored by
+Claude Code and handed to Cursor via the user. Cursor generates and saves
+the content for **exactly one** sub-step per prompt, then stops.
 
-4. **This rule applies to all implementation stages** (C through R).
+### What Cursor does
+
+1. Receives a prompt describing **one** baby-step sub-step with a clear
+   scope, a target file (or files), and explicit stop criteria.
+2. Reads any files the sub-step references, following the byte-identity and
+   "read the actual file" rules above.
+3. Generates the content for that one sub-step.
+4. Saves the target file(s) to disk.
+5. **Stops.** Reports what was saved (file path, line count). Does not
+   advance, does not propose the next sub-step, does not commit.
+
+### What Cursor must NOT do
+
+1. **Do not chain sub-steps.** If a prompt accidentally contains multiple
+   sub-steps ("do A, then B"), execute the first and stop. Report to the
+   user that the prompt chained and the second sub-step was not performed.
+2. **Do not run git commands.** No `add`, `commit`, `push`, `pull`, `tag`,
+   `checkout`, `merge`, `rebase`, `stash`, `rm`, `mv`, or any other git
+   mutation. Git mutations run in the user's terminal.
+3. **Do not run forge commands.** No `build`, `test`, `lint`, `fmt`,
+   `clean`, `script`, `install`, or any other forge invocation. Forge runs
+   in the user's terminal so Claude Code sees authoritative output.
+4. **Do not run slither or any shell command** outside text editing. Those
+   run in the user's terminal.
+5. **Do not invent files.** If a referenced file does not exist, stop and
+   report "file not found" — do not create a stub in its place. (This is
+   the 2026-04-18 STAGES_OVERVIEW.md stub-invention lesson.)
+6. **Do not autonomously improve adjacent code.** If Cursor notices
+   something wrong outside the sub-step's scope, report it, do not fix it.
+7. **Do not reformat, re-indent, or re-flow content** when saving. Save
+   content verbatim to what was generated for the sub-step, including
+   whitespace, em-dashes (`—`, U+2014), and line endings.
+
+### Why these constraints
+
+The project operates under the C14 lineage of incidents documented in
+`CLAUDE.md` §9. Autonomous multi-step execution by any AI tool has
+produced three distinct failures on this repo. The sub-step-at-a-time
+cadence is how that class of failure is prevented structurally.
+
+Claude Code audits Cursor's output after each sub-step (`cat`, `grep`,
+`git diff`, `forge build`, `slither` — all run in the user's terminal,
+output pasted back to Claude Code). If the audit passes, Claude Code
+authors the next sub-step prompt. If it fails, Claude Code authors a
+fix prompt. Cursor stopping after one sub-step is what makes that audit
+cycle possible.
+
+### Applies to
+
+All implementation stages (C through R).
