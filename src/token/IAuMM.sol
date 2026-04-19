@@ -19,14 +19,20 @@ interface IAuMM is IERC20 {
     /// @notice The block number at which the AuMM emission schedule begins.
     ///         Era 0 starts at this block.
     /// @return The genesis block, set immutably in the constructor.
+    // Aureum-wide naming: interface getter mirrors UPPER_SNAKE_CASE impl constant/immutable.
+    // slither-disable-next-line naming-convention
     function GENESIS_BLOCK() external view returns (uint256);
 
     /// @notice The hard supply cap: the total AuMM that can ever exist.
     /// @return 21_000_000 * 1e18.
+    // Aureum-wide naming: interface getter mirrors UPPER_SNAKE_CASE impl constant/immutable.
+    // slither-disable-next-line naming-convention
     function MAX_SUPPLY() external view returns (uint256);
 
     /// @notice The per-block emission rate during Era 0, before any halving.
     /// @return 1e18 (one AuMM per block in Era 0).
+    // Aureum-wide naming: interface getter mirrors UPPER_SNAKE_CASE impl constant/immutable.
+    // slither-disable-next-line naming-convention
     function GENESIS_RATE() external view returns (uint256);
 
     // -------------------------------------------------------------------------

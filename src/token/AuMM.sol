@@ -32,6 +32,8 @@ contract AuMM is ERC20, IAuMM {
 
     /// @notice The block number at which the AuMM emission schedule begins.
     ///         Era 0 starts at this block. Set once at construction; never changes.
+    // Aureum-wide naming: immutable set at construction, UPPER_SNAKE_CASE.
+    // slither-disable-next-line naming-convention
     uint256 public immutable override GENESIS_BLOCK;
 
     // -------------------------------------------------------------------------
