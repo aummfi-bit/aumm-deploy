@@ -401,7 +401,7 @@ Updated at the close of each stage. Full per-stage completion logs live in the c
 
 | Stage | Tag | Date | Commit | Notes |
 |---|---|---|---|---|
-| C | `stage-c-complete` |  |  |  |
+| C | `stage-c-complete` | 2026-04-18 | `5342126` | `AureumTime` library + `AuMM` ERC-20 (21M cap, Bitcoin-style halving on `BLOCKS_PER_ERA = 10_512_000`); directory reorg to `src/vault/` / `src/lib/` / `src/token/`; 61 Stage C unit tests + 3 Stage B fork tests = 64/64 green; Slither clean modulo Stage B `unindexed-event-address` residual on `AureumVaultFactory.VaultCreated` |
 | D | `stage-d-complete` |  |  |  |
 | E | `stage-e-complete` |  |  |  |
 | F | `stage-f-complete` |  |  |  |

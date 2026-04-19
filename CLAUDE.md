@@ -333,45 +333,42 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-18, post-C7 (`test/unit/AuMM.t.sol` at `91c0bb5`, Completion Log filled through C7, ready for C8).
+**Last update:** 2026-04-18, post-C9 / **Stage C complete** (`stage-c-complete` tag at `5342126`; fast-forward merge to `main`; Completion Logs + STAGES_OVERVIEW.md finalised).
 
-**Branch:** `stage-c` (ahead of `main`, fast-forward-mergeable on C9 completion).
+**Branch:** `stage-c` preserved on origin as snapshot marker per C0 Branch model; `main` advanced to `5342126` (Stage C tip).
 
-**Latest commits on origin/stage-c:**
+**Latest commits on `main` (top of Stage C):**
 
 ```
+5342126 C8: Slither findings triaged (or suppressed with rationale)
+d5db5cf docs: log C7 completion (91c0bb5) and advance CLAUDE.md §11 to C8
 91c0bb5 C7: test/unit/AuMM.t.sol — cap, minter, halving, invariants
 22f85b7 docs: §8e — chat-Claude is escalation, not default reviewer
 60ad451 docs: log Stage C C0–C6 completion and advance CLAUDE.md §11 anchor to C7
 6dd092a C6: src/token/AuMM.sol + IAuMM.sol — 21M-cap ERC-20 with halving schedule
 fdaa07f docs: revise CLAUDE.md §6 §8 §9 §11 for Cursor-executor tooling split (C7 onward)
 f8d6076 docs: add CLAUDE.md — operational context for Claude Code and future sessions
-751f699 C6.1: src/token/IAuMM.sol — interface for AuMM ERC-20 (per C5.2)
-1b39d35 docs: add Argot Collective tooling to Stages P, Q, R (hevm, Act, Sourcify)
-a8ec19c docs: sync STAGES_OVERVIEW.md + FINDINGS.md into repo (verbatim from project knowledge)
-fcde1b0 cursorrules: add Cursor operation scope rule (text-editor only during chat-directed work)
-140107b C14: log Cursor autonomous execution finding; Stage C lockdown enacted
 ```
 
-**Last completed tag:** `stage-b-complete` (commit `b627a92`, 2026-04-14).
+(This §11 update lands as a separate docs-only commit on top of `5342126`; the closing commit is not part of the `stage-c-complete` tag target.)
 
-**Stage C position:**
-- C0 complete — branch + notes scaffold
-- C1 complete — directory reorg to `src/vault/`
-- C2 complete — canonical constants + AuMM emission schedule in notes
-- C3 complete — `src/lib/AureumTime.sol`
-- C4 complete — `test/unit/AureumTime.t.sol` (33/33 green)
-- C5 complete — AuMM design in notes
-- C6 complete — `src/token/IAuMM.sol` (C6.1 at `751f699`) + `src/token/AuMM.sol` (131 lines, 5 em-dashes, SHA `f81ef4de142be5814b9099f446da8963a8b79030f1cddf7c5e3dafa01ec3db3c`); umbrella commit `6dd092a` plan-verbatim; `fdaa07f` lands §6 / §8 / §9 / §11 revisions including section 8e (Cursor executor, Claude Code no writes)
-- C7 complete — `test/unit/AuMM.t.sol` (`91c0bb5`; 297 lines; 28/28 green including `AuMMInvariantTest` + handler); doc chain includes `60ad451` (Completion Log + §11→C7) and `22f85b7` (§8e escalation note)
-- **C8 next** — Slither triage gate: `source .venv/bin/activate`, `slither . --filter-paths "lib|test"`, per `STAGE_C_PLAN.md` C8.2–C8.3
-- C9 — `stage-c-complete` tag after C8 is logged
+**Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Previous: `stage-b-complete` (commit `b627a92`, 2026-04-14).
 
-**How to resume (C8):**
-1. Read `docs/STAGE_C_PLAN.md` section C8 — activation, triage discipline, C8.4 commit pattern.
-2. Run Slither (C8.1); capture full output; triage each finding per C8.2.
-3. Re-run to verify clean (C8.3); record accepted residuals in `docs/STAGE_C_NOTES.md` under `## C8 — Slither triage` if needed.
-4. Commit triage output per C8.4 — `git add` suppressions and notes, plan-verbatim commit message, `git push`, then log C8 in the Completion Log.
+**Stage C position:** all sub-steps complete.
+
+- C0–C6 — see Completion Log in `docs/STAGE_C_PLAN.md` and summary in `docs/STAGES_OVERVIEW.md`
+- C7 — `test/unit/AuMM.t.sol` (`91c0bb5`; 297 lines; 28/28 green)
+- C8 — Slither triage (`5342126`; 4 inline-suppressed, 1 accepted Stage B residual; C15 documents the `slither-disable-next-line` directive-placement finding)
+- C9 — `stage-c-complete` tagged at `5342126`; fast-forward merge to `main`; cross-doc logs filled
+
+**Stage C output:** `src/lib/AureumTime.sol` (83), `src/token/AuMM.sol` (133), `src/token/IAuMM.sol` (92) — ~308 LOC Aureum-authored Solidity; `test/unit/AureumTime.t.sol` (178, 33 tests), `test/unit/AuMM.t.sol` (297, 28 tests) — 61 Stage C tests + 3 Stage B fork tests = 64/64 green. Directory reorg to `src/vault/` / `src/lib/` / `src/token/`. Slither surface clean modulo Stage B `unindexed-event-address` carry-over.
+
+**How to resume (Stage D — Fee-routing hook + der Bodensee):**
+
+1. Read `docs/STAGES_OVERVIEW.md` "Stage D — Fee-routing hook + der Bodensee" section in full.
+2. Create `docs/STAGE_D_PLAN.md` in the Stage B / Stage C format: numbered sub-steps, time estimates, commands, tests, Completion Log table. Stage D hinges on `AureumProtocolFeeController.sol` (Stage B) plus a new fee-hook contract routing 50% to der Bodensee / 50% to LPs / 0% creator — cross-reference FINDINGS OQ items and settled spec sections.
+3. Open `stage-d` branch from current `main` (`5342126`): `git checkout -b stage-d main && git push -u origin stage-d`. Scaffold `docs/STAGE_D_NOTES.md` (implementation findings continue from D10 per per-stage reset).
+4. Continue under §8e (Cursor-executor file writes, terminal integrity checks), §6 (grep-and-confirm loop), §8b (git mutations in user terminal), and the rest of the established discipline.
 
 ### Housekeeping notes
 
