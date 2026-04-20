@@ -18,7 +18,8 @@
 
 2. **`src/fee_router/IAureumFeeRoutingHook.sol`** — thin interface. Declares the external primitive entry points (shape decided at D2 per D-D2 — either three separate functions `routeYieldFee` / `routeGovernanceDeposit` / `routeIncendiaryDeposit`, or a single `routeExternalDeposit(CallerType, token, amount)`), plus the events, the constants, and the getters for the immutable addresses. Stage D's `AureumProtocolFeeController` (modified) imports this. Later stages (K governance, L Incendiary) will import it too. Matches Stage B's `IProtocolFeeController` and Stage C's `IAuMM` patterns. ~60 LOC.
 
-3. **Modification to `src/vault/AureumProtocolFeeController.sol`** — three targeted changes, see D-D7 / D-D8 / D-D9 in the decisions table below:
+3. **Modifications to `src/vault/AureumProtocolFeeController.sol`** — one pre-flight edit in D0.5 (per D-D15) plus three targeted edits in D4 (per D-D7 / D-D8 / D-D9):
+   - **D0.5 — upstream setter retrofit (per D-D15).** Remove / override the inherited public setter for `protocolSwapFeePercentage`; the 50/50 split is immutable at pool registration per CLAUDE.md §2 "hard rule". Any runtime call to the setter reverts `SplitIsImmutable` (or equivalent custom error finalised at D0.5.2 draft time). Lands before D1 so D4 edits build on a clean base.
    - **B10 retarget.** The immutable enforcement target (currently named `DER_BODENSEE_POOL` or similar — exact identifier confirmed at D4.1) is renamed / retargeted to the hook contract's address. B10's check stays in place; it just points at the hook rather than at Bodensee directly. One immutable rename, one error-message update, one constructor-parameter name change.
    - **OQ-11 Bodensee fee band relaxation.** The existing B8 immutability on Bodensee's 0.75% is relaxed. Replace any pinned single value with three band constants: `BODENSEE_SWAP_FEE_MIN = 0.001e18`, `BODENSEE_SWAP_FEE_MAX = 0.01e18`, `BODENSEE_SWAP_FEE_GENESIS = 0.0075e18`. Genesis default is unchanged at 0.75%; adjustability within the 0.10%–1.00% band is a Stage K concern (the governance call path), but the band constants land here so the rate ceases to be pinned at construction time.
    - **OQ-2 Bodensee yield-fee exclusion.** Add a revert in `collectAggregateFees(pool)` when `pool == DER_BODENSEE_POOL`. Bodensee's ERC-4626 composition compounds in-pool via Rate Providers; there is no yield to skim.
@@ -93,6 +94,7 @@ These are the answers to the planning-stage questions resolved before this file 
 | **D-D12** | **Unit tests use mocks; fork tests use real addresses.** D5 unit tests never touch a fork — they exercise the hook and the fee controller against `MockVault`, `MockRouter`, `MockERC20`, `MockERC4626` stubs (using forge-std `Mock*` helpers where available, otherwise minimal local mocks). D7 fork tests deploy the real Stage B Vault + real Bodensee + a minimal 2-token hooked test pool against a mainnet fork. Unit and fork are independent test surfaces: unit catches logic bugs, fork catches integration drift. |
 | **D-D13** | **D7 minimal hooked test pool** = 2-token weighted pool, 50/50 AuMM / svZCHF, hooked. Not a real Miliarium composition. Sufficient to exercise: fee extraction on a hooked pool, internal-swap recursion path (svZCHF is the target, so the fee swap into svZCHF when the fee token is AuMM reaches the test pool itself — the natural stress case for D-D4's recursion guard), one-sided add to Bodensee. Real Miliarium pool compositions with 4+ tokens and Rate Providers are Stage E. |
 | **D-D14** | **Branch model:** Stage D continues the "direct tag on main" pattern seeded in Stage B and preserved in Stage C. `stage-d` is a working branch (already created from `main` at `e5ceb7a`, pushed to origin 2026-04-19); fast-forwards to `main` at D9; `stage-d-complete` lightweight tag applied on `main` at the tip. No PR workflow. Preserve `stage-d` on origin as a snapshot marker per the C0 convention. |
+| **D-D15** | **`protocolSwapFeePercentage` is immutable at pool registration, no on-chain setter.** Per the 2026-04-19 BAL v3 mechanics clarification (see amended OQ-1 / OQ-1a in `docs/FINDINGS.md`): each gauged pool registers with `protocolSwapFeePercentage = 50e16` (saturating the Vault's `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap); that value does not change at runtime. `AureumProtocolFeeController` exposes no runtime setter for this field — the 50/50 split is constitutional per CLAUDE.md §2 "hard rule" and encoded as an immutable Vault parameter at registration. Stage K governance adjusts per-pool swap-fee *rate* within OQ-11's band but does not touch this split. Stage B's `AureumProtocolFeeController` inherits an upstream setter from Balancer V3; the retrofit to override or suppress that setter lands at D0.5 before D1 design work begins. der Bodensee registers with `protocolSwapFeePercentage = 0` per OQ-2 — immutable at that value too. |
 
 ---
 
@@ -171,6 +173,64 @@ forge build
 Paste full tail output.
 
 **Log D0** in the Completion Log.
+
+---
+
+## D0.5 — Retrofit `AureumProtocolFeeController`: remove upstream setter (per D-D15) (45 min)
+
+Pre-flight fix landing before D1 design work. Stage B's `AureumProtocolFeeController` inherits Balancer V3's `ProtocolFeeController` behavior, which exposes a public setter allowing the protocol owner to adjust `protocolSwapFeePercentage` on any registered pool at runtime. Per D-D15 and CLAUDE.md §2 "hard rule", Aureum's 50/50 split is constitutional — the value is fixed at `50e16` on every gauged pool at registration (or `0` on der Bodensee per OQ-2) and has no runtime adjustment surface.
+
+**Why D0.5 rather than a retroactive Stage B patch.** `stage-b-complete` is already tagged at `b627a92` as a clean snapshot. Re-cutting or shadowing that tag is costlier than carrying the retrofit as a narrow Stage D pre-flight step. `stage-b-complete` stays pure; `stage-d-complete` becomes the first tag that reflects the immutable-setter posture.
+
+**Why before D1.** D4's edits (B10 retarget, OQ-11 Bodensee band, OQ-2 Bodensee yield-leg guard) touch the same contract. Landing the setter retrofit first gives D4 a clean base and avoids mixing two unrelated conceptual changes in the same commit.
+
+### D0.5.1 — Grep the current Stage B setter surface
+
+```
+grep -n "setProtocolSwapFeePercentage\|setGlobalProtocolSwapFeePercentage\|protocolSwapFeePercentage" src/vault/AureumProtocolFeeController.sol
+grep -n "setProtocolSwapFeePercentage\|setGlobalProtocolSwapFeePercentage\|protocolSwapFeePercentage" lib/balancer-v3-monorepo/pkg/vault/contracts/ProtocolFeeController.sol
+```
+
+Paste output. Grounds D0.5.2 in the actual upstream identifiers — the retrofit keys on whatever the Stage B source actually exposes, not on assumed names.
+
+### D0.5.2 — Draft the retrofit
+
+Resolved at draft time against D0.5.1's output. Two shapes under consideration, tracked as **D12** in `docs/STAGE_D_NOTES.md`:
+
+- **R1 — override-and-revert.** Override each public setter inherited from `ProtocolFeeController`; each override reverts with a custom error `SplitIsImmutable()` (or equivalent, named at draft time). Upstream interface preserved; runtime behavior disables mutation. Smallest diff; clearest audit story ("every call path that could mutate the split reverts").
+- **R2 — non-inheritance.** Inherit from a narrower base, or compose only the needed behavior, dropping the setter surface entirely. Larger diff; changes audit-inheritance shape.
+
+**Default to R1 unless D0.5.1 forces R2.** Per CLAUDE.md §8e: full-file draft in chat, user pastes to Cursor, terminal integrity check.
+
+### D0.5.3 — Extend `test/unit/AureumProtocolFeeController.t.sol`
+
+Add at minimum:
+
+- **`test_SetProtocolSwapFeePercentage_AlwaysReverts`** — whatever entry points D0.5.1 surfaces, calling them with any value (0, 25e16, 50e16, 50e16 + 1) reverts `SplitIsImmutable` (or the equivalent custom error named at D0.5.2).
+- **A read-back invariant test** — after registration completes for any gauged pool, the protocol fee percentage reads back as `50e16`; for der Bodensee, reads back as `0` (per OQ-2). Exact test-harness shape decided at D0.5.3 draft time against the existing Stage B test-file structure.
+
+Update any existing Stage B test that exercised the setter (per D0.5.1 grep surface): replace "call setter → assert new value" with "call setter → assert revert".
+
+### D0.5.4 — `forge build` and re-run Stage B suites
+
+```
+forge build
+forge test --match-path "test/unit/AureumProtocolFeeController.t.sol" -vv
+forge test --match-path "test/fork/DeployAureumVault.t.sol" --fork-url $MAINNET_RPC_URL -vv
+```
+
+Paste full tail output of each. Build green; both suites stay green (existing Stage B tests are the baseline; the new revert tests are additive).
+
+**Commit (user runs in terminal):**
+
+```
+git add src/vault/AureumProtocolFeeController.sol test/unit/AureumProtocolFeeController.t.sol
+git commit -m "D0.5: AureumProtocolFeeController — remove upstream setter, split immutable (per D-D15)"
+git push
+git log --oneline -3
+```
+
+**Log D0.5** in the Completion Log.
 
 ---
 
@@ -680,7 +740,8 @@ Fill this in as you progress.
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
 | 2026-04-19 | D0 — branch + notes scaffold + baseline | ✅ | `b08abdb` | `stage-d` preserved on origin as working branch per D-D14 (branched from `main` at `e5ceb7a`). D0.2: `STAGE_D_PLAN.md` (691 lines) + `STAGE_D_NOTES.md` (67 lines, D-D1..D-D14 planning codes cross-referenced) scaffolded and landed together at `b08abdb`. D0.3: baseline `forge build` cache-hit (`No files changed, compilation skipped`) — Solidity surface byte-identical to the 30-file / 92-test prereq baseline at `e5ceb7a` |
-|  | D1 — design decisions (D10, D11, …) | ⏳ |  |  |
+|  | D0.5 — retrofit `AureumProtocolFeeController` (remove upstream setter per D-D15) | ⏳ |  |  |
+|  | D1 — design decisions (D10, D11, D12, …) | ⏳ |  |  |
 |  | D2 — `src/fee_router/IAureumFeeRoutingHook.sol` | ⏳ |  |  |
 |  | D3 — `src/fee_router/AureumFeeRoutingHook.sol` | ⏳ |  |  |
 |  | D4 — `AureumProtocolFeeController` modifications | ⏳ |  |  |

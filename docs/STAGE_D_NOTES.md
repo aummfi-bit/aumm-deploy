@@ -1,6 +1,6 @@
 # Stage D — Notes (implementation findings log)
 
-> Scaffold. Findings land as Stage D sub-steps execute. Numbered from **D10** to avoid collision with planning-stage design codes (`D-D1` … `D-D14` in `docs/STAGE_D_PLAN.md`).
+> Scaffold. Findings land as Stage D sub-steps execute. Numbered from **D10** to avoid collision with planning-stage design codes (`D-D1` … `D-D15` in `docs/STAGE_D_PLAN.md`).
 
 ---
 
@@ -39,6 +39,20 @@ Token addresses (per `/Users/janus/code/aumm-site/07a_tokens.md`):
 - sUSDS  — `0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD`
 
 Decision to be recorded at D1 design session.
+
+### D12 — Retrofit approach for `AureumProtocolFeeController` upstream setter
+
+Resolves the R1 vs R2 choice at **D0.5.2** (per **D-D15**).
+
+Context: Stage B inherits Balancer V3's `ProtocolFeeController`, which exposes a public setter for `protocolSwapFeePercentage`. D-D15 pins the split as immutable; the inherited setter must be disabled on Aureum's fee-controller.
+
+Options:
+- **R1 — override-and-revert.** Override each inherited setter to revert with a custom error (`SplitIsImmutable()` or equivalent). Upstream interface preserved; smallest diff; clearest audit story.
+- **R2 — non-inheritance.** Inherit from a narrower base (or compose the needed behavior) rather than inheriting the full `ProtocolFeeController`. Larger diff; changes the audit-inheritance shape.
+
+Planning default is R1 per D-D15's "smallest diff, clearest audit story" preference. D0.5.1's grep of the Stage B source may force R2 if the inherited setter surface is structurally incompatible with simple override.
+
+Decision to be recorded at D0.5 implementation time.
 
 ---
 
