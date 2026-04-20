@@ -52,7 +52,7 @@ Options:
 
 Planning default is R1 per D-D15's "smallest diff, clearest audit story" preference. D0.5.1's grep of the Stage B source may force R2 if the inherited setter surface is structurally incompatible with simple override.
 
-Decision to be recorded at D0.5 implementation time.
+**Decision (2026-04-20 at D0.5 implementation time): R1 applied**, landed at `e5dc936`. Both setters (`setGlobalProtocolSwapFeePercentage`, `setProtocolSwapFeePercentage`) are now `external pure` stubs reverting `SplitIsImmutable()`. Scope extended beyond R1-as-stated: the constructor pins `_globalProtocolSwapFeePercentage` at `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50e16` (saturate-not-bypass framing per amended OQ-1 / OQ-1a), and `registerPool` unconditionally assigns the swap-side aggregate to the pinned global regardless of `protocolFeeExempt` — this closes a factory-level bypass where a pool registering with `protocolFeeExempt = true` would have zeroed its swap fee. D0.5.1's grep against Stage B confirmed R1 was structurally compatible (simple override, no forcing move to R2).
 
 ---
 
@@ -78,4 +78,10 @@ Decision to be recorded at D0.5 implementation time.
 
 ## Findings log (append as Stage D progresses)
 
-_(D10 onward land here with full write-up once resolved.)_
+### D13 — Markdown-rendered blank-line collapse in Cursor prompts
+Surfaced at **D0.5.2**. An OLD block containing an interior blank line (inside the `registerPool` body, between `_poolCreators[pool] = poolCreator;` and `// Set local storage…`) was byte-mismatched against disk after the blank collapsed during chat-to-clipboard paste. Cursor's atomic match rule returned STOP on that replacement; per **D14** the other four (matching) replacements in the same prompt also did not land. The terminal integrity check (§8e) caught the divergence — the post-paste `grep` for the expected new identifiers came back empty.
+Fix forward: fenced code blocks in chat (not indented plain text) for OLD content preserve whitespace through paste; prefer surgical sub-blocks with no interior blanks where possible; explicit warning to the user when an OLD necessarily contains blanks so the rendered paste can be verified. Reinforces **§6** grep-and-confirm and **§8e** terminal-side read-back as the authoritative truth.
+
+### D14 — Apply-all-or-nothing rule in Cursor multi-replacement prompts
+Surfaced at **D0.5.2**. Cursor's match-then-apply is atomic across all OLD blocks in a single prompt: one mismatch → zero replacements applied, even for OLDs that matched. Recovery requires a fresh prompt for the mismatched OLD first, then a re-issue of the remaining (still-matching) OLDs in a follow-up prompt. Both rounds visible in the Stage D commit history (the R5 scalpel as 5A/5B/5C, then R1–R4 re-issued).
+Implication for future Cursor prompts: prefer smaller independent rounds when the replacements are not truly co-landing. For truly coupled edits (cross-file rename, coordinated interface change), keep them batched; otherwise split. The smallest-safe-unit bounds the blast radius of a single OLD mismatch. This document's own Stage D wrap-up was composed under the new discipline — one OLD per Cursor round.

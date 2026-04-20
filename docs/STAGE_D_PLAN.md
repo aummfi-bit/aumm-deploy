@@ -740,7 +740,7 @@ Fill this in as you progress.
 | Date | Step | Status | Commit | Notes |
 |---|---|---|---|---|
 | 2026-04-19 | D0 — branch + notes scaffold + baseline | ✅ | `b08abdb` | `stage-d` preserved on origin as working branch per D-D14 (branched from `main` at `e5ceb7a`). D0.2: `STAGE_D_PLAN.md` (691 lines) + `STAGE_D_NOTES.md` (67 lines, D-D1..D-D14 planning codes cross-referenced) scaffolded and landed together at `b08abdb`. D0.3: baseline `forge build` cache-hit (`No files changed, compilation skipped`) — Solidity surface byte-identical to the 30-file / 92-test prereq baseline at `e5ceb7a` |
-|  | D0.5 — retrofit `AureumProtocolFeeController` (remove upstream setter per D-D15) | ⏳ |  |  |
+| 2026-04-20 | D0.5 — retrofit `AureumProtocolFeeController` (remove upstream setter per D-D15) | ✅ | `e5dc936` | D0.5.1 grep against Stage B confirmed R1 structurally compatible (no force to R2; see D12 resolution in NOTES). D0.5.2 applied R1 plus scope extension: constructor pins `_globalProtocolSwapFeePercentage` at `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50e16` (saturates the Vault cap, realises the 50/50 split); `SplitIsImmutable` reverts both setters; `registerPool` pins swap-side aggregate regardless of `protocolFeeExempt` (closes factory-level bypass). D0.5.3 added Group D with 6 D-D15 coverage tests. D0.5.4: `forge build` clean, `forge test` 28/28 green including 4 invariants (256 runs × 32768 calls, 0 reverts, 0 discards). See D13 + D14 in NOTES for Cursor-interaction findings surfaced during this sub-step. |
 |  | D1 — design decisions (D10, D11, D12, …) | ⏳ |  |  |
 |  | D2 — `src/fee_router/IAureumFeeRoutingHook.sol` | ⏳ |  |  |
 |  | D3 — `src/fee_router/AureumFeeRoutingHook.sol` | ⏳ |  |  |
