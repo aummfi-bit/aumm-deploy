@@ -370,7 +370,7 @@ contract AureumProtocolFeeControllerTest is Test {
         vm.assume(notGovernance != multisig);
 
         vm.prank(notGovernance);
-        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
         controller.setProtocolSwapFeePercentage(pool, pct);
     }
 
@@ -500,34 +500,6 @@ contract AureumProtocolFeeControllerTest is Test {
 
     // ─── Group B — Fee-setter happy path: cap acceptance + cap rejection ──
 
-    function test_setProtocolSwapFeePercentage_acceptsCapValue() public {
-        address pool = makeAddr("pool");
-        uint256 capValue = controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE();
-
-        // Modifiers fire left-to-right: authenticate → withValidSwapFee → withLatestFees.
-        // withLatestFees calls unlock, so we need both mocks for the acceptance path.
-        _mockUnlock();
-        _mockUpdateAggregateSwapFeePercentage();
-
-        vm.prank(multisig);
-        controller.setProtocolSwapFeePercentage(pool, capValue);
-
-        (uint64 storedPct, bool isOverride) = _readPoolFeeConfig(2, pool);
-        assertEq(uint256(storedPct), capValue, "Stored swap fee percentage should equal cap");
-        assertTrue(isOverride, "isOverride should be true for governance-set fee");
-    }
-
-    function test_setProtocolSwapFeePercentage_revertsAtCapPlusScalingFactor() public {
-        address pool = makeAddr("pool");
-        // Modifier order: authenticate → withValidSwapFee → withLatestFees.
-        // withValidSwapFee fires before withLatestFees, so no unlock mock needed.
-        uint256 aboveCap = controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE() + 1e11;
-
-        vm.prank(multisig);
-        vm.expectRevert();
-        controller.setProtocolSwapFeePercentage(pool, aboveCap);
-    }
-
     function test_setProtocolYieldFeePercentage_acceptsCapValue() public {
         address pool = makeAddr("pool");
         uint256 capValue = controller.MAX_PROTOCOL_YIELD_FEE_PERCENTAGE();
@@ -552,6 +524,69 @@ contract AureumProtocolFeeControllerTest is Test {
         controller.setProtocolYieldFeePercentage(pool, aboveCap);
     }
 
+    // ─── Group D — D-D15 retrofit coverage (split-is-immutable + pin) ─────
+    function test_constructor_pinsGlobalSwapFeePercentageAtCap() public view {
+        assertEq(
+            controller.getGlobalProtocolSwapFeePercentage(),
+            controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE(),
+            "Global protocol swap-fee percentage should be pinned to the cap"
+        );
+    }
+    function test_setGlobalProtocolSwapFeePercentage_revertsForGovernance(uint256 pct) public {
+        vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
+        controller.setGlobalProtocolSwapFeePercentage(pct);
+    }
+    function test_setGlobalProtocolSwapFeePercentage_revertsForNonGovernance(
+        address caller,
+        uint256 pct
+    ) public {
+        vm.assume(caller != multisig);
+        vm.prank(caller);
+        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
+        controller.setGlobalProtocolSwapFeePercentage(pct);
+    }
+    function test_setProtocolSwapFeePercentage_revertsForGovernance(address pool, uint256 pct) public {
+        vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
+        controller.setProtocolSwapFeePercentage(pool, pct);
+    }
+    function test_registerPool_pinsSwapFeeEvenWhenExempt(address pool, address poolCreator) public {
+        vm.assume(pool != address(0));
+        vm.prank(mockVault);
+        (uint256 aggregateSwapFee, uint256 aggregateYieldFee) =
+            controller.registerPool(pool, poolCreator, true);
+        // Swap-side: pinned to the global regardless of the exempt flag. This closes
+        // the factory-level bypass where `protocolFeeExempt = true` would have zeroed
+        // the pool's swap fee and circumvented the 50/50 split.
+        assertEq(aggregateSwapFee, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
+        // Yield-side: the exempt flag still zeros the yield fee (D-D9 preserved).
+        assertEq(aggregateYieldFee, 0);
+        // Storage: swap-side isOverride is false (pinned = canonical); yield-side is
+        // true because the exempt flag sticks on the yield side.
+        (uint256 storedSwapPct, bool swapIsOverride) = controller.getPoolProtocolSwapFeeInfo(pool);
+        assertEq(storedSwapPct, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
+        assertFalse(swapIsOverride);
+        (uint256 storedYieldPct, bool yieldIsOverride) = controller.getPoolProtocolYieldFeeInfo(pool);
+        assertEq(storedYieldPct, 0);
+        assertTrue(yieldIsOverride);
+    }
+    function test_registerPool_pinsSwapFeeWhenNotExempt(address pool, address poolCreator) public {
+        vm.assume(pool != address(0));
+        vm.prank(mockVault);
+        (uint256 aggregateSwapFee, uint256 aggregateYieldFee) =
+            controller.registerPool(pool, poolCreator, false);
+        assertEq(aggregateSwapFee, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
+        // _globalProtocolYieldFeePercentage is unpinned (Stage D does not touch yield);
+        // default is 0 for the non-exempt path as well.
+        assertEq(aggregateYieldFee, 0);
+        (uint256 storedSwapPct, bool swapIsOverride) = controller.getPoolProtocolSwapFeeInfo(pool);
+        assertEq(storedSwapPct, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
+        assertFalse(swapIsOverride);
+        (uint256 storedYieldPct, bool yieldIsOverride) = controller.getPoolProtocolYieldFeeInfo(pool);
+        assertEq(storedYieldPct, 0);
+        assertFalse(yieldIsOverride);
+    }
     // ─── Group C — Invariants ─────────────────────────────────────────────
 
     // Invariant 1: Creator-fee percentage storage is always zero.

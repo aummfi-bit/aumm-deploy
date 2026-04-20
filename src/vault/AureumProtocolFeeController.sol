@@ -162,6 +162,14 @@ contract AureumProtocolFeeController is
     error InvalidRecipient(address expected, address provided);
     error CreatorFeesDisabled();
     error ZeroBodenseeAddress();
+    /// @notice Reverts when a caller attempts to change the protocol swap-fee percentage.
+    /// @dev Per Aureum D-D15: the 50/50 split between der Bodensee and LPs is expressed
+    ///      by pinning `_globalProtocolSwapFeePercentage` to `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE`
+    ///      (50e16, the Vault's maximum protocol-extractable share) at construction.
+    ///      There is no governance path to change this value; both the global setter
+    ///      and the per-pool override revert with this error.
+    ///      See docs/STAGE_D_PLAN.md (D-D15) and docs/FINDINGS.md (OQ-1, OQ-1a).
+    error SplitIsImmutable();
 
     /// @notice The immutable destination for all protocol fee withdrawals.
     /// @dev Set in the constructor and never changes. The two `withdrawProtocolFees*`
@@ -180,6 +188,13 @@ contract AureumProtocolFeeController is
             revert ZeroBodenseeAddress();
         }
         DER_BODENSEE_POOL = derBodenseePool_;
+        // D-D15: pin the protocol swap-fee percentage at 50e16 (the Vault's maximum
+        // protocol-extractable share) at construction. This saturates the Vault's cap
+        // rather than bypassing it — the 50/50 split between der Bodensee and LPs is
+        // expressed by taking 100% of the protocol-extractable share and routing it to
+        // Bodensee. Both setters (`setGlobalProtocolSwapFeePercentage` and the per-pool
+        // `setProtocolSwapFeePercentage`) revert with `SplitIsImmutable`.
+        _globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE;
     }
 
     /// @inheritdoc IProtocolFeeController
@@ -454,6 +469,12 @@ contract AureumProtocolFeeController is
     ***************************************************************************/
 
     /// @inheritdoc IProtocolFeeController
+    /// @dev Aureum D-D15 override: the swap-fee side always registers at
+    ///      `_globalProtocolSwapFeePercentage` (pinned to 50e16 in the constructor),
+    ///      regardless of the `protocolFeeExempt` flag. This closes the hole where a
+    ///      factory passing `protocolFeeExempt = true` would set the pool's swap-fee
+    ///      to 0 and bypass the 50/50 split. The yield-fee side still honors the
+    ///      exempt flag — Bodensee yield collection is gated separately by D-D9.
     function registerPool(
         address pool,
         address poolCreator,
@@ -462,7 +483,9 @@ contract AureumProtocolFeeController is
         _poolCreators[pool] = poolCreator;
 
         // Set local storage of the actual percentages for the pool (default to global).
-        aggregateSwapFeePercentage = protocolFeeExempt ? 0 : _globalProtocolSwapFeePercentage;
+        // D-D15: swap-fee is pinned to the global (50e16) unconditionally; the exempt
+        // flag is ignored for the swap side. Yield side still honors the exempt flag.
+        aggregateSwapFeePercentage = _globalProtocolSwapFeePercentage;
         aggregateYieldFeePercentage = protocolFeeExempt ? 0 : _globalProtocolYieldFeePercentage;
 
         // `isOverride` is true if the pool is protocol fee exempt; otherwise, default to false.
@@ -471,7 +494,9 @@ contract AureumProtocolFeeController is
         // Since this fits in 64 bits, the SafeCast shouldn't be necessary, and is done out of an abundance of caution.
         _poolProtocolSwapFeePercentages[pool] = PoolFeeConfig({
             feePercentage: aggregateSwapFeePercentage.toUint64(),
-            isOverride: protocolFeeExempt
+            // D-D15: swap-side isOverride is always false. The pinned value is canonical,
+            // and `updateProtocolSwapFeePercentage(pool)` is a no-op post-retrofit.
+            isOverride: false
         });
         _poolProtocolYieldFeePercentages[pool] = PoolFeeConfig({
             feePercentage: aggregateYieldFeePercentage.toUint64(),
@@ -480,12 +505,13 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    /// @dev Disabled per Aureum D-D15. The global protocol swap-fee percentage is pinned
+    ///      at `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE` (50e16) in the constructor and is not
+    ///      governance-adjustable. Any call reverts with `SplitIsImmutable`.
     function setGlobalProtocolSwapFeePercentage(
-        uint256 newProtocolSwapFeePercentage
-    ) external withValidSwapFee(newProtocolSwapFeePercentage) authenticate {
-        _globalProtocolSwapFeePercentage = newProtocolSwapFeePercentage;
-
-        emit GlobalProtocolSwapFeePercentageChanged(newProtocolSwapFeePercentage);
+        uint256 /* newProtocolSwapFeePercentage */
+    ) external pure {
+        revert SplitIsImmutable();
     }
 
     /// @inheritdoc IProtocolFeeController
@@ -498,14 +524,14 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
-    // Rationale: events emitted after Vault calls inside the unlock context;
-    // Vault reentrancy lock prevents observer action within the same tx.
-    // slither-disable-next-line reentrancy-events
+    /// @dev Disabled per Aureum D-D15. Per-pool overrides would defeat the 50/50 split;
+    ///      the pinned `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE` applies uniformly to every pool
+    ///      registered through the Vault. Any call reverts with `SplitIsImmutable`.
     function setProtocolSwapFeePercentage(
-        address pool,
-        uint256 newProtocolSwapFeePercentage
-    ) external authenticate withValidSwapFee(newProtocolSwapFeePercentage) withLatestFees(pool) {
-        _updatePoolSwapFeePercentage(pool, newProtocolSwapFeePercentage, true);
+        address /* pool */,
+        uint256 /* newProtocolSwapFeePercentage */
+    ) external pure {
+        revert SplitIsImmutable();
     }
 
     /// @inheritdoc IProtocolFeeController
