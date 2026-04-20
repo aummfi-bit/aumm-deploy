@@ -19,26 +19,47 @@
 
 Resolves **D-D4** (left `D-D-open` at planning time).
 
-Context: the hook's `onAfterSwap` path calls `Vault.collectAggregateFees` (or equivalent) to route 50% of swap fees to der Bodensee. That collection path can itself trigger swap semantics against Bodensee, which would re-enter a gauged pool's hook and recurse.
+Context: the OQ-1 hook fires on `onAfterSwap` for every swap on a gauged Miliarium pool. Inside the hook, after the Vault has credited its `protocolSwapFeePercentage = 50e16` protocol-fee share, the hook issues its own internal `Vault.swap` to convert the accrued fee token to svZCHF (per OQ-2), then a one-sided `addLiquidity` into der Bodensee. If that internal swap routes through another gauged pool — the same hook is attached to all 28 Miliarium pools plus any gauged non-Miliarium pool — `onAfterSwap` fires again, recursing.
 
-Options under consideration:
-- transient-storage reentrancy flag (EIP-1153, available under `cancun`)
-- per-block guard keyed on `block.number`
-- structural — route to a pull-based claim buffer, no inline Bodensee swap
+Options considered (per OQ-1):
+- **(a) Trusted-router check.** Early-return when `params.router == address(this)`. Upstream-idiomatic; 1-line check; ~200 gas per swap; recursion terminates at depth 1.
+- **(b) Direct-route-through-Bodensee.** Constrain fee routing to swap only through Bodensee (hookless, so no recursion). Fails in the general case — Miliarium pools whose fee token sits outside {AuMM, sUSDS, svZCHF} need a fee-token → svZCHF hop through some other pool, and that hop can re-enter the hook.
+- **(c) Geometric-series acceptance.** Let recursion happen, accept the gas blow-up (~200k extra per level). Ruled out for user-facing swaps on Miliarium.
 
-Decision to be recorded at D1 design session.
+**Decision (2026-04-20 at D1.3): option (a) — trusted-router check on `params.router == address(this)`.** At the top of `AureumFeeRoutingHook.onAfterSwap`, the guard is `if (params.router == address(this)) return (true, params.amountCalculatedRaw);`. When the hook issues its own internal `Vault.swap`, the Vault sets `params.router = msg.sender = address(this)` in the re-entrant `onAfterSwap` fire; the guard short-circuits before any settlement logic re-runs. External callers cannot spoof the router (the Vault assigns it from `msg.sender`), so the guard is safe.
+
+**Upstream precedent:** same trusted-router pattern used by Balancer V3's `StableSurgeHook` and other in-house hooks that initiate their own Vault operations. No new mechanism; no transient-storage guard needed.
+
+**Gas envelope:** one immutable-compare on every swap; negligible relative to the 200k+ envelope OQ-1 already flagged for the non-recursive fee-routing path. `enableHookAdjustedAmounts = false` on this hook (per D1.2), so the second return value (`hookAdjustedAmountCalculatedRaw`) is ignored by the Vault — passing `params.amountCalculatedRaw` unchanged is the upstream-idiomatic no-op per `BaseHooks`.
 
 ### D11 — Rate Provider resolution for svZCHF and sUSDS
 
 Resolves **D-D5** (left `D-D-open` at planning time).
 
-Both tokens are yield-bearing vault shares whose on-chain exchange rate is authoritative. Bodensee is a weighted pool with Rate Providers per non-AuMM token. Need: canonical addresses of the Rate Provider contracts (or confirmation that the token itself exposes a Balancer-compatible `getRate()`).
+Context: der Bodensee is a Balancer V3 WeightedPool registered with a Rate Provider per non-AuMM token. Rate Providers must implement `IRateProvider.getRate() external view returns (uint256)` — 18-decimal fixed-point, legacy interface (no rounding direction, no error return; see `lib/balancer-v3-monorepo/pkg/interfaces/contracts/solidity-utils/helpers/IRateProvider.sol`). Both non-AuMM Bodensee tokens are ERC-4626 vault shares whose on-chain exchange rate is authoritative — but ERC-4626's `convertToAssets` is not the same entry point as `IRateProvider.getRate()`, so a separate Rate Provider contract is needed unless the vault happens to also expose `getRate()`.
 
-Token addresses (per `/Users/janus/code/aumm-site/07a_tokens.md`):
-- svZCHF — `0xE5F130253fF137f9917C0107659A4c5262abf6b0`
-- sUSDS  — `0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD`
+Probe methodology (at D1.4): `cast call <addr> "getRate()(uint256)" --rpc-url $MAINNET_RPC_URL` against each candidate. Success with an 18-decimal return → self-Rate-Provider. Revert → need an external Rate Provider contract.
 
-Decision to be recorded at D1 design session.
+**Probe results (2026-04-20):**
+
+| Token | ERC-4626 vault | vault `getRate()` | External Rate Provider | RP `getRate()` |
+|---|---|---|---|---|
+| svZCHF | `0xE5F130253fF137f9917C0107659A4c5262abf6b0` | reverts | `0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c` | `1009995744722991034` (~1.010e18) |
+| sUSDS  | `0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD` | reverts | `0x1195be91e78ab25494c855826ff595eef784d47b` | `1093862763241753131` (~1.094e18) |
+
+Both vaults revert on `getRate()`, as expected for plain ERC-4626 implementations. The external Rate Providers return sane 18-decimal rates consistent with expected accruals (svZCHF ~1.01 ZCHF per share; sUSDS ~1.09 USDS per share reflecting Sky Savings Rate accrual since vault deployment).
+
+**Decision (2026-04-20 at D1.4):**
+- svZCHF Rate Provider: `0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c`
+- sUSDS Rate Provider: `0x1195be91e78ab25494c855826ff595eef784d47b`
+
+Both are existing mainnet-deployed contracts, used by existing Balancer V3 pools. **No wrapper vendored into Aureum's `src/` tree, zero new audit surface.** The `ERC4626RateProvider.sol` contract in the Balancer submodule is test-only (`lib/balancer-v3-monorepo/pkg/vault/contracts/test/ERC4626RateProvider.sol`); had either probe reverted without an existing deployed alternative, vendoring that test contract into `src/vault/` — and owning its audit — would have been the fallback.
+
+**Provenance:**
+- svZCHF Rate Provider: sourced from `aumm-site/07a_tokens.md` row after the `fc3f587` spec fix that replaced the prior stale link (which pointed at the vault address instead of the Rate Provider).
+- sUSDS Rate Provider: sourced via Etherscan from an existing Balancer V3 mainnet pool's `TokenConfig.rateProvider` for the sUSDS token slot, after local grep in the submodule returned no matches for sUSDS (expected — submodule pinned at Dec 2024, sUSDS pools post-date it). `aumm-site/07a_tokens.md` sUSDS row subsequently corrected at `528ea35` with the same fix shape as `fc3f587` for svZCHF.
+
+**Downstream use:** both addresses are consumed by the "Der Bodensee deployment parameters" block below (Rate Providers field, currently marked `pending **D11**` — will be filled at D1.5) and by the Bodensee deployment script under `script/` at Stage D5.
 
 ### D12 — Retrofit approach for `AureumProtocolFeeController` upstream setter
 
@@ -66,13 +87,26 @@ Planning default is R1 per D-D15's "smallest diff, clearest audit story" prefere
 
 ## Der Bodensee deployment parameters (for D7 fork test)
 
-- Pool type: WeightedPool (Balancer V3 standard)
-- Tokens / weights: AuMM 40% / sUSDS 30% / svZCHF 30%
-- Genesis swap fee: `0.0075e18` (0.75%)
-- Fee band: `[0.001e18, 0.01e18]` (0.10% – 1.00%), governance-adjustable per **OQ-11**
-- Hook: **none** (Bodensee is the routing target, not a routed-from pool)
-- Yield-fee collection on Bodensee: **disabled** per **D-D9** / OQ-2 — `collectAggregateFees(DER_BODENSEE_POOL)` reverts `BodenseeYieldCollectionDisabled()`
-- Rate Providers: pending **D11**
+- **Pool name:** `"der-Bodensee"`
+- **Pool symbol:** `"BODENSEE"`
+- **Pool type:** WeightedPool (Balancer V3 standard; `lib/balancer-v3-monorepo/pkg/pool-weighted/contracts/WeightedPool.sol`)
+- **Tokens / weights:** AuMM 40% / sUSDS 30% / svZCHF 30%
+- **Token order at registration:** sorted ascending by address per Balancer V3 convention (concrete order fixed at Stage D5 deployment-script time against the actual deployed AuMM address)
+- **Rate Providers** (per **D11**):
+    - AuMM: `address(0)` (not yield-bearing; identity rate)
+    - sUSDS: `0x1195be91e78ab25494c855826ff595eef784d47b`
+    - svZCHF: `0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c`
+- **yieldFeeExempt flags:** AuMM = true; sUSDS = false; svZCHF = false. Note per **D-D9** / **OQ-2**: yield-fee collection on Bodensee is disabled at the controller level regardless — these flags are cosmetic in the Aureum setup.
+- **Hook:** `address(0)` (Bodensee is the routing *target*, not a routed-from pool)
+- **Genesis swap fee:** `0.0075e18` (0.75%)
+- **Swap-fee band:** `[0.001e18, 0.01e18]` (0.10% – 1.00%), governance-adjustable per **OQ-11** (Bodensee-class band)
+- **Swap-fee manager:** governance Safe multisig (same as Authorizer per CLAUDE.md §2)
+- **`protocolSwapFeePercentage` override at registration:** `0` (cosmetic — `AureumProtocolFeeController.registerPool` pins the swap-side aggregate to `_globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50e16` regardless of this field, per the D0.5 retrofit at `e5dc936` and **D-D15** saturate-not-bypass).
+- **Yield-fee collection on Bodensee:** **disabled** per **D-D9** / **OQ-2** — `collectAggregateFees(DER_BODENSEE_POOL)` reverts `BodenseeYieldCollectionDisabled()`.
+- **Pause manager:** governance Safe multisig (same as Authorizer per CLAUDE.md §2).
+- **Pool creator:** `address(0)` — no creator fees, ever (per **D-D15** and `aumm-specs` §xxix no-creator-fees constitutional rule).
+- **Unbalanced-liquidity operations:** **enabled** (fee-routing deposits into Bodensee are one-sided `addLiquidity` in svZCHF per **OQ-2**; disabling would break the fee router).
+- **Swap-enabled at registration:** true (default).
 
 ---
 
@@ -85,3 +119,9 @@ Fix forward: fenced code blocks in chat (not indented plain text) for OLD conten
 ### D14 — Apply-all-or-nothing rule in Cursor multi-replacement prompts
 Surfaced at **D0.5.2**. Cursor's match-then-apply is atomic across all OLD blocks in a single prompt: one mismatch → zero replacements applied, even for OLDs that matched. Recovery requires a fresh prompt for the mismatched OLD first, then a re-issue of the remaining (still-matching) OLDs in a follow-up prompt. Both rounds visible in the Stage D commit history (the R5 scalpel as 5A/5B/5C, then R1–R4 re-issued).
 Implication for future Cursor prompts: prefer smaller independent rounds when the replacements are not truly co-landing. For truly coupled edits (cross-file rename, coordinated interface change), keep them batched; otherwise split. The smallest-safe-unit bounds the blast radius of a single OLD mismatch. This document's own Stage D wrap-up was composed under the new discipline — one OLD per Cursor round.
+
+### D15 — D13 recurrence: fenced-code-block mitigation is insufficient for blank lines
+Surfaced at **D1.4** (NEW-side) and **D1.5** (OLD-side). D13's original fix-forward ("fenced code blocks in chat preserve whitespace through paste") proved insufficient in two new failure modes observed 2026-04-20. (i) **NEW block with many interior blanks.** At D1.4, a 16-line NEW block with 8 interior blank lines (D11 rewrite) landed content-correct but with all 8 blanks collapsed in transit; the fenced code block did not protect. Recovered via a single `awk` pass anchored on content patterns: `awk '/^<anchor>/ { print ""; print; next } { print }' file > file.tmp && mv file.tmp file` — repeated for each collapsed blank, or combined into one awk script with multiple patterns.
+(ii) **OLD block with any interior blank.** At D1.5, a single interior blank in an OLD block (between `## Der Bodensee` heading and its first bullet) collapsed in transit, causing Cursor to correctly reject the entire replacement under the **D14** atomic rule (byte-mismatch). The D14 rule held — Cursor refused the whole prompt, no partial application — but the collision-surface lesson is that *any* interior blank in OLD is a rejection risk, not just in NEW.
+**Refined fix-forward:** scope OLD and NEW to contiguous blank-free ranges. If a change necessarily spans blanks, options are: (a) split into per-paragraph sub-rounds with no interior blanks in any single OLD/NEW; (b) accept the collapsed paste and restore blanks via terminal `awk` / `sed` anchored on content patterns; (c) for append-only additions at end-of-section, use a `cat >> file << 'EOF' … EOF` heredoc — deterministic, D13-immune, shell-only, no chat-rendering in the path. This D15 entry itself is being appended via option (c).
+Fenced code blocks in chat remain preferable to indented plain text for preserving *characters* (the paste is otherwise byte-perfect), but they do not protect *blank lines* through the browser → clipboard → Cursor pipeline. The authoritative truth remains the terminal integrity check per **§8e**.
