@@ -1,6 +1,6 @@
 # CLAUDE.md — Operational Context for Aureum (`aumm-deploy`)
 
-> **Read this on every session start.** This file is the orientation layer for any Claude instance (Claude Code, Claude in chat, Claude in Chrome) that touches this repo. It captures what Aureum is, what's locked, the working discipline, and why the rules are shaped the way they are. The stage plans (`docs/STAGE_*_PLAN.md`) are the operational detail; this file is the framing.
+> **Read this on every session start.** This file is the orientation layer for Claude Code sessions that touch this repo. It captures what Aureum is, what's locked, the working discipline, and why the rules are shaped the way they are. The stage plans (`docs/STAGE_*_PLAN.md`) are the operational detail; this file is the framing.
 
 ---
 
@@ -248,7 +248,6 @@ This rule is structural. File writes by Claude Code were the proximate source of
 * **Claude Code — planner and auditor.** Reads repo state, authors one baby-step sub-step prompt at a time for Cursor, hands the prompt to the user. After Cursor executes, reads the result (via the user pasting `cat` / `grep` / `git diff` / `forge build` / `slither` output from terminal), validates against the stage plan, and either signs off and authors the next sub-step prompt or authors a fix prompt. Claude Code also drafts commit messages as part of sub-step prompts and drafts the exact terminal commands (git, forge, slither) the user needs to run for verification.
 * **Cursor — executor.** Receives a single-sub-step prompt, generates the content, saves the target file(s), stops. Does not chain, does not commit, does not run forge or git. See `.cursorrules` "Cursor operation scope — executor under Claude Code planning" for the full executor rules.
 * **User (Sagix) — conductor.** Passes prompts from Claude Code to Cursor and pastes Cursor's results plus terminal output back to Claude Code. Runs all git mutations (`add`, `commit`, `push`, `tag`), all forge commands, and all slither runs in their own terminal. Owns the final decision when Claude Code and Cursor disagree.
-* **Chat-Claude — out of the operational loop.** Not a default reviewer, not a drafter, not an auditor. Present only for (a) stage-planning sessions that produce new `STAGE_X_PLAN.md` files, and (b) explicit escalations the user chooses to raise — for example when Claude Code's audit and Cursor's output disagree and neither can resolve it, or when a §8b / §8c action surfaces a judgment call the user wants a third perspective on.
 
 ### Sub-step prompt authoring (Claude Code's job)
 
