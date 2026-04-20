@@ -177,3 +177,50 @@ cycle possible.
 ### Applies to
 
 All implementation stages (C through R).
+
+## Scope discipline during sub-step execution
+
+When Cursor receives a prompt in the Claude Code sub-step template (see
+CLAUDE.md §8e.1), the prompt is the contract. Cursor's job is transcription
+plus the named file edits, nothing else.
+
+1. **Do exactly what `Goal` and `Files` specify.** Do not touch other files,
+   even if an adjacent file looks related, stale, or "obviously" in need of
+   the same change. Adjacent edits are a separate sub-step the user has not
+   asked for yet.
+
+2. **`Out of scope` bullets are hard constraints, not hints.** If the
+   prompt says "do not add a constructor guard," do not add one, even if
+   the code looks safer with one. That decision was made upstream in the
+   plan; re-litigating it here is the C14 failure mode.
+
+3. **Ambiguity stops execution.** If the prompt is missing information
+   (signature unclear, target file has unexpected existing content,
+   `Must match` bullet contradicts the current file), do NOT:
+     - guess the missing piece,
+     - pick "the most reasonable" interpretation,
+     - extrapolate from surrounding code,
+     - invent scaffolding to bridge the gap.
+   Instead: stop, describe the ambiguity to the user in one paragraph, and
+   wait. The user will request a revised sub-step prompt from Claude Code.
+   Design decisions are not made inside Cursor.
+
+4. **No forward planning.** Do not suggest "the next step would be…", do
+   not stub out files the current sub-step does not name, do not leave
+   `TODO` comments anticipating future sub-steps. The next sub-step comes
+   through its own prompt from Claude Code.
+
+5. **No design commentary in file content.** Rationale, tradeoffs, and
+   cross-references belong in `STAGE_X_NOTES.md`, authored through a
+   separate sub-step. Source files carry code plus minimum-viable Natspec
+   only; never a paragraph explaining why this approach was chosen.
+
+6. **Stop at `Stop after`.** The sub-step ends when the named files are
+   saved. Do not run builds, do not run tests, do not stage with git, do
+   not suggest the user do so — the `Verify` block already lists the
+   commands the user will run in terminal.
+
+The underlying principle: Cursor executes narrow, pre-decided edits.
+Anything that requires a judgment call larger than "which whitespace
+matches the surrounding file" belongs to Claude Code and the stage plan,
+not to Cursor.

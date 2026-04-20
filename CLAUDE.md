@@ -268,6 +268,49 @@ Every prompt Claude Code hands the user for Cursor must be:
    * **✅ Proceed** — confirms the sub-step landed clean, drafts the commit message if the sub-step closes a plan-defined work unit, drafts the next sub-step prompt for Cursor.
    * **❌ Fix** — identifies what's wrong, drafts a fix-prompt for Cursor. The fix-prompt follows the same one-sub-step discipline; "fix A and B" chains and is not allowed.
 
+### 8e.1 Sub-step prompt template (Claude Code → Cursor)
+
+Every Cursor-targeted execution prompt drafted by Claude Code uses the fixed
+shape below. Cursor receives a filled template, not prose. If a field does
+not apply, Claude Code writes `none` explicitly rather than omitting it.
+
+```
+Plan ref: <stage><step> e.g. D3.2
+Plan lines: STAGE_D_PLAN.md:L<from>-L<to>
+Goal: <one sentence, no tradeoffs, no alternatives>
+Files: <path> (create | edit)
+<path> (create | edit)
+Must match: - <signature / import / pragma / constant / invariant>
+- <...>
+Out of scope: - <explicit exclusions; "while we're here" candidates>
+- <adjacent edits the user or Cursor might be tempted to make>
+Stop after: <exact final state; last file saved; no commit, no build>
+Verify: $ wc -l <path>
+$ shasum -a 256 <path>
+$ cat <path>
+$ grep -c "—" <path>
+<plus any step-specific grep from the plan>
+```
+
+Rules governing the template:
+
+* **One sub-step per prompt.** Chaining (`D3.2 and D3.3`) is the precise
+  failure mode §6 outlaws; the template has one `Plan ref` field, singular.
+* **`Must match` is the contract.** Every bullet is a property Cursor can
+  check against the saved file without interpretation. No soft guidance
+  ("try to keep it short"), no style notes that aren't load-bearing.
+* **`Out of scope` is not optional.** If Claude Code cannot name at least
+  one plausible scope-creep risk, the sub-step is probably too large — split
+  it in the plan before prompting.
+* **`Stop after` ends at file-save.** Build, test, lint, slither, git are
+  user-terminal actions per §8a / §8b, not Cursor actions per §7.
+* **`Verify` commands are the literal strings the user will run.** Not a
+  description, not a suggestion — the exact shell line, so the user can
+  paste without editing.
+
+Claude Code does not add fields beyond this shape. Extra fields invite
+prose, and prose invites Cursor to plan.
+
 ### Why this division
 
 * **Token economics.** Cursor is a subscription-paid tool the user already owns; routing content generation through it avoids metered-API consumption on large file content. Claude Code's token budget goes to planning and auditing, which is where its multi-step reasoning is most valuable.
