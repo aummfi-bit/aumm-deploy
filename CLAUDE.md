@@ -348,34 +348,32 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-19, mid-Stage D, post-D0. Stage C remains complete at `stage-c-complete` (commit `5342126`). Stage D workflow inversion landed today (see §§6, 7, 8e).
+**Last update:** 2026-04-20, mid-Stage D, post-D2. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D2 landed on `stage-d`; D3 next.
 
-**Branch:** `stage-d` is the working branch, at `b08abdb` (D0 complete — `STAGE_D_PLAN.md` + `STAGE_D_NOTES.md` scaffold). `main` is at `e5ceb7a` (C9 log-completion commit on top of the Stage C tag). Merge of `stage-d` → `main` is deferred to D9 per D-D14.
+**Branch:** `stage-d` is the working branch, at `20b58d7` (D2 Completion Log commit on top of D2 interface commit `6aab7ac`). `main` is at `e5ceb7a` (C9 log-completion commit on top of the Stage C tag); unchanged since `stage-d` branched from it at D0. Merge of `stage-d` → `main` is deferred to D9 per D-D14.
 
 **Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Previous: `stage-b-complete` (commit `b627a92`, 2026-04-14). Next expected tag: `stage-d-complete` at D9.
 
 **Stage D position:**
 
-* D0 — complete (`b08abdb`). `stage-d` branched from `main` at `e5ceb7a`; plan and notes scaffolded; baseline `forge build` cache-hit green against 30-file / 92-test prereq state.
-* D1 — next. Design-only sub-step: read OQ-1 / OQ-2 / OQ-11 in `FINDINGS.md`, read `IHooks.sol` surface in the Balancer submodule, resolve D-D4 (recursion guard) as D10, resolve D-D5 (Rate Providers) as D11, record Bodensee deployment parameters in notes. No Solidity.
-* D2 through D9 — not started. See `docs/STAGE_D_PLAN.md` for full sub-step breakdown.
+* D0 — complete (`b08abdb`). `stage-d` branched from `main` at `e5ceb7a`; `STAGE_D_PLAN.md` + `STAGE_D_NOTES.md` scaffolded; baseline `forge build` cache-hit green against the 30-file / 92-test prereq state.
+* D0.5 — complete (`e5dc936`). `AureumProtocolFeeController` retrofitted per D-D15: constructor pins `_globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE (50e16)`, `SplitIsImmutable` reverts both setters, `registerPool` pins swap-side aggregate unconditionally (closes factory-level bypass). 28/28 green with 4 invariants at 256 × 32768 runs, 0 reverts / 0 discards. D13 + D14 Cursor-interaction findings logged in NOTES.
+* D1 — complete (`a0513c0`, Completion Log `bdf72d7`). **D10**: D-D4 resolved to trusted-router early-return on `params.router == address(this)` (upstream-idiomatic per `StableSurgeHook`). **D11**: D-D5 resolved via live `cast call getRate()` probes — svZCHF Rate Provider `0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c`, sUSDS Rate Provider `0x1195be91e78ab25494c855826ff595eef784d47b` (both existing mainnet deployments, zero audit surface added). Bodensee deployment block expanded (pool name `"der-Bodensee"` hyphenated for upstream-convention safety, symbol `"BODENSEE"`, pause manager = governance Safe, unbalanced-liquidity enabled, `protocolSwapFeePercentage` cosmetic per D-D15). **D15** logs two new D13 failure modes (NEW-side 8-blank collapse; OLD-side 1-blank rejection) and the refined fix-forward (blank-free OLD/NEW; awk/sed restoration; heredoc append).
+* D2 — complete (`6aab7ac`, Completion Log `20b58d7`). `src/fee_router/IAureumFeeRoutingHook.sol` (191 lines) — thin interface, does not inherit Balancer V3 `IHooks`, imports only OZ `IERC20`. 4 events, 6 errors (`RecursiveHookCall` omitted per D10 — unreachable under trusted-router early-return), 3 external primitives per D-D2 Option A (`routeYieldFee` / `routeGovernanceDeposit` / `routeIncendiaryDeposit`, each gated to a single sanctioned caller), 5 immutable view getters (`SV_ZCHF`, `DER_BODENSEE`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `AUMM`). `forge build` green. **D16** logged in NOTES (D-D2 Option A resolution).
+* D3 — next. Implementation contract `src/fee_router/AureumFeeRoutingHook.sol`: inherits Balancer V3 `BaseHooks` and `IAureumFeeRoutingHook`; constructor pins immutables per D11; `onAfterSwap` fires trusted-router early-return (D10) or converts fee → svZCHF → one-sided addLiquidity into der-Bodensee; three external primitives route yield / governance / Incendiary deposits through the same `_swapFeeAndDeposit` core. Plan sub-steps D3.1 through D3.5 at `docs/STAGE_D_PLAN.md` L344-405.
+* D4 through D9 — not started. See `docs/STAGE_D_PLAN.md` Completion Log for the full sub-step list.
 
-**Open items flagged before D1 execution** (from the 2026-04-19 BAL v3 setup clarification session):
+**Open items flagged before D3 execution:** none outstanding. D10 / D11 / D15 / D16 resolve the design-level questions (D-D2, D-D4, D-D5) that D3 depends on. D13 Cursor-interaction discipline is a live operational concern, not a blocker.
 
-* FINDINGS OQ-1 wording: choose between (X) "50/50 explicit" and (Y) "100% of the protocol-extractable share, up to the Vault's 50% cap." The fee controller currently implements (Y) by upstream inheritance; the spec shorthand across docs reads (X).
-* Controller model: options (1) upstream setter preserved (current Stage B behavior), (2) setter accepts only `50e16`, (3) no setter / immutable at registration. CLAUDE.md §2 "hard rule" language reads as (3); Stage B code is (1) by inheritance.
-* If option (3): retrofit placement — own commit batch + tag pre-Stage-D, or as a Stage D "D0.5" pre-flight.
+**How to resume (Stage D — D3 implementation):**
 
-These decisions sit upstream of D1.1 and should be resolved before D1.1 reads OQ-1.
-
-**How to resume (Stage D — Fee-routing hook + der Bodensee):**
-
-1. Resolve the three open items above if not yet decided.
-2. Open a Claude Code session pointed at this repo. Claude Code reads `docs/STAGE_D_PLAN.md`, `docs/STAGE_D_NOTES.md`, `docs/FINDINGS.md` OQ-1 / OQ-2 / OQ-11, and this file.
-3. Claude Code authors the D1.1 sub-step prompt (one baby step) for Cursor, paired with the terminal audit commands.
-4. User passes the prompt to Cursor; Cursor executes and stops; user pastes results plus terminal output back to Claude Code.
-5. Claude Code audits, verdicts ✅ or ❌, and either authors D1.2's prompt or a fix prompt for D1.1. Loop.
-6. All git mutations run in the user's terminal. All forge / slither runs in the user's terminal. Claude Code never touches disk.
+1. Read `docs/STAGE_D_PLAN.md` L344-405 (D3.1 through D3.5) in full. Cross-read NOTES D10 (trusted-router early-return shape), D11 (Rate Provider addresses), D15 (Cursor-interaction fix-forward for multi-blank files), D16 (three-primitive external shape).
+2. Confirm `stage-d` tip matches the §11 branch-state line above (or its immediate docs-commit descendant if §11 has been re-updated mid-session). `git log --oneline -1` against `stage-d` is the canonical check.
+3. Open a Claude Code session pointed at this repo. Claude Code reads this file, `docs/STAGE_D_PLAN.md`, `docs/STAGE_D_NOTES.md`, `docs/FINDINGS.md` OQ-1 / OQ-2 / OQ-11, and `src/fee_router/IAureumFeeRoutingHook.sol`.
+4. Claude Code authors the D3.1 sub-step prompt (one baby step) for Cursor, paired with the terminal audit commands.
+5. User passes the prompt to Cursor; Cursor executes and stops; user pastes results plus terminal output back to Claude Code.
+6. Claude Code audits, verdicts ✅ or ❌, and either authors D3.2's prompt or a fix prompt for D3.1. Loop.
+7. All git mutations run in the user's terminal. All forge / slither runs in the user's terminal. Claude Code never touches disk.
 
 ### Housekeeping notes
 
