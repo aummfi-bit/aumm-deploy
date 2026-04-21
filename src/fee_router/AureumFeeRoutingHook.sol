@@ -141,10 +141,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         token is supplied with no swap pool.
     error UnsupportedFeeToken(IERC20 feeToken);
 
-    /// @notice Reverts routing primitives until the svZCHF swap and
-    ///         der-Bodensee deposit pipeline is implemented.
-    error RoutingNotYetImplemented();
-
     // -------------------------------------------------------------------------
     // Impl-side events
     // -------------------------------------------------------------------------
@@ -496,9 +492,40 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
 
     /// @inheritdoc IAureumFeeRoutingHook
     function routeIncendiaryDeposit(
-        IERC20,
-        uint256
-    ) external pure override returns (uint256) {
-        revert RoutingNotYetImplemented();
+        IERC20 token,
+        uint256 amount
+    ) external override returns (uint256 bptMinted) {
+        if (incendiaryModule == address(0)) revert ModuleNotSet();
+        if (msg.sender != incendiaryModule) revert UnauthorizedCaller(msg.sender);
+        if (amount == 0) revert ZeroAmount();
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        bytes memory result = _vault.unlock(
+            abi.encodeCall(
+                this._routeIncendiaryDepositUnlocked,
+                (msg.sender, token, amount)
+            )
+        );
+        bptMinted = abi.decode(result, (uint256));
+        emit IncendiaryDepositRouted(address(token), amount, bptMinted);
+    }
+
+    /// @notice Unlock callback for routeIncendiaryDeposit. onlyVault;
+    ///         reached exclusively via IVault.unlock from
+    ///         routeIncendiaryDeposit. `swapPool == address(0)` is the
+    ///         fast-path-only contract per D17: valid iff `token` is
+    ///         SV_ZCHF or ZCHF; any other token reverts
+    ///         `UnsupportedFeeToken` inside `_swapFeeAndDeposit`.
+    function _routeIncendiaryDepositUnlocked(
+        address caller,
+        IERC20 token,
+        uint256 amount
+    ) external onlyVault returns (uint256 bptMinted) {
+        bptMinted = _swapFeeAndDeposit(
+            token,
+            amount,
+            address(0),
+            caller
+        );
     }
 }
