@@ -52,7 +52,8 @@ import { AureumVaultFactory } from "../src/vault/AureumVaultFactory.sol";
  *      fall back to zero values):
  *
  *        GOVERNANCE_MULTISIG       address  — Aureum authorizer's sole authority
- *        DER_BODENSEE_POOL         address  — fee controller's recipient pool
+ *        DER_BODENSEE_POOL         address  — fee controller's Bodensee pool identity (D-D9)
+ *        FEE_ROUTING_HOOK          address  — fee controller's B10 withdrawal recipient (D-D7)
  *        SALT                      bytes32  — CREATE3 salt for the Vault
  *        PAUSE_WINDOW_DURATION     uint256  — Vault pause window (seconds)
  *        BUFFER_PERIOD_DURATION    uint256  — Vault buffer period (seconds)
@@ -124,6 +125,7 @@ contract DeployAureumVault is Script {
 
         address governanceMultisig = vm.envAddress("GOVERNANCE_MULTISIG");
         address derBodenseePool = vm.envAddress("DER_BODENSEE_POOL");
+        address feeRoutingHook = vm.envAddress("FEE_ROUTING_HOOK");
         bytes32 salt = vm.envBytes32("SALT");
         uint32 pauseWindowDuration = uint32(vm.envUint("PAUSE_WINDOW_DURATION"));
         uint32 bufferPeriodDuration = uint32(vm.envUint("BUFFER_PERIOD_DURATION"));
@@ -134,15 +136,14 @@ contract DeployAureumVault is Script {
         // The factory stores these as immutables and reverts in `create()`
         // if the runtime-supplied creation code does not hash to the stored
         // value. Computing them here once from `type(X).creationCode` means
-        // the script and the factory agree by construction.
+        // the script and the factory agree by construction. Inlined
+        // (rather than via intermediate `bytes memory` locals) to keep the
+        // Yul stack-frame size of _deploy within the IR optimiser's limit
+        // after the D-D7 addition of a third constructor argument.
 
-        bytes memory vaultCreationCode = type(Vault).creationCode;
-        bytes memory vaultAdminCreationCode = type(VaultAdmin).creationCode;
-        bytes memory vaultExtensionCreationCode = type(VaultExtension).creationCode;
-
-        bytes32 vaultCreationCodeHash = keccak256(vaultCreationCode);
-        bytes32 vaultAdminCreationCodeHash = keccak256(vaultAdminCreationCode);
-        bytes32 vaultExtensionCreationCodeHash = keccak256(vaultExtensionCreationCode);
+        bytes32 vaultCreationCodeHash = keccak256(type(Vault).creationCode);
+        bytes32 vaultAdminCreationCodeHash = keccak256(type(VaultAdmin).creationCode);
+        bytes32 vaultExtensionCreationCodeHash = keccak256(type(VaultExtension).creationCode);
 
         // -- 2. Predict the factory's eventual address --------------------
         // The factory will be the N-th CREATE from `deployer`, where N is
@@ -182,7 +183,8 @@ contract DeployAureumVault is Script {
         //     immutable; it does not call into the Vault.
         aureumFeeController = new AureumProtocolFeeController(
             IVault(predictedVault),
-            derBodenseePool
+            derBodenseePool,
+            feeRoutingHook
         );
 
         // 4c. AureumVaultFactory (nonce N+2, must equal predictedFactory)
@@ -206,9 +208,9 @@ contract DeployAureumVault is Script {
         aureumFactory.create(
             salt,
             predictedVault,
-            vaultCreationCode,
-            vaultExtensionCreationCode,
-            vaultAdminCreationCode
+            type(Vault).creationCode,
+            type(VaultExtension).creationCode,
+            type(VaultAdmin).creationCode
         );
 
         // -- 5. Final sanity check ----------------------------------------

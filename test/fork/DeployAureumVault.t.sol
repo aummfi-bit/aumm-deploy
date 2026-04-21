@@ -27,7 +27,7 @@ import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
  *      Follows the Stage A Sanity.t.sol convention of taking the fork URL
  *      from the CLI rather than calling `vm.createSelectFork` in code.
  *
- * @dev The seven env vars that `DeployAureumVault` reads are set in `setUp`
+ * @dev The env vars that `DeployAureumVault` reads are set in `setUp`
  *      via `vm.setEnv`, so the test does not depend on shell state beyond
  *      the fork URL. Placeholder values mirror the shapes documented in
  *      `.env.example`.
@@ -39,6 +39,7 @@ contract DeployAureumVaultForkTest is Test {
 
     address internal constant GOVERNANCE_MULTISIG = address(uint160(uint256(keccak256("govMultisig"))));
     address internal constant DER_BODENSEE_POOL = address(uint160(uint256(keccak256("derBodenseePool"))));
+    address internal constant FEE_ROUTING_HOOK = address(uint160(uint256(keccak256("feeRoutingHook"))));
     bytes32 internal constant SALT = bytes32(uint256(1));
 
     uint256 internal constant PAUSE_WINDOW_DURATION = 4 * 365 days;
@@ -74,6 +75,8 @@ contract DeployAureumVaultForkTest is Test {
         vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNANCE_MULTISIG));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("DER_BODENSEE_POOL", vm.toString(DER_BODENSEE_POOL));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("FEE_ROUTING_HOOK", vm.toString(FEE_ROUTING_HOOK));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("SALT", vm.toString(SALT));
         /// forge-lint: disable-next-line(unsafe-cheatcode)

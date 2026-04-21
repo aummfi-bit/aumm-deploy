@@ -95,6 +95,11 @@ contract AureumProtocolFeeControllerTest is Test {
     // for all protocol fee withdrawals. Matches what the deploy script will use
     // during Stage B fork tests (Stage B decision B5 in STAGE_B_PLAN.md).
     address internal constant DER_BODENSEE_POOL_PLACEHOLDER = address(0xDEAD);
+    // D-D7: Stage D placeholder for the fee-routing hook — the immutable B10
+    // withdrawal-recipient target (protocol fees route to the hook, not to
+    // Bodensee directly). Separate from DER_BODENSEE_POOL per Option A
+    // (two-immutables architecture) — STAGE_D_NOTES.md D23.
+    address internal constant FEE_ROUTING_HOOK_PLACEHOLDER = address(0xBEEF);
 
     function setUp() public {
         // Deploy a real AureumAuthorizer so the mocked Vault's getAuthorizer()
@@ -118,11 +123,12 @@ contract AureumProtocolFeeControllerTest is Test {
         // Aureum authorizer we just deployed.
         _mockGetAuthorizer(address(authorizer));
 
-        // Deploy the controller with the mock Vault and the Stage B placeholder
-        // for the Bodensee destination.
+        // Deploy the controller with the mock Vault, the Stage B Bodensee
+        // pool-identity placeholder, and the Stage D fee-routing hook placeholder.
         controller = new AureumProtocolFeeController(
             IVault(mockVault),
-            DER_BODENSEE_POOL_PLACEHOLDER
+            DER_BODENSEE_POOL_PLACEHOLDER,
+            FEE_ROUTING_HOOK_PLACEHOLDER
         );
 
         // Deploy the invariant handler and register it as the fuzz target.
@@ -243,8 +249,11 @@ contract AureumProtocolFeeControllerTest is Test {
     // Spec 3 cannot proceed — this is the foundation they build on.
 
     function test_setUp_constructorWiringAndGetAuthorizerMockResolve() public view {
-        // 1. The immutable Bodensee destination is what we constructed with.
+        // 1. The immutable Bodensee pool-identity is what we constructed with.
         assertEq(controller.DER_BODENSEE_POOL(), DER_BODENSEE_POOL_PLACEHOLDER);
+
+        // 1b. The immutable fee-routing hook target (B10 recipient per D-D7).
+        assertEq(controller.FEE_ROUTING_HOOK(), FEE_ROUTING_HOOK_PLACEHOLDER);
 
         // 2. The inherited SingletonAuthentication.getVault() returns the mock
         //    Vault address we passed into the constructor.
@@ -265,14 +274,19 @@ contract AureumProtocolFeeControllerTest is Test {
 
     function test_constructor_revertsOnZeroBodensee() public {
         vm.expectRevert(AureumProtocolFeeController.ZeroBodenseeAddress.selector);
-        new AureumProtocolFeeController(IVault(mockVault), address(0));
+        new AureumProtocolFeeController(IVault(mockVault), address(0), FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
-    function test_withdrawProtocolFees_revertsIfRecipientNotBodensee(
+    function test_constructor_revertsOnZeroHook() public {
+        vm.expectRevert(AureumProtocolFeeController.ZeroHookAddress.selector);
+        new AureumProtocolFeeController(IVault(mockVault), DER_BODENSEE_POOL_PLACEHOLDER, address(0));
+    }
+
+    function test_withdrawProtocolFees_revertsIfRecipientNotFeeRoutingHook(
         address pool,
         address wrongRecipient
     ) public {
-        vm.assume(wrongRecipient != DER_BODENSEE_POOL_PLACEHOLDER);
+        vm.assume(wrongRecipient != FEE_ROUTING_HOOK_PLACEHOLDER);
 
         // The authenticate modifier resolves first (calling the real authorizer
         // via the mocked Vault), and we want that check to pass so the fuzzer
@@ -282,30 +296,38 @@ contract AureumProtocolFeeControllerTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(
                 AureumProtocolFeeController.InvalidRecipient.selector,
-                DER_BODENSEE_POOL_PLACEHOLDER,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
                 wrongRecipient
             )
         );
         controller.withdrawProtocolFees(pool, wrongRecipient);
     }
 
-    function test_withdrawProtocolFeesForToken_revertsIfRecipientNotBodensee(
+    function test_withdrawProtocolFeesForToken_revertsIfRecipientNotFeeRoutingHook(
         address pool,
         address wrongRecipient,
         address token
     ) public {
-        vm.assume(wrongRecipient != DER_BODENSEE_POOL_PLACEHOLDER);
+        vm.assume(wrongRecipient != FEE_ROUTING_HOOK_PLACEHOLDER);
 
         vm.prank(multisig);
 
         vm.expectRevert(
             abi.encodeWithSelector(
                 AureumProtocolFeeController.InvalidRecipient.selector,
-                DER_BODENSEE_POOL_PLACEHOLDER,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
                 wrongRecipient
             )
         );
         controller.withdrawProtocolFeesForToken(pool, wrongRecipient, IERC20(token));
+    }
+
+    // D-D9: single-pool collectAggregateFees reverts for the Bodensee pool
+    function test_collectAggregateFees_revertsOnBodenseePool() public {
+        vm.expectRevert(
+            AureumProtocolFeeController.BodenseeYieldCollectionDisabled.selector
+        );
+        controller.collectAggregateFees(DER_BODENSEE_POOL_PLACEHOLDER);
     }
 
     // Creator-fee revert stubs — all four, all cold, all callers
@@ -402,7 +424,7 @@ contract AureumProtocolFeeControllerTest is Test {
         _mockGetPoolTokens(pool, emptyTokens);
 
         vm.prank(multisig);
-        controller.withdrawProtocolFees(pool, DER_BODENSEE_POOL_PLACEHOLDER);
+        controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
     function test_withdrawProtocolFees_succeedsForGovernanceOnOneTokenPoolZeroBalance() public {
@@ -419,7 +441,7 @@ contract AureumProtocolFeeControllerTest is Test {
         _mockGetPoolTokens(pool, oneTokenArray);
 
         vm.prank(multisig);
-        controller.withdrawProtocolFees(pool, DER_BODENSEE_POOL_PLACEHOLDER);
+        controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
     function test_withdrawProtocolFeesForToken_succeedsForGovernanceWithZeroBalance() public {
@@ -434,12 +456,12 @@ contract AureumProtocolFeeControllerTest is Test {
         _mockGetPoolTokenCountAndIndexOfToken(pool, token, 0, 0);
 
         vm.prank(multisig);
-        controller.withdrawProtocolFeesForToken(pool, DER_BODENSEE_POOL_PLACEHOLDER, token);
+        controller.withdrawProtocolFeesForToken(pool, FEE_ROUTING_HOOK_PLACEHOLDER, token);
     }
 
     // ─── Group A — Nonzero-balance positive-path withdraw ─────────────────
 
-    function test_withdrawProtocolFees_actuallyTransfersToBodensee_whenBalanceNonzero() public {
+    function test_withdrawProtocolFees_actuallyTransfersToFeeRoutingHook_whenBalanceNonzero() public {
         address pool = makeAddr("pool");
         IERC20 token = IERC20(makeAddr("token"));
         uint256 feeAmount = 12345e18;
@@ -463,9 +485,9 @@ contract AureumProtocolFeeControllerTest is Test {
         // 5. Record logs to verify the event and recipient after the call.
         vm.recordLogs();
 
-        // 6. Call from governance with recipient == Bodensee.
+        // 6. Call from governance with recipient == FEE_ROUTING_HOOK (B10 target per D-D7).
         vm.prank(multisig);
-        controller.withdrawProtocolFees(pool, DER_BODENSEE_POOL_PLACEHOLDER);
+        controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
 
         // 7. Verify storage was zeroed (controller zeros before transferring).
         uint256 storedAmountAfter = uint256(vm.load(address(controller), slot));
@@ -486,8 +508,8 @@ contract AureumProtocolFeeControllerTest is Test {
                 address recipient = address(uint160(uint256(logs[i].topics[3])));
                 assertEq(
                     recipient,
-                    DER_BODENSEE_POOL_PLACEHOLDER,
-                    "ProtocolFeesWithdrawn event recipient should be DER_BODENSEE_POOL"
+                    FEE_ROUTING_HOOK_PLACEHOLDER,
+                    "ProtocolFeesWithdrawn event recipient should be FEE_ROUTING_HOOK"
                 );
                 uint256 emittedAmount = abi.decode(logs[i].data, (uint256));
                 assertEq(emittedAmount, feeAmount, "Emitted amount should match the original fee amount");
@@ -647,16 +669,16 @@ contract AureumProtocolFeeControllerTest is Test {
         }
     }
 
-    // Invariant 4: Every successful withdrawal targeted DER_BODENSEE_POOL.
+    // Invariant 4: Every successful withdrawal targeted FEE_ROUTING_HOOK (D-D7 B10 target).
     // The handler only appends to successfulWithdrawRecipients when withdrawProtocolFees
     // completes without reverting, proving B10 routing end-to-end.
-    function invariant_allWithdrawalsTargetBodensee() public view {
+    function invariant_allWithdrawalsTargetFeeRoutingHook() public view {
         uint256 num = handler.successfulWithdrawRecipientsLength();
         for (uint256 i = 0; i < num; i++) {
             assertEq(
                 handler.successfulWithdrawRecipients(i),
-                DER_BODENSEE_POOL_PLACEHOLDER,
-                "A successful withdraw targeted a non-Bodensee recipient"
+                FEE_ROUTING_HOOK_PLACEHOLDER,
+                "A successful withdraw targeted a non-hook recipient"
             );
         }
     }

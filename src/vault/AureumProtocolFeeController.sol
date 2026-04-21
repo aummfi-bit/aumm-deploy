@@ -162,6 +162,8 @@ contract AureumProtocolFeeController is
     error InvalidRecipient(address expected, address provided);
     error CreatorFeesDisabled();
     error ZeroBodenseeAddress();
+    error ZeroHookAddress();
+    error BodenseeYieldCollectionDisabled();
     /// @notice Reverts when a caller attempts to change the protocol swap-fee percentage.
     /// @dev Per Aureum D-D15: the 50/50 split between der Bodensee and LPs is expressed
     ///      by pinning `_globalProtocolSwapFeePercentage` to `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE`
@@ -171,23 +173,62 @@ contract AureumProtocolFeeController is
     ///      See docs/STAGE_D_PLAN.md (D-D15) and docs/FINDINGS.md (OQ-1, OQ-1a).
     error SplitIsImmutable();
 
-    /// @notice The immutable destination for all protocol fee withdrawals.
-    /// @dev Set in the constructor and never changes. The two `withdrawProtocolFees*`
-    ///      functions revert with `InvalidRecipient` if any other recipient is passed,
-    ///      per Aureum protocol decision B10. There is no setter and no governance
-    ///      path to change this address. See docs/STAGE_B_NOTES.md for the full
-    ///      rationale.
+    /// @notice The der Bodensee pool address — the D-D9 `collectAggregateFees`
+    ///         pool-identity guard target.
+    /// @dev Post-D4 retarget (per D-D7 reconciled / STAGE_D_NOTES D23), this
+    ///      immutable no longer serves B10 withdrawal-recipient enforcement —
+    ///      that role moved to `FEE_ROUTING_HOOK`. Instead, per Aureum protocol
+    ///      decision D-D9 / OQ-2, `collectAggregateFees(pool)` reverts
+    ///      `BodenseeYieldCollectionDisabled()` when `pool == DER_BODENSEE_POOL`
+    ///      (guard added at D4.4). Bodensee's ERC-4626 composition compounds
+    ///      in-pool via Rate Providers; there is no yield to skim. See
+    ///      docs/STAGE_B_NOTES.md for the original B10 rationale and
+    ///      docs/STAGE_D_NOTES.md D23 for the two-immutables reconciliation.
     // Rationale: Aureum-introduced immutable; SCREAMING_CASE matches the
     // upstream Balancer V3 convention for protocol-critical addresses used
     // throughout this forked file.
     // slither-disable-next-line naming-convention
     address public immutable DER_BODENSEE_POOL;
 
-    constructor(IVault vault_, address derBodenseePool_) SingletonAuthentication(vault_) VaultGuard(vault_) {
+    /// @notice The B10 withdrawal-recipient enforcement target — set at
+    ///         construction to the Aureum fee-routing hook contract's address.
+    /// @dev Per Aureum protocol decision D-D7 / B10, the two
+    ///      `withdrawProtocolFees*` functions revert `InvalidRecipient` if any
+    ///      other recipient is passed. The hook in turn forwards fees on to
+    ///      der Bodensee (swap leg) per the β1 custody-transfer pattern; see
+    ///      docs/STAGE_D_NOTES.md D17. There is no setter and no governance
+    ///      path to change this address. See docs/STAGE_D_NOTES.md D23 for the
+    ///      two-immutables shape rationale.
+    // Rationale: Aureum-introduced immutable; SCREAMING_CASE matches the
+    // upstream Balancer V3 convention for protocol-critical addresses used
+    // throughout this forked file.
+    // slither-disable-next-line naming-convention
+    address public immutable FEE_ROUTING_HOOK;
+
+
+    /// @notice OQ-11 Bodensee swap-fee band (per D-D8). The fee controller does
+    ///         NOT enforce the band at runtime during Stage D; enforcement is
+    ///         the governance path's responsibility at Stage K. These constants
+    ///         land here because they are immutable from block zero; the
+    ///         constitution pins them at Stage D to make the audit-visible
+    ///         surface available from stage one. See docs/FINDINGS.md OQ-11.
+    uint256 public constant BODENSEE_SWAP_FEE_MIN     = 0.001e18;   // 0.10%
+    uint256 public constant BODENSEE_SWAP_FEE_MAX     = 0.01e18;    // 1.00%
+    uint256 public constant BODENSEE_SWAP_FEE_GENESIS = 0.0075e18;  // 0.75%
+
+    constructor(
+        IVault vault_,
+        address derBodenseePool_,
+        address feeRoutingHook_
+    ) SingletonAuthentication(vault_) VaultGuard(vault_) {
         if (derBodenseePool_ == address(0)) {
             revert ZeroBodenseeAddress();
         }
+        if (feeRoutingHook_ == address(0)) {
+            revert ZeroHookAddress();
+        }
         DER_BODENSEE_POOL = derBodenseePool_;
+        FEE_ROUTING_HOOK = feeRoutingHook_;
         // D-D15: pin the protocol swap-fee percentage at 50e16 (the Vault's maximum
         // protocol-extractable share) at construction. This saturates the Vault's cap
         // rather than bypassing it — the 50/50 split between der Bodensee and LPs is
@@ -207,6 +248,11 @@ contract AureumProtocolFeeController is
     // returned bytes from _vault.unlock() are unused by design.
     // slither-disable-next-line unused-return
     function collectAggregateFees(address pool) public {
+        // D-D9: Bodensee is the fee-sink itself — its aggregate fees are routed via the
+        // hook's Bodensee-aware path, not this single-pool overload.
+        if (pool == DER_BODENSEE_POOL) {
+            revert BodenseeYieldCollectionDisabled();
+        }
         _vault.unlock(abi.encodeCall(AureumProtocolFeeController.collectAggregateFeesHook, pool));
     }
 
@@ -591,8 +637,8 @@ contract AureumProtocolFeeController is
 
     /// @inheritdoc IProtocolFeeController
     function withdrawProtocolFees(address pool, address recipient) external authenticate {
-        if (recipient != DER_BODENSEE_POOL) {
-            revert InvalidRecipient(DER_BODENSEE_POOL, recipient);
+        if (recipient != FEE_ROUTING_HOOK) {
+            revert InvalidRecipient(FEE_ROUTING_HOOK, recipient);
         }
         (IERC20[] memory poolTokens, uint256 numTokens) = _getPoolTokensAndCount(pool);
 
@@ -605,8 +651,8 @@ contract AureumProtocolFeeController is
 
     /// @inheritdoc IProtocolFeeController
     function withdrawProtocolFeesForToken(address pool, address recipient, IERC20 token) external authenticate {
-        if (recipient != DER_BODENSEE_POOL) {
-            revert InvalidRecipient(DER_BODENSEE_POOL, recipient);
+        if (recipient != FEE_ROUTING_HOOK) {
+            revert InvalidRecipient(FEE_ROUTING_HOOK, recipient);
         }
         // Revert if the pool is not registered or if the token does not belong to the pool.
         // Rationale: called for its revert side effect (validates token belongs
