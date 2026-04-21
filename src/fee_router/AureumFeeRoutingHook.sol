@@ -457,10 +457,41 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
 
     /// @inheritdoc IAureumFeeRoutingHook
     function routeGovernanceDeposit(
-        IERC20,
-        uint256
-    ) external pure override returns (uint256) {
-        revert RoutingNotYetImplemented();
+        IERC20 token,
+        uint256 amount
+    ) external override returns (uint256 bptMinted) {
+        if (governanceModule == address(0)) revert ModuleNotSet();
+        if (msg.sender != governanceModule) revert UnauthorizedCaller(msg.sender);
+        if (amount == 0) revert ZeroAmount();
+
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        bytes memory result = _vault.unlock(
+            abi.encodeCall(
+                this._routeGovernanceDepositUnlocked,
+                (msg.sender, token, amount)
+            )
+        );
+        bptMinted = abi.decode(result, (uint256));
+        emit GovernanceDepositRouted(address(token), amount, bptMinted);
+    }
+
+    /// @notice Unlock callback for routeGovernanceDeposit. onlyVault;
+    ///         reached exclusively via IVault.unlock from
+    ///         routeGovernanceDeposit. `swapPool == address(0)` is the
+    ///         fast-path-only contract per D17: valid iff `token` is
+    ///         SV_ZCHF or ZCHF; any other token reverts
+    ///         `UnsupportedFeeToken` inside `_swapFeeAndDeposit`.
+    function _routeGovernanceDepositUnlocked(
+        address caller,
+        IERC20 token,
+        uint256 amount
+    ) external onlyVault returns (uint256 bptMinted) {
+        bptMinted = _swapFeeAndDeposit(
+            token,
+            amount,
+            address(0),
+            caller
+        );
     }
 
     /// @inheritdoc IAureumFeeRoutingHook

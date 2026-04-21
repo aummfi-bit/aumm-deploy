@@ -94,6 +94,14 @@ interface IAureumFeeRoutingHook {
     ///         other than its sanctioned caller.
     error UnauthorizedCaller(address caller);
 
+    /// @notice Thrown when a routing primitive gated to a one-shot
+    ///         module (governance, Incendiary) is called before that
+    ///         module has been set via its one-shot setter. Checked
+    ///         before the caller-gate so that integration probes against
+    ///         an unset hook get a clear `ModuleNotSet` signal rather
+    ///         than a misleading `UnauthorizedCaller`.
+    error ModuleNotSet();
+
     /// @notice Thrown when a constructor argument or input address is
     ///         the zero address.
     error ZeroAddress();
