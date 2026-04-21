@@ -419,11 +419,40 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
 
     /// @inheritdoc IAureumFeeRoutingHook
     function routeYieldFee(
-        address,
-        IERC20,
-        uint256
-    ) external pure override returns (uint256) {
-        revert RoutingNotYetImplemented();
+        address pool,
+        IERC20 feeToken,
+        uint256 feeAmount
+    ) external override returns (uint256 bptMinted) {
+        if (msg.sender != FEE_CONTROLLER) revert UnauthorizedCaller(msg.sender);
+        if (pool == address(0)) revert ZeroAddress();
+        if (pool == DER_BODENSEE) revert InvalidPool(pool);
+        if (feeAmount == 0) revert ZeroAmount();
+
+        feeToken.safeTransferFrom(msg.sender, address(this), feeAmount);
+        bytes memory result = _vault.unlock(
+            abi.encodeCall(
+                this._routeYieldFeeUnlocked,
+                (msg.sender, pool, feeToken, feeAmount)
+            )
+        );
+        bptMinted = abi.decode(result, (uint256));
+        emit YieldFeeRouted(pool, address(feeToken), feeAmount, bptMinted);
+    }
+
+    /// @notice Unlock callback for routeYieldFee. onlyVault; reached
+    ///         exclusively via IVault.unlock from routeYieldFee.
+    function _routeYieldFeeUnlocked(
+        address caller,
+        address pool,
+        IERC20 feeToken,
+        uint256 feeAmount
+    ) external onlyVault returns (uint256 bptMinted) {
+        bptMinted = _swapFeeAndDeposit(
+            feeToken,
+            feeAmount,
+            pool,
+            caller
+        );
     }
 
     /// @inheritdoc IAureumFeeRoutingHook
