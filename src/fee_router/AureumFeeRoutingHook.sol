@@ -276,7 +276,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 len = tokens.length;
         for (uint256 i = 0; i < len; ++i) {
             if (forwardedAmounts[i] == 0) continue;
-            _swapFeeAndDeposit(tokens[i], forwardedAmounts[i], params.pool, address(this));
+            uint256 bptMinted = _swapFeeAndDeposit(
+                tokens[i],
+                forwardedAmounts[i],
+                params.pool,
+                address(this)
+            );
+            emit SwapFeeRouted(
+                params.pool,
+                address(tokens[i]),
+                forwardedAmounts[i],
+                bptMinted
+            );
         }
 
         return (true, params.amountCalculatedRaw);
