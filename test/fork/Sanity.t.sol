@@ -8,9 +8,9 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
 /**
  * @title Sanity
  * @notice Stage A "is the toolchain wired correctly" fork test.
- * @dev This test does NOT deploy anything. It only forks mainnet, instantiates
- *      IVault at the live Balancer V3 mainnet Vault address, and calls one safe
- *      view function. If this passes, Stage A is verifiably done:
+ * @dev This test does NOT deploy anything. It forks mainnet, instantiates
+ *      IVault at the live Balancer V3 mainnet Vault address, and calls one
+ *      safe view function. If this passes, Stage A is verifiably done:
  *        - forge can compile against the Balancer V3 interface imports from
  *          the pinned submodule
  *        - the remappings are correct
@@ -18,11 +18,14 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
  *        - the Balancer V3 Vault exists at the expected address
  *
  *      Run with:
- *          source .env
- *          forge test --fork-url $MAINNET_RPC_URL -vv
+ *          forge test                                   (auto-forks via .env)
+ *          forge test --fork-url $MAINNET_RPC_URL -vv   (explicit, still works)
  *
- *      If this test fails, STOP. Copy the exact error and ask Claude - do not
- *      try to fix it by guessing.
+ *      If MAINNET_RPC_URL is not set (no .env and no --fork-url), the fork
+ *      test skips cleanly and the toolchain test still runs.
+ *
+ *      If this test fails with an RPC error and .env is correct, STOP.
+ *      Copy the exact error and ask Claude - do not guess.
  */
 
 
@@ -39,7 +42,27 @@ contract SanityTest is Test {
     address internal constant BALANCER_V3_VAULT_MAINNET =
         0xbA1333333333a1BA1108E8412f11850A5C319bA9;
 
-    function test_VaultExistsAndPauseWindowIsSet() public view {
+    /// @dev Auto-select a mainnet fork from MAINNET_RPC_URL if present.
+    ///      Foundry auto-loads .env for vm.env* cheatcodes, so in a normal
+    ///      developer environment this creates the fork without needing
+    ///      --fork-url on the CLI. If MAINNET_RPC_URL is not set (CI without
+    ///      secrets, first-time clone without .env), the fork is not created
+    ///      and fork-dependent tests skip via the block.chainid guard below.
+    function setUp() public {
+        string memory rpc = vm.envOr("MAINNET_RPC_URL", string(""));
+        if (bytes(rpc).length == 0) return;
+        vm.createSelectFork(rpc);
+    }
+
+    function test_VaultExistsAndPauseWindowIsSet() public {
+        // If setUp did not fork (no RPC configured), skip this test rather
+        // than fail. block.chainid == 1 is the mainnet fork signal; anything
+        // else (31337 default, or another forked chain) means we cannot
+        // usefully call the live Vault at BALANCER_V3_VAULT_MAINNET.
+        if (block.chainid != 1) {
+            vm.skip(true);
+        }
+
         // Instantiate the Vault interface at the known mainnet address.
         IVault vault = IVault(BALANCER_V3_VAULT_MAINNET);
 
