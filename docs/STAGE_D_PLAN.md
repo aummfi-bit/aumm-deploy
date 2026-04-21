@@ -484,11 +484,22 @@ git push
 
 Cover: hook unit tests against mocks, extended fee-controller tests. Written as forge-std `Test` contracts.
 
-### D5.1 — `test/unit/AureumFeeRoutingHook.t.sol`
+### D5.1 — `test/unit/AureumFeeRoutingHook.t.sol` + `test/mocks/*`
 
-Draft in chat, paste via Cursor. Structure:
-
-- `setUp()` — deploy `MockVault`, `MockRouter`, four `MockERC20` fee tokens (one representing svZCHF, one AuMM, two arbitrary), a `MockERC4626` as Bodensee. Deploy `AureumFeeRoutingHook` with the mock addresses.
+Five files, bottom-up dependency order; each drafted in chat, pasted via Cursor, terminal-integrity-checked per §8e, and committed as its own logical unit per the C6-pattern. `forge build` after every mock; `forge test --match-contract AureumFeeRoutingHookTest -vv` once the test file lands.
+**Mock files** (new, under `test/mocks/`):
+- `MockERC20.sol` — minimal OZ `ERC20` with public `mint`/`burn` helpers. ~20 lines.
+- `MockERC4626.sol` — share token over a `MockERC20` underlying; `asset()`, `deposit(assets, receiver)` that pulls the underlying and mints shares, `redeem`. ~80 lines.
+- `MockFeeController.sol` — stub of `IAureumProtocolFeeControllerHookExtension`: configurable per-test (`setNextForward(pool, tokens, amounts)`); `collectSwapAggregateFeesForHook` transfers the configured token amounts from itself to `msg.sender` (matching production custody — the real controller also hands tokens to the hook) and returns the arrays. ~60 lines.
+- `MockVault.sol` — stateful Vault stub covering every surface the hook touches: `unlock(bytes) → bytes` dispatching via `Address.functionCall(msg.sender, data)`; `swap` and `addLiquidity` with configurable per-pool returns; `settle` / `sendTo` with real transient-balance accounting; `getPoolTokenCountAndIndexOfToken` over a mock pool registry populated in the test's setUp. ~250 lines.
+**Sub-step commits** (per-file, C6-pattern):
+- `D5.1.a: test/mocks/MockERC20.sol`
+- `D5.1.b: test/mocks/MockERC4626.sol`
+- `D5.1.c: test/mocks/MockFeeController.sol`
+- `D5.1.d: test/mocks/MockVault.sol`
+- `D5.1: test/unit/AureumFeeRoutingHook.t.sol — cap, onAfterSwap, route*, one-shot, events, invariants`
+Structure of the test file:
+- `setUp()` — deploy `MockERC20` for **ZCHF**, **AuMM**, and two arbitrary fee-token mocks. Deploy `MockERC4626` for **svZCHF**, constructed over the ZCHF `MockERC20` so the hook's `IERC4626(svZchf_).asset()` returns ZCHF. Deploy `MockVault` and seed its pool registry with a der-Bodensee entry naming svZCHF at a known index. Deploy `MockFeeController` and fund it with the fee-token mocks so it can forward on `collectSwapAggregateFeesForHook`. `derBodensee = makeAddr("derBodensee")` — the hook treats it as an opaque pool address; no `IERC4626` methods are called on it. `router = makeAddr("router")` — plain address passed via `AfterSwapParams.router` (the recursion-guard test substitutes `address(hook)`). No `MockRouter` contract; the hook never calls a router, only compares `params.router` to `address(this)`. Deploy `AureumFeeRoutingHook(vault, derBodensee, svZCHF, aumm, feeController, moduleAdmin)`.
 - Named tests:
   - `test_Constructor_SetsImmutables` — verify all immutable getters return the constructor arguments.
   - `test_Constructor_RevertsOnZeroAddress` — for each required non-zero address.
@@ -498,7 +509,7 @@ Draft in chat, paste via Cursor. Structure:
   - `test_RouteYieldFee_OnlyFeeController` — caller gate check; reverts from arbitrary sender.
   - `test_RouteGovernanceDeposit_RevertsBeforeGovernanceSet` — while `governanceModule == address(0)`.
   - `test_RouteIncendiaryDeposit_RevertsBeforeIncendiarySet` — while `incendiaryModule == address(0)`.
-  - `test_SetGovernanceModule_OneShot` — can be called once by deployer; reverts on second call; reverts from non-deployer.
+  - `test_SetGovernanceModule_OneShot` — can be called once by `moduleAdmin`; reverts on second call; reverts from non-admin.
   - `test_SetIncendiaryModule_OneShot` — same shape.
   - `test_Event_SwapFeeRouted` — event emission + values.
   - `test_Event_YieldFeeRouted` — event emission + values.
@@ -727,8 +738,13 @@ aumm-deploy/
     ├── unit/
     │   ├── AureumFeeRoutingHook.t.sol        — unit + fuzz + invariants (new)
     │   └── AureumProtocolFeeController.t.sol — extended with D4 coverage (modified)
+    ├── mocks/
+    │   ├── MockERC20.sol                     — minimal OZ ERC-20 + mint/burn helpers (new)
+    │   ├── MockERC4626.sol                   — share token over underlying; asset(), deposit, redeem (new)
+    │   ├── MockFeeController.sol             — IAureumProtocolFeeControllerHookExtension stub (new)
+    │   └── MockVault.sol                     — stateful Vault stub: unlock, swap, settle, sendTo, addLiquidity, pool registry (new)
     └── fork/
-        └── FeeRoutingHook.t.sol   — mainnet-fork integration (new)
+        └── FeeRoutingHook.t.sol              — mainnet-fork integration (new)
 ```
 
 No changes to `foundry.toml`, `remappings.txt`, or `README.md` unless a D8 lint-ignore path emerges.
