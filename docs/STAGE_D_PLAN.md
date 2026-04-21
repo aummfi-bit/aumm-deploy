@@ -498,6 +498,12 @@ Five files, bottom-up dependency order; each drafted in chat, pasted via Cursor,
 - `D5.1.c: test/mocks/MockFeeController.sol`
 - `D5.1.d: test/mocks/MockVault.sol`
 - `D5.1: test/unit/AureumFeeRoutingHook.t.sol — cap, onAfterSwap, route*, one-shot, events, invariants`
+
+
+
+
+
+
 Structure of the test file:
 - `setUp()` — deploy `MockERC20` for **ZCHF**, **AuMM**, and two arbitrary fee-token mocks. Deploy `MockERC4626` for **svZCHF**, constructed over the ZCHF `MockERC20` so the hook's `IERC4626(svZchf_).asset()` returns ZCHF. Deploy `MockVault` and seed its pool registry with a der-Bodensee entry naming svZCHF at a known index. Deploy `MockFeeController` and fund it with the fee-token mocks so it can forward on `collectSwapAggregateFeesForHook`. `derBodensee = makeAddr("derBodensee")` — the hook treats it as an opaque pool address; no `IERC4626` methods are called on it. `router = makeAddr("router")` — plain address passed via `AfterSwapParams.router` (the recursion-guard test substitutes `address(hook)`). No `MockRouter` contract; the hook never calls a router, only compares `params.router` to `address(this)`. Deploy `AureumFeeRoutingHook(vault, derBodensee, svZCHF, aumm, feeController, moduleAdmin)`.
 - Named tests:
