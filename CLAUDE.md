@@ -201,6 +201,8 @@ Claude Code can execute these freely and report results:
 * Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
 * Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
 
+**Authoritative checkout for reads.** Planning and audit reads must target the same tree the user and Cursor edit — the **primary repo checkout** (on this machine, `/Users/janus/code/aumm-deploy`), not an auxiliary Git worktree under `.claude/worktrees/` or elsewhere. Secondary worktrees can lag the tip of `stage-d` (see **D18** in `docs/STAGE_D_NOTES.md`). If a session was opened from a worktree path, `cd` to the main checkout before treating file reads as ground truth for §8e.1 drafting.
+
 **`forge clean` is in 8a** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
 
 **File writes are NOT in 8a**, under any circumstance or path. See section 8e.
@@ -306,6 +308,11 @@ Rules governing the template:
 * **`Verify` commands are the literal strings the user will run.** Not a
   description, not a suggestion — the exact shell line, so the user can
   paste without editing.
+* **`Must match` is grounded in branch state.** Draft those bullets from
+  `git show <branch>:<path>` (e.g. `git show stage-d:src/fee_router/AureumFeeRoutingHook.sol`)
+  or from a cwd confirmed to be the main checkout — not from a possibly stale
+  worktree file, not from chat memory or a prior-session summary. See **D18** and
+  **D21** in `docs/STAGE_D_NOTES.md`.
 
 Claude Code does not add fields beyond this shape. Extra fields invite
 prose, and prose invites Cursor to plan.
@@ -409,7 +416,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 
 **How to resume (Stage D — D3 implementation):**
 
-1. Read `docs/STAGE_D_PLAN.md` L344-405 (D3.1 through D3.5) in full. Cross-read NOTES D10 (trusted-router early-return shape), D11 (Rate Provider addresses), D15 (Cursor-interaction fix-forward for multi-blank files), D16 (three-primitive external shape).
+1. Read `docs/STAGE_D_PLAN.md` L344-405 (D3.1 through D3.5) in full. Cross-read NOTES D10 (trusted-router early-return shape), D11 (Rate Provider addresses), D15 (Cursor-interaction fix-forward for multi-blank files), D16 (three-primitive external shape), D18 / D21 (authoritative reads for §8e.1), D22 (`IVault.unlock` inner callbacks must return `uint256`, not `bytes memory`, when the caller `abi.decode`s to `uint256`).
 2. Confirm `stage-d` tip matches the §11 branch-state line above (or its immediate docs-commit descendant if §11 has been re-updated mid-session). `git log --oneline -1` against `stage-d` is the canonical check.
 3. Open a Claude Code session pointed at this repo. Claude Code reads this file, `docs/STAGE_D_PLAN.md`, `docs/STAGE_D_NOTES.md`, `docs/FINDINGS.md` OQ-1 / OQ-2 / OQ-11, and `src/fee_router/IAureumFeeRoutingHook.sol`.
 4. Claude Code authors the D3.1 sub-step prompt (one baby step) for Cursor, paired with the terminal audit commands.
@@ -424,6 +431,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 * **Claude Code does not write files.** All file writes flow through Cursor. Claude Code plans, authors prompts, audits Cursor's output, drafts commit messages and terminal commands for the user.
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
 * Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
+* **Stage D — `IVault.unlock` inner callbacks** (`AureumFeeRoutingHook` and the same pattern elsewhere): when the outer caller uses `abi.decode(result, (uint256))`, the inner must `returns (uint256)`, not `returns (bytes memory)` with `abi.encode` — see **D22** in `docs/STAGE_D_NOTES.md`.
 
 ---
 

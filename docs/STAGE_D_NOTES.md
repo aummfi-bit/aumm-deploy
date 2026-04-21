@@ -215,3 +215,13 @@ Surfaced at **D3.3.1 → D3.3.2 transition** (2026-04-20). Prompt A (docs fix to
 **Disposition.** Shipped as one commit with the D3.4a message, per §8 Option (C). The commit is honestly narrow in *intent* (D3.4a's goal — thread BPT recipient), but its *diff* also contains D20's phase-2 landing. This entry is the load-bearing record; the PLAN D3.3.4 block carries a one-line pointer to it.
 
 **Lesson.** §8e.1 prompts MUST be drafted against HEAD, not WT. Before drafting any `Must match` that references an existing helper or signature, run `git show <branch>:<path>` — not `cat <path>` on the worktree copy — to read the authoritative state. This mirrors the D18 worktree-divergence discipline but at prompt-drafting scope rather than session-orientation scope. Adding to the standing session checklist.
+
+### D22 — `IVault.unlock` inner callback must return `uint256`, not `bytes memory`
+
+Surfaced at **D3.4b** (2026-04-20). The stack pattern is: an external entry point pulls custody / prepares state, then calls `_vault.unlock(abi.encodeCall(this._fooUnlocked, (...)))`, captures the return bytes, and decodes `abi.decode(unlockReturn, (uint256))` (e.g. BPT minted on a fee-routing deposit).
+
+If `_fooUnlocked` is mistakenly declared `returns (bytes memory)` and `return abi.encode(bptMinted);`, the returndata layout is ABI dynamic-bytes encoding (offset, length, payload). The first word of returndata is the offset to the payload (typically `0x20`), not the scalar amount. `abi.decode(result, (uint256))` then yields `32` (or another garbage value), not `bptMinted` — wrong result or hard-to-debug mis-settlement.
+
+**Rule:** follow Balancer Router-style hooks (e.g. `swapSingleTokenHook`): inner callbacks invoked via `unlock` that feed a scalar decode must be `external onlyVault returns (uint256)` with a direct scalar return or named return assignment — **not** `returns (bytes memory)` wrapping `abi.encode(...)`.
+
+**Cross-reference:** §8e.1 `Must match` drafting still uses **D18** / **D21** discipline so the signatures Claude Code asks Cursor to implement match HEAD-shaped branch state.
