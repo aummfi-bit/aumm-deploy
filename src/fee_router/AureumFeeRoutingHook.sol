@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {AfterSwapParams, HookFlags, LiquidityManagement, SwapKind, TokenConfig, VaultSwapParams} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {AddLiquidityKind, AddLiquidityParams, AfterSwapParams, HookFlags, LiquidityManagement, SwapKind, TokenConfig, VaultSwapParams} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
 import {BaseHooks} from "@balancer-labs/v3-vault/contracts/BaseHooks.sol";
@@ -280,7 +280,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 len = tokens.length;
         for (uint256 i = 0; i < len; ++i) {
             if (forwardedAmounts[i] == 0) continue;
-            _swapFeeAndDeposit(tokens[i], forwardedAmounts[i], params.pool);
+            _swapFeeAndDeposit(tokens[i], forwardedAmounts[i], params.pool, address(this));
         }
 
         return (true, params.amountCalculatedRaw);
@@ -291,24 +291,44 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     // -------------------------------------------------------------------------
 
     /// @dev Shared internal primitive consumed by onAfterSwap and the
-    ///      three IAureumFeeRoutingHook external entry points. Phase 1
-    ///      only: if `amount == 0`, return; if `feeToken` is svZCHF,
-    ///      return; if `feeToken` is ZCHF, `forceApprove` then ERC-4626
-    ///      `deposit` into this hook; otherwise require `swapPool != 0`
-    ///      and nested-swap to svZCHF via `_swapExactInFeeTokenToSvZchfViaVault`.
-    ///      If `swapPool == 0` for a non—ZCHF—family token, revert
-    ///      `UnsupportedFeeToken`. Phase 2—one-sided add into
-    ///      der-Bodensee—lands in D3.3.4.
-    function _swapFeeAndDeposit(IERC20 feeToken, uint256 amount, address swapPool) private {
-        if (amount == 0) return;
-        if (address(feeToken) == address(SV_ZCHF)) return;
-        if (address(feeToken) == address(ZCHF)) {
+    ///      three IAureumFeeRoutingHook external entry points. Two-phase
+    ///      per the Stage D plan D3.3:
+    ///      Phase 1 — convert `feeToken` to svZCHF on this hook's balance.
+    ///      If `amount == 0`, return `0` as `bptMinted`. If `feeToken` is svZCHF, no-op
+    ///      (hook already holds `amount` svZCHF from the caller). If
+    ///      `feeToken` is ZCHF, `forceApprove` then ERC-4626 `deposit`
+    ///      into this hook. Otherwise require `swapPool != 0` and
+    ///      nested-swap to svZCHF via `_swapExactInFeeTokenToSvZchfViaVault`;
+    ///      revert `UnsupportedFeeToken` if `swapPool == 0` for a
+    ///      non—ZCHF—family token.
+    ///      Phase 2 — one-sided add the hook's entire svZCHF balance
+    ///      into der-Bodensee via `_addLiquidityOneSidedToBodenseeViaVault`,
+    ///      minting BPT to `bptRecipient`; returns `bptMinted` from phase 2.
+    ///      Balance-sweep is intentional: any svZCHF held by this hook
+    ///      is protocol-owned and Bodensee-bound, including dust from
+    ///      prior partial fills or donations (per D3.3.4 Q1 / Option X).
+    function _swapFeeAndDeposit(
+        IERC20 feeToken,
+        uint256 amount,
+        address swapPool,
+        address bptRecipient
+    ) private returns (uint256 bptMinted) {
+        if (amount == 0) return 0;
+
+        if (address(feeToken) == address(SV_ZCHF)) {
+            // No-op: hook already holds `amount` svZCHF from the caller.
+        } else if (address(feeToken) == address(ZCHF)) {
             IERC20(address(ZCHF)).forceApprove(address(SV_ZCHF), amount);
             IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
-            return;
+        } else {
+            if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
+            _swapExactInFeeTokenToSvZchfViaVault(feeToken, amount, swapPool);
         }
-        if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
-        _swapExactInFeeTokenToSvZchfViaVault(feeToken, amount, swapPool);
+
+        bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
+            SV_ZCHF.balanceOf(address(this)),
+            bptRecipient
+        );
     }
 
     /// @dev Nested swap from this hook: inside `IVault.swap`, `msg.sender`
@@ -318,7 +338,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      `sendTo` svZCHF to this hook—mirroring `RouterCommon._takeTokenIn`
     ///      and `_sendTokenOut` around `_vault.swap`. `limitRaw == 0` accepts
     ///      any `amountOut` for this protocol-internal leg (same trade-off
-    ///      class as `minBptOut == 0` in the Stage D plan). Recursion: the
+    ///      class as `minBptAmountOut == 0` on the phase-2 one-sided add
+    ///      into der-Bodensee per the Stage D plan). Recursion: the
     ///      nested `swap` invokes `onAfterSwap` again with
     ///      `params.router == address(this)`; D10 early-return applies.
     function _swapExactInFeeTokenToSvZchfViaVault(
@@ -340,6 +361,56 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         feeToken.safeTransfer(address(_vault), amountIn);
         _vault.settle(feeToken, amountIn);
         _vault.sendTo(SV_ZCHF, address(this), amountOut);
+    }
+
+    /// @dev Nested one-sided add from this hook: inside `IVault.addLiquidity`,
+    ///      `msg.sender` is this contract, so the hook owns the transient
+    ///      deltas and must clear them before the outer `unlock` closes.
+    ///      Order: `addLiquidity`, then transfer SV_ZCHF to the Vault and
+    ///      `settle`. BPT is minted to `to` via the `AddLiquidityParams.to`
+    ///      field, so no `sendTo` is needed to realise the credit leg.
+    ///      Returns `bptAmountOut` from the Vault.
+    ///      `minBptAmountOut == 0` accepts any `bptAmountOut` for this
+    ///      protocol-internal leg (same trade-off class as `limitRaw == 0`
+    ///      in `_swapExactInFeeTokenToSvZchfViaVault`; MEV/sandwich risk
+    ///      internalised, tracked as a Stage Q audit surface per
+    ///      `STAGE_D_PLAN.md:L703`). `getPoolTokenCountAndIndexOfToken`
+    ///      reverts natively if `DER_BODENSEE` does not contain SV_ZCHF
+    ///      — no custom error path. Debits are settled using the returned
+    ///      `amountsIn[svZchfIndex]` (actual consumed), not the caller-
+    ///      supplied `svZchfAmount`, per defensive-coding convention.
+    ///      Precedent for nested-Vault-add-from-hook:
+    ///      `lib/balancer-v3-monorepo/pkg/pool-hooks/contracts/ExitFeeHookExample.sol:160`
+    ///      (different kind — DONATION — and different callback —
+    ///      `onAfterRemoveLiquidity` — but same structural property:
+    ///      nested Vault call from a hook already inside an open unlock,
+    ///      hook as delta-owner). Router-vs-Vault mechanism drift resolution
+    ///      recorded at D20 in `docs/STAGE_D_NOTES.md`.
+    function _addLiquidityOneSidedToBodenseeViaVault(
+        uint256 svZchfAmount,
+        address to
+    ) private returns (uint256 bptAmountOut) {
+        if (svZchfAmount == 0) return 0;
+        (uint256 tokenCount, uint256 svZchfIndex) =
+            _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, SV_ZCHF);
+
+        uint256[] memory maxAmountsIn = new uint256[](tokenCount);
+        maxAmountsIn[svZchfIndex] = svZchfAmount;
+
+        (uint256[] memory amountsIn, uint256 bptOut, ) = _vault.addLiquidity(
+            AddLiquidityParams({
+                pool: DER_BODENSEE,
+                to: to,
+                maxAmountsIn: maxAmountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.UNBALANCED,
+                userData: bytes("")
+            })
+        );
+        bptAmountOut = bptOut;
+
+        SV_ZCHF.safeTransfer(address(_vault), amountsIn[svZchfIndex]);
+        _vault.settle(SV_ZCHF, amountsIn[svZchfIndex]);
     }
 
     // -------------------------------------------------------------------------

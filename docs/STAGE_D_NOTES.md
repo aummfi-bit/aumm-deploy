@@ -195,3 +195,23 @@ Surfaced at **D3.3.1 → D3.3.2 transition** (2026-04-20). Prompt A (docs fix to
 **Implication for §8e.1 drafting:** the `Must match` bullets in a Cursor prompt are predicates on the file-as-Cursor-will-see-it. Claude Code must draft them against the on-branch state, not the worktree state. When the two diverge, Cursor correctly rejects the prompt under **D14**, and the recovery is a re-draft against authoritative state — not a "Cursor is wrong" posture.
 
 **Discipline fold-in:** before drafting any sub-step prompt that edits an existing file, Claude Code runs `git show stage-d:<path>` (or equivalent for the active branch) to ground the OLD-block text in authoritative disk state. This is a one-line cost per sub-step, well within the grep-and-confirm envelope of **§6**.
+
+### D20 — D3.3.4 plan-prose drift: Router → direct Vault for phase-2 add
+
+**Finding.** `STAGE_D_PLAN.md:L375–L376` (D3.3 phase-2 bullet) specifies the one-sided add via `IRouter.addLiquiditySingleTokenExactIn(pool, SV_ZCHF, amount, 0)`. During D3.3.4 lookup, two structural concerns surfaced against Router use from inside `onAfterSwap`: (a) no upstream Balancer pool-hook performs a nested Router call from a hook callback (same gap that forced the phase-1 resolution in D3.3.3); (b) Router adds a constructor immutable and Permit2/WETH-handling surface the hook does not need.
+
+**Precedent.** `lib/balancer-v3-monorepo/pkg/pool-hooks/contracts/ExitFeeHookExample.sol:160` calls `_vault.addLiquidity(AddLiquidityParams{...})` directly from inside `onAfterRemoveLiquidity` — an upstream Balancer example of nested Vault `addLiquidity` from within an already-open `unlock()` session, with the hook custodying deltas. (The hook callback differs from our `onAfterSwap` context, but the structural property — nested Vault call from a hook already inside an open unlock, hook as delta-owner — is identical.)
+
+**Resolution.** Phase-2 uses `IVault.addLiquidity` with `AddLiquidityParams(pool: DER_BODENSEE, to: address(this), maxAmountsIn: length equal to the Bodensee pool's token count with svZchfAmount at svZchfIndex and 0 at all other indices, minBptAmountOut: 0, kind: AddLiquidityKind.UNBALANCED, userData: "")`. `minBptAmountOut = 0` is preserved from the original plan: this is protocol-internal routing, slippage tolerance on the fee leg is a protocol-design trade-off not a user-funds safety concern, and the rationale is captured inline as a load-bearing `@dev` block on the phase-2 helper. Hook settles the SV_ZCHF debit via the existing `_settleFeeTokenDebit` / `_sendTo` helpers — same "hook owns deltas, Vault pulls from hook credit" pattern as D3.3.3's `_swapExactInFeeTokenToSvZchfViaVault`. No new constructor immutable; one mental model for reviewers across both phase-1 and phase-2.
+
+**Plan edit.** `STAGE_D_PLAN.md:L375–L376` (D3.3 phase-2 bullet) updated in a separate edit: Router → direct Vault call with `AddLiquidityParams(..., kind: UNBALANCED, minBptAmountOut: 0, ...)`. The `minBptAmountOut = 0` / protocol-internal-routing / `@dev`-block argument is preserved verbatim — D20 narrows the mechanism (Vault instead of Router), not the slippage-floor rationale.
+
+### D21 — D3.3.4 phase-2 helper folded into D3.4a commit (WT-vs-HEAD drift at prompt-drafting time)
+
+**Context.** Session resumed with a prompt stating "D3.3.4 landed and validated, 4 commits ahead of origin/stage-d." HEAD at `bc920a0` carried D3.3.1 and D3.3.3 only; D3.3.4 (`_addLiquidityOneSidedToBodenseeViaVault` phase-2 helper, per D20) was present in the working tree but uncommitted. No `D3.3.4: …` commit exists on the branch.
+
+**Mechanism.** Claude Code's D3.4a §8e.1 prompt drafted its `Must match` bullets against the working-tree state (helper present) rather than the HEAD state (helper absent). Cursor correctly synthesized against WT — the prompt and the tree agreed — so D3.4a's atomic apply-all-or-nothing save produced a diff that bundles both the D3.3.4 helper introduction *and* the D3.4a recipient-threading refactor into a single change.
+
+**Disposition.** Shipped as one commit with the D3.4a message, per §8 Option (C). The commit is honestly narrow in *intent* (D3.4a's goal — thread BPT recipient), but its *diff* also contains D20's phase-2 landing. This entry is the load-bearing record; the PLAN D3.3.4 block carries a one-line pointer to it.
+
+**Lesson.** §8e.1 prompts MUST be drafted against HEAD, not WT. Before drafting any `Must match` that references an existing helper or signature, run `git show <branch>:<path>` — not `cat <path>` on the worktree copy — to read the authoritative state. This mirrors the D18 worktree-divergence discipline but at prompt-drafting scope rather than session-orientation scope. Adding to the standing session checklist.
