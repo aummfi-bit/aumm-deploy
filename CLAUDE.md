@@ -450,3 +450,78 @@ This is the fallback rule that subsumes everything else. If any of the following
 * You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
 
 The cost of asking is a round-trip. The cost of guessing wrong is a rollback plus the time to figure out what was guessed wrong. The grep-and-confirm loop is built on the same principle at the micro-scale; this rule is the same principle at the macro-scale.
+
+## 13. Model governance
+
+### Core principle
+
+Claude Code announces the mode for the next beat. The user flips the switch. No gates, no permission blocks — the announcement *is* the instruction.
+
+Claude Code's job on this project per §8e is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
+
+### The dispatcher line
+
+At every natural transition, Claude Code emits one of the two lines before proceeding:
+
+- **"Switch to Opus high — next beat is [X]."**
+- **"Switch to Sonnet — housekeeping: [Y]."**
+
+One line. No ceremony. The user reads it, flips, pastes continue. Claude Code does not ask "ready?" — it states the mode and waits.
+
+If Claude Code forgets to announce, the user says "mode?" and Claude Code answers with one of the two lines.
+
+### Opus-high beats (Claude Code calls this before)
+
+- Drafting any sub-step prompt where a design decision is live (any `D-D*` or `OQ-N` unresolved, any interface shape, any new file's first implementation).
+- Auditing Cursor's output on a non-trivial save — new contract, interface, hook callback, test file with new harness, anything touching settlement or fee routing.
+- Resolving an OQ or authoring a `D-D*` decision.
+- Pre-flight on a new stage (reading the plan for the stage, surveying dependencies, drafting the first sub-step).
+- Debugging — any failing build or test where the cause is not obvious from the first glance at the output.
+- Writing or updating CLAUDE.md §11 resume anchors.
+- Stage-level integration points — fork tests, cross-contract wiring, Router/Vault interactions.
+- Any point where Claude Code would otherwise guess. If the next move requires judgement beyond mechanical transcription, it is Opus.
+
+### Sonnet beats (Claude Code calls this before)
+
+- Read-back verdict on a clearly-correct Cursor save — `cat` output matches the prompt, em-dash count matches, `forge build` green. Emit ✅ and draft the commit message.
+- Drafting commit messages for a sub-step that already has its ✅.
+- Updating the `STAGE_X_PLAN.md` Completion Log line after a commit lands.
+- Drafting a sub-step prompt that is a mechanical continuation — next named test case in an already-designed test file, next import line, next `D-D*` that was already resolved in a prior beat.
+- Reading file state to confirm it matches a branch tip (`git show` / `wc -l` / `shasum` reconciliation).
+- Mechanical grep / log output reports where the answer is a paste, not an interpretation.
+
+### Extra-high effort (Opus only, rare)
+
+Claude Code calls for this explicitly: **"Switch to Opus extra-high — [specific hard problem]."** Used for:
+
+- Pre-flight on a novel stage (F kickoff, H halving math review, K governance handoff design).
+- Debugging a failure where Opus-high already tried and did not crack it.
+- Writing formal specs at P/Q/R.
+
+One message, then Claude Code calls the drop back to Opus-high or Sonnet.
+
+### Stage-level defaults (entry mode at stage start)
+
+| Stage | Entry mode | Drops to Sonnet for |
+| --- | --- | --- |
+| D (current — post-architecture) | Opus high | Read-backs on mock saves, commit drafts |
+| E | Opus high entry, then mostly Sonnet | Scaffolding, config |
+| F (CCB) | Opus extra-high entry, then Opus high | Test harness boilerplate only |
+| G | Opus high | Gauge-weight test writing |
+| H (emission) | Opus extra-high entry, then Opus high | N/A — stay on Opus through halving logic |
+| I (AuMT) | Opus high | LP-receipt test writing |
+| J (registry) | Sonnet entry, Opus for interface design | Most of stage |
+| K (governance handoff) | Opus extra-high | Nothing — stay on Opus |
+| L (incendiary) | Opus high | Test writing after design is set |
+| O (governance modules) | Opus high | Scaffolding |
+| P / Q / R (formal verification) | Opus extra-high | Nothing — stay on Opus |
+
+Stages A, B, C are complete. Stage E onward: Claude Code announces mode at entry and at each natural beat within the stage.
+
+### Token discipline (real levers, not ceremony)
+
+- Read line ranges, not whole files, once the region is known.
+- Do not re-read a file already in context this session.
+- For "where is X referenced" across more than three files, spawn Explore — its context stays out of the main thread.
+- Trust CLAUDE.md §11 as the resumption anchor. Do not re-read full plan + full NOTES on session start; read the named sub-step + the named file regions.
+- The §8e.1 template is the forcing function against re-scoping. Use it verbatim.
