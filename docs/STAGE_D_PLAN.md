@@ -560,13 +560,16 @@ Deployment script, exercised on fork only.
 Structure:
 
 - `pragma solidity ^0.8.26;`
-- Imports: forge-std `Script`, Balancer V3 `IWeightedPoolFactory`, `IVault`, local `AureumVault`, `AureumProtocolFeeController`.
-- `run()` reads env vars for: `AUREUM_VAULT`, `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `FEE_CONTROLLER`, `PAUSE_MANAGER`.
-- Deploys Rate Provider wrappers if D-D5 resolved to option (ii); otherwise passes the token addresses directly as Rate Providers.
-- Calls `WeightedPoolFactory.create(name, symbol, tokens, weights, rateProviders, swapFee, ...)` to get the pool address.
-- Calls `AureumVault.registerPool(pool, tokens, ...)` with hook `address(0)`, `shouldCallComputeDynamicSwapFee = false`, etc.
-- Calls `AureumProtocolFeeController.setPoolProtocolSwapFeePercentage(pool, 0)` and `setPoolProtocolYieldFeePercentage(pool, 0)` to zero Bodensee's fees per OQ-2.
-- Logs the deployed pool address.
+- Imports: forge-std `Script`; Balancer V3 `IVault`, `IWeightedPoolFactory`, `IRateProvider`; Balancer V3 `TokenConfig`, `TokenType`, `PoolRoleAccounts` from `@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol`; OZ `IERC20`.
+- `run()` reads env vars: `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `GOVERNANCE_MULTISIG`, `BODENSEE_SALT`. `GOVERNANCE_MULTISIG` serves both `pauseManager` and `swapFeeManager` roles per NOTES L103 / L106. The factory's Vault is bound at the factory's own deploy-time — no `AUREUM_VAULT` env read needed. No `FEE_CONTROLLER` env read — see below.
+- Builds ascending-address-sorted `TokenConfig[]`: AuMM (`STANDARD`, `rateProvider = IRateProvider(address(0))`, `paysYieldFees = false`); sUSDS (`WITH_RATE`, `rateProvider = IRateProvider(0x1195be91e78ab25494c855826ff595eef784d47b)`, `paysYieldFees = true`); svZCHF (`WITH_RATE`, `rateProvider = IRateProvider(0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c)`, `paysYieldFees = true`). Rate Provider addresses per **D11** (existing mainnet deployments). `paysYieldFees` for the two `WITH_RATE` tokens is cosmetic — D-D9 guard blocks Bodensee yield collection at the controller level regardless.
+- Builds `normalizedWeights[]` parallel to sorted `tokens[]`: AuMM `4e17` (40%), sUSDS `3e17` (30%), svZCHF `3e17` (30%); sum = `1e18 = FixedPoint.ONE`.
+- Builds `PoolRoleAccounts = { pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: GOVERNANCE_MULTISIG, poolCreator: address(0) }`. `poolCreator` MUST be zero — `WeightedPoolFactory.create` at `lib/balancer-v3-monorepo/pkg/pool-weighted/contracts/WeightedPoolFactory.sol:67-L69` reverts `StandardPoolWithCreator()` otherwise; enforces the `aumm-specs` §xxix no-creator-fees rule.
+- Calls `IWeightedPoolFactory(WEIGHTED_POOL_FACTORY).create("der-Bodensee", "BODENSEE", tokens, normalizedWeights, roleAccounts, 0.0075e18, address(0), false, false, BODENSEE_SALT)` and captures the returned `address pool`. The 10 args in order: `name`, `symbol`, `TokenConfig[]`, `normalizedWeights[]`, `PoolRoleAccounts`, `swapFeePercentage`, `poolHooksContract`, `enableDonation`, `disableUnbalancedLiquidity`, `salt`.
+- No separate `Vault.registerPool` call — `WeightedPoolFactory.create` calls `_registerPoolWithVault` internally at `WeightedPoolFactory.sol:90`.
+- No `AureumProtocolFeeController` calls. OQ-2 (Bodensee fee-exclusion) is enforced structurally, not at registration: setters revert `SplitIsImmutable` post-D0.5 retrofit (`e5dc936`); swap-aggregate pinned to `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50e16` at `registerPool` regardless of inputs; yield collection blocked by the D-D9 `BodenseeYieldCollectionDisabled` guard in `collectAggregateFees`. See **D28** in `STAGE_D_NOTES.md` for the full reconciliation.
+- Logs the deployed pool address via `console2.log`.
+- Pool-parameter source of truth: `docs/STAGE_D_NOTES.md` "Der Bodensee deployment parameters" block (L88–L109) — any drift between this §D6.1 structure and that block is a bug in this section.
 
 ### D6.2 — `forge build`
 
