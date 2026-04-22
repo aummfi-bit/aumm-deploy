@@ -170,6 +170,8 @@ Run by the user from terminal, pasted back to Claude Code. The reason this is a 
 
 This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see section 8e), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
 
+**After a sub-step’s verification is closed** (verdict ready to move on), **which model** drafts the *next* move is **not** a second paste round by default—see **§13 Beat handoffs** (Sonnet ↔ Opus). The per-save read-back above still applies; the handoff is about the *next* author turn.
+
 ---
 
 ## 7. Cursor editor and its operating posture
@@ -266,8 +268,10 @@ Every prompt Claude Code hands the user for Cursor must be:
 1. User pastes Cursor's report + terminal output back to Claude Code.
 2. Claude Code validates: file path correct, line count plausible, em-dash count plausible, content matches the prompt, `forge build` green if run, `slither` clean if run, `git diff` shows only the intended changes.
 3. Claude Code reports verdict in one of two forms:
-   * **✅ Proceed** — confirms the sub-step landed clean, drafts the commit message if the sub-step closes a plan-defined work unit, drafts the next sub-step prompt for Cursor.
+   * **✅ Proceed** — confirms the sub-step landed clean; drafts the commit message if the sub-step closes a plan-defined work unit when that is **Sonnet-scoped** housekeeping (see **§13 Sonnet beats**). **Does not** draft the *next* §8e.1 prompt in **Sonnet**; **does not** run another verification round on the *same* already-verified save. **Who** drafts the next sub-step, commit flow, or paste-only work follows **§13 Beat handoffs**—not an extra `grep` loop on the same closed step.
    * **❌ Fix** — identifies what's wrong, drafts a fix-prompt for Cursor. The fix-prompt follows the same one-sub-step discipline; "fix A and B" chains and is not allowed.
+
+4. **Model routing after audit:** The pasted output in step 2 is evaluated in the session’s current model. When the verdict is **✅** and the sub-step is **done** (any ❌/fix loop finished), the **up-hand** in **§13 (Sonnet → Opus)** applies unless the *only* next work is an **Opus → Sonnet** down-hand. Do not request redundant `wc` / `shasum` / `cat` for a save **already** closed with ✅; do not author the *next* Opus-scoped §8e.1 in Sonnet.
 
 ### 8e.1 Sub-step prompt template (Claude Code → Cursor)
 
@@ -459,16 +463,27 @@ Claude Code announces the mode for the next beat. The user flips the switch. No 
 
 Claude Code's job on this project per §8e is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
 
-### The dispatcher line
+### The dispatcher lines (pair)
 
-At every natural transition, Claude Code emits one of the two lines before proceeding:
+At every natural transition between **Opus** and **Sonnet**, Claude Code emits **exactly one** of the two lines below, then **stops**—so the user can flip the model before the *next* kind of work. Claude Code does not ask "ready?" and does not chain another dispatch in the same turn.
 
-- **"Switch to Opus high — next beat is [X]."**
-- **"Switch to Sonnet — housekeeping: [Y]."**
+- **"Switch to Opus high — next beat is [X]."** — The **up-hand** (see **Beat handoffs**): terminal audits in **Sonnet** for the current sub-step are **closed** with ✅; **X** is the next work unit that requires Opus (next §8e.1, non-trivial audit, design, §11 resume update, *etc.*). **Do not** request another `grep`/`cat`/`shasum` for the *same* already-verified save, and **do not** draft the *next* §8e.1 in Sonnet in that handoff turn.
 
-One line. No ceremony. The user reads it, flips, pastes continue. Claude Code does not ask "ready?" — it states the mode and waits.
+- **"Switch to Sonnet — housekeeping: [Y]."** — The **down-hand** (see **Beat handoffs**): the session is in **Opus** but the **very next** action is **only** a **Sonnet beat** (read-back verdict, commit message text, Completion Log line, mechanical continuation, branch-tip `git show`/`shasum` check, *etc.*). **Y** is a short label for that work. **Do not** perform that housekeeping in Opus—burn the cheap model for paste-and-compare and mechanical drafting.
+
+**[X]** and **[Y]** are always tied to a concrete `Plan ref` (e.g. D5.1) or concrete housekeeping label—not vague filler.
 
 If Claude Code forgets to announce, the user says "mode?" and Claude Code answers with one of the two lines.
+
+### Beat handoffs (universal, every sub-step)
+
+These rules apply at **any** stage; they are not tied to a single milestone.
+
+- **Sonnet → Opus (up-hand, green light for the next "blast"):** The user **keeps pasting** terminal output in **Sonnet** until the sub-step is **✅** (per §8e Audit cycle). **After** that verification pass is **complete** (no further paste needed for *this* sub-step), **Sonnet** replies in **one** turn: brief **✅** summary; if the sub-step closes a work unit, include the plan-prescribed **commit message draft** here (Sonnet beat). Then emit **exactly** **"Switch to Opus high — next beat is [X]."** and **stop**. The *next* §8e.1 for Cursor, or any judgement-heavy audit, is **[X] on Opus** after the user switches. **❌/fix** rounds stay in Sonnet until the save is actually fixed and re-verified.
+
+- **Opus → Sonnet (down-hand, stop sign back to cheap model):** If **Opus** has finished a planning, authoring, or hard-audit turn and the **next** natural action matches **only** the **Sonnet beats** list below—**no** new design, **no** first line of a new contract/harness, **no** new `D-D*`, **no** non-obvious debugging—**Opus** does **not** do that work. Emit **"Switch to Sonnet — housekeeping: [Y]."** and **stop**. If the next move *would* need judgement, it stays **Opus**; use the **Opus-high beats** list to tell the difference. When in doubt, **Opus** (see **§12**).
+
+- **Redundant verification:** A **✅** on a sub-step is **not** an invitation to request **another** full read-back of the *same* save. Further terminal output in Sonnet is for **new** saves, **❌** fixes, or a **new** sub-step's verify block—not endless re-confirmation of a closed step.
 
 ### Opus-high beats (Claude Code calls this before)
 
