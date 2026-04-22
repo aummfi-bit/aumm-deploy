@@ -516,7 +516,7 @@ One message, then Claude Code calls the drop back to Opus-high or Sonnet.
 | O (governance modules) | Opus high | Scaffolding |
 | P / Q / R (formal verification) | Opus extra-high | Nothing — stay on Opus |
 
-Stages A, B, C are complete. Stage E onward: Claude Code announces mode at entry and at each natural beat within the stage.
+Stages A, B, C are complete. From Stage D onward, Claude Code announces mode at entry and at each natural beat within the stage.
 
 ### Token discipline (real levers, not ceremony)
 
