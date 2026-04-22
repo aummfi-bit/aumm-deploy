@@ -682,4 +682,22 @@ contract AureumProtocolFeeControllerTest is Test {
             );
         }
     }
+
+    // ─── Group E — D4 additions (FEE_ROUTING_HOOK immutable, OQ-11 bands) ──
+
+    function test_B10_TargetIsHookAddress() public view {
+        // Dedicated coverage for the FEE_ROUTING_HOOK immutable: the B10
+        // withdrawal-recipient guard targets the fee-routing hook, not
+        // der Bodensee directly. Two-immutables shape per STAGE_D_NOTES D23.
+        assertEq(controller.FEE_ROUTING_HOOK(), FEE_ROUTING_HOOK_PLACEHOLDER);
+    }
+
+    function test_BodenseeBand_Constants() public view {
+        // OQ-11 swap-fee band for der Bodensee. Values are constitutionally
+        // pinned at Stage D; enforcement is the governance path's responsibility
+        // at Stage K. Canonical per docs/FINDINGS.md OQ-11.
+        assertEq(controller.BODENSEE_SWAP_FEE_MIN(),     0.001e18,  "MIN 0.10%");
+        assertEq(controller.BODENSEE_SWAP_FEE_MAX(),     0.01e18,   "MAX 1.00%");
+        assertEq(controller.BODENSEE_SWAP_FEE_GENESIS(), 0.0075e18, "GENESIS 0.75%");
+    }
 }
