@@ -168,7 +168,7 @@ Run by the user from terminal, pasted back to Claude Code. The reason this is a 
 * The writer verifying its own output is the same class of circularity as a reviewer reviewing their own code. It catches nothing the writer wouldn't have caught before writing.
 * The user's terminal is the single authoritative source of truth about what's on disk. Every grep-and-confirm checkpoint is built on that fact; Cursor's saves are no exception.
 
-This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see section 8e), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
+This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see <span style="color: #b45309; font-weight: 700">section 8e</span>), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
 
 **After a sub-step’s verification is closed** (verdict ready to move on), **which model** drafts the *next* move is **not** a second paste round by default—see **§13 Beat handoffs** (Sonnet ↔ Opus). The per-save read-back above still applies; the handoff is about the *next* author turn.
 
@@ -203,11 +203,11 @@ Claude Code can execute these freely and report results:
 * Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
 * Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
 
-**Authoritative checkout for reads.** Planning and audit reads must target the same tree the user and Cursor edit — the **primary repo checkout** (on this machine, `/Users/janus/code/aumm-deploy`), not an auxiliary Git worktree under `.claude/worktrees/` or elsewhere. Secondary worktrees can lag the tip of `stage-d` (see **D18** in `docs/STAGE_D_NOTES.md`). If a session was opened from a worktree path, `cd` to the main checkout before treating file reads as ground truth for §8e.1 drafting.
+**Authoritative checkout for reads.** Planning and audit reads must target the same tree the user and Cursor edit — the **primary repo checkout** (on this machine, `/Users/janus/code/aumm-deploy`), not an auxiliary Git worktree under `.claude/worktrees/` or elsewhere. Secondary worktrees can lag the tip of `stage-d` (see **D18** in `docs/STAGE_D_NOTES.md`). If a session was opened from a worktree path, `cd` to the main checkout before treating file reads as ground truth for <span style="color: #b45309; font-weight: 700">§8e.1</span> drafting.
 
-**`forge clean` is in 8a** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
+**`forge clean` is in <span style="color: #b45309; font-weight: 700">8a</span>** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
 
-**File writes are NOT in 8a**, under any circumstance or path. See section 8e.
+**File writes are NOT in <span style="color: #b45309; font-weight: 700">8a</span>**, under any circumstance or path. See <span style="color: #b45309; font-weight: 700">section 8e</span>.
 
 ### 8b. Requires explicit chat approval before each execution
 
@@ -219,9 +219,9 @@ Claude Code must present the planned action and wait for user approval — **eve
 * Running commands as root / with `sudo`.
 * Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident showed that untracked-file cleanup still deserves a chat beat before the `rm`.
 
-**Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by 8b but practically never done.
+**Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by <span style="color: #b45309; font-weight: 700">8b</span> but practically never done.
 
-**File writes are handled separately in section 8e**, not here. Earlier versions of this document placed "writing to any file" in 8b ("ask before each write"). The C6.2 episode showed that approval-to-write combined with write-and-self-verify by the writing tool leaves the verification gap 8a/b/c cannot close. Source-tree writes are now delegated per 8e.
+**File writes are handled separately in <span style="color: #b45309; font-weight: 700">section 8e</span>**, not here. Earlier versions of this document placed "writing to any file" in <span style="color: #b45309; font-weight: 700">8b</span> ("ask before each write"). The C6.2 episode showed that approval-to-write combined with write-and-self-verify by the writing tool leaves the verification gap <span style="color: #b45309; font-weight: 700">8a/b/c</span> cannot close. Source-tree writes are now delegated per <span style="color: #b45309; font-weight: 700">8e</span>.
 
 ### 8c. Banned — do not do these even with user approval in this session's chat
 
@@ -237,7 +237,7 @@ Some actions require a higher bar than a single chat line. If any of these come 
 
 ### 8d. When uncertain
 
-If Claude Code is uncertain whether an action falls in 8a, 8b, 8c, or 8e, treat it as 8b. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
+If Claude Code is uncertain whether an action falls in <span style="color: #b45309; font-weight: 700">8a, 8b, 8c, or 8e</span>, treat it as <span style="color: #b45309; font-weight: 700">8b</span>. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
 
 Never fabricate output. If a tool fails or returns something unexpected, say so. If Claude Code catches itself inferring what the user "probably" wants instead of asking, stop and ask.
 
@@ -268,10 +268,10 @@ Every prompt Claude Code hands the user for Cursor must be:
 1. User pastes Cursor's report + terminal output back to Claude Code.
 2. Claude Code validates: file path correct, line count plausible, em-dash count plausible, content matches the prompt, `forge build` green if run, `slither` clean if run, `git diff` shows only the intended changes.
 3. Claude Code reports verdict in one of two forms:
-   * **✅ Proceed** — confirms the sub-step landed clean; drafts the commit message if the sub-step closes a plan-defined work unit when that is **Sonnet-scoped** housekeeping (see **§13 Sonnet beats**). **Does not** draft the *next* §8e.1 prompt in **Sonnet**; **does not** run another verification round on the *same* already-verified save. **Who** drafts the next sub-step, commit flow, or paste-only work follows **§13 Beat handoffs**—not an extra `grep` loop on the same closed step.
+   * **✅ Proceed** — confirms the sub-step landed clean; drafts the commit message if the sub-step closes a plan-defined work unit when that is **Sonnet-scoped** housekeeping (see **§13 Sonnet beats**). **Does not** draft the *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> prompt in **Sonnet**; **does not** run another verification round on the *same* already-verified save. **Who** drafts the next sub-step, commit flow, or paste-only work follows **§13 Beat handoffs**—not an extra `grep` loop on the same closed step.
    * **❌ Fix** — identifies what's wrong, drafts a fix-prompt for Cursor. The fix-prompt follows the same one-sub-step discipline; "fix A and B" chains and is not allowed.
 
-4. **Model routing after audit:** The pasted output in step 2 is evaluated in the session’s current model. When the verdict is **✅** and the sub-step is **done** (any ❌/fix loop finished), the **up-hand** in **§13 (Sonnet → Opus)** applies unless the *only* next work is an **Opus → Sonnet** down-hand. Do not request redundant `wc` / `shasum` / `cat` for a save **already** closed with ✅; do not author the *next* Opus-scoped §8e.1 in Sonnet.
+4. **Model routing after audit:** The pasted output in step 2 is evaluated in the session’s current model. When the verdict is **✅** and the sub-step is **done** (any ❌/fix loop finished), the **up-hand** in **§13 (Sonnet → Opus)** applies unless the *only* next work is an **Opus → Sonnet** down-hand. Do not request redundant `wc` / `shasum` / `cat` for a save **already** closed with ✅; do not author the *next* Opus-scoped <span style="color: #b45309; font-weight: 700">§8e.1</span> in Sonnet.
 
 ### 8e.1 Sub-step prompt template (Claude Code → Cursor)
 
@@ -308,7 +308,7 @@ Rules governing the template:
   one plausible scope-creep risk, the sub-step is probably too large — split
   it in the plan before prompting.
 * **`Stop after` ends at file-save.** Build, test, lint, slither, git are
-  user-terminal actions per §8a / §8b, not Cursor actions per §7.
+  user-terminal actions per <span style="color: #b45309; font-weight: 700">§8a</span> / <span style="color: #b45309; font-weight: 700">§8b</span>, not Cursor actions per §7.
 * **`Verify` commands are the literal strings the user will run.** Not a
   description, not a suggestion — the exact shell line, so the user can
   paste without editing.
@@ -347,7 +347,7 @@ The user asked Cursor (text-editor-only mode) to edit `docs/STAGES_OVERVIEW.md` 
 
 ### Mini-incident — Claude Code self-verification gap (2026-04-18, later)
 
-During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude Code's own follow-up was a `wc -l` line count plus a "head and tail match" claim, and it proposed proceeding directly to C6.3 without a full read-back. The user caught the gap and ran `cat src/token/AuMM.sol` from their own terminal against the approved draft — the file was byte-perfect, but the verification gap was the point. A self-check by the writing tool is not the same as an external read-back. Fix: section 6 now explicitly requires terminal-side read-back for every write; section 8e eliminates Claude Code writes entirely.
+During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude Code's own follow-up was a `wc -l` line count plus a "head and tail match" claim, and it proposed proceeding directly to C6.3 without a full read-back. The user caught the gap and ran `cat src/token/AuMM.sol` from their own terminal against the approved draft — the file was byte-perfect, but the verification gap was the point. A self-check by the writing tool is not the same as an external read-back. Fix: section 6 now explicitly requires terminal-side read-back for every write; <span style="color: #b45309; font-weight: 700">section 8e</span> eliminates Claude Code writes entirely.
 
 ### The principle
 
@@ -355,7 +355,7 @@ During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude
 
 Agentic tools — Cursor Composer, Claude Code with loose allowlists, any "write file and move on" combined action — treat forward progress as the goal. They generate plausible next-steps ahead of direction. Most of the time those next-steps are correct-looking; occasionally they are wrong; the user cannot tell which without reading the diff. When the protocol will hold real money post-Stage R, "occasionally wrong" is not acceptable.
 
-Three data points in three days, same underlying pattern: **AI tools default to self-verification even when given instructions to the contrary, and default to making progress when stopping-and-reporting would be the more disciplined move.** The cure is structural: separate the tool that acts from the tool that verifies. That is what sections 6, 7, and 8e now encode.
+Three data points in three days, same underlying pattern: **AI tools default to self-verification even when given instructions to the contrary, and default to making progress when stopping-and-reporting would be the more disciplined move.** The cure is structural: separate the tool that acts from the tool that verifies. That is what sections 6, 7, and <span style="color: #b45309; font-weight: 700">8e</span> now encode.
 
 ---
 
@@ -438,7 +438,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
 * Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
 * **Stage D — `IVault.unlock` inner callbacks** (`AureumFeeRoutingHook` and the same pattern elsewhere): when the outer caller uses `abi.decode(result, (uint256))`, the inner must `returns (uint256)`, not `returns (bytes memory)` with `abi.encode` — see **D22** in `docs/STAGE_D_NOTES.md`.
-* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): during D4.5, Cursor Prompts A and D expanded scope beyond the planned `src/vault/AureumProtocolFeeController.sol` + test file to cover `script/DeployAureumVault.s.sol`, `test/fork/DeployAureumVault.t.sol`, and `.env.example` for the `FEE_ROUTING_HOOK` env wiring. The expansion was kept (the wiring was materially needed) but is logged as a §8e.1 / Cursor-discipline warning for D5 onward — sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
+* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): during D4.5, Cursor Prompts A and D expanded scope beyond the planned `src/vault/AureumProtocolFeeController.sol` + test file to cover `script/DeployAureumVault.s.sol`, `test/fork/DeployAureumVault.t.sol`, and `.env.example` for the `FEE_ROUTING_HOOK` env wiring. The expansion was kept (the wiring was materially needed) but is logged as a <span style="color: #b45309; font-weight: 700">§8e.1</span> / Cursor-discipline warning for D5 onward — sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
 
 ---
 
@@ -449,7 +449,7 @@ This is the fallback rule that subsumes everything else. If any of the following
 * The plan is ambiguous about the current sub-step.
 * An expected file or path doesn't exist.
 * A command fails or returns unexpected output.
-* An action seems like it might fall into section 8b, 8c, or 8e but you're not sure.
+* An action seems like it might fall into <span style="color: #b45309; font-weight: 700">section 8b, 8c, or 8e</span> but you're not sure.
 * The user said something that contradicts the plan.
 * You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
 
@@ -461,27 +461,27 @@ The cost of asking is a round-trip. The cost of guessing wrong is a rollback plu
 
 Claude Code announces the mode for the next beat. The user flips the switch. No gates, no permission blocks — the announcement *is* the instruction.
 
-Claude Code's job on this project per §8e is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
+Claude Code's job on this project per <span style="color: #b45309; font-weight: 700">§8e</span> is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
 
 ### The dispatcher lines (pair)
 
 At every natural transition between **Opus** and **Sonnet**, Claude Code emits **exactly one** of the two lines below, then **stops**—so the user can flip the model before the *next* kind of work. Claude Code does not ask "ready?" and does not chain another dispatch in the same turn.
 
-- **"Switch to Opus high — next beat is [X]."** — The **up-hand** (see **Beat handoffs**): terminal audits in **Sonnet** for the current sub-step are **closed** with ✅; **X** is the next work unit that requires Opus (next §8e.1, non-trivial audit, design, §11 resume update, *etc.*). **Do not** request another `grep`/`cat`/`shasum` for the *same* already-verified save, and **do not** draft the *next* §8e.1 in Sonnet in that handoff turn.
+- <span style="color: #b45309; font-weight: 700">"Switch to Opus high — next beat is [X]."</span> — The **up-hand** (see **Beat handoffs**): terminal audits in **Sonnet** for the current sub-step are **closed** with ✅; **X** is the next work unit that requires Opus (next <span style="color: #b45309; font-weight: 700">§8e.1</span>, non-trivial audit, design, §11 resume update, *etc.*). **Do not** request another `grep`/`cat`/`shasum` for the *same* already-verified save, and **do not** draft the *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> in Sonnet in that handoff turn.
 
-- **"Switch to Sonnet — housekeeping: [Y]."** — The **down-hand** (see **Beat handoffs**): the session is in **Opus** but the **very next** action is **only** a **Sonnet beat** (read-back verdict, commit message text, Completion Log line, mechanical continuation, branch-tip `git show`/`shasum` check, *etc.*). **Y** is a short label for that work. **Do not** perform that housekeeping in Opus—burn the cheap model for paste-and-compare and mechanical drafting.
+- <span style="color: #b45309; font-weight: 700">"Switch to Sonnet — housekeeping: [Y]."</span> — The **down-hand** (see **Beat handoffs**): the session is in **Opus** but the **very next** action is **only** a **Sonnet beat** (read-back verdict, commit message text, Completion Log line, mechanical continuation, branch-tip `git show`/`shasum` check, *etc.*). **Y** is a short label for that work. **Do not** perform that housekeeping in Opus—burn the cheap model for paste-and-compare and mechanical drafting.
 
 **[X]** and **[Y]** are always tied to a concrete `Plan ref` (e.g. D5.1) or concrete housekeeping label—not vague filler.
 
-If Claude Code forgets to announce, the user says "mode?" and Claude Code answers with one of the two lines.
+If Claude Code forgets to announce, the user says <span style="color: #b45309; font-weight: 700">"mode?"</span> and Claude Code answers with one of the two lines.
 
 ### Beat handoffs (universal, every sub-step)
 
 These rules apply at **any** stage; they are not tied to a single milestone.
 
-- **Sonnet → Opus (up-hand, green light for the next "blast"):** The user **keeps pasting** terminal output in **Sonnet** until the sub-step is **✅** (per §8e Audit cycle). **After** that verification pass is **complete** (no further paste needed for *this* sub-step), **Sonnet** replies in **one** turn: brief **✅** summary; if the sub-step closes a work unit, include the plan-prescribed **commit message draft** here (Sonnet beat). Then emit **exactly** **"Switch to Opus high — next beat is [X]."** and **stop**. The *next* §8e.1 for Cursor, or any judgement-heavy audit, is **[X] on Opus** after the user switches. **❌/fix** rounds stay in Sonnet until the save is actually fixed and re-verified.
+- **Sonnet → Opus (up-hand, green light for the next "blast"):** The user **keeps pasting** terminal output in **Sonnet** until the sub-step is **✅** (per <span style="color: #b45309; font-weight: 700">§8e</span> Audit cycle). **After** that verification pass is **complete** (no further paste needed for *this* sub-step), **Sonnet** replies in **one** turn: brief **✅** summary; if the sub-step closes a work unit, include the plan-prescribed **commit message draft** here (Sonnet beat). Then emit **exactly** <span style="color: #b45309; font-weight: 700">"Switch to Opus high — next beat is [X]."</span> and **stop**. The *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> for Cursor, or any judgement-heavy audit, is **[X] on Opus** after the user switches. **❌/fix** rounds stay in Sonnet until the save is actually fixed and re-verified.
 
-- **Opus → Sonnet (down-hand, stop sign back to cheap model):** If **Opus** has finished a planning, authoring, or hard-audit turn and the **next** natural action matches **only** the **Sonnet beats** list below—**no** new design, **no** first line of a new contract/harness, **no** new `D-D*`, **no** non-obvious debugging—**Opus** does **not** do that work. Emit **"Switch to Sonnet — housekeeping: [Y]."** and **stop**. If the next move *would* need judgement, it stays **Opus**; use the **Opus-high beats** list to tell the difference. When in doubt, **Opus** (see **§12**).
+- **Opus → Sonnet (down-hand, stop sign back to cheap model):** If **Opus** has finished a planning, authoring, or hard-audit turn and the **next** natural action matches **only** the **Sonnet beats** list below—**no** new design, **no** first line of a new contract/harness, **no** new `D-D*`, **no** non-obvious debugging—**Opus** does **not** do that work. Emit <span style="color: #b45309; font-weight: 700">"Switch to Sonnet — housekeeping: [Y]."</span> and **stop**. If the next move *would* need judgement, it stays **Opus**; use the **Opus-high beats** list to tell the difference. When in doubt, **Opus** (see **§12**).
 
 - **Redundant verification:** A **✅** on a sub-step is **not** an invitation to request **another** full read-back of the *same* save. Further terminal output in Sonnet is for **new** saves, **❌** fixes, or a **new** sub-step's verify block—not endless re-confirmation of a closed step.
 
@@ -507,7 +507,7 @@ These rules apply at **any** stage; they are not tied to a single milestone.
 
 ### Extra-high effort (Opus only, rare)
 
-Claude Code calls for this explicitly: **"Switch to Opus extra-high — [specific hard problem]."** Used for:
+Claude Code calls for this explicitly: <span style="color: #b45309; font-weight: 700">"Switch to Opus extra-high — [specific hard problem]."</span> Used for:
 
 - Pre-flight on a novel stage (F kickoff, H halving math review, K governance handoff design).
 - Debugging a failure where Opus-high already tried and did not crack it.
@@ -539,4 +539,4 @@ Stages A, B, C are complete. From Stage D onward, Claude Code announces mode at 
 - Do not re-read a file already in context this session.
 - For "where is X referenced" across more than three files, spawn Explore — its context stays out of the main thread.
 - Trust CLAUDE.md §11 as the resumption anchor. Do not re-read full plan + full NOTES on session start; read the named sub-step + the named file regions.
-- The §8e.1 template is the forcing function against re-scoping. Use it verbatim.
+- The <span style="color: #b45309; font-weight: 700">§8e.1</span> template is the forcing function against re-scoping. Use it verbatim.
