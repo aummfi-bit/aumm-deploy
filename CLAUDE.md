@@ -278,58 +278,47 @@ Every prompt Claude Code hands the user for Cursor must be:
 
 **Chat-safe formatting:** Sub-step headers (e.g. `D6.1 — Cursor prompt (**§8e.1**):`) and the filled template use **Markdown only** — `**…**` for emphasis, `§8e.1` in plain text or backticks as needed. **Do not** paste HTML from `CLAUDE.md` or the stage plan: chat UIs (and many paste targets) do not render `<span>`/`<b>` and will show raw tags.
 
-Every Cursor-targeted execution prompt drafted by Claude Code uses the fixed
-shape below. Cursor receives a filled template, not prose. If a field does
-not apply, Claude Code writes `none` explicitly rather than omitting it.
+Every Cursor-targeted execution prompt drafted by Claude Code uses the two-block shape below. The blocks go to different destinations: the **CURSOR PROMPT** block is handed to Cursor verbatim; the **USER VERIFY** block is run by the user in their terminal *after* Cursor's save. Cursor never sees the USER VERIFY block. The divider between them is literal and required. If a field does not apply, Claude Code writes `none` explicitly rather than omitting it.
 
 ```
+### CURSOR PROMPT — paste to Cursor verbatim; Cursor only
+
 Plan ref: <stage><step> e.g. D3.2
 Plan lines: STAGE_D_PLAN.md:L<from>-L<to>
 Goal: <one sentence, no tradeoffs, no alternatives>
-Instruction: Do exactly this and only this.
+Instruction: Do exactly this and only this. Save the file(s) and stop.
+             Do not run any shell command — no forge, no git, no slither,
+             no bash. If a tool offers to run one, decline.
 Files: <path> (create | edit)
 <path> (create | edit)
 Must match: - <signature / import / pragma / constant / invariant>
 - <...>
 Out of scope: - <explicit exclusions; "while we're here" candidates>
 - <adjacent edits the user or Cursor might be tempted to make>
-Stop after: <exact final state; last file saved; no commit, no build>
-Verify: $ wc -l <path>
-$ shasum -a 256 <path>
-$ cat <path>
-$ grep -c "—" <path>
+Stop after: <exact final state; last file saved; no commit, no build, no advance>
+
+### USER VERIFY — run in the user's terminal after Cursor's save; not part of the Cursor prompt
+
+clear
+wc -l <path>
+shasum -a 256 <path>
+cat <path>
+grep -c "—" <path>
 <plus any step-specific grep from the plan>
 ```
 
 Rules governing the template:
 
-* **One sub-step per prompt.** Chaining (`D3.2 and D3.3`) is the precise
-  failure mode §6 outlaws; the template has one `Plan ref` field, singular.
-* **`Instruction` is required and fixed text.** The line
-  `Instruction: Do exactly this and only this.` must appear verbatim on every
-  handoff — a scope checksum, not paraphrased. It complements `Out of scope` and
-  `Stop after`; it does not replace them.
-* **`Must match` is the contract.** Every bullet is a property Cursor can
-  check against the saved file without interpretation. No soft guidance
-  ("try to keep it short"), no style notes that aren't load-bearing.
-* **`Out of scope` is not optional.** If Claude Code cannot name at least
-  one plausible scope-creep risk, the sub-step is probably too large — split
-  it in the plan before prompting.
-* **`Stop after` ends at file-save.** Build, test, lint, slither, git are
-  user-terminal actions per **§8a** / **§8b**, not Cursor actions per §7.
-* **`Verify` commands are the literal strings the user will run.** Not a
-  description, not a suggestion — the exact shell line, so the user can
-  paste without editing.
-* **`Must match` is grounded in branch state.** Draft those bullets from
-  `git show <branch>:<path>` (e.g. `git show stage-d:src/fee_router/AureumFeeRoutingHook.sol`)
-  or from a cwd confirmed to be the main checkout — not from a possibly stale
-  worktree file, not from chat memory or a prior-session summary. See **D18** and
-  **D21** in `docs/STAGE_D_NOTES.md`.
+* **Two blocks, one divider.** The `### CURSOR PROMPT` and `### USER VERIFY` headers appear verbatim in every filled template. The divider keeps shell commands structurally outside the Cursor-facing payload — the fence in `Stop after` was being undercut when a wall of `$` lines sat three lines below it. See **D31** in `docs/STAGE_D_NOTES.md`.
+* **One sub-step per prompt.** Chaining (`D3.2 and D3.3`) is the precise failure mode §6 outlaws; the template has one `Plan ref` field, singular.
+* **`Instruction` is required and fixed text.** Both sentences must appear verbatim on every handoff — the `Do exactly this and only this. Save the file(s) and stop.` scope checksum *and* the `Do not run any shell command — no forge, no git, no slither, no bash. If a tool offers to run one, decline.` anti-action clause. Paraphrasing either weakens the forcing function. `Instruction` complements `Out of scope` and `Stop after`; it does not replace them.
+* **`Must match` is the contract.** Every bullet is a property Cursor can check against the saved file without interpretation. No soft guidance ("try to keep it short"), no style notes that aren't load-bearing.
+* **`Out of scope` is not optional.** If Claude Code cannot name at least one plausible scope-creep risk, the sub-step is probably too large — split it in the plan before prompting.
+* **`Stop after` ends at file-save.** Build, test, lint, slither, git are user-terminal actions per **§8a** / **§8b**, not Cursor actions per §7.
+* **`USER VERIFY` lines live outside the Cursor prompt.** They are the literal strings the user will run, under a header Cursor never reads. Not a description, not a suggestion — the exact shell line, paste-ready for zsh/bash, with no shell-prompt prefix (no leading `$`). Every USER VERIFY block begins with `clear` on its own line, so the terminal starts fresh and the pasted-back audit output is easy to isolate. Claude Code does not include `forge`, `slither`, or `git` mutations in this block unless the plan explicitly calls for them at this sub-step; verification defaults to read-only file inspection (`wc`, `shasum`, `cat`, `grep`, `git show`, `git diff`, `git status`).
+* **`Must match` is grounded in branch state.** Draft those bullets from `git show <branch>:<path>` (e.g. `git show stage-d:src/fee_router/AureumFeeRoutingHook.sol`) or from a cwd confirmed to be the main checkout — not from a possibly stale worktree file, not from chat memory or a prior-session summary. See **D18** and **D21** in `docs/STAGE_D_NOTES.md`.
 
-Claude Code does not add *ad-hoc* fields beyond this shape. The only
-top-level fields are: `Plan ref`, `Plan lines`, `Goal`, `Instruction`, `Files`,
-`Must match`, `Out of scope`, `Stop after`, and `Verify`. Extra fields invite
-prose, and prose invites Cursor to plan.
+Claude Code does not add *ad-hoc* fields beyond this shape. The only top-level fields in the CURSOR PROMPT block are: `Plan ref`, `Plan lines`, `Goal`, `Instruction`, `Files`, `Must match`, `Out of scope`, and `Stop after`. `Verify` is no longer a field of the CURSOR PROMPT block; the verify commands live in the USER VERIFY block below the divider. Extra fields invite prose, and prose invites Cursor to plan.
 
 ### Why this division
 
