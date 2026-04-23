@@ -1057,6 +1057,42 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 
 **Spec edits required (aumm-site, user-side).** `04_tokenomics.md` §ix yield-fee leg prose needs amendment to match Option A semantics (controller calls hook via `routeYieldFee`, not "withdraws to hook"). Flagged for user's spec-side update; not a repo edit.
 
+### OQ-21 — Yield-leg routing cadence: `BLOCKS_PER_EPOCH` throttle on D4.6 entry point
+
+**Status.** Proposed, pending D4.6. Stub here so cadence intent is on record before implementation chatter evaporates.
+
+**Context.** OQ-20 and D29 frame the yield leg as two steps: permissionless `collectAggregateFees(pool)` — the Balancer-shaped step 1 — pulls aggregate fees to the controller; the Aureum D4.6 entry point `routeYieldFeeToHook(pool, token, amount)` — step 2 — is where governance-authorized routing into the hook pipeline happens. This stub pins cadence policy on that second step only.
+
+**Proposal.** Sketch: gate `routeYieldFeeToHook` with a per-pool `BLOCKS_PER_EPOCH` throttle.
+
+```solidity
+mapping(address pool => uint256 lastRouteBlock) private _lastRouteBlock;
+
+function routeYieldFeeToHook(address pool, IERC20 token, uint256 amount) external authenticate {
+    if (block.number < _lastRouteBlock[pool] + BLOCKS_PER_EPOCH) revert RouteThrottled();
+    // ... approve hook + call routeYieldFee ...
+    _lastRouteBlock[pool] = block.number; // update only on successful route
+}
+```
+
+The throttle stamp updates only after `routeYieldFee` returns successfully. If the external call reverts, the pool must not be locked out for an epoch with no economic effect.
+
+**Rationale.**
+
+- **`BLOCKS_PER_EPOCH`** matches the protocol bi-weekly rhythm — see `CLAUDE.md` §5 and `src/lib/AureumTime.sol`.
+- **Per-pool `lastRouteBlock`** — a single global throttle across all pools is rejected.
+- **Throttle on routing, not collection** — `collectAggregateFees` stays on the vault’s cadence; only the D4.6 entry point enforces epoch spacing for routed yield fees.
+
+**Storage granularity.**
+
+- **(a) Per-pool** — likely default: der Bodensee takes both sUSDS and svZCHF yield legs per D11, so one cooldown per pool fits the operational picture.
+- **(b) Per-(pool, token)** — reserved for asymmetric handling if different spacing per token is required later.
+- **(c) Per-pool with mandated internal batch** — if governance requires one transaction to batch multiple tokens, the same per-pool key can still describe one successful routed batch.
+
+**Permissioning.** This follows OQ-20: the entry point remains `authenticate`-gated via `AureumAuthorizer`. This OQ adds epoch throttling only. Making routing permissionless after cooldown would be a new OQ and a break from OQ-20.
+
+**Spec edit flag (aumm-site, user-side — not a repo edit).** `aumm-site/04_tokenomics.md` §ix needs amendment for bi-weekly cadence policy.
+
 ---
 
 ## What this document does NOT decide
