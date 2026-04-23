@@ -168,7 +168,7 @@ Run by the user from terminal, pasted back to Claude Code. The reason this is a 
 * The writer verifying its own output is the same class of circularity as a reviewer reviewing their own code. It catches nothing the writer wouldn't have caught before writing.
 * The user's terminal is the single authoritative source of truth about what's on disk. Every grep-and-confirm checkpoint is built on that fact; Cursor's saves are no exception.
 
-This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see <span style="color: #b45309; font-weight: 700">section 8e</span>), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
+This applies equally to Cursor saves and to any future tool added to the pipeline. Claude Code does not write source-tree files (see **section 8e**), so the rule's primary enforcement surface is Cursor's output — but the principle survives any tooling change.
 
 **After a sub-step’s verification is closed** (verdict ready to move on), **which model** drafts the *next* move is **not** a second paste round by default—see **§13 Beat handoffs** (Sonnet ↔ Opus). The per-save read-back above still applies; the handoff is about the *next* author turn.
 
@@ -203,11 +203,11 @@ Claude Code can execute these freely and report results:
 * Slither analysis: `slither .`, `slither <path>`, with any `--filter-paths` / `--exclude-*` flags
 * Anything else that doesn't write to disk, doesn't hit the network, doesn't mutate git state
 
-**Authoritative checkout for reads.** Planning and audit reads must target the same tree the user and Cursor edit — the **primary repo checkout** (on this machine, `/Users/janus/code/aumm-deploy`), not an auxiliary Git worktree under `.claude/worktrees/` or elsewhere. Secondary worktrees can lag the tip of `stage-d` (see **D18** in `docs/STAGE_D_NOTES.md`). If a session was opened from a worktree path, `cd` to the main checkout before treating file reads as ground truth for <span style="color: #b45309; font-weight: 700">§8e.1</span> drafting.
+**Authoritative checkout for reads.** Planning and audit reads must target the same tree the user and Cursor edit — the **primary repo checkout** (on this machine, `/Users/janus/code/aumm-deploy`), not an auxiliary Git worktree under `.claude/worktrees/` or elsewhere. Secondary worktrees can lag the tip of `stage-d` (see **D18** in `docs/STAGE_D_NOTES.md`). If a session was opened from a worktree path, `cd` to the main checkout before treating file reads as ground truth for **§8e.1** drafting.
 
-**`forge clean` is in <span style="color: #b45309; font-weight: 700">8a</span>** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
+**`forge clean` is in 8a** because it only removes generated artifacts under `out/` and `cache/`; it cannot touch source-tree files. It's part of the standard verification toolkit.
 
-**File writes are NOT in <span style="color: #b45309; font-weight: 700">8a</span>**, under any circumstance or path. See <span style="color: #b45309; font-weight: 700">section 8e</span>.
+**File writes are NOT in 8a**, under any circumstance or path. See **section 8e**.
 
 ### 8b. Requires explicit chat approval before each execution
 
@@ -219,9 +219,9 @@ Claude Code must present the planned action and wait for user approval — **eve
 * Running commands as root / with `sudo`.
 * Deleting files, even if untracked. The 2026-04-18 `STAGES_OVERVIEW.md` stub incident showed that untracked-file cleanup still deserves a chat beat before the `rm`.
 
-**Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by <span style="color: #b45309; font-weight: 700">8b</span> but practically never done.
+**Note on the git-mutation rule in practice:** the established convention on this project is that **the user runs all `git add`/`commit`/`push`/`tag` in their own terminal**, not Claude Code. This gives the user a final eyes-on pass at `git status` before a commit lands. Claude Code's role around git mutations is to draft the exact command (including commit message) and confirm expected `git status` state before and after; the user executes in terminal. Claude Code asking for approval to run git mutations itself is technically allowed by **8b** but practically never done.
 
-**File writes are handled separately in <span style="color: #b45309; font-weight: 700">section 8e</span>**, not here. Earlier versions of this document placed "writing to any file" in <span style="color: #b45309; font-weight: 700">8b</span> ("ask before each write"). The C6.2 episode showed that approval-to-write combined with write-and-self-verify by the writing tool leaves the verification gap <span style="color: #b45309; font-weight: 700">8a/b/c</span> cannot close. Source-tree writes are now delegated per <span style="color: #b45309; font-weight: 700">8e</span>.
+**File writes are handled separately in section 8e**, not here. Earlier versions of this document placed "writing to any file" in **8b** ("ask before each write"). The C6.2 episode showed that approval-to-write combined with write-and-self-verify by the writing tool leaves a verification gap that **8a**, **8b**, and **8c** do not close. Source-tree writes are now delegated per **8e**.
 
 ### 8c. Banned — do not do these even with user approval in this session's chat
 
@@ -237,7 +237,7 @@ Some actions require a higher bar than a single chat line. If any of these come 
 
 ### 8d. When uncertain
 
-If Claude Code is uncertain whether an action falls in <span style="color: #b45309; font-weight: 700">8a, 8b, 8c, or 8e</span>, treat it as <span style="color: #b45309; font-weight: 700">8b</span>. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
+If Claude Code is uncertain whether an action falls in **8a, 8b, 8c, or 8e**, treat it as **8b**. Ask. The cost of asking when the answer is "yes, do it" is one round-trip. The cost of acting when the answer is "no" is a rollback, a debug session, or worse.
 
 Never fabricate output. If a tool fails or returns something unexpected, say so. If Claude Code catches itself inferring what the user "probably" wants instead of asking, stop and ask.
 
@@ -262,18 +262,21 @@ Every prompt Claude Code hands the user for Cursor must be:
 3. **Self-contained.** Cursor should not need to ask clarifying questions. If the sub-step depends on a design decision that isn't yet recorded, Claude Code resolves the decision first (or asks the user) before authoring the prompt.
 4. **Paired with explicit stop criteria.** The prompt ends with a clear "stop after saving the file(s); do not commit, do not run forge, do not advance."
 5. **Followed in the same turn by the terminal commands the user will run for audit.** Claude Code drafts the `wc -l` / `shasum` / `cat` / `grep` / `forge build` / `slither` commands the user pastes into terminal after Cursor saves.
+6. **The §8e.1 `Instruction` line.** Every prompt must include `Instruction: Do exactly this and only this.` verbatim — the fixed scope line from the **§8e.1** template, not a paraphrase.
 
 ### Audit cycle (Claude Code's job, after Cursor executes)
 
 1. User pastes Cursor's report + terminal output back to Claude Code.
 2. Claude Code validates: file path correct, line count plausible, em-dash count plausible, content matches the prompt, `forge build` green if run, `slither` clean if run, `git diff` shows only the intended changes.
 3. Claude Code reports verdict in one of two forms:
-   * **✅ Proceed** — confirms the sub-step landed clean; drafts the commit message if the sub-step closes a plan-defined work unit when that is **Sonnet-scoped** housekeeping (see **§13 Sonnet beats**). **Does not** draft the *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> prompt in **Sonnet**; **does not** run another verification round on the *same* already-verified save. **Who** drafts the next sub-step, commit flow, or paste-only work follows **§13 Beat handoffs**—not an extra `grep` loop on the same closed step.
+   * **✅ Proceed** — confirms the sub-step landed clean; drafts the commit message if the sub-step closes a plan-defined work unit when that is **Sonnet-scoped** housekeeping (see **§13 Sonnet beats**). **Does not** draft the *next* **§8e.1** prompt in **Sonnet**; **does not** run another verification round on the *same* already-verified save. **Who** drafts the next sub-step, commit flow, or paste-only work follows **§13 Beat handoffs**—not an extra `grep` loop on the same closed step.
    * **❌ Fix** — identifies what's wrong, drafts a fix-prompt for Cursor. The fix-prompt follows the same one-sub-step discipline; "fix A and B" chains and is not allowed.
 
-4. **Model routing after audit:** The pasted output in step 2 is evaluated in the session’s current model. When the verdict is **✅** and the sub-step is **done** (any ❌/fix loop finished), the **up-hand** in **§13 (Sonnet → Opus)** applies unless the *only* next work is an **Opus → Sonnet** down-hand. Do not request redundant `wc` / `shasum` / `cat` for a save **already** closed with ✅; do not author the *next* Opus-scoped <span style="color: #b45309; font-weight: 700">§8e.1</span> in Sonnet.
+4. **Model routing after audit:** The pasted output in step 2 is evaluated in the session’s current model. When the verdict is **✅** and the sub-step is **done** (any ❌/fix loop finished), the **up-hand** in **§13 (Sonnet → Opus)** applies unless the *only* next work is an **Opus → Sonnet** down-hand. Do not request redundant `wc` / `shasum` / `cat` for a save **already** closed with ✅; do not author the *next* Opus-scoped **§8e.1** in Sonnet.
 
 ### 8e.1 Sub-step prompt template (Claude Code → Cursor)
+
+**Chat-safe formatting:** Sub-step headers (e.g. `D6.1 — Cursor prompt (**§8e.1**):`) and the filled template use **Markdown only** — `**…**` for emphasis, `§8e.1` in plain text or backticks as needed. **Do not** paste HTML from `CLAUDE.md` or the stage plan: chat UIs (and many paste targets) do not render `<span>`/`<b>` and will show raw tags.
 
 Every Cursor-targeted execution prompt drafted by Claude Code uses the fixed
 shape below. Cursor receives a filled template, not prose. If a field does
@@ -283,6 +286,7 @@ not apply, Claude Code writes `none` explicitly rather than omitting it.
 Plan ref: <stage><step> e.g. D3.2
 Plan lines: STAGE_D_PLAN.md:L<from>-L<to>
 Goal: <one sentence, no tradeoffs, no alternatives>
+Instruction: Do exactly this and only this.
 Files: <path> (create | edit)
 <path> (create | edit)
 Must match: - <signature / import / pragma / constant / invariant>
@@ -301,6 +305,10 @@ Rules governing the template:
 
 * **One sub-step per prompt.** Chaining (`D3.2 and D3.3`) is the precise
   failure mode §6 outlaws; the template has one `Plan ref` field, singular.
+* **`Instruction` is required and fixed text.** The line
+  `Instruction: Do exactly this and only this.` must appear verbatim on every
+  handoff — a scope checksum, not paraphrased. It complements `Out of scope` and
+  `Stop after`; it does not replace them.
 * **`Must match` is the contract.** Every bullet is a property Cursor can
   check against the saved file without interpretation. No soft guidance
   ("try to keep it short"), no style notes that aren't load-bearing.
@@ -308,7 +316,7 @@ Rules governing the template:
   one plausible scope-creep risk, the sub-step is probably too large — split
   it in the plan before prompting.
 * **`Stop after` ends at file-save.** Build, test, lint, slither, git are
-  user-terminal actions per <span style="color: #b45309; font-weight: 700">§8a</span> / <span style="color: #b45309; font-weight: 700">§8b</span>, not Cursor actions per §7.
+  user-terminal actions per **§8a** / **§8b**, not Cursor actions per §7.
 * **`Verify` commands are the literal strings the user will run.** Not a
   description, not a suggestion — the exact shell line, so the user can
   paste without editing.
@@ -318,7 +326,9 @@ Rules governing the template:
   worktree file, not from chat memory or a prior-session summary. See **D18** and
   **D21** in `docs/STAGE_D_NOTES.md`.
 
-Claude Code does not add fields beyond this shape. Extra fields invite
+Claude Code does not add *ad-hoc* fields beyond this shape. The only
+top-level fields are: `Plan ref`, `Plan lines`, `Goal`, `Instruction`, `Files`,
+`Must match`, `Out of scope`, `Stop after`, and `Verify`. Extra fields invite
 prose, and prose invites Cursor to plan.
 
 ### Why this division
@@ -347,7 +357,7 @@ The user asked Cursor (text-editor-only mode) to edit `docs/STAGES_OVERVIEW.md` 
 
 ### Mini-incident — Claude Code self-verification gap (2026-04-18, later)
 
-During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude Code's own follow-up was a `wc -l` line count plus a "head and tail match" claim, and it proposed proceeding directly to C6.3 without a full read-back. The user caught the gap and ran `cat src/token/AuMM.sol` from their own terminal against the approved draft — the file was byte-perfect, but the verification gap was the point. A self-check by the writing tool is not the same as an external read-back. Fix: section 6 now explicitly requires terminal-side read-back for every write; <span style="color: #b45309; font-weight: 700">section 8e</span> eliminates Claude Code writes entirely.
+During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude Code's own follow-up was a `wc -l` line count plus a "head and tail match" claim, and it proposed proceeding directly to C6.3 without a full read-back. The user caught the gap and ran `cat src/token/AuMM.sol` from their own terminal against the approved draft — the file was byte-perfect, but the verification gap was the point. A self-check by the writing tool is not the same as an external read-back. Fix: section 6 now explicitly requires terminal-side read-back for every write; **section 8e** eliminates Claude Code writes entirely.
 
 ### The principle
 
@@ -355,7 +365,7 @@ During C6.2, Claude Code wrote `src/token/AuMM.sol` via its `Write` tool. Claude
 
 Agentic tools — Cursor Composer, Claude Code with loose allowlists, any "write file and move on" combined action — treat forward progress as the goal. They generate plausible next-steps ahead of direction. Most of the time those next-steps are correct-looking; occasionally they are wrong; the user cannot tell which without reading the diff. When the protocol will hold real money post-Stage R, "occasionally wrong" is not acceptable.
 
-Three data points in three days, same underlying pattern: **AI tools default to self-verification even when given instructions to the contrary, and default to making progress when stopping-and-reporting would be the more disciplined move.** The cure is structural: separate the tool that acts from the tool that verifies. That is what sections 6, 7, and <span style="color: #b45309; font-weight: 700">8e</span> now encode.
+Three data points in three days, same underlying pattern: **AI tools default to self-verification even when given instructions to the contrary, and default to making progress when stopping-and-reporting would be the more disciplined move.** The cure is structural: separate the tool that acts from the tool that verifies. That is what sections 6, 7, and **8e** now encode.
 
 ---
 
@@ -401,34 +411,33 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-21, mid-Stage D, post-D4. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D4 landed on `stage-d`; D5 next.
+**Last update:** 2026-04-22, mid-Stage D, post-D6 + pre-D7 reconciliation. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 landed on `stage-d`; D7 next, gated on pre-D7 reconciliation commit.
 
-**Branch:** `stage-d` is the working branch, at `2fec725` (post-D4 test-harness fix on top of D4 commit `004aa51`). `main` is at `e5ceb7a` (C9 log-completion commit on top of the Stage C tag); unchanged since `stage-d` branched from it at D0. Merge of `stage-d` → `main` is deferred to D9 per D-D14.
+**Branch:** `stage-d` at `<docs-commit-hash>` (pre-D7 reconciliation: D6 log + §11 + D29 + D30 + §D7.1 stub + OQ-20 edits) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
 
-**Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Previous: `stage-b-complete` (commit `b627a92`, 2026-04-14). Next expected tag: `stage-d-complete` at D9.
+**Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Next expected tag: `stage-d-complete` at D9.
 
 **Stage D position:**
 
-* D0 — complete (`b08abdb`). `stage-d` branched from `main` at `e5ceb7a`; `STAGE_D_PLAN.md` + `STAGE_D_NOTES.md` scaffolded; baseline `forge build` cache-hit green against the 30-file / 92-test prereq state.
-* D0.5 — complete (`e5dc936`). `AureumProtocolFeeController` retrofitted per D-D15: constructor pins `_globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE (50e16)`, `SplitIsImmutable` reverts both setters, `registerPool` pins swap-side aggregate unconditionally (closes factory-level bypass). 28/28 green with 4 invariants at 256 × 32768 runs, 0 reverts / 0 discards. D13 + D14 Cursor-interaction findings logged in NOTES.
-* D1 — complete (`a0513c0`, Completion Log `bdf72d7`). **D10**: D-D4 resolved to trusted-router early-return on `params.router == address(this)` (upstream-idiomatic per `StableSurgeHook`). **D11**: D-D5 resolved via live `cast call getRate()` probes — svZCHF Rate Provider `0xf32dc0ee2cc78dca2160bb4a9b614108f28b176c`, sUSDS Rate Provider `0x1195be91e78ab25494c855826ff595eef784d47b` (both existing mainnet deployments, zero audit surface added). Bodensee deployment block expanded (pool name `"der-Bodensee"` hyphenated for upstream-convention safety, symbol `"BODENSEE"`, pause manager = governance Safe, unbalanced-liquidity enabled, `protocolSwapFeePercentage` cosmetic per D-D15). **D15** logs two new D13 failure modes (NEW-side 8-blank collapse; OLD-side 1-blank rejection) and the refined fix-forward (blank-free OLD/NEW; awk/sed restoration; heredoc append).
-* D2 — complete (`6aab7ac`, Completion Log `20b58d7`). `src/fee_router/IAureumFeeRoutingHook.sol` (191 lines) — thin interface, does not inherit Balancer V3 `IHooks`, imports only OZ `IERC20`. 4 events, 6 errors (`RecursiveHookCall` omitted per D10 — unreachable under trusted-router early-return), 3 external primitives per D-D2 Option A (`routeYieldFee` / `routeGovernanceDeposit` / `routeIncendiaryDeposit`, each gated to a single sanctioned caller), 5 immutable view getters (`SV_ZCHF`, `DER_BODENSEE`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `AUMM`). `forge build` green. **D16** logged in NOTES (D-D2 Option A resolution).
-* D3 — complete (`ed4ec75`, Completion Log `2f5cf68`). `src/fee_router/AureumFeeRoutingHook.sol` (531 lines) + `src/fee_router/IAureumProtocolFeeControllerHookExtension.sol` (62 lines) added; `src/fee_router/IAureumFeeRoutingHook.sol` grew to 199 lines via D3.4c's `ModuleNotSet()` addition. D3.3.3 `a341e44` landed the 373-line initial scaffold (constructor + immutables + caller-gate storage + `BaseHooks` / `IAureumFeeRoutingHook` / `VaultGuard` inheritance + `onAfterSwap` trusted-router early-return per D10 + `_swapFeeAndDeposit` phase-1 body); D3.3.1 `bc920a0` the hook-extension interface; D3.3.4 phase-2 one-sided-add helper folded into D3.4a `3802003` per D21. D3.4 external primitives landed one pair per commit: D3.4a `3802003`, D3.4b `7b91a1a` (`routeYieldFee`), D3.4c `478cbf7` (`routeGovernanceDeposit` + `ModuleNotSet`), D3.4d `ed4ec75` (`routeIncendiaryDeposit` + drop `RoutingNotYetImplemented`). Each inner unlock callback returns `uint256` directly per D22. D3.5 `forge lint src/fee_router/` clean. New NOTES findings: D17 (β1 custody + fast-path-only `swapPool == address(0)`), D18 (authoritative reads on-branch, not in worktree), D20 (Router → direct Vault for the phase-2 one-sided-add helper), D21 (WT-vs-HEAD drift at prompt-drafting time), D22 (`IVault.unlock` inner callback return type). `forge build` green; no tests at D3 (unit tests land at D5). See the D3 row at `docs/STAGE_D_PLAN.md` Completion Log for the sub-step-by-sub-step breakdown.
-* D4 — complete (`004aa51`, post-D4 test-harness fix `2fec725`). **D4.2** B10 retarget in two-immutables shape per **D23** (pre-implementation reconciliation at `47b94f4`): new `FEE_ROUTING_HOOK` immutable added as the B10 withdrawal-recipient target; `DER_BODENSEE_POOL` retained to serve the D-D9 pool-identity check only. Constructor signature grew to `(IVault, derBodenseePool, feeRoutingHook)` with zero-address checks split across the two address arguments. **D4.3** added `BODENSEE_SWAP_FEE_MIN` / `_MAX` / `_GENESIS` band constants per D-D8 / OQ-11 (0.10% / 1.00% / 0.75%). **D4.4** added `BodenseeYieldCollectionDisabled` revert at `collectAggregateFees(DER_BODENSEE_POOL)` per D-D9 / OQ-2. **D4.5** updated `test/unit/AureumProtocolFeeController.t.sol` in the same commit for the rename (`FEE_ROUTING_HOOK_PLACEHOLDER = 0xBEEF` sentinel, three-arg constructor, split zero-check, getter assertion, retargeted B10 recipients and invariant 4) and added `test_collectAggregateFees_revertsOnBodenseePool` for D-D9. Scope expanded per **D24** (Cursor autonomous scope expansion in D4.5 Prompts A and D) beyond the plan surface to thread `FEE_ROUTING_HOOK` through `test/fork/DeployAureumVault.t.sol`, `script/DeployAureumVault.s.sol`, and `.env.example`; deploy script inlines `keccak256(type(X).creationCode)` hashes to release three stack slots and keep `_deploy` within the IR optimiser's stack-depth budget after the third ctor argument. Post-D4 `2fec725`: `test/fork/Sanity.t.sol` self-forks from `MAINNET_RPC_URL` and skips when unset (+31 / −8). Surface at D4 tip: `AureumProtocolFeeController.sol` 765 lines, shasum `3f3f27c18f3a10dceeb9963f646952a60de95cd905053979aab7a3c39dbcd42f`, 9 em-dashes; `AureumProtocolFeeController.t.sol` 685 lines. Commit message deviated from the plan's prescribed `D4: AureumProtocolFeeController — B10 retarget + OQ-11 band + OQ-2 Bodensee guard`; no re-do.
-* D5 — next. `test/unit/AureumFeeRoutingHook.t.sol` against mocks (`MockVault`, `MockRouter`, four `MockERC20` fee tokens, `MockERC4626` as Bodensee) plus extension of `test/unit/AureumProtocolFeeController.t.sol` for the three D4-modification coverage tests per plan L451-454 (`test_B10_TargetIsHookAddress`, `test_BodenseeBand_Constants`, `test_CollectAggregateFees_RevertsOnBodensee` — the last already landed at D4.5 as `test_collectAggregateFees_revertsOnBodenseePool`; D5.2 should verify coverage against the existing 685-line test file and add only what's missing, reconciling any naming drift). Plan sub-steps D5.1 through D5.3 at `docs/STAGE_D_PLAN.md` §D5. Ground the mock shapes in D22 (unlock-callback return type), D23 (two-immutables), and D17 (β1 custody + fast-path-only `swapPool == address(0)`) before drafting.
-* D6 through D9 — not started. See `docs/STAGE_D_PLAN.md` Completion Log for the full sub-step list.
+- D0 through D4 — complete; see prior §11 states in git history for sub-step detail.
+- D5 — complete (`5905a40` + `06df412`). `test/unit/AureumFeeRoutingHook.t.sol` + `test/unit/AureumProtocolFeeController.t.sol` extensions landed per plan D5.1–D5.3. Mock harness (`MockVault`, `MockRouter`, four `MockERC20`, `MockERC4626` as Bodensee); D5.2 added OQ-11 band constant tests + `FEE_ROUTING_HOOK` immutable assertions. Coverage reconciliation per plan L451–454 complete.
+- D6 — complete (`18f74b9`). `script/DeployDerBodensee.s.sol` fork-only per D-D6; see D6 Completion Log for full parameter breakdown. `WEIGHTED_POOL_FACTORY` env is Aureum-bound WPF per D30 — not mainnet Balancer WPF.
+- **Pre-D7 reconciliation (current beat) — pending commit.** Four file edits bundled in one commit: D6 Completion Log populated (STAGE_D_PLAN.md); §11 updated (this file); D29 + D30 appended (STAGE_D_NOTES.md) — D29 post-D6 pre-flight (OQ-20 structural + D4.6 deferred label + withdraw-to-hook ≠ `routeYieldFee` invariant); D30 WPF sourcing + AuMM fork-harness + new `DeployAureumWeightedPoolFactory.s.sol` resolution; §D7.1 rewritten as a stub gated on D30 (STAGE_D_PLAN.md); OQ-20 appended + L375 yield-leg row amended (FINDINGS.md).
+- D7 — next. Fork test harness (`test/fork/BodenseeFeeRouting.t.sol` or path pinned at D7 kickoff). First D7 sub-step is `script/DeployAureumWeightedPoolFactory.s.sol` per D30. Plan: STAGE_D_PLAN.md §D7.1 stub + D30.
+- D8, D9 — not started.
 
-**Open items flagged before D5 execution:** none outstanding. D5's surface is pure test code — no production-contract modifications. `AureumFeeRoutingHook.t.sol` is the larger net-new draft; controller test extensions fold into the existing 685-line file.
+**Open items flagged before D7 execution:**
 
-**How to resume (Stage D — D5 unit tests):**
+- **D30 resolution requires new script.** `script/DeployAureumWeightedPoolFactory.s.sol` is named but not yet drafted; first D7 sub-step.
+- **OQ-20 / D4.6 deferred.** Controller yield-fee entry point (governance-gated `routeYieldFeeToHook` or equivalent) lands post-D7. D7 tests exercise the hook primitive directly, not the controller entry point.
+- **aumm-site spec edit flagged (user-side).** `04_tokenomics.md` §ix prose needs amendment per OQ-20 resolution; not a repo edit.
 
-1. Read `docs/STAGE_D_PLAN.md` §D5 (D5.1 through D5.3) in full. Cross-read STAGE_D_NOTES D22 (unlock-callback return type), D23 (two-immutables reconciliation), D17 (β1 custody contract), and the D3 row for the hook's external-primitive shape. Test file targets: `test/unit/AureumFeeRoutingHook.t.sol` (new) and `test/unit/AureumProtocolFeeController.t.sol` (extension of the 685-line D4 state).
-2. Confirm `stage-d` tip matches the §11 branch-state line above (`2fec725`, or its immediate docs-commit descendant if §11 has been re-updated mid-session). `git log --oneline -1` against `stage-d` is the canonical check.
-3. Open a Claude Code session pointed at this repo. Claude Code reads this file, `docs/STAGE_D_PLAN.md`, `docs/STAGE_D_NOTES.md`, `docs/FINDINGS.md` OQ-1 / OQ-2 / OQ-11, and the current state of `src/fee_router/AureumFeeRoutingHook.sol` + `src/vault/AureumProtocolFeeController.sol` + the existing `test/unit/AureumProtocolFeeController.t.sol`.
-4. Claude Code authors the D5.1 sub-step prompt (one baby step — likely `setUp()` plus the first named test) for Cursor, paired with the terminal audit commands.
-5. User passes the prompt to Cursor; Cursor executes and stops; user pastes results plus terminal output back to Claude Code.
-6. Claude Code audits, verdicts ✅ or ❌, and either authors the next D5.1 prompt or a fix prompt for the previous one. Loop.
-7. All git mutations run in the user's terminal. All forge / slither runs in the user's terminal. Claude Code never touches disk.
+**How to resume (Stage D — D7 fork tests):**
+
+1. Confirm pre-D7 reconciliation commit landed: `git log --oneline -1` on `stage-d` matches `<docs-commit-hash>` in §11.
+2. Read STAGE_D_PLAN.md §D7 + D7.1 stub, STAGE_D_NOTES.md D29 + D30, FINDINGS.md OQ-20 + amended L375 row.
+3. Claude Code authors the first D7 sub-step prompt — `script/DeployAureumWeightedPoolFactory.s.sol` per D30, under the §8e.1 template, paired with terminal audit commands.
+4. Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; all forge / slither runs in user's terminal.
 
 ### Housekeeping notes
 
@@ -438,7 +447,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
 * Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
 * **Stage D — `IVault.unlock` inner callbacks** (`AureumFeeRoutingHook` and the same pattern elsewhere): when the outer caller uses `abi.decode(result, (uint256))`, the inner must `returns (uint256)`, not `returns (bytes memory)` with `abi.encode` — see **D22** in `docs/STAGE_D_NOTES.md`.
-* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): during D4.5, Cursor Prompts A and D expanded scope beyond the planned `src/vault/AureumProtocolFeeController.sol` + test file to cover `script/DeployAureumVault.s.sol`, `test/fork/DeployAureumVault.t.sol`, and `.env.example` for the `FEE_ROUTING_HOOK` env wiring. The expansion was kept (the wiring was materially needed) but is logged as a <span style="color: #b45309; font-weight: 700">§8e.1</span> / Cursor-discipline warning for D5 onward — sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
+* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): during D4.5, Cursor Prompts A and D expanded scope beyond the planned `src/vault/AureumProtocolFeeController.sol` + test file to cover `script/DeployAureumVault.s.sol`, `test/fork/DeployAureumVault.t.sol`, and `.env.example` for the `FEE_ROUTING_HOOK` env wiring. The expansion was kept (the wiring was materially needed) but is logged as a **§8e.1** / Cursor-discipline warning for D5 onward — sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
 
 ---
 
@@ -449,7 +458,7 @@ This is the fallback rule that subsumes everything else. If any of the following
 * The plan is ambiguous about the current sub-step.
 * An expected file or path doesn't exist.
 * A command fails or returns unexpected output.
-* An action seems like it might fall into <span style="color: #b45309; font-weight: 700">section 8b, 8c, or 8e</span> but you're not sure.
+* An action seems like it might fall into **section 8b, 8c, or 8e** but you're not sure.
 * The user said something that contradicts the plan.
 * You're about to make an "obviously correct" decision that wasn't explicitly in the plan or the notes.
 
@@ -461,27 +470,38 @@ The cost of asking is a round-trip. The cost of guessing wrong is a rollback plu
 
 Claude Code announces the mode for the next beat. The user flips the switch. No gates, no permission blocks — the announcement *is* the instruction.
 
-Claude Code's job on this project per <span style="color: #b45309; font-weight: 700">§8e</span> is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
+Claude Code's job on this project per **§8e** is planning and auditing. That is Opus-high work. Sonnet is for narrow housekeeping windows between Opus beats, not a general default.
 
 ### The dispatcher lines (pair)
 
 At every natural transition between **Opus** and **Sonnet**, Claude Code emits **exactly one** of the two lines below, then **stops**—so the user can flip the model before the *next* kind of work. Claude Code does not ask "ready?" and does not chain another dispatch in the same turn.
 
-- <span style="color: #b45309; font-weight: 700">"Switch to Opus high — next beat is [X]."</span> — The **up-hand** (see **Beat handoffs**): terminal audits in **Sonnet** for the current sub-step are **closed** with ✅; **X** is the next work unit that requires Opus (next <span style="color: #b45309; font-weight: 700">§8e.1</span>, non-trivial audit, design, §11 resume update, *etc.*). **Do not** request another `grep`/`cat`/`shasum` for the *same* already-verified save, and **do not** draft the *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> in Sonnet in that handoff turn.
+*Emit the handoff as **plain Markdown in chat** — **never** wrap it in HTML. One line: a leading `✅`, then the **bold** dispatcher sentence as in the bullets (no surrounding `"` / `'` characters — they read as noise in chat). Fill `[X]` / `[Y]` with the label for the next beat (e.g. `A2 (plan §D6 rewrite, replacing L558–L569)`).*
 
-- <span style="color: #b45309; font-weight: 700">"Switch to Sonnet — housekeeping: [Y]."</span> — The **down-hand** (see **Beat handoffs**): the session is in **Opus** but the **very next** action is **only** a **Sonnet beat** (read-back verdict, commit message text, Completion Log line, mechanical continuation, branch-tip `git show`/`shasum` check, *etc.*). **Y** is a short label for that work. **Do not** perform that housekeeping in Opus—burn the cheap model for paste-and-compare and mechanical drafting.
+- ✅ **Switch to Opus high — next beat is [X].** — The **up-hand** (see **Beat handoffs**): terminal audits in **Sonnet** for the current sub-step are **closed** with ✅; **X** is the next work unit that requires Opus (next **§8e.1**, non-trivial audit, design, §11 resume update, *etc.*). **Do not** request another `grep`/`cat`/`shasum` for the *same* already-verified save, and **do not** draft the *next* **§8e.1** in Sonnet in that handoff turn.
+
+- ✅ **Switch to Sonnet — housekeeping: [Y].** — The **down-hand** (see **Beat handoffs**): the session is in **Opus** but the **very next** action is **only** a **Sonnet beat** (read-back verdict, commit message text, Completion Log line, mechanical continuation, branch-tip `git show`/`shasum` check, *etc.*). **Y** is a short label for that work. **Do not** perform that housekeeping in Opus—burn the cheap model for paste-and-compare and mechanical drafting.
 
 **[X]** and **[Y]** are always tied to a concrete `Plan ref` (e.g. D5.1) or concrete housekeeping label—not vague filler.
 
-If Claude Code forgets to announce, the user says <span style="color: #b45309; font-weight: 700">"mode?"</span> and Claude Code answers with one of the two lines.
+If Claude Code forgets to announce, the user says **"mode?"** and Claude Code answers with one of the two lines.
+
+### Relay after a §8e.1 draft (before audit paste)
+
+When Claude Code’s previous turn was a filled **§8e.1** (or the user is about to hand that prompt to Cursor) and the *immediate* next step is *only* **Cursor** + the template **Verify** block in the user’s terminal — not new design, not a new file draft in chat — the instruction to do that **must** appear in the **same** message as all of the following, not as a follow-up after the user asks “Sonnet or Opus?”:
+
+1. **Model:** **Sonnet** for the user’s next replies until the full verify output is pasted back (or the down-hand to Sonnet was already emitted on the previous turn, in which case this is a one-line confirmation).
+2. **Why (one sentence, mandatory):** The next **Opus-high** beat is the **audit** of what Cursor saved; that beat does not start until `Verify` output exists, so the interval is user/executor time — not Opus work. Sonnet holds the channel for the cheap relay. After the paste, **Opus** runs the non-trivial audit (or **Sonnet** only if the sub-step is explicitly Sonnet-scoped per the **Sonnet beats** list and **Opus-high beats**).
+
+Omitting (2) is a discipline failure: it reads as arbitrary model switching, not workflow logic.
 
 ### Beat handoffs (universal, every sub-step)
 
 These rules apply at **any** stage; they are not tied to a single milestone.
 
-- **Sonnet → Opus (up-hand, green light for the next "blast"):** The user **keeps pasting** terminal output in **Sonnet** until the sub-step is **✅** (per <span style="color: #b45309; font-weight: 700">§8e</span> Audit cycle). **After** that verification pass is **complete** (no further paste needed for *this* sub-step), **Sonnet** replies in **one** turn: brief **✅** summary; if the sub-step closes a work unit, include the plan-prescribed **commit message draft** here (Sonnet beat). Then emit **exactly** <span style="color: #b45309; font-weight: 700">"Switch to Opus high — next beat is [X]."</span> and **stop**. The *next* <span style="color: #b45309; font-weight: 700">§8e.1</span> for Cursor, or any judgement-heavy audit, is **[X] on Opus** after the user switches. **❌/fix** rounds stay in Sonnet until the save is actually fixed and re-verified.
+- **Sonnet → Opus (up-hand, green light for the next "blast"):** The user **keeps pasting** terminal output in **Sonnet** until the sub-step is **✅** (per **§8e** Audit cycle). **After** that verification pass is **complete** (no further paste needed for *this* sub-step), **Sonnet** replies in **one** turn: brief **✅** summary; if the sub-step closes a work unit, include the plan-prescribed **commit message draft** here (Sonnet beat). Then emit **exactly** ✅ **Switch to Opus high — next beat is [X].** with `[X]` replaced by the real next-beat label, then **stop** (plain Markdown only — no HTML). The *next* **§8e.1** for Cursor, or any judgement-heavy audit, is **[X] on Opus** after the user switches. **❌/fix** rounds stay in Sonnet until the save is actually fixed and re-verified.
 
-- **Opus → Sonnet (down-hand, stop sign back to cheap model):** If **Opus** has finished a planning, authoring, or hard-audit turn and the **next** natural action matches **only** the **Sonnet beats** list below—**no** new design, **no** first line of a new contract/harness, **no** new `D-D*`, **no** non-obvious debugging—**Opus** does **not** do that work. Emit <span style="color: #b45309; font-weight: 700">"Switch to Sonnet — housekeeping: [Y]."</span> and **stop**. If the next move *would* need judgement, it stays **Opus**; use the **Opus-high beats** list to tell the difference. When in doubt, **Opus** (see **§12**).
+- **Opus → Sonnet (down-hand, stop sign back to cheap model):** If **Opus** has finished a planning, authoring, or hard-audit turn and the **next** natural action matches **only** the **Sonnet beats** list below—**no** new design, **no** first line of a new contract/harness, **no** new `D-D*`, **no** non-obvious debugging—**Opus** does **not** do that work. Emit exactly ✅ **Switch to Sonnet — housekeeping: [Y].** and **stop** (plain Markdown only — no HTML). If the next move *would* need judgement, it stays **Opus**; use the **Opus-high beats** list to tell the difference. When in doubt, **Opus** (see **§12**).
 
 - **Redundant verification:** A **✅** on a sub-step is **not** an invitation to request **another** full read-back of the *same* save. Further terminal output in Sonnet is for **new** saves, **❌** fixes, or a **new** sub-step's verify block—not endless re-confirmation of a closed step.
 
@@ -498,6 +518,7 @@ These rules apply at **any** stage; they are not tied to a single milestone.
 
 ### Sonnet beats (Claude Code calls this before)
 
+- **Relay** after a **§8e.1** handoff: receiving the user’s “run Cursor, then paste **Verify**” return — and stating **Sonnet + why** in the *same* message as the handoff, per **Relay after a §8e.1 draft** above.
 - Read-back verdict on a clearly-correct Cursor save — `cat` output matches the prompt, em-dash count matches, `forge build` green. Emit ✅ and draft the commit message.
 - Drafting commit messages for a sub-step that already has its ✅.
 - Updating the `STAGE_X_PLAN.md` Completion Log line after a commit lands.
@@ -507,7 +528,7 @@ These rules apply at **any** stage; they are not tied to a single milestone.
 
 ### Extra-high effort (Opus only, rare)
 
-Claude Code calls for this explicitly: <span style="color: #b45309; font-weight: 700">"Switch to Opus extra-high — [specific hard problem]."</span> Used for:
+Claude Code calls for this explicitly: ✅ **Switch to Opus extra-high — [specific hard problem].** (plain Markdown only — no HTML). Used for:
 
 - Pre-flight on a novel stage (F kickoff, H halving math review, K governance handoff design).
 - Debugging a failure where Opus-high already tried and did not crack it.
@@ -539,4 +560,4 @@ Stages A, B, C are complete. From Stage D onward, Claude Code announces mode at 
 - Do not re-read a file already in context this session.
 - For "where is X referenced" across more than three files, spawn Explore — its context stays out of the main thread.
 - Trust CLAUDE.md §11 as the resumption anchor. Do not re-read full plan + full NOTES on session start; read the named sub-step + the named file regions.
-- The <span style="color: #b45309; font-weight: 700">§8e.1</span> template is the forcing function against re-scoping. Use it verbatim.
+- The **§8e.1** template is the forcing function against re-scoping. Use it verbatim.

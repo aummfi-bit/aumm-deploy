@@ -595,21 +595,27 @@ git push
 
 Mainnet-fork integration. Exercises the full chain: Vault deploy → Bodensee deploy → hooked test pool deploy → swap → hook fires → fee routes to Bodensee.
 
-### D7.1 — Draft `test/fork/FeeRoutingHook.t.sol`
+### §D7.1 — Fork test harness setUp + test enumeration (stub)
 
-- `setUp()` — spin up Anvil fork, run `DeployAureumVault.s.sol`, run `DeployDerBodensee.s.sol`, deploy the hook via `new AureumFeeRoutingHook(...)`, deploy a minimal 2-token (AuMM / svZCHF, 50/50) weighted test pool via `WeightedPoolFactory.create` with the hook attached, register it via `AureumVault.registerPool`.
-- `test_Fork_SwapRoutesFeeToBodensee`:
-  - Seed the test pool with initial liquidity (user-funded).
-  - Execute a swap through `BatchRouter.swapExactIn` on the test pool.
-  - Assert: Bodensee's BPT supply increased, the hook holds zero tokens post-swap, the emitted `SwapFeeRouted` event matches the calculated fee.
-- `test_Fork_YieldFeeRoutesToBodensee`:
-  - On any non-Bodensee gauged pool (use a synthetic test pool deployed in `setUp`), call `AureumProtocolFeeController.collectAggregateFees(pool)` after accruing some protocol fees.
-  - Assert: the hook's `routeYieldFee` was invoked, Bodensee received svZCHF, no tokens stranded.
-- `test_Fork_BodenseeYieldCollectionReverts`:
-  - Call `collectAggregateFees(DER_BODENSEE_POOL)`.
-  - Assert: reverts with `BodenseeYieldCollectionDisabled`.
-- `test_Fork_RecursionGuard`:
-  - Per D-D4 resolution, exercise the recursion path. If option (a), trigger a swap whose fee token requires a routing hop through the hooked test pool itself; assert the hook's guard bypasses the fee-extraction logic on the internal swap.
+**Status.** Stub. Full enumeration finalizes at D7 entry per **D30** resolution.
+
+**Dependency chain (D30).**
+
+1. `script/DeployAureumVault.s.sol` — deploys `AureumAuthorizer`, `AureumProtocolFeeController`, `AureumVaultFactory`; CREATE3-predicted `AUREUM_VAULT`; placeholder immutables (`FEE_ROUTING_HOOK`, `DER_BODENSEE_POOL`) replaced by predicted real addresses via `vm.computeCreateAddress(deployer, nonce)` and CREATE2 factory+salt.
+2. `script/DeployAureumWeightedPoolFactory.s.sol` (new per D30) — deploys Balancer's unchanged `WeightedPoolFactory` bytecode with `IVault = AUREUM_VAULT`. Sets `WEIGHTED_POOL_FACTORY` env.
+3. AuMM deploy (or `MockERC20` stand-in per D30; choice pinned at D7 entry) — sets `AUMM` env.
+4. `script/DeployDerBodensee.s.sol` — creates der Bodensee pool via the Aureum-bound WPF.
+5. `AureumFeeRoutingHook` deploys at the predicted CREATE address from step 1's nonce arithmetic.
+
+**Authorizer.** `AureumAuthorizer.canPerform` grants all actions to `GOVERNANCE_MULTISIG` only (`src/vault/AureumAuthorizer.sol:19-21`). Tests calling `authenticate`-gated functions (e.g., `withdrawProtocolFees(address pool, address recipient)` — 2-arg per `src/vault/AureumProtocolFeeController.sol:639-650`) prank as `governanceMultisig`.
+
+**Provisional test list (finalized at D7 entry).**
+
+- `test_Fork_SwapRoutesFeeToBodensee` — swap-leg happy path; swap fee routes Vault → hook → Bodensee.
+- `test_Fork_BodenseeYieldCollectionReverts` — D-D9 / OQ-2 structural guard at `collectAggregateFees(DER_BODENSEE_POOL)`.
+- `test_Fork_RecursionGuard` — trusted-router early-return on `params.router == address(this)` per D10.
+- `test_Fork_RouteYieldFeePrimitive` — direct hook-side `routeYieldFee` (prank as `FEE_CONTROLLER`); confirms `safeTransferFrom` structural invariant. Controller entry-point integration deferred to D4.6 per OQ-20.
+- `test_Fork_WithdrawProtocolFeesRecipientCheck` — B10 `InvalidRecipient` guard (`src/vault/AureumProtocolFeeController.sol:639-642`); prank as `governanceMultisig`; confirms 2-arg `(pool, recipient)` signature.
 
 ### D7.2 — Run fork tests
 
@@ -770,7 +776,7 @@ Fill this in as you progress.
 | 2026-04-21 | D4 — `AureumProtocolFeeController` modifications | ✅ | `004aa51` | **D4.2** applied **D-D7** B10 retarget in two-immutables shape per **D23** (pre-implementation reconciliation at `47b94f4`): new `FEE_ROUTING_HOOK` immutable added as the B10 withdrawal-recipient target; `DER_BODENSEE_POOL` retained to serve the D-D9 pool-identity check only. Constructor signature grew to `(IVault, derBodenseePool, feeRoutingHook)` with zero-address checks split across the two address arguments. **D4.3** added `BODENSEE_SWAP_FEE_MIN` / `_MAX` / `_GENESIS` band constants per **D-D8** / **OQ-11** (0.10% / 1.00% / 0.75%). **D4.4** added `BodenseeYieldCollectionDisabled` revert at the entry of `collectAggregateFees(address pool)` when `pool == DER_BODENSEE_POOL` per **D-D9** / **OQ-2**. **D4.5** test updates landed in the same commit per plan L407: `test/unit/AureumProtocolFeeController.t.sol` gained a `FEE_ROUTING_HOOK_PLACEHOLDER` sentinel (`0xBEEF`), three-arg constructor in `setUp`, split zero-check tests (Bodensee / Hook variants), `FEE_ROUTING_HOOK()` getter assertion, retargeted B10 fuzz recipients and invariant 4, and `test_collectAggregateFees_revertsOnBodenseePool` for D-D9. Scope expanded per **D24** (Cursor autonomous scope expansion in D4.5 Prompts A and D) beyond the plan's D4 surface to thread the new env var through `test/fork/DeployAureumVault.t.sol` (`FEE_ROUTING_HOOK` constant + `vm.setEnv` wiring), `script/DeployAureumVault.s.sol` (env read + third ctor arg + inlined `keccak256(type(X).creationCode)` hashes releasing three stack slots to keep `_deploy` within the IR optimiser's stack-depth budget after the added argument), and `.env.example` (documented). Post-D4 test-harness fix **`2fec725`**: `test/fork/Sanity.t.sol` self-forks from `MAINNET_RPC_URL` and skips when unset (+31 / −8), resolving a residual brittleness surfaced during D4.5. Surface at D4 tip: `AureumProtocolFeeController.sol` 765 lines, shasum `3f3f27c18f3a10dceeb9963f646952a60de95cd905053979aab7a3c39dbcd42f`, 9 em-dashes; `AureumProtocolFeeController.t.sol` 685 lines. Commit message deviated from the plan's prescribed `D4: AureumProtocolFeeController — B10 retarget + OQ-11 band + OQ-2 Bodensee guard`; no re-do. `forge build` green. |
 | 2026-04-21 | D3 fix — `onAfterSwap` emits `SwapFeeRouted` | ✅ | `3e3db4b` | Surfaced at **D5.1** authoritative-read time: `IAureumFeeRoutingHook` declares `SwapFeeRouted(address indexed pool, address indexed feeToken, uint256 feeAmount, uint256 bptMinted)` but the on-branch impl at `ed4ec75` never emitted it (`grep -n "emit SwapFeeRouted" src/fee_router/AureumFeeRoutingHook.sol` against `stage-d` returned zero hits; `test_Event_SwapFeeRouted` per L503 below would have failed). Patched `onAfterSwap`'s loop body in a single edit: capture `uint256 bptMinted = _swapFeeAndDeposit(tokens[i], forwardedAmounts[i], params.pool, address(this))`, then `emit SwapFeeRouted(params.pool, address(tokens[i]), forwardedAmounts[i], bptMinted)`. Per `STAGE_D_NOTES.md` L163, the outer `if (forwardedAmounts[i] == 0) continue;` already excludes the recovery-mode short-circuit case from the emit, so no additional guard is needed. Net diff `+12 / −1`; `AureumFeeRoutingHook.sol` 531 → 542 lines; em-dash count unchanged at 22; new shasum `e15fc3032de1cb9d170e587043ec867b22d8401eedd2cff49122fdea5f19efd6`. `forge build` clean; `forge test` 98/98 green (no existing test asserts on `SwapFeeRouted` — **D5.1** will be the first). **D25** logged in `STAGE_D_NOTES.md` (`bd6e891`) with discovery context plus a `grep -c "emit <EventName>"` discipline fold-in at impl sub-step close. The D3 row above is retained unchanged as a historical snapshot at `ed4ec75`; current metrics are in this row. |
 | 2026-04-22 | D5 — unit tests | ✅ | D5.1 `5905a40`, D5.2 `06df412` | D5.1: `test/unit/AureumFeeRoutingHook.t.sol` (850 lines, 49 named + 2 fuzz). Harness per **D-D18** / **D27**: `makeAddr("vault")` + `vm.mockCall` stubs — no `BaseVaultTest` / permit2 dependency. Constructor (8), `getHookFlags` (1), `onRegister` (6), module-setter two-flag lock with defensive `vm.store` AlreadySet path (12), `onAfterSwap` branches A + B + C-deferred-shape + balance-sweep (10), `routeX` gate reverts (10), fuzz (2). Branch C success paths, routeX-via-unlock success, and invariant fuzz deferred to D7 per D-D18 scope boundary. D5.2: `test/unit/AureumProtocolFeeController.t.sol` +18 lines — `test_B10_TargetIsHookAddress` + `test_BodenseeBand_Constants`; other D4 additions already in the 685-line D4.5 file. D5.3: 146/146 across 6 unit suites green, 0 failed. Both commits pushed to `origin/stage-d`. |
-|  | D6 — `script/DeployDerBodensee.s.sol` | ⏳ |  |  |
+| 2026-04-22 | D6 — `script/DeployDerBodensee.s.sol` (fork-only, 40/30/30 WeightedPool: AuMM / sUSDS / svZCHF; runtime ascending token sort; D11 Rate Providers — sUSDS `0x1195BE91e78ab25494C855826FF595Eef784d47B`, svZCHF `0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c`, AuMM identity `address(0)`; pauseManager = swapFeeManager = governance Safe, poolCreator = `address(0)`; swap fee 0.75% (0.0075e18); `poolHooksContract = address(0)`; `enableDonation = false`, `disableUnbalancedLiquidity = false`; OQ-2 Bodensee yield collection structurally disabled at controller per D-D9 — no fee-controller setters at registration; **`WEIGHTED_POOL_FACTORY` env is the Aureum-bound WPF deployed by `DeployAureumWeightedPoolFactory.s.sol` per D30 — not mainnet Balancer WPF**) | ✅ | `18f74b9` | D-D6 fork-only; D11 Rate Providers; D28 pre-flight reconciliation; D30 Aureum-bound WPF sourcing |
 |  | D7 — fork tests | ⏳ |  |  |
 |  | D8 — Slither triage | ⏳ |  |  |
 |  | D9 — `stage-d-complete` tag pushed | ⏳ |  |  |

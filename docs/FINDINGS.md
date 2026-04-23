@@ -372,7 +372,7 @@ ERC-4626 yield fees can't ride a swap hook — they accrue continuously through 
 | Layer | Trigger | Mechanism |
 |---|---|---|
 | Swap-fee leg (Miliarium + gauged non-Bodensee pools) | Every `swap` on a hooked pool | `onAfterSwap` hook → settle the Vault's 50% protocol-fee share → swap to svZCHF → one-sided add to Bodensee, atomic |
-| Yield-fee leg (ERC-4626 10% skim) | `collectAggregateFees(pool)` (callable by anyone) | Existing fee controller withdraws to hook/router → same swap-and-deposit primitive |
+| Yield-fee leg (ERC-4626 10% skim) | `collectAggregateFees(pool)` (callable by anyone) | Fee controller collects to itself (`src/vault/AureumProtocolFeeController.sol:334-341`); controller D4.6 entry point (deferred) approves hook + calls `routeYieldFee` → same swap-and-deposit primitive. See **OQ-20**. |
 | Governance & Incendiary deposits | Explicit user call (proposal submission, Incendiary boost) | Direct call to the shared swap-and-deposit primitive |
 
 **Why this is better than the originally-proposed Option B (separate `FeeRouter` invoked manually):**
@@ -1034,6 +1034,28 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 - **No code or spec changes required.** This is an organizational item, not a protocol item. `16_team.md` can be updated when/if the roles fill with names; until then the TBD markers are accurate.
 
 **Not a blocker for FINDINGS closure.** Stage sequencing proceeds on the assumption that contract-implementation capacity exists; the formal team-page resolution can happen whenever it happens.
+
+### OQ-20 — Yield-fee leg entry point: controller-initiated `routeYieldFee` call
+
+**Status.** Resolved via D29 (structural) + D30 (harness gaps) as of 2026-04-22. Implementation deferred to **D4.6** (post-D7 controller entry-point sub-step).
+
+**Context.** The ERC-4626 yield-fee leg is structurally distinct from the swap-fee leg:
+
+- **Swap leg.** Vault takes fee → `AureumProtocolFeeController._receiveAggregateFees` saturates at `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE` per OQ-1; tokens route to hook via the B10 `withdrawProtocolFees` path.
+- **Yield leg.** Vault accrues fees on `WITH_RATE` tokens (sUSDS, svZCHF per D11). `collectAggregateFees(pool)` is permissionless and routes tokens to the controller via `_vault.sendTo(token, address(this), ...)` at `src/vault/AureumProtocolFeeController.sol:334-341`. Tokens land on the controller — not the hook.
+
+**Question.** How do yield-fee tokens reach `AureumFeeRoutingHook._swapFeeAndDeposit`?
+
+**Options considered.**
+
+- **Option A (resolved).** Controller exposes a governance-gated entry point that approves the hook for `amount` and calls `hook.routeYieldFee(pool, token, amount)`. The hook's `routeYieldFee` pulls via `safeTransferFrom(controller, hook, amount)` — preserving the structural invariant **`safeTransfer` (B10 withdraw path) ≠ `safeTransferFrom` (routeYieldFee path)**.
+- **Option B (rejected).** Reuse `withdrawProtocolFees(pool, hook)` — the 2-arg B10 path already enforces `recipient == FEE_ROUTING_HOOK` via `InvalidRecipient` at `src/vault/AureumProtocolFeeController.sol:639-642`. Rejected because B10 is the swap-leg withdrawal path; collapsing the two paths obscures the `safeTransfer` vs `safeTransferFrom` asymmetry and conflates leg semantics.
+
+**Resolution (Option A).** A new controller entry point — signature TBD at D4.6, likely `routeYieldFeeToHook(address pool, IERC20 token, uint256 amount) external authenticate` — authorized via `AureumAuthorizer` (governance multisig per `src/vault/AureumAuthorizer.sol:19-21`). The entry point approves the hook and calls `routeYieldFee`. Structural invariant preserved.
+
+**Deferred to D4.6.** D7 fork tests cover the `routeYieldFee` primitive directly (hook-side, via `vm.prank(FEE_CONTROLLER)`) — not the controller entry point. The controller entry point lands at D4.6, after §D7 wiring is proven.
+
+**Spec edits required (aumm-site, user-side).** `04_tokenomics.md` §ix yield-fee leg prose needs amendment to match Option A semantics (controller calls hook via `routeYieldFee`, not "withdraws to hook"). Flagged for user's spec-side update; not a repo edit.
 
 ---
 
