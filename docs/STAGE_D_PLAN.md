@@ -600,28 +600,59 @@ git push
 
 Mainnet-fork integration. Exercises the full chain: Vault deploy → Bodensee deploy → hooked test pool deploy → swap → hook fires → fee routes to Bodensee.
 
-### §D7.1 — Fork test harness setUp + test enumeration (stub)
+### §D7.1 — Fork test harness setUp + test enumeration
 
-**Status.** Stub. Full enumeration finalizes at D7 entry per **D30** resolution.
+**Status.** **D-D19** (new fork test file), **D-D20** (fork harness shape), **D-D21** (CREATE3 / nonce pre-compute chain for deploy + pool salts), **D-D22** (WPF—Vault binding + env pins for Stage D constants), and **D-D23** (test-only salt vs deploy-artifact env split) are satisfied by the enumeration below. **Ready.**
 
-**Dependency chain (D30).**
+**File.** `test/fork/AureumFeeRoutingHook.t.sol` (new) per **D-D19**.
 
-1. `script/DeployAureumVault.s.sol` — deploys `AureumAuthorizer`, `AureumProtocolFeeController`, `AureumVaultFactory`; CREATE3-predicted `AUREUM_VAULT`; placeholder immutables (`FEE_ROUTING_HOOK`, `DER_BODENSEE_POOL`) replaced by predicted real addresses via `vm.computeCreateAddress(deployer, nonce)` and CREATE2 factory+salt.
-2. `script/DeployAureumWeightedPoolFactory.s.sol` (new per D30) — deploys Balancer's unchanged `WeightedPoolFactory` bytecode with `IVault = AUREUM_VAULT`. Sets `WEIGHTED_POOL_FACTORY` env.
-3. AuMM deploy (or `MockERC20` stand-in per D30; choice pinned at D7 entry) — sets `AUMM` env.
-4. `script/DeployDerBodensee.s.sol` — creates der Bodensee pool via the Aureum-bound WPF.
-5. `AureumFeeRoutingHook` deploys at the predicted CREATE address from step 1's nonce arithmetic.
+**Sub-step enumeration.**
 
-**Authorizer.** `AureumAuthorizer.canPerform` grants all actions to `GOVERNANCE_MULTISIG` only (`src/vault/AureumAuthorizer.sol:19-21`). Tests calling `authenticate`-gated functions (e.g., `withdrawProtocolFees(address pool, address recipient)` — 2-arg per `src/vault/AureumProtocolFeeController.sol:639-650`) prank as `governanceMultisig`.
+- **D7.1a** — `setUp` scaffold, predictions, `vm.setEnv`, deploy sequence, helpers, six named empty test bodies.
+- **D7.1b** — `test_Fork_WPFBoundToAureumVault`: WPF—Vault binding (**D-D22**, D30 invariant).
+- **D7.1c** — `test_Fork_BodenseeYieldCollectionReverts`: **D-D9** / **OQ-2** on Bodensee `collectAggregateFees`.
+- **D7.1d** — `test_Fork_WithdrawProtocolFeesRecipientCheck`: B10 `InvalidRecipient` before pool iteration (`src/vault/AureumProtocolFeeController.sol:640-642`).
+- **D7.1e** — `test_Fork_RouteYieldFeePrimitive`: `routeYieldFee` happy path + unprivileged revert.
+- **D7.1f** — `test_Fork_RecursionGuard`: `onAfterSwap` trusted-router path vs fee-collection path (**D10** / **D-D4** option (a), `src/hooks/AureumFeeRoutingHook.sol:268-270`).
+- **D7.1g** — `test_Fork_SwapRoutesFeeToBodensee`: swap into trading pool; fee routing to Bodensee.
+- **D7.1z** — `.env.example` Stage D constants sweep (**D-D22** / **D-D23**).
 
-**Provisional test list (finalized at D7 entry).**
+#### D7.1a — `setUp` scaffold + six empty test stubs
 
-- `test_Fork_SwapRoutesFeeToBodensee` — swap-leg happy path; swap fee routes Vault → hook → Bodensee.
-- `test_Fork_BodenseeYieldCollectionReverts` — D-D9 / OQ-2 structural guard at `collectAggregateFees(DER_BODENSEE_POOL)`.
-- `test_Fork_RecursionGuard` — trusted-router early-return on `params.router == address(this)` per D10.
-- `test_Fork_RouteYieldFeePrimitive` — direct hook-side `routeYieldFee` (prank as `FEE_CONTROLLER`); confirms `safeTransferFrom` structural invariant. Controller entry-point integration deferred to D4.6 per OQ-20.
-- `test_Fork_WithdrawProtocolFeesRecipientCheck` — B10 `InvalidRecipient` guard (`src/vault/AureumProtocolFeeController.sol:639-642`); prank as `governanceMultisig`; confirms 2-arg `(pool, recipient)` signature.
-- `test_Fork_WPFBoundToAureumVault` — D7.0 fork parity; asserts `address(wpf.getVault()) == address(vault)` (D30 binding invariant — WPF bound to AureumVault, not mainnet BalancerVault). Single assertion, no swap or pool state required.
+Solidity: `pragma solidity ^0.8.26;`. Imports: `forge-std/Test.sol`; `IERC20`, `IERC4626`, `IVault`; `TokenConfig`, `TokenType`, `PoolRoleAccounts`; `IRateProvider`; `CREATE3`; `WeightedPoolFactory`; `AuMM`; `AureumFeeRoutingHook`; `AureumProtocolFeeController`; `DeployAureumVault`. Constants: `VAULT_SALT`, `BODENSEE_SALT`, `TRADING_POOL_SALT`; `PAUSE_WINDOW_DURATION = 4 * 365 days`; `FACTORY_VERSION` and `POOL_VERSION` as JSON string literals. State: `DeployAureumVault vaultScript`; `WeightedPoolFactory wpf`; `AuMM aumm`; `AureumFeeRoutingHook hook`; `AureumProtocolFeeController controller`; `IVault vault`; `address bodenseePool`; `address tradingPool`; `IERC20 svZchf`; `IERC4626 susds`; `address governanceMultisig`. **D-D21** pre-compute chain (predictions): `vaultScriptAddr`, `wpfAddr`, `auMMAddr`, `hookAddr`; `predictedController = vm.computeCreateAddress(vaultScriptAddr, 2)`; `predictedFactory = vm.computeCreateAddress(vaultScriptAddr, 3)`; `predictedVault = CREATE3.getDeployed(VAULT_SALT, predictedFactory)`; `predictedBodensee = CREATE3.getDeployed(keccak256(abi.encode(address(this), block.chainid, BODENSEE_SALT)), wpfAddr)`. For each of eight env keys—`GOVERNANCE_MULTISIG`, `DER_BODENSEE_POOL = predictedBodensee`, `FEE_ROUTING_HOOK = hookAddr`, `SALT = VAULT_SALT`, `PAUSE_WINDOW_DURATION`, `BUFFER_PERIOD_DURATION`, `MIN_TRADE_AMOUNT`, `MIN_WRAP_AMOUNT`—call `vm.setEnv` behind `/// forge-lint: disable-next-line(unsafe-cheatcode)`. Deploy with nonce asserts: `vaultScript` (`new DeployAureumVault{salt: VAULT_SALT}()`), WPF inline from script pattern, `AuMM`, Bodensee via `wpf.create` with configs from `_bodenseeTokenConfigs` / `_bodenseeWeights`, `hook` via `new AureumFeeRoutingHook(vault, predictedBodensee, svZchf, IERC20(address(aumm)), address(controller), governanceMultisig)`, trading pool via `wpf.create` with `_tradingPoolTokenConfigs` / `_tradingPoolWeights`. Private helpers: `_bodenseeTokenConfigs`, `_bodenseeWeights`, `_tradingPoolTokenConfigs`, `_tradingPoolWeights`. Six tests as empty bodies (implementation in §8e.1 at execution): `test_Fork_WPFBoundToAureumVault`, `test_Fork_BodenseeYieldCollectionReverts`, `test_Fork_WithdrawProtocolFeesRecipientCheck`, `test_Fork_RouteYieldFeePrimitive`, `test_Fork_RecursionGuard`, `test_Fork_SwapRoutesFeeToBodensee`.
+
+#### D7.1b — `test_Fork_WPFBoundToAureumVault`
+
+Single assertion: `assertEq(address(wpf.getVault()), address(vault))` (**D-D22**, D30 binding invariant).
+
+#### D7.1c — `test_Fork_BodenseeYieldCollectionReverts`
+
+`vm.expectRevert(abi.encodeWithSelector(AureumProtocolFeeController.BodenseeYieldCollectionDisabled.selector));` then `controller.collectAggregateFees(bodenseePool);` (**D-D9** / **OQ-2**).
+
+#### D7.1d — `test_Fork_WithdrawProtocolFeesRecipientCheck`
+
+`vm.prank(governanceMultisig);` `vm.expectRevert` matching `InvalidRecipient(address(hook), wrongRecipient);` `controller.withdrawProtocolFees(tradingPool, wrongRecipient);`—B10 runs at `src/vault/AureumProtocolFeeController.sol:640-642` before any pool-token iteration, so an empty-fee pool does not block the guard.
+
+#### D7.1e — `test_Fork_RouteYieldFeePrimitive`
+
+`deal(address(svZchf), address(controller), amount, true);` prank controller to `safeApprove` the hook; prank controller to `hook.routeYieldFee(tradingPool, svZchf, amount);` assert `YieldFeeRouted` emitted, Bodensee BPT minted to controller, `svZchf.balanceOf(address(hook)) == 0`. Same test includes unprivileged caller: expect `UnauthorizedCaller(attacker)` when not the fee controller.
+
+#### D7.1f — `test_Fork_RecursionGuard`
+
+Exercise `onAfterSwap` twice under `vm.prank(address(vault))`: (i) arguments with `params.router == address(hook)` early-returns per **D10** / **D-D4** option (a) at `src/hooks/AureumFeeRoutingHook.sol:268-270`; (ii) `params.router != address(hook)` reaches `collectSwapAggregateFeesForHook`. Use `vm.recordLogs` to show no `SwapFeeRouted` on the guarded call.
+
+#### D7.1g — `test_Fork_SwapRoutesFeeToBodensee`
+
+Seed trading pool: approve mainnet Balancer V3 Router and `router.initialize` as required. Snapshot `bptSupplyBefore = IERC20(bodenseePool).totalSupply();` fund user and approve router; `router.swapSingleTokenExactIn(tradingPool, svZchf, aumm, …)` (exact router API per Balancer V3 at fork block). Assert `IERC20(bodenseePool).totalSupply() > bptSupplyBefore` and `svZchf.balanceOf(address(hook)) == 0`. **OQ-22** candidate: mainnet Balancer V3 Router address—read from env (`BALANCER_V3_ROUTER`) or hard-code as a file-level test constant; dispose at D7.1g write time (no resolution in this plan). Deferred clause: if real svZCHF-pool routing is unavailable at the chosen fork block, relax to “hook internal call did not revert” and defer BPT-supply delta assertion to Stage E.
+
+#### D7.1z — `.env.example` sweep
+
+Add a `# Stage D constants` block with exactly: `AUREUM_VAULT`, `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `BODENSEE_SALT`. Omit `TRADING_POOL_SALT` (test-only, not a deploy artifact, **D-D22** / **D-D23**). Final mainnet values for `SV_ZCHF`, `SUSDS`, `BODENSEE_SALT` are not chosen in this plan—they land in `.env.example` at D7.1z execution.
+
+**Commit boundary (in order).**
+
+1. `D7.1: test/fork/AureumFeeRoutingHook.t.sol — setUp scaffold + 6 fork tests` — `test/fork/AureumFeeRoutingHook.t.sol`
+2. `D7.1z: .env.example — Stage D constants (AUREUM_VAULT, WEIGHTED_POOL_FACTORY, AUMM, SV_ZCHF, SUSDS, BODENSEE_SALT)` — `.env.example`
 
 ### D7.2 — Run fork tests
 
