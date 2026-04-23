@@ -400,9 +400,17 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-23, mid-Stage D, pre-D7 reconciliation complete; D7 next. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 landed on `stage-d`.
+**Last update:** 2026-04-23, mid-Stage D. D7.0 committed (`3d2d8fd`); D7 kickoff design pins (Gate 2) are the next chat work. Five housekeeping commits landed since the pre-D7 reconciliation tip `d65a576`: the §8e.1 template hardening chain triggered by the D7.0 Cursor `forge build` scope violation (D31), plus D7.0 itself. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 + D7.0 all on `stage-d`.
 
-**Branch:** `stage-d` at `d65a576` (pre-D7 reconciliation complete: `3e6c1c1` reconciliation bundle + `2f80e0c` hash fixup + `d65a576` OQ-21 stub) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
+**Branch:** `stage-d` at `3d2d8fd` on top of the following stack:
+
+- `348d038` — docs: STAGE_D_NOTES.md D31 — Cursor D7.0 forge-build scope violation + §8e.1 hardening audit chain
+- `f898946` — docs: CLAUDE.md §13 + §8e — Sonnet dispatch not session-scoped; clear-first on all terminal command blocks
+- `60a1d03` — docs: CLAUDE.md §8e.1 — two-block CURSOR PROMPT / USER VERIFY template, anti-action clause, paste-ready verify, clear prelude
+- `603fd89` — docs: CLAUDE.md §11 refresh — pre-D7 reconciliation complete + OQ-21 / d65a576 tip
+- `d65a576` — pre-D7 reconciliation base (D30 + §D7.1 stub + OQ-20 + OQ-21)
+
+`main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
 
 **Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Next expected tag: `stage-d-complete` at D9.
 
@@ -411,23 +419,45 @@ This section is the resumption anchor. Update at the end of every completed sub-
 - D0 through D4 — complete; see prior §11 states in git history for sub-step detail.
 - D5 — complete (`5905a40` + `06df412`). `test/unit/AureumFeeRoutingHook.t.sol` + `test/unit/AureumProtocolFeeController.t.sol` extensions landed per plan D5.1–D5.3. Mock harness (`MockVault`, `MockRouter`, four `MockERC20`, `MockERC4626` as Bodensee); D5.2 added OQ-11 band constant tests + `FEE_ROUTING_HOOK` immutable assertions. Coverage reconciliation per plan L451–454 complete.
 - D6 — complete (`18f74b9`). `script/DeployDerBodensee.s.sol` fork-only per D-D6; see D6 Completion Log for full parameter breakdown. `WEIGHTED_POOL_FACTORY` env is Aureum-bound WPF per D30 — not mainnet Balancer WPF.
-- **Pre-D7 reconciliation — complete.** Three commits: `3e6c1c1` (D6 Completion Log + §11 + D29 + D30 + §D7.1 stub + OQ-20); `2f80e0c` (CLAUDE.md §11 hash + FINDINGS.md L368 yield-leg prose fixup); `d65a576` (FINDINGS.md OQ-21 stub — yield-leg routing cadence, `BLOCKS_PER_EPOCH` throttle pinned at D4.6).
-- D7 — next. Fork test harness (`test/fork/BodenseeFeeRouting.t.sol` or path pinned at D7 kickoff). First D7 sub-step is `script/DeployAureumWeightedPoolFactory.s.sol` per D30, pending chat-level pins on `FACTORY_VERSION` / `POOL_VERSION` / `PAUSE_WINDOW_DURATION` before the §8e.1 prompt fires. Plan: STAGE_D_PLAN.md §D7.1 stub + D30.
+- **Pre-D7 reconciliation — complete.** Three commits (pre-hardening chain): `3e6c1c1` (D6 Completion Log + §11 + D29 + D30 + §D7.1 stub + OQ-20); `2f80e0c` (CLAUDE.md §11 hash + FINDINGS.md L368 yield-leg prose fixup); `d65a576` (FINDINGS.md OQ-21 stub — yield-leg routing cadence, `BLOCKS_PER_EPOCH` throttle pinned at D4.6).
+- **§8e.1 hardening chain — complete (2026-04-23).** Three docs commits triggered by the D7.0 Cursor `forge build` scope violation (D31). `60a1d03` restructured the §8e.1 template into two physically separated blocks (CURSOR PROMPT + USER VERIFY divider), added the anti-action clause to `Instruction:`, stripped `$ ` prefixes from verify samples (paste-ready for zsh/bash), and made `clear` the required first line of every USER VERIFY block. `f898946` marked the §13 Sonnet dispatch explicitly not session-scoped and extended the `clear`-first rule to all terminal command blocks drafted by Claude Code (including git command sequences). `348d038` logged the incident as D31 in STAGE_D_NOTES.md with full audit trail and cross-references to C14, D24, and the 2026-04-18 stub-invention mini-incident.
+- D7.0 — complete (`3d2d8fd`). `script/DeployAureumWeightedPoolFactory.s.sol` (43 lines, sha `73be8154…`): fork-only Aureum-bound WeightedPoolFactory deploy per D30. Pinned `PAUSE_WINDOW_DURATION = 4 * 365 days`; JSON-format `FACTORY_VERSION` / `POOL_VERSION` constants with `"deployment":"20260423-fork"`; env read of `AUREUM_VAULT`; three `console2.log` outputs (WPF address, bound vault, pause window duration).
+- D7.1 — next. Fork test harness; currently a stub in STAGE_D_PLAN.md. Gate 2 design pins (below) required before first §8e.1 for D7.1a.
 - D8, D9 — not started.
 
-**Open items flagged before D7 execution:**
+**D7 kickoff design pins (Gate 2) — required before §D7.1a §8e.1:**
 
-- **D30 resolution requires new script.** `script/DeployAureumWeightedPoolFactory.s.sol` is named but not yet drafted; first D7 sub-step. Version strings + pause-window sourcing pinned in chat before authoring.
-- **OQ-20 / D4.6 deferred.** Controller yield-fee entry point (governance-gated `routeYieldFeeToHook` or equivalent) lands post-D7. D7 tests exercise the hook primitive directly, not the controller entry point.
-- **OQ-21 / D4.6 deferred.** Bi-weekly yield-routing cadence via `BLOCKS_PER_EPOCH` (100,800-block) throttle on the D4.6 entry point; per-pool vs. per-(pool, token) vs. mandated internal batch granularity pinned at D4.6 implementation. See FINDINGS.md OQ-21.
-- **aumm-site spec edits flagged (user-side).** `04_tokenomics.md` §ix prose needs amendment per OQ-20 (controller collects to itself; hook called via `routeYieldFee`) + OQ-21 (bi-weekly cadence policy); not a repo edit.
+Five decisions to resolve in chat, one beat each (Opus-high per §13), before the fork-test harness can be scaffolded. Each resolution logs as a new `D-D*` entry in STAGE_D_NOTES.md (next free number is D-D15, since D-D14 is the most recent):
 
-**How to resume (Stage D — D7 fork tests):**
+1. **Harness file path.** §D7 heading in STAGE_D_PLAN.md says `FeeRoutingHook.t.sol`; §D7.1 stub says `BodenseeFeeRouting.t.sol`; D5's unit variant is `AureumFeeRoutingHook.t.sol`. Candidate: `test/fork/AureumFeeRoutingHook.fork.t.sol` (follows D5 naming + standard `.fork` suffix). Resolve first; reconciles the §D7 vs §D7.1 mismatch in STAGE_D_PLAN.md headings.
 
-1. Confirm current tip: `git log --oneline -1` on `stage-d` matches `d65a576` in §11 (pre-D7 reconciliation complete; OQ-21 deferred to D4.6).
-2. Read STAGE_D_PLAN.md §D7 + D7.1 stub, STAGE_D_NOTES.md D29 + D30, FINDINGS.md OQ-20 + OQ-21 + amended L375 row.
-3. Claude Code authors the first D7 sub-step prompt — `script/DeployAureumWeightedPoolFactory.s.sol` per D30, under the §8e.1 template, paired with terminal audit commands.
-4. Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; all forge / slither runs in user's terminal.
+2. **Mock-vs-real AuMM in `setUp`.** If D7 tests only exercise ERC-20 transfer / approve / Bodensee deposit paths, a `MockERC20` stand-in suffices (matches D5 pattern). If any test must trigger AuMM emission or burn logic, real `AuMM` deploy required in `setUp` (Stage C contract; no deploy script exists yet). Flagged originally in D30 Gap (ii).
+
+3. **CREATE-address prediction pattern for the hook + Bodensee pool.** D5 unit harness used `vm.mockCall` / `makeAddr` per D27; fork tests can't mock the Vault or WPF — real Vault, real WPF, real AuMM. Options: (a) `vm.computeCreateAddress(deployer, vm.getNonce(deployer))` pre-compute pattern; (b) factory-driven construction with post-hoc address read. Determines `setUp` structure and order of deploys.
+
+4. **Test list enumeration.** §D7.1 stub lists five provisional tests (`test_Fork_SwapRoutesFeeToBodensee`, `test_Fork_BodenseeYieldCollectionReverts`, `test_Fork_RecursionGuard`, `test_Fork_RouteYieldFeePrimitive`, `test_Fork_WithdrawProtocolFeesRecipientCheck`). Confirm or reshape — e.g. does D7.0's WPF deploy deserve a fork-parity test (`test_Fork_WPFBoundToAureumVault`) — before D7.1 sub-step numbering.
+
+5. **`.env.example` sweep.** Currently missing `AUREUM_VAULT`, `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `BODENSEE_SALT`. Fork tests use `vm.setEnv` between script calls so `.env.example` is not strictly required — but if it should document the full deploy surface, sweep now. Cheap decision: defer (keep as tech debt) or land as D7.1z terminal housekeeping.
+
+**Gate 3 — STAGE_D_PLAN.md §D7.1 flesh-out.**
+
+Once Gate 2 pins resolve, §D7.1 stub requires a full sub-step enumeration (D7.1a `setUp` scaffold through D7.1N per-test implementations + D7.1z commit boundary) with file paths, per-sub-step `grep` commands, and Cursor-prompt line anchors. One Cursor turn against STAGE_D_PLAN.md of non-trivial size. D7.1a §8e.1 fires only after Gate 3 commits.
+
+**Deferred (post-D7):**
+
+- **OQ-20 / D4.6.** Controller yield-fee entry point (governance-gated `routeYieldFeeToHook` or equivalent) — post-D7. D7 tests exercise the hook primitive directly, not the controller entry point. See FINDINGS.md OQ-20.
+- **OQ-21 / D4.6.** Bi-weekly yield-routing cadence via `BLOCKS_PER_EPOCH` (100,800-block) throttle on the D4.6 entry point; per-pool vs. per-(pool, token) vs. mandated internal batch granularity pinned at D4.6 implementation. See FINDINGS.md OQ-21.
+- **aumm-site spec edits (user-side).** `04_tokenomics.md` §ix prose needs amendment per OQ-20 (controller collects to itself; hook called via `routeYieldFee`) + OQ-21 (bi-weekly cadence policy); not a repo edit.
+
+**How to resume (Stage D — D7 kickoff, Gate 2 pins):**
+
+1. Confirm current tip: `git log --oneline -1` on `stage-d` matches `3d2d8fd` (D7.0 script). `git log --oneline -6` shows the full stack above `d65a576`.
+2. Read: STAGE_D_PLAN.md §D7 + §D7.1 stub; STAGE_D_NOTES.md D29 + D30 + **D31**; FINDINGS.md OQ-20 + OQ-21 + L375.
+3. Open Gate 2 by picking up pin 1 (harness file path) — propose candidate path, assess implications against D5 naming and §D7 / §D7.1 heading mismatch, log decision as D-D15 in STAGE_D_NOTES.md.
+4. Iterate through pins 2 → 5, each a separate Opus-high beat with its own `D-D*` log entry.
+5. After all five pins resolve, author Gate 3 §8e.1 for STAGE_D_PLAN.md §D7.1 flesh-out.
+6. After Gate 3 commits, author D7.1a §8e.1 for the fork-harness `setUp` scaffold.
+7. Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; Cursor is executor-only per §7 + §8e.
 
 ### Housekeeping notes
 
@@ -436,8 +466,11 @@ This section is the resumption anchor. Update at the end of every completed sub-
 * **Claude Code does not write files.** All file writes flow through Cursor. Claude Code plans, authors prompts, audits Cursor's output, drafts commit messages and terminal commands for the user.
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
 * Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
+* **§8e.1 template is two blocks.** Every filled §8e.1 has a `### CURSOR PROMPT — paste to Cursor verbatim; Cursor only` block and a separate `### USER VERIFY — run in the user's terminal after Cursor's save; not part of the Cursor prompt` block. Cursor never sees USER VERIFY. USER VERIFY and all terminal command blocks (including git sequences) begin with `clear` on their own line. See §8e.1 + D31.
+* **§13 Sonnet dispatch is not session-scoped.** Every filled §8e.1 turn must close with the Sonnet dispatch line per §13's "Relay after a §8e.1 draft" — across sessions, resumes, and compactions. If Claude Code forgets, user says "mode?" and Claude Code emits the dispatch.
 * **Stage D — `IVault.unlock` inner callbacks** (`AureumFeeRoutingHook` and the same pattern elsewhere): when the outer caller uses `abi.decode(result, (uint256))`, the inner must `returns (uint256)`, not `returns (bytes memory)` with `abi.encode` — see **D22** in `docs/STAGE_D_NOTES.md`.
-* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): during D4.5, Cursor Prompts A and D expanded scope beyond the planned `src/vault/AureumProtocolFeeController.sol` + test file to cover `script/DeployAureumVault.s.sol`, `test/fork/DeployAureumVault.t.sol`, and `.env.example` for the `FEE_ROUTING_HOOK` env wiring. The expansion was kept (the wiring was materially needed) but is logged as a **§8e.1** / Cursor-discipline warning for D5 onward — sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
+* **D24 — Cursor autonomous-scope expansion in D4.5** (`cc2623b`): sub-step prompts must state the scope boundary explicitly, and Cursor audit output must be compared against that boundary.
+* **D31 — Cursor autonomous-action expansion in D7.0** (structural resolution in `60a1d03` + `f898946` + `348d038`): Cursor ran `forge build` against four scope fences; structural fix was the §8e.1 two-block split removing shell-command priming from the Cursor payload. See **D31** in `docs/STAGE_D_NOTES.md`.
 
 ---
 
