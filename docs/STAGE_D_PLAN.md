@@ -32,13 +32,13 @@
 
 - **`test/unit/AureumProtocolFeeController.t.sol`** — extend the existing Stage B file. Add tests for (a) B10 retarget to the hook address, (b) Bodensee fee band constants and that construction no longer pins 0.75%, (c) `collectAggregateFees(DER_BODENSEE_POOL)` reverts with the expected custom error. Existing Stage B tests must still pass unchanged (after the retarget rename is propagated through test code).
 
-- **`test/fork/FeeRoutingHook.t.sol`** — mainnet-fork integration. Deploys Option F2 Vault (via `DeployAureumVault.s.sol`), deploys Bodensee (via new `DeployDerBodensee.s.sol`), deploys a minimal 2-token weighted test pool (AuMM / svZCHF, 50/50) with the hook attached, executes swaps through the test pool via Balancer's `BatchRouter`, verifies (a) fee calc matches the expected percentage, (b) the hook's internal swap to svZCHF clears against real mainnet liquidity, (c) the one-sided add lands in Bodensee and increases Bodensee's BPT total supply by the expected delta. **Not a real Miliarium pool composition** (per D-D13 and STAGES_OVERVIEW "not as thorough as real Miliarium pools but sufficient to validate the core primitive").
+- **`test/fork/AureumFeeRoutingHook.t.sol`** — mainnet-fork integration. Deploys Option F2 Vault (via `DeployAureumVault.s.sol`), deploys Bodensee (via new `DeployDerBodensee.s.sol`), deploys a minimal 2-token weighted test pool (AuMM / svZCHF, 50/50) with the hook attached, executes swaps through the test pool via Balancer's `BatchRouter`, verifies (a) fee calc matches the expected percentage, (b) the hook's internal swap to svZCHF clears against real mainnet liquidity, (c) the one-sided add lands in Bodensee and increases Bodensee's BPT total supply by the expected delta. **Not a real Miliarium pool composition** (per D-D13 and STAGES_OVERVIEW "not as thorough as real Miliarium pools but sufficient to validate the core primitive").
 
 **The directory additions Stage D performs:**
 
 - Create `src/fee_router/` for the hook + interface.
 - Add `script/DeployDerBodensee.s.sol` alongside existing `script/DeployAureumVault.s.sol`.
-- Add `test/fork/FeeRoutingHook.t.sol` alongside the existing Stage B `test/fork/DeployAureumVault.t.sol` and `test/fork/Sanity.t.sol`.
+- Add `test/fork/AureumFeeRoutingHook.t.sol` alongside the existing Stage B `test/fork/DeployAureumVault.t.sol` and `test/fork/Sanity.t.sol`.
 
 No directory reorganization at Stage D — Stage C already pinned the `src/vault/` / `src/lib/` / `src/token/` layout.
 
@@ -97,6 +97,7 @@ These are the answers to the planning-stage questions resolved before this file 
 | **D-D15** | **`protocolSwapFeePercentage` is immutable at pool registration, no on-chain setter.** Per the 2026-04-19 BAL v3 mechanics clarification (see amended OQ-1 / OQ-1a in `docs/FINDINGS.md`): each gauged pool registers with `protocolSwapFeePercentage = 50e16` (saturating the Vault's `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50%` cap); that value does not change at runtime. `AureumProtocolFeeController` exposes no runtime setter for this field — the 50/50 split is constitutional per CLAUDE.md §2 "hard rule" and encoded as an immutable Vault parameter at registration. Stage K governance adjusts per-pool swap-fee *rate* within OQ-11's band but does not touch this split. Stage B's `AureumProtocolFeeController` inherits an upstream setter from Balancer V3; the retrofit to override or suppress that setter lands at D0.5 before D1 design work begins. der Bodensee registers with `protocolSwapFeePercentage = 0` per OQ-2 — immutable at that value too. |
 | **D-D17** | **D5.1 test harness: Balancer VaultMock via BaseVaultTest, not hand-rolled MockVault.** Three constraints settle the design. (i) **§1** doctrine — re-implementing ~250 lines of audited Vault semantics on the test surface is exactly the drift-risk class that byte-identical Vault is meant to prevent. (ii) The Stage B `vm.mockCall`-per-selector pattern does not transfer: the hook's phase-2 path reads `SV_ZCHF.balanceOf(address(this))` after `_vault.sendTo(...)`, and `vm.mockCall` cannot simulate the token-transfer side effect. (iii) Balancer V3 ships `VaultMock.sol` (byte-identical to real `Vault` + test helpers) and `BaseVaultTest.sol` explicitly for this; **§8c** forbids editing under `lib/balancer-v3-monorepo/`, not importing. Custom setUp required because the `DER_BODENSEE` immutable forces Bodensee-pool-before-hook-construction (inverting `BaseVaultTest`'s default hook-then-pool order), and `onRegister` L251–262 rejects Bodensee as a hooked pool (must register with `poolHooksContract = address(0)`). Full rationale and 7-step setUp flow in **STAGE_D_NOTES D26**. D-D16 left free per the deferred β1-custody reservation in `STAGE_D_NOTES.md` L185. |
 | **D-D18** | **D5.1 harness supersession: `vm.mockCall` + `makeAddr("vault")`, not `BaseVaultTest`.** Surfaced 2026-04-22 post-**D-D17** commit: five targeted searches (`find lib/balancer-v3-monorepo -name "IPermit2.sol"`, `find lib/balancer-v3-monorepo -name "permit2" -type d`, `find . -name "IPermit2.sol"`, `ls lib/balancer-v3-monorepo/lib/`, `grep permit2 foundry.toml remappings.txt`) all empty. `BaseVaultTest` inherits `Permit2Helpers`, whose constructor deploys Permit2 and whose imports reach `permit2/src/interfaces/IPermit2.sol` — no file, no directory, no remapping in this repo. Adding a `permit2` submodule falls under CLAUDE.md §8b "ask before adding a new dependency" and §8c's stricter bar; rejected in favour of a unit-scope approach with no new dependencies. Revised harness: `vault = makeAddr("vault")` (no-code); `vm.prank(vault)` clears `VaultGuard.onlyVault` on all three hook callback surfaces; `vm.mockCall` stubs the three phase-2 vault functions the hook reaches (`IVault.getPoolTokenCountAndIndexOfToken`, `IVault.addLiquidity`, `IVault.settle`); real `MockERC20` / `MockERC4626` / `MockFeeController`. D-D17's reasoning for rejecting a hand-rolled `MockVault.sol` (§1 byte-identical doctrine) still stands; what changes is the replacement. Scope boundary: branches A (svZCHF fee, no-op phase 1) and B (ZCHF fee, real ERC-4626 deposit phase 1) of `onAfterSwap` fully unit-covered; branch C (non-ZCHF-family fee → nested `_vault.swap` → `_vault.sendTo`) deferred to D7 (real `sendTo` transfer required); `routeYieldFee` / `routeGovernanceDeposit` / `routeIncendiaryDeposit` success paths deferred to D7 (real `_vault.unlock` callback required); `UnsupportedFeeToken` internal revert deferred to D7 (only reachable inside a routeX callback). Full narrative and discipline fold-in in **STAGE_D_NOTES D27**. |
+| **D-D19** | **Fork-test harness path: test/fork/AureumFeeRoutingHook.t.sol.** Pinned at D7 entry (Gate 2 pin 1 per CLAUDE.md §11 kickoff). Reconciles §D7's original plan text (six pre-reconciliation sites: L35, L41, L623, L632, L633, L758 — line numbers at pre-reconciliation) to match (i) the source file namesrc/fee_router/AureumFeeRoutingHook.sol, (ii) the D5 unit-test name test/unit/AureumFeeRoutingHook.t.sol, and (iii) the Stage B fork-test precedent test/fork/DeployAureumVault.t.solwhich preserves theAureumprefix. Same bare filename acrosstest/unit/andtest/fork/ is not a collision — Foundry disambiguates on path; the established repo convention is source-name symmetry (<Contract>.sol→<Contract>.t.solin unit + fork directories). D-D16 remains reserved for the deferred β1-custody backfill fromSTAGE_D_NOTES.md L185. |
 
 
 ---
@@ -620,7 +621,7 @@ Mainnet-fork integration. Exercises the full chain: Vault deploy → Bodensee de
 ### D7.2 — Run fork tests
 
 ```
-forge test --match-path "test/fork/FeeRoutingHook.t.sol" --fork-url $MAINNET_RPC_URL -vv
+forge test --match-path "test/fork/AureumFeeRoutingHook.t.sol" --fork-url $MAINNET_RPC_URL -vv
 forge test --fork-url $MAINNET_RPC_URL -vv
 ```
 
@@ -629,8 +630,8 @@ Paste full output of the second invocation. Full baseline + Stage D fork additio
 **Commit:**
 
 ```
-git add test/fork/FeeRoutingHook.t.sol
-git commit -m "D7: test/fork/FeeRoutingHook.t.sol — end-to-end fee routing on mainnet fork"
+git add test/fork/AureumFeeRoutingHook.t.sol
+git commit -m "D7: test/fork/AureumFeeRoutingHook.t.sol — end-to-end fee routing on mainnet fork"
 git push
 ```
 
@@ -755,7 +756,7 @@ aumm-deploy/
     │   ├── MockERC4626.sol                   — share token over underlying; asset(), deposit, redeem (new)
     │   ├── MockFeeController.sol             — IAureumProtocolFeeControllerHookExtension stub (new)
     └── fork/
-        └── FeeRoutingHook.t.sol              — mainnet-fork integration (new)
+        └── AureumFeeRoutingHook.t.sol              — mainnet-fork integration (new)
 ```
 
 No changes to `foundry.toml`, `remappings.txt`, or `README.md` unless a D8 lint-ignore path emerges.
