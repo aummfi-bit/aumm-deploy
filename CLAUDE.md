@@ -411,9 +411,9 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor. Update at the end of every completed sub-step.
 
-**Last update:** 2026-04-22, mid-Stage D, post-D6 + pre-D7 reconciliation. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 landed on `stage-d`; D7 next, gated on pre-D7 reconciliation commit.
+**Last update:** 2026-04-23, mid-Stage D, pre-D7 reconciliation complete; D7 next. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 landed on `stage-d`.
 
-**Branch:** `stage-d` at `3e6c1c1` (pre-D7 reconciliation: D6 log + §11 + D29 + D30 + §D7.1 stub + OQ-20 edits) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
+**Branch:** `stage-d` at `d65a576` (pre-D7 reconciliation complete: `3e6c1c1` reconciliation bundle + `2f80e0c` hash fixup + `d65a576` OQ-21 stub) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
 
 **Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Next expected tag: `stage-d-complete` at D9.
 
@@ -422,20 +422,21 @@ This section is the resumption anchor. Update at the end of every completed sub-
 - D0 through D4 — complete; see prior §11 states in git history for sub-step detail.
 - D5 — complete (`5905a40` + `06df412`). `test/unit/AureumFeeRoutingHook.t.sol` + `test/unit/AureumProtocolFeeController.t.sol` extensions landed per plan D5.1–D5.3. Mock harness (`MockVault`, `MockRouter`, four `MockERC20`, `MockERC4626` as Bodensee); D5.2 added OQ-11 band constant tests + `FEE_ROUTING_HOOK` immutable assertions. Coverage reconciliation per plan L451–454 complete.
 - D6 — complete (`18f74b9`). `script/DeployDerBodensee.s.sol` fork-only per D-D6; see D6 Completion Log for full parameter breakdown. `WEIGHTED_POOL_FACTORY` env is Aureum-bound WPF per D30 — not mainnet Balancer WPF.
-- **Pre-D7 reconciliation (current beat) — pending commit.** Four file edits bundled in one commit: D6 Completion Log populated (STAGE_D_PLAN.md); §11 updated (this file); D29 + D30 appended (STAGE_D_NOTES.md) — D29 post-D6 pre-flight (OQ-20 structural + D4.6 deferred label + withdraw-to-hook ≠ `routeYieldFee` invariant); D30 WPF sourcing + AuMM fork-harness + new `DeployAureumWeightedPoolFactory.s.sol` resolution; §D7.1 rewritten as a stub gated on D30 (STAGE_D_PLAN.md); OQ-20 appended + L375 yield-leg row amended (FINDINGS.md).
-- D7 — next. Fork test harness (`test/fork/BodenseeFeeRouting.t.sol` or path pinned at D7 kickoff). First D7 sub-step is `script/DeployAureumWeightedPoolFactory.s.sol` per D30. Plan: STAGE_D_PLAN.md §D7.1 stub + D30.
+- **Pre-D7 reconciliation — complete.** Three commits: `3e6c1c1` (D6 Completion Log + §11 + D29 + D30 + §D7.1 stub + OQ-20); `2f80e0c` (CLAUDE.md §11 hash + FINDINGS.md L368 yield-leg prose fixup); `d65a576` (FINDINGS.md OQ-21 stub — yield-leg routing cadence, `BLOCKS_PER_EPOCH` throttle pinned at D4.6).
+- D7 — next. Fork test harness (`test/fork/BodenseeFeeRouting.t.sol` or path pinned at D7 kickoff). First D7 sub-step is `script/DeployAureumWeightedPoolFactory.s.sol` per D30, pending chat-level pins on `FACTORY_VERSION` / `POOL_VERSION` / `PAUSE_WINDOW_DURATION` before the §8e.1 prompt fires. Plan: STAGE_D_PLAN.md §D7.1 stub + D30.
 - D8, D9 — not started.
 
 **Open items flagged before D7 execution:**
 
-- **D30 resolution requires new script.** `script/DeployAureumWeightedPoolFactory.s.sol` is named but not yet drafted; first D7 sub-step.
+- **D30 resolution requires new script.** `script/DeployAureumWeightedPoolFactory.s.sol` is named but not yet drafted; first D7 sub-step. Version strings + pause-window sourcing pinned in chat before authoring.
 - **OQ-20 / D4.6 deferred.** Controller yield-fee entry point (governance-gated `routeYieldFeeToHook` or equivalent) lands post-D7. D7 tests exercise the hook primitive directly, not the controller entry point.
-- **aumm-site spec edit flagged (user-side).** `04_tokenomics.md` §ix prose needs amendment per OQ-20 resolution; not a repo edit.
+- **OQ-21 / D4.6 deferred.** Bi-weekly yield-routing cadence via `BLOCKS_PER_EPOCH` (100,800-block) throttle on the D4.6 entry point; per-pool vs. per-(pool, token) vs. mandated internal batch granularity pinned at D4.6 implementation. See FINDINGS.md OQ-21.
+- **aumm-site spec edits flagged (user-side).** `04_tokenomics.md` §ix prose needs amendment per OQ-20 (controller collects to itself; hook called via `routeYieldFee`) + OQ-21 (bi-weekly cadence policy); not a repo edit.
 
 **How to resume (Stage D — D7 fork tests):**
 
-1. Confirm pre-D7 reconciliation commit landed: `git log --oneline -1` on `stage-d` matches `3e6c1c1` in §11.
-2. Read STAGE_D_PLAN.md §D7 + D7.1 stub, STAGE_D_NOTES.md D29 + D30, FINDINGS.md OQ-20 + amended L375 row.
+1. Confirm current tip: `git log --oneline -1` on `stage-d` matches `d65a576` in §11 (pre-D7 reconciliation complete; OQ-21 deferred to D4.6).
+2. Read STAGE_D_PLAN.md §D7 + D7.1 stub, STAGE_D_NOTES.md D29 + D30, FINDINGS.md OQ-20 + OQ-21 + amended L375 row.
 3. Claude Code authors the first D7 sub-step prompt — `script/DeployAureumWeightedPoolFactory.s.sol` per D30, under the §8e.1 template, paired with terminal audit commands.
 4. Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; all forge / slither runs in user's terminal.
 
