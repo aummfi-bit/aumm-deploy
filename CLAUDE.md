@@ -413,7 +413,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 
 **Last update:** 2026-04-22, mid-Stage D, post-D6 + pre-D7 reconciliation. Stage C remains complete at `stage-c-complete` (commit `5342126`). D0 → D6 landed on `stage-d`; D7 next, gated on pre-D7 reconciliation commit.
 
-**Branch:** `stage-d` at `<docs-commit-hash>` (pre-D7 reconciliation: D6 log + §11 + D29 + D30 + §D7.1 stub + OQ-20 edits) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
+**Branch:** `stage-d` at `3e6c1c1` (pre-D7 reconciliation: D6 log + §11 + D29 + D30 + §D7.1 stub + OQ-20 edits) on top of D6 commit `18f74b9`. `main` is at `e5ceb7a`, unchanged since `stage-d` branched from it at D0. Merge to `main` deferred to D9 per D-D14.
 
 **Current tag:** `stage-c-complete` (commit `5342126`, 2026-04-18). Next expected tag: `stage-d-complete` at D9.
 
@@ -434,7 +434,7 @@ This section is the resumption anchor. Update at the end of every completed sub-
 
 **How to resume (Stage D — D7 fork tests):**
 
-1. Confirm pre-D7 reconciliation commit landed: `git log --oneline -1` on `stage-d` matches `<docs-commit-hash>` in §11.
+1. Confirm pre-D7 reconciliation commit landed: `git log --oneline -1` on `stage-d` matches `3e6c1c1` in §11.
 2. Read STAGE_D_PLAN.md §D7 + D7.1 stub, STAGE_D_NOTES.md D29 + D30, FINDINGS.md OQ-20 + amended L375 row.
 3. Claude Code authors the first D7 sub-step prompt — `script/DeployAureumWeightedPoolFactory.s.sol` per D30, under the §8e.1 template, paired with terminal audit commands.
 4. Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; all forge / slither runs in user's terminal.

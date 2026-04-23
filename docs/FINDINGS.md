@@ -365,7 +365,7 @@ Numbered, with proposed options where I have them. Need human resolution before 
 
 The precise framing: **100% of the protocol-extractable share, up to the Vault's 50% cap.** The hook saturates the cap; it does not bypass it.
 
-ERC-4626 yield fees can't ride a swap hook — they accrue continuously through the underlying vault's `convertToAssets()` rate. The existing `AureumProtocolFeeController` continues to collect aggregate yield fees via `collectAggregateFees()`, with its withdraw target pointed at the hook contract (or a small router paired with it) which uses the same swap-and-one-sided-deposit primitive. Same for governance proposal deposits and Incendiary Boost deposits — they call the shared primitive directly.
+ERC-4626 yield fees can't ride a swap hook — they accrue continuously through the underlying vault's `convertToAssets()` rate. The `AureumProtocolFeeController` collects aggregate yield fees via `collectAggregateFees()` to itself; the D4.6 governance-gated entry point (deferred — see **OQ-20**) approves the hook and calls `routeYieldFee`, using the same swap-and-one-sided-deposit primitive. Same for governance proposal deposits and Incendiary Boost deposits — they call the shared primitive directly.
 
 **Three layers, one shared primitive:**
 
