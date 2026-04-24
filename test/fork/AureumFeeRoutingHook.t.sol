@@ -2,11 +2,12 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import { TokenConfig, TokenType, PoolRoleAccounts } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { TokenConfig, TokenType, PoolRoleAccounts, AfterSwapParams, SwapKind, VaultSwapParams } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
@@ -14,6 +15,7 @@ import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/W
 import { AuMM } from "../../src/token/AuMM.sol";
 import { AureumFeeRoutingHook } from "../../src/fee_router/AureumFeeRoutingHook.sol";
 import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
+import { IAureumFeeRoutingHook } from "../../src/fee_router/IAureumFeeRoutingHook.sol";
 import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 
 /**
@@ -51,6 +53,7 @@ contract AureumFeeRoutingHookForkTest is Test {
     address internal constant GOVERNANCE_MULTISIG = address(uint160(uint256(keccak256("govMultisig"))));
     address internal constant SUSDS_RATE_PROVIDER = 0x1195BE91e78ab25494C855826FF595Eef784d47B;
     address internal constant SV_ZCHF_RATE_PROVIDER = 0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c;
+    uint256 internal constant INIT_SEED = 1_000e18;
 
     // -------------------------------------------------------------------------
     // State
@@ -285,6 +288,101 @@ contract AureumFeeRoutingHookForkTest is Test {
     }
 
     // -------------------------------------------------------------------------
+    // Bodensee fork init — (β) pattern per D32
+    // -------------------------------------------------------------------------
+
+    /// @notice Bodensee fork initialization — (β) pattern per D32. Seeding via
+    ///         `deal` to `address(this)` is D-D20-compatible: the constraint
+    ///         is no `setMinter` / `mint()` in setUp, not "no AuMM balance".
+    function _initializeBodensee() internal returns (uint256 bptOut) {
+        deal(address(aumm), address(this), INIT_SEED, true);
+        deal(address(susds), address(this), INIT_SEED, true);
+        deal(address(svZchf), address(this), INIT_SEED, true);
+
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializeBodenseeCallback, ()));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializeBodenseeCallback() external returns (uint256 bptOut) {
+        require(msg.sender == address(vault), "onlyVault");
+        address t0 = address(aumm);
+        address t1 = address(susds);
+        address t2 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        if (t1 > t2) (t1, t2) = (t2, t1);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = IERC20(t0);
+        tokens[1] = IERC20(t1);
+        tokens[2] = IERC20(t2);
+        uint256[] memory amountsIn = new uint256[](3);
+        amountsIn[0] = INIT_SEED;
+        amountsIn[1] = INIT_SEED;
+        amountsIn[2] = INIT_SEED;
+
+        bptOut = vault.initialize(bodenseePool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i <= 2; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Trading pool fork init + swap callback — (β) pattern per D32
+    // -------------------------------------------------------------------------
+
+    /// @notice Trading pool fork initialization — (β) pattern per D32. Seeds
+    ///         underlying balances via `deal`, then `vault.unlock` with
+    ///         `initialize` and per-token `settle` in the callback.
+    function _initializeTradingPool() internal returns (uint256 bptOut) {
+        deal(address(aumm), address(this), INIT_SEED, true);
+        deal(address(svZchf), address(this), INIT_SEED, true);
+
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializeTradingPoolCallback, ()));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializeTradingPoolCallback() external returns (uint256 bptOut) {
+        require(msg.sender == address(vault), "onlyVault");
+        address t0 = address(aumm);
+        address t1 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = IERC20(t0);
+        tokens[1] = IERC20(t1);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = INIT_SEED;
+        amountsIn[1] = INIT_SEED;
+
+        bptOut = vault.initialize(tradingPool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i <= 1; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    /// @notice `sendTo` resolves the `tokenOut` debit side so no explicit
+    ///         `settle` is needed for `tokenOut`.
+    function _performSwapCallback(uint256 swapAmount) external {
+        require(msg.sender == address(vault), "onlyVault");
+        (, uint256 amountIn, uint256 amountOut) = vault.swap(
+            VaultSwapParams({
+                kind: SwapKind.EXACT_IN,
+                pool: tradingPool,
+                tokenIn: svZchf,
+                tokenOut: IERC20(address(aumm)),
+                amountGivenRaw: swapAmount,
+                limitRaw: 0,
+                userData: ""
+            })
+        );
+        svZchf.transfer(address(vault), amountIn);
+        vault.settle(svZchf, amountIn);
+        vault.sendTo(IERC20(address(aumm)), address(this), amountOut);
+    }
+
+    // -------------------------------------------------------------------------
     // D7.1b–D7.1g — test bodies (empty in D7.1a)
     // -------------------------------------------------------------------------
 
@@ -312,9 +410,80 @@ contract AureumFeeRoutingHookForkTest is Test {
         controller.withdrawProtocolFees(tradingPool, wrongRecipient);
     }
 
-    function test_Fork_RouteYieldFeePrimitive() public {}
+    function test_Fork_RouteYieldFeePrimitive() public {
+        _initializeBodensee();
+        uint256 amount = 100e18;
+        deal(address(svZchf), address(controller), amount, true);
+        vm.startPrank(address(controller));
+        svZchf.approve(address(hook), amount);
+        vm.expectEmit(true, true, false, false, address(hook));
+        emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
+        uint256 bptMinted = hook.routeYieldFee(tradingPool, svZchf, amount);
+        vm.stopPrank();
+        assertGt(bptMinted, 0);
+        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
 
-    function test_Fork_RecursionGuard() public {}
+        // Unprivileged caller — UnauthorizedCaller revert.
+        address attacker = address(uint160(uint256(keccak256("attacker"))));
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(IAureumFeeRoutingHook.UnauthorizedCaller.selector, attacker));
+        hook.routeYieldFee(tradingPool, svZchf, 1e18);
+    }
 
-    function test_Fork_SwapRoutesFeeToBodensee() public {}
+    function test_Fork_RecursionGuard() public {
+        AfterSwapParams memory guarded = AfterSwapParams({
+            kind: SwapKind.EXACT_IN,
+            tokenIn: IERC20(address(aumm)),
+            tokenOut: svZchf,
+            amountInScaled18: 1e18,
+            amountOutScaled18: 1e18,
+            tokenInBalanceScaled18: 0,
+            tokenOutBalanceScaled18: 0,
+            amountCalculatedScaled18: 1e18,
+            amountCalculatedRaw: 123e18,
+            router: address(hook),
+            pool: tradingPool,
+            userData: ""
+        });
+
+        vm.recordLogs();
+        vm.prank(address(vault));
+        (bool hookSuccess, uint256 amountOut) = hook.onAfterSwap(guarded);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertTrue(hookSuccess);
+        assertEq(amountOut, 123e18);
+        // (i) Guarded path must not emit SwapFeeRouted.
+        bytes32 swapFeeRoutedTopic = IAureumFeeRoutingHook.SwapFeeRouted.selector;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length > 0) {
+                assertTrue(logs[i].topics[0] != swapFeeRoutedTopic, "guarded branch emitted SwapFeeRouted");
+            }
+        }
+
+        // (ii) Unguarded path reaches collectSwapAggregateFeesForHook on a
+        //      fresh pool with zero accrued fees — call returns cleanly,
+        //      emits no SwapFeeRouted (nothing to route), and does not revert.
+        AfterSwapParams memory unguarded = guarded;
+        unguarded.router = address(this);
+        vm.prank(address(vault));
+        (hookSuccess, amountOut) = hook.onAfterSwap(unguarded);
+        assertTrue(hookSuccess);
+        assertEq(amountOut, 123e18);
+    }
+
+    function test_Fork_SwapRoutesFeeToBodensee() public {
+        _initializeBodensee();
+        _initializeTradingPool();
+        uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 swapAmount = 10e18;
+        deal(address(svZchf), address(this), swapAmount, true);
+        vault.unlock(abi.encodeCall(this._performSwapCallback, (swapAmount)));
+
+        // Swap generates the protocol fee on tradingPool → Vault invokes
+        // hook.onAfterSwap, which routes the fee to Bodensee via nested
+        // swap + one-sided addLiquidity, minting new BPT.
+        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
+    }
 }
