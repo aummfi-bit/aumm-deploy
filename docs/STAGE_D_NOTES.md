@@ -330,3 +330,45 @@ Date: 2026-04-23.
 
 - **For Claude Code:** physical separation in the prompt (two blocks + divider, USER VERIFY outside the Cursor payload) is structurally stronger than any text-level fence. Shell-like tokens inside the Cursor-facing payload prime Cursor's helpfulness layer; keep them out unless they are the content being edited. Every USER VERIFY block starts with `clear`; every commit command block starts with `clear`. §13 Sonnet dispatch is not memory-of-this-session — it is a structural step in every §8e.1 turn, across resumes and compactions.
 - **For Cursor:** four layers of scope fences (Instruction, Out of scope, Stop after, `.cursorrules` §7) were all in place and the run still happened. The structural response was removing the priming signal from the Cursor payload, not writing more fence text. Stop-and-report after file save is the contract; disclosure-after-the-fact is not a pass, same as D24's Prompt A verdict.
+
+### D32 — Router vault-binding correction + (β) pivot for D7.1e/g fork init
+
+Date: 2026-04-24.
+
+**Context.** STAGE_D_PLAN §D7.1e (`test_Fork_RouteYieldFeePrimitive`) asserts that `hook.routeYieldFee(tradingPool, svZchf, amount)` mints Bodensee BPT to the controller. Bodensee is not initialized in `setUp` — `wpf.create(...)` registers the pool but does not seed it. The inner `routeYieldFee` path calls `_vault.addLiquidity` on Bodensee, which reverts on an uninitialized pool. §D7.1g (`test_Fork_SwapRoutesFeeToBodensee`) likewise needs both the trading pool and Bodensee live, and the Gate 3 plan text prescribed `router.initialize` / `router.swapSingleTokenExactIn` against "mainnet Balancer V3 Router" with OQ-22 deferring the exact address.
+
+**Finding (1) — Router single-vault immutable binding.** Balancer V3's `Router` takes a single `IVault` at construction (see `balancer_v3_reference.md` §1 "Router's immutable `IVault` binding"). The mainnet Router at `0xAE563E3f8219521950555F5962419C8919758Ea2` is bound to mainnet Balancer's Vault; it cannot address pools registered on the Aureum-deployed Vault from `DeployAureumVault.s.sol`. `IRouter(mainnet_router).initialize(aureumPool, …)` reverts. The OQ-22 framing as "pin the address" is invalid at its premise — the mainnet address is not a valid call target for Aureum pools regardless of how it is stored (env var vs file constant).
+
+**Finding (2) — Permit2 approval chain.** The Router's `initialize` and swap paths pull funds via Permit2 (`_permit2.transferFrom(sender, vault, uint160(amount), token)`, see `balancer_v3_reference.md` Wire-level §5). Plain `IERC20.approve(router, amount)` is not sufficient. Even an Aureum-deployed Router requires the two-step Permit2 chain per test account (`IERC20.approve(PERMIT2, max)` + `IAllowanceTransfer(PERMIT2).approve(token, router, amount, expiration)`). A Router-mediated fork test is strictly harder to set up than an unlock-only path, with no corresponding benefit for testing the hook's own invariants.
+
+**Resolution — (β) pattern for D7.1e + default for D7.1g.** Fork init uses `Vault.unlock` + `IVault.initialize` + per-token transfer-to-vault + `Vault.settle`, no Router, no Permit2. This mirrors the `AureumFeeRoutingHook`'s own `unlock` flow (`balancer_v3_reference.md` Wire-level §4). Mechanics:
+
+1. Open `_vault.unlock(abi.encodeCall(this.<initCallback>, (...)))` from the test contract; the Vault calls back into the test contract with `msg.sender == address(vault)`.
+2. In the callback (`onlyVault`-style mental guard; public API is `IVault`), call `IVault(address(vault)).initialize(pool, to, tokens, exactAmountsIn, minBptAmountOut, userData)` — **six** parameters, no `wethIsEth` (that is a Router concept, not a Vault concept).
+3. For each token: `token.transfer(address(vault), amountIn)` from whatever address holds the balances (the test contract after `deal`), then `IVault(address(vault)).settle(token, amountIn)` to reconcile the transient debit.
+4. Callback returns `uint256` (BPT minted), mirroring the hook's `_routeYieldFeeUnlocked` shape per D22 (inner callbacks return `uint256`, not `bytes memory` + `abi.encode`).
+
+Every credit side (BPT mint, `sendTo`) must pair with a debit side (transfer + settle) before the outer `unlock` returns, or the Vault reverts with `BalanceNotSettled` (`balancer_v3_reference.md` Wire-level §4).
+
+**Consequences.**
+
+- **§D7.1e.** Add a private helper `_initializeBodensee()` under a "Bodensee fork init" banner that runs the (β) sequence. `INIT_SEED = 1_000e18` per token is sufficient for the assertions; on-chain `decimals()` introspection is overkill unless something breaks. The test calls `_initializeBodensee()` before the `routeYieldFee` call. D-D20's `deal` seed pattern is compatible — the constraint there is no `setMinter` / `mint()` in `setUp`, not "no AuMM balance." Seeding test balances (including to `address(this)` for init) is within D-D20 scope.
+- **§D7.1g.** Both the trading pool and Bodensee need initialization. Default to the same (β) helpers (`_initializeBodensee()`, new `_initializeTradingPool()`); a swap can then either (β) `unlock` + `IVaultMain.swap` directly inside a callback, or (α) deploy a fresh `new Router(IVault(address(vault)), IWETH(weth), IPermit2(permit2), version)` and use `router.swapSingleTokenExactIn` with full Permit2 plumbing. (α) requires Permit2 live on the fork block and two-step approvals per test account; (β) is the default. Write-time choice at D7.1g.
+
+**OQ-22 — redefined.** No longer "pin the address." OQ-22 is retained as a **documentation anchor**: the mainnet Router address (`0xAE563E3f8219521950555F5962419C8919758Ea2`, task `20250307-v3-router-v2`) is recorded in `balancer_v3_reference.md` for cross-reference but is not callable from Aureum fork tests. CLAUDE.md §11 carries the redefined OQ-22 text; the original "BALANCER_V3_ROUTER env vs file-level test constant" framing is retired.
+
+**D7.1f is unaffected.** `test_Fork_RecursionGuard` exercises `onAfterSwap` branches under `vm.prank(address(vault))` without reaching any pool initialization path; no Bodensee / trading pool init required. D7.1b, D7.1c, D7.1d are likewise init-free and remain as landed at `b948a98`.
+
+**Cross-refs.** `balancer_v3_reference.md` §1 (Router binding), §2 (OQ-22 redefined), Wire-level §1 / §3 / §4 / §5; **D22** (inner callback `uint256` return shape); **D-D20** (real AuMM, no minter path); **D-D21** (pre-compute chain); **D-D22** (six tests, trading pool 50/50); **D33** (production Router question).
+
+---
+
+### D33 — Candidate: Aureum's own Router (post-Stage D)
+
+Date: 2026-04-24.
+
+**Question.** Does Aureum ship a user-facing `Router` bound to `AUREUM_VAULT` for production swaps / add-liquidity against Aureum pools?
+
+**Why surfaced.** D32 Finding (1) — Router's immutable `IVault` binding — rules out reusing the mainnet Router for Aureum pools in production too, not only in fork tests. Full options list and rationale live in `balancer_v3_reference.md` "Open architectural question — Aureum's own Router."
+
+**Not a Stage D blocker.** Re-entry at Stage K (governance handoff) or Stage O (integration).
