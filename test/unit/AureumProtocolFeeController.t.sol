@@ -12,6 +12,7 @@ import { IVaultAdmin } from "@balancer-labs/v3-interfaces/contracts/vault/IVault
 import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 import { IVaultExtension } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
 import { IVaultMain } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultMain.sol";
+import { IAureumProtocolFeeControllerHookExtension } from "../../src/fee_router/IAureumProtocolFeeControllerHookExtension.sol";
 
 import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
 import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
@@ -211,6 +212,33 @@ contract AureumProtocolFeeControllerTest is Test {
         vm.mockCall(
             mockVault,
             abi.encodeWithSelector(IVaultAdmin.updateAggregateYieldFeePercentage.selector),
+            ""
+        );
+    }
+
+    function _mockCollectAggregateFees(
+        address pool,
+        uint256[] memory swapFees,
+        uint256[] memory yieldFees
+    ) internal {
+        // Mock IVaultAdmin.collectAggregateFees(pool) → (swapFees, yieldFees).
+        // The new collectAggregateFeesHookSwapForward callback (D4.7a) calls
+        // this Vault entry point with the pool argument.
+        vm.mockCall(
+            mockVault,
+            abi.encodeWithSelector(IVaultAdmin.collectAggregateFees.selector, pool),
+            abi.encode(swapFees, yieldFees)
+        );
+    }
+
+    function _mockSendToAny() internal {
+        // Selector-only mock for IVaultMain.sendTo(token, recipient, amount).
+        // Both legs of the new D4.7a callback (yield → controller, swap →
+        // FEE_ROUTING_HOOK) hit this entry point. Tests use vm.expectCall to
+        // assert the (token, recipient, amount) tuples per call.
+        vm.mockCall(
+            mockVault,
+            abi.encodeWithSelector(IVaultMain.sendTo.selector),
             ""
         );
     }
@@ -699,5 +727,261 @@ contract AureumProtocolFeeControllerTest is Test {
         assertEq(controller.BODENSEE_SWAP_FEE_MIN(),     0.001e18,  "MIN 0.10%");
         assertEq(controller.BODENSEE_SWAP_FEE_MAX(),     0.01e18,   "MAX 1.00%");
         assertEq(controller.BODENSEE_SWAP_FEE_GENESIS(), 0.0075e18, "GENESIS 0.75%");
+    }
+
+    // ─── Group F — D4.7b β1 swap-leg forward (controller-side) ──────────
+
+    function test_collectSwapAggregateFeesForHook_revertsOnNonHookCaller(
+        address attacker,
+        address pool
+    ) public {
+        vm.assume(attacker != FEE_ROUTING_HOOK_PLACEHOLDER);
+
+        vm.prank(attacker);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAureumProtocolFeeControllerHookExtension.OnlyFeeRoutingHook.selector,
+                attacker
+            )
+        );
+        controller.collectSwapAggregateFeesForHook(pool);
+    }
+
+    function test_collectAggregateFeesHookSwapForward_zeroAmountShortCircuit() public {
+        address pool = makeAddr("poolZero");
+        IERC20 tokenA = IERC20(makeAddr("tokenA"));
+        IERC20 tokenB = IERC20(makeAddr("tokenB"));
+
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+        _mockGetPoolTokens(pool, tokens);
+
+        uint256[] memory zeros = new uint256[](2);
+        _mockCollectAggregateFees(pool, zeros, zeros);
+        _mockSendToAny();
+
+        vm.recordLogs();
+
+        vm.prank(mockVault);
+        (IERC20[] memory retTokens, uint256[] memory forwardedAmounts) =
+            controller.collectAggregateFeesHookSwapForward(pool);
+
+        assertEq(retTokens.length, 2, "retTokens length");
+        assertEq(address(retTokens[0]), address(tokenA), "retTokens[0]");
+        assertEq(address(retTokens[1]), address(tokenB), "retTokens[1]");
+        assertEq(forwardedAmounts.length, 2, "forwardedAmounts length");
+        assertEq(forwardedAmounts[0], 0, "forwardedAmounts[0]");
+        assertEq(forwardedAmounts[1], 0, "forwardedAmounts[1]");
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sigSwapLeg = keccak256("SwapLegFeeForwarded(address,address,uint256)");
+        bytes32 sigYield   = keccak256("ProtocolYieldFeeCollected(address,address,uint256)");
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length > 0) {
+                assertTrue(
+                    logs[i].topics[0] != sigSwapLeg,
+                    "SwapLegFeeForwarded must not fire on zero-amount path"
+                );
+                assertTrue(
+                    logs[i].topics[0] != sigYield,
+                    "ProtocolYieldFeeCollected must not fire on zero-amount path"
+                );
+            }
+        }
+    }
+
+    function test_collectAggregateFeesHookSwapForward_nonZeroForward() public {
+        address pool = makeAddr("poolForward");
+        IERC20 tokenA = IERC20(makeAddr("tokenAFwd"));
+        IERC20 tokenB = IERC20(makeAddr("tokenBFwd"));
+
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+        _mockGetPoolTokens(pool, tokens);
+
+        uint256[] memory swapFees = new uint256[](2);
+        swapFees[0] = 100e18;
+        swapFees[1] = 200e18;
+        uint256[] memory yieldZeros = new uint256[](2);
+        _mockCollectAggregateFees(pool, swapFees, yieldZeros);
+        _mockSendToAny();
+
+        vm.expectCall(
+            mockVault,
+            abi.encodeWithSelector(
+                IVaultMain.sendTo.selector,
+                tokenA,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
+                uint256(100e18)
+            )
+        );
+        vm.expectCall(
+            mockVault,
+            abi.encodeWithSelector(
+                IVaultMain.sendTo.selector,
+                tokenB,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
+                uint256(200e18)
+            )
+        );
+
+        vm.recordLogs();
+
+        vm.prank(mockVault);
+        (IERC20[] memory retTokens, uint256[] memory forwardedAmounts) =
+            controller.collectAggregateFeesHookSwapForward(pool);
+
+        assertEq(forwardedAmounts[0], 100e18, "forwardedAmounts[0]");
+        assertEq(forwardedAmounts[1], 200e18, "forwardedAmounts[1]");
+        assertEq(address(retTokens[0]), address(tokenA), "retTokens[0]");
+
+        // Invariant 1: swap leg never credits _protocolFeeAmounts.
+        assertEq(
+            uint256(vm.load(address(controller), _protocolFeeAmountsSlot(pool, tokenA))),
+            0,
+            "swap leg must not credit _protocolFeeAmounts[pool][tokenA]"
+        );
+        assertEq(
+            uint256(vm.load(address(controller), _protocolFeeAmountsSlot(pool, tokenB))),
+            0,
+            "swap leg must not credit _protocolFeeAmounts[pool][tokenB]"
+        );
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sigSwapLeg = keccak256("SwapLegFeeForwarded(address,address,uint256)");
+        uint256 swapLegCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length == 3 && logs[i].topics[0] == sigSwapLeg) {
+                swapLegCount++;
+            }
+        }
+        assertEq(swapLegCount, 2, "exactly 2 SwapLegFeeForwarded events expected");
+    }
+
+    function test_collectAggregateFeesHookSwapForward_yieldLegUntouched() public {
+        address pool = makeAddr("poolYield");
+        IERC20 token = IERC20(makeAddr("tokenYield"));
+
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = token;
+        _mockGetPoolTokens(pool, tokens);
+
+        uint256[] memory swapZeros = new uint256[](1);
+        uint256[] memory yieldFees = new uint256[](1);
+        yieldFees[0] = 50e18;
+        _mockCollectAggregateFees(pool, swapZeros, yieldFees);
+        _mockSendToAny();
+
+        // Yield-leg invariant: existing _receiveAggregateFees path must
+        // sendTo(token, address(controller), 50e18).
+        vm.expectCall(
+            mockVault,
+            abi.encodeWithSelector(
+                IVaultMain.sendTo.selector,
+                token,
+                address(controller),
+                uint256(50e18)
+            )
+        );
+
+        vm.recordLogs();
+
+        vm.prank(mockVault);
+        (, uint256[] memory forwardedAmounts) =
+            controller.collectAggregateFeesHookSwapForward(pool);
+
+        assertEq(forwardedAmounts[0], 0, "swap-side forwardedAmount must be 0");
+
+        // Yield leg credits _protocolFeeAmounts[pool][token].
+        assertEq(
+            uint256(vm.load(address(controller), _protocolFeeAmountsSlot(pool, token))),
+            50e18,
+            "yield leg must credit _protocolFeeAmounts[pool][token]"
+        );
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sigSwapLeg = keccak256("SwapLegFeeForwarded(address,address,uint256)");
+        bytes32 sigYield   = keccak256("ProtocolYieldFeeCollected(address,address,uint256)");
+        uint256 swapLegCount = 0;
+        uint256 yieldCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length > 0) {
+                if (logs[i].topics[0] == sigSwapLeg) swapLegCount++;
+                if (logs[i].topics[0] == sigYield)   yieldCount++;
+            }
+        }
+        assertEq(swapLegCount, 0, "no SwapLegFeeForwarded on zero-swap path");
+        assertEq(yieldCount,   1, "exactly 1 ProtocolYieldFeeCollected event expected");
+    }
+
+    function test_collectAggregateFeesHookSwapForward_emitsSwapLegFeeForwardedPerNonZeroToken() public {
+        address pool = makeAddr("poolMixed");
+        IERC20 tokenA = IERC20(makeAddr("tokenAMixed"));
+        IERC20 tokenB = IERC20(makeAddr("tokenBMixed"));
+        IERC20 tokenC = IERC20(makeAddr("tokenCMixed"));
+
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+        tokens[2] = tokenC;
+        _mockGetPoolTokens(pool, tokens);
+
+        uint256[] memory swapFees = new uint256[](3);
+        swapFees[0] = 100e18;
+        swapFees[1] = 0;
+        swapFees[2] = 200e18;
+        uint256[] memory yieldZeros = new uint256[](3);
+        _mockCollectAggregateFees(pool, swapFees, yieldZeros);
+        _mockSendToAny();
+
+        // Only the two non-zero tokens get sendTo calls; tokenB at index 1
+        // is skipped entirely (no sendTo, no event).
+        vm.expectCall(
+            mockVault,
+            abi.encodeWithSelector(
+                IVaultMain.sendTo.selector,
+                tokenA,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
+                uint256(100e18)
+            )
+        );
+        vm.expectCall(
+            mockVault,
+            abi.encodeWithSelector(
+                IVaultMain.sendTo.selector,
+                tokenC,
+                FEE_ROUTING_HOOK_PLACEHOLDER,
+                uint256(200e18)
+            )
+        );
+
+        vm.recordLogs();
+
+        vm.prank(mockVault);
+        (, uint256[] memory forwardedAmounts) =
+            controller.collectAggregateFeesHookSwapForward(pool);
+
+        assertEq(forwardedAmounts[0], 100e18, "forwardedAmounts[0]");
+        assertEq(forwardedAmounts[1], 0,      "forwardedAmounts[1] must stay 0");
+        assertEq(forwardedAmounts[2], 200e18, "forwardedAmounts[2]");
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sigSwapLeg = keccak256("SwapLegFeeForwarded(address,address,uint256)");
+        uint256 swapLegCount = 0;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length == 3 && logs[i].topics[0] == sigSwapLeg) {
+                // topics[2] is the indexed token. Confirm tokenB is never
+                // the subject of an emission.
+                address emittedToken = address(uint160(uint256(logs[i].topics[2])));
+                assertTrue(
+                    emittedToken != address(tokenB),
+                    "tokenB must not be subject of any SwapLegFeeForwarded"
+                );
+                swapLegCount++;
+            }
+        }
+        assertEq(swapLegCount, 2, "exactly 2 SwapLegFeeForwarded events expected");
     }
 }
