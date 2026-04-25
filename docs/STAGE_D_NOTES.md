@@ -77,11 +77,35 @@ Planning default is R1 per D-D15's "smallest diff, clearest audit story" prefere
 
 ---
 
-## D8 — Slither triage (placeholder)
+## D8 — Slither triage
 
-| Detector | Location | Disposition | Rationale |
-|---|---|---|---|
-| _(filled at D8)_ | | | |
+Date: 2026-04-25.
+
+Full-stage Slither run (`slither . --filter-paths "lib/|test/" --exclude-informational`, version `0.11.4`) returned 19 findings across 5 detector classes on the Stage D audit surface (`src/fee_router/AureumFeeRoutingHook.sol` plus `src/vault/AureumProtocolFeeController.sol`). Triage outcome: **19/19 inline-suppress**, no genuine fixes. All findings reduce to one of four structural patterns: (a) artifacts of the Balancer V3 `Vault.unlock` transient-lock pattern under which the routing hook operates; (b) the deliberate balance-sweep design (D3.3.4 Q1 / Option X) that drives phase-2 add-liquidity off `SV_ZCHF.balanceOf(address(this))` rather than ERC-4626 return values; (c) the bounded fee-token loop in `onAfterSwap` (capped by Balancer V3's per-pool token limit); (d) the pre-existing `_globalProtocolSwapFeePercentage` finding, where Aureum's design locks the slot at construction and reverts the setter via `SplitIsImmutable` per D-D15 but keeps the slot itself as `uint256 private` for layout symmetry with the governance-mutable `_globalProtocolYieldFeePercentage`.
+
+| # | Severity | File:line | Detector | Disposition | Rationale |
+|---|---|---|---|---|---|
+| F1 | Low | `src/fee_router/AureumFeeRoutingHook.sol:285` | `reentrancy-events` | Suppress | `onAfterSwap` is `onlyVault`; runs under the Vault's open unlock; the "external calls" Slither identifies are all into the Vault itself (the protocol's own reentrancy guard). `SwapFeeRouted` is emitted after the routing work completes per CEI ordering. The detector is a textual ordering heuristic, not a vulnerability indicator under this architecture. |
+| F2 | Medium | `src/fee_router/AureumFeeRoutingHook.sol:329` | `unused-return` | Suppress | Balance-sweep pattern (D3.3.4 Q1 / Option X): phase-2 reads `SV_ZCHF.balanceOf(address(this))` at L336 immediately after the deposit. The shares-minted return from `IERC4626.deposit` is informationally redundant; any anomaly propagates into the balanceOf read which is the single source of truth for the phase-2 amount. Intentional per inline comment L314–316. |
+| F3 | Low | `src/fee_router/AureumFeeRoutingHook.sol:329` | `calls-loop` | Suppress | The loop is `onAfterSwap`'s `for (i < tokens.length)` at L277–291, iterating fee tokens returned by `collectSwapAggregateFeesForHook`; bounded by pool token count (max 8 per Balancer V3 pool registration). Per-token routing structurally requires per-token Vault interaction. Gas-DOS via unbounded loop not a concern. |
+| F4 | Low | `src/fee_router/AureumFeeRoutingHook.sol:335-338` | `calls-loop` | Suppress | Same rationale as F3. |
+| F5 | Medium | `src/fee_router/AureumFeeRoutingHook.sol:357-367` | `unused-return` | Suppress | Tuple discard: `_vault.swap` returns `(amountCalculated, amountIn, amountOut)`. For EXACT_IN, `amountCalculated == amountOut`; redundant for the settle/sendTo legs that consume `amountIn` and `amountOut` directly. |
+| F6 | Medium | `src/fee_router/AureumFeeRoutingHook.sol:369` | `unused-return` | Suppress | `_vault.settle` returns the credit accepted (capped at deposit amount). We settle exactly `amountIn` from the prior swap return, having transferred exactly that to the Vault on the preceding line; the returned credit equals the argument by construction (Vault's `reservesOf` accounting). |
+| F7 | Low | `src/fee_router/AureumFeeRoutingHook.sol:357-367` | `calls-loop` | Suppress | Same rationale as F3. |
+| F8 | Low | `src/fee_router/AureumFeeRoutingHook.sol:369` | `calls-loop` | Suppress | Same rationale as F3. |
+| F9 | Low | `src/fee_router/AureumFeeRoutingHook.sol:370` | `calls-loop` | Suppress | Same rationale as F3. |
+| F10 | High | `src/fee_router/AureumFeeRoutingHook.sol:400` | `incorrect-equality` | Suppress | `svZchfAmount` is a `uint256` function argument (not a stored balance read or a timestamp), checked as an early-return guard before the Vault call. For unsigned integers `== 0` and `< 1` are equivalent; no precision drift, no control-flow risk, no fund-routing risk. Slither's detector targets the token-balance-as-auth pattern, which this is not. |
+| F11 | Medium | `src/fee_router/AureumFeeRoutingHook.sol:407-416` | `unused-return` | Suppress | Tuple discard: `_vault.addLiquidity` returns `(amountsIn, bptOut, returnData)`. The third element is `returnData` from the pool's `onAddLiquidity` hook — a downstream-hook composability surface. der-Bodensee does not chain hooks beyond this point; `returnData` has no consumer. |
+| F12 | Medium | `src/fee_router/AureumFeeRoutingHook.sol:420` | `unused-return` | Suppress | Same rationale as F6. |
+| F13 | Low | `src/fee_router/AureumFeeRoutingHook.sol:401-402` | `calls-loop` | Suppress | Same rationale as F3. |
+| F14 | Low | `src/fee_router/AureumFeeRoutingHook.sol:407-416` | `calls-loop` | Suppress | Same rationale as F3. |
+| F15 | Low | `src/fee_router/AureumFeeRoutingHook.sol:420` | `calls-loop` | Suppress | Same rationale as F3. |
+| F16 | Low | `src/fee_router/AureumFeeRoutingHook.sol:446` | `reentrancy-events` | Suppress | The event reports `bptMinted` decoded from the `_vault.unlock` callback's return; emission must follow the unlock by causality. `_vault.unlock` is itself the Vault's reentrancy guard (cannot be re-entered while open); the external call here is into the trusted Vault contract. |
+| F17 | Low | `src/fee_router/AureumFeeRoutingHook.sol:482` | `reentrancy-events` | Suppress | Same rationale as F16. |
+| F18 | Low | `src/fee_router/AureumFeeRoutingHook.sol:521` | `reentrancy-events` | Suppress | Same rationale as F16. |
+| F19 | Optimization | `src/vault/AureumProtocolFeeController.sol:98` | `immutable-states` | Suppress | `_globalProtocolSwapFeePercentage` is constructor-only assigned to `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE`; the public setter `setGlobalProtocolSwapFeePercentage` reverts with `SplitIsImmutable` per D-D15 to enforce the 50/50 Bodensee/LP fee split permanently. The slot stays as `uint256 private` (not `immutable`) for layout symmetry with the governance-mutable `_globalProtocolYieldFeePercentage` and to avoid touching ABI/storage layout in this triage gate. Pre-existing finding from D0.5; surfaced again in the D4.7c narrow run; final disposition recorded here. A future Stage Q-class refactor pass may revisit and convert to `immutable` with full audit-impact assessment. |
+
+D8.3 lands the inline `// slither-disable-next-line` directives in `src/fee_router/AureumFeeRoutingHook.sol` for F1–F18; D8.4 lands the directive in `src/vault/AureumProtocolFeeController.sol` for F19. D8.5 re-runs Slither full-stage and expects clean (zero findings). D8.6 re-runs `forge build` plus the split-form test suite per D35 (151 unit + 9 fork = 160/160 expected).
 
 ---
 
