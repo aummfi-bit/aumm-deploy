@@ -442,3 +442,26 @@ Date: 2026-04-25.
 **Fix-forward.** CLAUDE.md §11 D7 resumption step 4 should read split-form instead of global-form for any future re-runs. Plan-level §D7.2 already uses `--match-path` for the fork-only run at step 3 and is unaffected. Future stages with fork tests (E onward) should use the split form by default; STAGES_OVERVIEW.md per-stage testing-strategy entries should call this out where fork tests are introduced.
 
 **Cross-refs.** STAGE_D_PLAN.md §D7.2 (post-D4.7c retry); CLAUDE.md §11 (D7 resumption — split-form update lands alongside this NOTES entry); CLAUDE.md §2 (Ankr as the mainnet-fork RPC provider for this project).
+
+### D36 — `vm.setEnv` process-level mutation race between parallel fork test contracts
+
+Date: 2026-04-25.
+
+**Context.** D8.6 (post-suppression forge build + full split-form test suite) returned 4/9 failures on the Part B fork run (`forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL -vv`). The four failing tests were all in `test/fork/AureumFeeRoutingHook.t.sol`; `test/fork/DeployAureumVault.t.sol` and `test/fork/Sanity.t.sol` passed. Initial hypothesis — bytecode-hash drift from D8.3/D8.4 comment additions causing a CREATE3 address shift — was rejected: `foundry.toml` has `bytecode_hash = "none"` and `cbor_metadata = false`, which suppress the metadata suffix appended to deployed bytecode, so comment-only edits cannot shift a CREATE address.
+
+**Root cause.** `vm.setEnv` writes are **process-level mutations** — they are not reverted between test contracts when Foundry runs tests in parallel (the default thread model). Two fork test contracts both write the `FEE_ROUTING_HOOK` env var in their `setUp`:
+
+- `test/fork/AureumFeeRoutingHook.t.sol` L108: `vm.setEnv("FEE_ROUTING_HOOK", vm.toString(hookAddr))`, where `hookAddr` is the `vm.computeCreateAddress`-predicted address of the hook contract within that test's setUp sequence.
+- `test/fork/DeployAureumVault.t.sol` L79: `vm.setEnv("FEE_ROUTING_HOOK", vm.toString(FEE_ROUTING_HOOK))`, where `FEE_ROUTING_HOOK = address(uint160(uint256(keccak256("feeRoutingHook")))) = 0xF86D16394513aD6bA0BEA4786858656Ee95e3a77`.
+
+When Foundry parallelizes the two contracts, `DeployAureumVault.t.sol`'s write can land after `AureumFeeRoutingHook.t.sol` has computed `hookAddr` but before `vaultScript.deploy(address(vaultScript))` (L123) reads `FEE_ROUTING_HOOK` via `vm.envAddress` at `script/DeployAureumVault.s.sol` L128. The result: `aureumFeeController.FEE_ROUTING_HOOK` — an immutable set at construction — receives `0xF86D16394513aD6bA0BEA4786858656Ee95e3a77` instead of the test's `hookAddr`. The deployed hook lands at `hookAddr` correctly (L156 `assert(address(hook) == hookAddr)` passes), but `hook != controller.FEE_ROUTING_HOOK`, so the access-control gate in `collectSwapAggregateFeesForHook` reverts on every call that exercises the β1 swap-leg path.
+
+**Validation.** Pairwise runs (any two of the three fork test files) all pass. Combined run of all three with default parallelism intermittently yields 4/9 or 5/9 failures. `cast keccak "feeRoutingHook"` = `0xca8a31bbd09ba8e62c4bf8cdf86d16394513ad6ba0bea4786858656ee95e3a77`; truncated to address `0xF86D16394513aD6bA0BEA4786858656Ee95e3a77` — exact match to the wrong `FEE_ROUTING_HOOK` value observed in the failure revert.
+
+**Pre-existing latent bug.** D7.2 fork run passed 6/6 because at that time only `AureumFeeRoutingHook.t.sol` was present in the fork suite; `DeployAureumVault.t.sol` existed but had not yet triggered the race. The race became observable at D8.6 when `--match-path "test/fork/**"` included all three files for the first time in a combined run.
+
+**Workaround.** `--threads 1` on the Part B fork run serializes test-contract execution, eliminating the race. Command: `forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL -vv --threads 1`. 9/9 green confirmed. Used in conjunction with D35's split-form pattern (Part A: `forge test --no-match-path "test/fork/**" -vv`; Part B: `forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL -vv --threads 1`) to give 160/160 green.
+
+**Permanent fix (deferred).** Refactor `test/fork/DeployAureumVault.t.sol` to write a test-scoped env key (e.g. `FEE_ROUTING_HOOK_DEPLOY_TEST`) rather than the shared `FEE_ROUTING_HOOK` key — or eliminate `vm.setEnv` / `vm.envAddress` from fork tests entirely in favour of explicit constructor-argument passing. Deferred to Stage E or as a pending-findings stub; not a D8 regression (D8.3/D8.4 did not touch fork test files).
+
+**Cross-refs.** D35 (Ankr RPC rate-limit, same D8.6 run); D34 (D4 execution gap — similar "surfaced at a later step" pattern); `test/fork/AureumFeeRoutingHook.t.sol` L108; `test/fork/DeployAureumVault.t.sol` L42, L79; `script/DeployAureumVault.s.sol` L128.
