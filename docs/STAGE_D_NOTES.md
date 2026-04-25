@@ -397,3 +397,24 @@ Selector `0x9992fceb` = `bytes4(keccak256("collectSwapAggregateFeesForHook(addre
 **Scope discipline at D4.7.** **D-D9** Bodensee guard on the permissionless `collectAggregateFees(pool)` path is untouched; the new hook-only path has its own `OnlyFeeRoutingHook` gate and does not re-enter `collectAggregateFees`. **D-D7** B10 withdrawal retarget is untouched. Governance `collectAggregateFeesHook` callback at controller L267 is untouched. Governance-gated yield-fee entry point (`routeYieldFeeToHook` or equivalent) per **OQ-20** / **OQ-21** remains deferred — the swap-leg gap is independent of the yield-leg cadence question.
 
 **Cross-refs.** **D17** L167–170 (β1 D3/D4 scope split), L157–165 (four accounting invariants); **D25** (companion D3-side gap, surfaced at D5.1); **D-D7** (B10 retarget at D4.2); **D-D9** (Bodensee guard at D4.4); **D-D19** through **D-D23** (D7.1 fork-harness pins, real-controller surface); STAGE_D_PLAN.md §D4.7 at `2d5bcdc` (the corrective enumeration).
+
+### D35 — Ankr RPC rate-limiting on global `--fork-url` causes indefinite hang in full-suite run
+
+Date: 2026-04-25.
+
+**Context.** D7.2 step 4 per CLAUDE.md §11 prescribed `forge test --fork-url $MAINNET_RPC_URL -vv` as the full-suite run after the targeted fork-only run at step 3. The intent: confirm baseline + Stage D additions all green together. The single-file fork run at step 3 (`forge test --match-path "test/fork/AureumFeeRoutingHook.t.sol" --fork-url $MAINNET_RPC_URL -vv`) returned in 7.49s wall (Beat 3, 6/6 fork tests pass). The full-suite run at step 4 ran for 25+ minutes with no test output, only a blinking cursor — not a slow run, an indefinite hang. `Ctrl+C` returned to shell with no partial output.
+
+**Root cause.** `forge test --fork-url $URL` without a `--match-path` filter applies fork context to **every** test in the project, not just tests under `test/fork/`. With Stage D's surface — 151 unit tests + 9 fork tests = 160 tests total — every unit test's `setUp` routes through the fork RPC even when the test logic does not read mainnet state. Ankr's free-tier rate envelope cannot service the resulting burst of `eth_getBlockByNumber` / `eth_getStorageAt` calls; sustained HTTP 429s combined with Foundry's RPC retry loop produce indefinite-hang behaviour, no test ever runs to completion.
+
+**Validation.** Cancel + split-form invocation pattern:
+
+- Part A (unit tests, no fork) — `forge test --no-match-path "test/fork/**" -vv` — 14.22s wall, 43.86s CPU, 151/151 green across 6 unit suites.
+- Part B (fork tests, with fork URL) — `forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL -vv` — 9.13s wall, 13.40s CPU, 9/9 green across 3 fork suites (`Sanity.t.sol`, `DeployAureumVault.t.sol`, `AureumFeeRoutingHook.t.sol`).
+
+- Combined wall time: ~23s for 160/160 tests, vs >25 min hang on the global form.
+
+**Pattern.** For repos with a small fork-test surface (single-digit fork tests) embedded in a larger unit-test surface (100+ unit tests) and a free-tier RPC provider, the global `--fork-url` invocation pattern is structurally hostile. The split-form is the correct invocation pattern: it preserves the "full suite green" semantic while staying within the RPC rate envelope. The semantic equivalence — Part A green ∧ Part B green ⟺ full-suite green — holds because no test crosses the `test/fork/**` boundary in either direction (unit tests do not call into fork tests; fork tests do not import unit-test fixtures).
+
+**Fix-forward.** CLAUDE.md §11 D7 resumption step 4 should read split-form instead of global-form for any future re-runs. Plan-level §D7.2 already uses `--match-path` for the fork-only run at step 3 and is unaffected. Future stages with fork tests (E onward) should use the split form by default; STAGES_OVERVIEW.md per-stage testing-strategy entries should call this out where fork tests are introduced.
+
+**Cross-refs.** STAGE_D_PLAN.md §D7.2 (post-D4.7c retry); CLAUDE.md §11 (D7 resumption — split-form update lands alongside this NOTES entry); CLAUDE.md §2 (Ankr as the mainnet-fork RPC provider for this project).
