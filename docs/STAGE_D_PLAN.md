@@ -654,6 +654,86 @@ Add a `# Stage D constants` block with exactly: `AUREUM_VAULT`, `WEIGHTED_POOL_F
 1. `D7.1: test/fork/AureumFeeRoutingHook.t.sol — setUp scaffold + 6 fork tests` — `test/fork/AureumFeeRoutingHook.t.sol`
 2. `D7.1z: .env.example — Stage D constants (AUREUM_VAULT, WEIGHTED_POOL_FACTORY, AUMM, SV_ZCHF, SUSDS, BODENSEE_SALT)` — `.env.example`
 
+### D4.7 — Controller β1 swap-leg forward per D17 (corrective, executed as D7.2 blocker)
+
+Context — D17 (2026-04-20) settled β1 at D3.3 design time with an explicit D3/D4 scope split at L167–170. D3 landed the hook-side `IAureumProtocolFeeControllerHookExtension` interface and the `onAfterSwap` call into it. D4 as executed (D4.2 / D4.3 / D4.4 / D4.5) landed B10 retarget, band constants, Bodensee guard, and tests — but missed the β1 controller-side implementation D17 L170 enumerates. D7.2 fork tests on 2026-04-24 surfaced the gap: `test_Fork_RecursionGuard` and `test_Fork_SwapRoutesFeeToBodensee` both revert with `unrecognized function selector 0x9992fceb` at `AureumProtocolFeeController::collectSwapAggregateFeesForHook(…)`. D4.7 closes the gap as a corrective sub-step before D7.2 retry.
+
+**Scope per D17 L170.** `AureumProtocolFeeController` implements `IAureumProtocolFeeControllerHookExtension`; adds a `collectAggregateFeesHookSwapForward` Vault callback mirroring the existing `collectAggregateFeesHook` pattern at controller L267; adds internal `_receiveAggregateFeesSwapForward` with β1 split behavior; emits `SwapLegFeeForwarded`. `FEE_ROUTING_HOOK` immutable (already landed at D4.2 per **D-D7**) is reused as the gate.
+
+**Accounting invariants preserved per D17 L157–165:**
+
+1. Forwarded swap amounts **never** credit `_protocolFeeAmounts` (invariant 1).
+2. Yield leg always credits `_protocolFeeAmounts` via unchanged `_receiveAggregateFees(pool, YIELD, ...)` (invariant 2).
+3. Keeper vs. hook asymmetry preserved — governance path (permissionless `collectAggregateFees`) and hook path (new `collectSwapAggregateFeesForHook`) have disjoint event streams: `ProtocolYieldFeeCollected` on the yield leg plus new `SwapLegFeeForwarded` on the swap leg; `ProtocolSwapFeeCollected` is **not** emitted on the forward path (invariant 4).
+4. Zero-swap-fee short-circuit — if `totalSwapFees[i] == 0` at drain time, the forward is a zero-amount `sendTo`, downstream `_swapFeeAndDeposit` short-circuits, `SwapFeeRouted` is not emitted (invariant 5).
+
+#### D4.7a — `src/vault/AureumProtocolFeeController.sol` — implement β1 swap-leg forward
+
+Edits to `src/vault/AureumProtocolFeeController.sol`:
+
+1. **Import** `IAureumProtocolFeeControllerHookExtension` from `src/fee_router/IAureumProtocolFeeControllerHookExtension.sol`.
+2. **Inheritance** — add `IAureumProtocolFeeControllerHookExtension` to the contract's `is` list, positioned alongside existing bases.
+3. **External primitive `collectSwapAggregateFeesForHook(address pool)`** — gated `if (msg.sender != FEE_ROUTING_HOOK) revert OnlyFeeRoutingHook(msg.sender);`. Wraps `_vault.unlock(abi.encodeCall(this.collectAggregateFeesHookSwapForward, pool))`; decodes and returns `(IERC20[] memory tokens, uint256[] memory forwardedAmounts)`.
+4. **Vault callback `collectAggregateFeesHookSwapForward(address pool) external onlyVault returns (IERC20[] memory tokens, uint256[] memory forwardedAmounts)`** — mirrors the existing `collectAggregateFeesHook` shape at controller L267. Calls `(uint256[] memory totalSwapFees, uint256[] memory totalYieldFees) = _vault.collectAggregateFees(pool);`. Routes yield leg via the existing `_receiveAggregateFees(pool, YIELD, totalYieldFees)` path (semantics unchanged). Routes swap leg via new `_receiveAggregateFeesSwapForward` and returns `(tokens, forwardedAmounts)`.
+5. **Internal `_receiveAggregateFeesSwapForward(address pool, IERC20[] memory tokens, uint256[] memory totalSwapFees) internal returns (uint256[] memory forwardedAmounts)`** — allocates `forwardedAmounts = new uint256[](tokens.length)`; iterates tokens; for each `totalSwapFees[i] > 0`, calls `_vault.sendTo(tokens[i], FEE_ROUTING_HOOK, totalSwapFees[i])` and emits `SwapLegFeeForwarded(pool, address(tokens[i]), totalSwapFees[i])`; writes `totalSwapFees[i]` (or 0 for skipped) to `forwardedAmounts[i]`. **Never** credits `_protocolFeeAmounts` (invariant 1).
+
+Preserve the pragma `^0.8.24`.
+
+Scope boundary — **D-D9** Bodensee guard on the permissionless `collectAggregateFees(pool)` path is untouched; the new hook-only path has its own `OnlyFeeRoutingHook` gate and does not re-enter `collectAggregateFees`. **D-D7** B10 withdrawal retarget is untouched. Governance `collectAggregateFeesHook` callback (controller L267) is untouched.
+
+Commit:
+
+```
+git add src/vault/AureumProtocolFeeController.sol
+git commit -m "D4.7a: src/vault/AureumProtocolFeeController.sol — implement β1 swap-leg forward per D17"
+```
+
+#### D4.7b — `test/unit/AureumProtocolFeeController.t.sol` — tests for β1 swap-leg forward
+
+Five new test cases in `test/unit/AureumProtocolFeeController.t.sol`:
+
+- `test_collectSwapAggregateFeesForHook_revertsOnNonHookCaller` — attacker prank, expect `OnlyFeeRoutingHook(attacker)` revert.
+- `test_collectSwapAggregateFeesForHook_zeroAmountShortCircuit` — configure mock Vault to return `totalSwapFees = [0, 0]`; call from hook prank; expect no `SwapLegFeeForwarded` event, no `_vault.sendTo` invocation, clean return with `forwardedAmounts = [0, 0]`.
+- `test_collectSwapAggregateFeesForHook_nonZeroForward` — configure mock Vault with non-zero `totalSwapFees`; call from hook prank; expect `SwapLegFeeForwarded` per non-zero token, mock Vault `sendTo` invoked with recipient = `FEE_ROUTING_HOOK` per non-zero token, returned `forwardedAmounts` match input.
+- `test_collectSwapAggregateFeesForHook_yieldLegUntouched` — configure mock Vault with both non-zero `totalSwapFees` and non-zero `totalYieldFees`; call from hook prank; expect swap leg forwards to hook (per above) and yield leg credits `_protocolFeeAmounts` via the existing path (same assertion pattern as existing yield-harvest tests); existing `ProtocolYieldFeeCollected` event fires.
+- `test_collectSwapAggregateFeesForHook_emitsSwapLegFeeForwardedPerNonZeroToken` — 3-token pool, `totalSwapFees = [nonZero, 0, nonZero]`; expect exactly 2 `SwapLegFeeForwarded` events, exactly 2 `sendTo` invocations, `forwardedAmounts[1] == 0`.
+
+Mock-harness additions in the existing `MockVault` used by this test file: configurable return for `collectAggregateFees(pool) → (swapFees, yieldFees)`; per-call `sendTo(token, recipient, amount)` tracking accessible to assertions.
+
+Preserve all existing tests — no modifications to D4.2 / D4.3 / D4.4 / D4.5 test coverage.
+
+Commit:
+
+```
+git add test/unit/AureumProtocolFeeController.t.sol
+git commit -m "D4.7b: test/unit/AureumProtocolFeeController.t.sol — tests for β1 swap-leg forward"
+```
+
+#### D4.7c — Narrow Slither pass on D4.7a surface
+
+Narrow slither run on the controller after D4.7a + D4.7b land. Command:
+
+```
+slither src/vault/AureumProtocolFeeController.sol --filter-paths "lib|test|script" --exclude-dependencies
+```
+
+Review any new findings on the D4.7a surface — the five new surfaces are `collectSwapAggregateFeesForHook`, `collectAggregateFeesHookSwapForward`, `_receiveAggregateFeesSwapForward`, `SwapLegFeeForwarded`, and `OnlyFeeRoutingHook`. Triage per C8 / D8 discipline: inline-suppress with rationale, `slither-disable-next-line` directive immediately preceding the target line per C15.
+
+Commit: none at D4.7c if the run is clean — it is a verification gate, not a code change. If findings surface, inline suppression comments land as an amendment commit on the controller file with message `D4.7c: src/vault/AureumProtocolFeeController.sol — slither inline-suppress <finding>`.
+
+#### After D4.7c — D7.2 fork-test retry
+
+Resume §D7.2 as planned. Expected post-D4.7 effects on the two previously-failing tests:
+
+- `test_Fork_RecursionGuard` part-(ii) — `collectSwapAggregateFeesForHook(tradingPool)` on an uninitialized pool returns zero `forwardedAmounts`; hook's `onAfterSwap` loop skips all tokens; no `SwapFeeRouted` emitted; test passes.
+- `test_Fork_SwapRoutesFeeToBodensee` — post-swap protocol fee (0.75% in svZCHF on the trading pool) routes via β1 forward → hook's `_swapFeeAndDeposit` phase-1 no-op (svZCHF already on hook after forward) → phase-2 one-sided add into Bodensee → `SwapFeeRouted` emitted; Bodensee BPT supply delta positive; hook svZCHF balance zero after forward.
+
+**Out of scope for D4.7:**
+
+- Governance-gated yield-fee entry point (`routeYieldFeeToHook` or equivalent, per **OQ-20** / **OQ-21**). Remains deferred to its own sub-step post-D7.
+- Per-(pool, token) cadence / bi-weekly `BLOCKS_PER_EPOCH` throttle for yield-leg. Remains deferred per **OQ-21**.
+- **D33** — Aureum's own Router. Remains post-Stage-D.
+
 ### D7.2 — Run fork tests
 
 ```
