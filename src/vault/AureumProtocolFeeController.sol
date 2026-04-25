@@ -95,6 +95,8 @@ contract AureumProtocolFeeController is
     uint256 public constant MAX_CREATOR_FEE_PERCENTAGE = 99.999e16; // 99.999%
 
     // Global protocol swap fee.
+    // Locked at construction (Aureum D-D15: setter reverts SplitIsImmutable to enforce 50/50 split); slot kept as uint256 private for layout symmetry with _globalProtocolYieldFeePercentage. See D8 NOTES F19.
+    // slither-disable-next-line immutable-states
     uint256 private _globalProtocolSwapFeePercentage;
 
     // Global protocol yield fee.
