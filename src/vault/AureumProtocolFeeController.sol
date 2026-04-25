@@ -19,6 +19,8 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
 import { SingletonAuthentication } from "@balancer-labs/v3-vault/contracts/SingletonAuthentication.sol";
 import { VaultGuard } from "@balancer-labs/v3-vault/contracts/VaultGuard.sol";
 
+import { IAureumProtocolFeeControllerHookExtension } from "../fee_router/IAureumProtocolFeeControllerHookExtension.sol";
+
 /**
  * @notice Helper contract to manage protocol and creator fees outside the Vault.
  * @dev This contract stores global default protocol swap and yield fees, and also tracks the values of those fees
@@ -48,6 +50,7 @@ import { VaultGuard } from "@balancer-labs/v3-vault/contracts/VaultGuard.sol";
  */
 contract AureumProtocolFeeController is
     IProtocolFeeController,
+    IAureumProtocolFeeControllerHookExtension,
     SingletonAuthentication,
     ReentrancyGuardTransient,
     VaultGuard
@@ -367,6 +370,66 @@ contract AureumProtocolFeeController is
                         _poolCreatorFeeAmounts[pool][token] += feeAmounts[i];
                     }
                 }
+            }
+        }
+    }
+
+    // β1 swap-leg forward (D17 L170 / D4.7) — gated outer, Vault callback, internal helper.
+
+    /// @inheritdoc IAureumProtocolFeeControllerHookExtension
+    function collectSwapAggregateFeesForHook(
+        address pool
+    ) external override returns (IERC20[] memory tokens, uint256[] memory forwardedAmounts) {
+        if (msg.sender != FEE_ROUTING_HOOK) {
+            revert OnlyFeeRoutingHook(msg.sender);
+        }
+        bytes memory result = _vault.unlock(abi.encodeCall(AureumProtocolFeeController.collectAggregateFeesHookSwapForward, pool));
+        (tokens, forwardedAmounts) = abi.decode(result, (IERC20[], uint256[]));
+    }
+
+    /**
+     * @dev Hook-only variant of collectAggregateFeesHook (L267). Drains the Vault's aggregate
+     * fee slots for `pool`, routes the yield leg via the unchanged _receiveAggregateFees path
+     * (credits _protocolFeeAmounts), and forwards the swap leg to FEE_ROUTING_HOOK via
+     * _receiveAggregateFeesSwapForward (does NOT credit _protocolFeeAmounts). Returns the pool
+     * token list and per-token forwarded amounts so the outer collectSwapAggregateFeesForHook
+     * can decode them for AureumFeeRoutingHook.
+     */
+    // Rationale: hook executes inside Vault unlock context; Vault reentrancy
+    // lock held throughout the external calls and subsequent event emissions.
+    // slither-disable-next-line reentrancy-events
+    function collectAggregateFeesHookSwapForward(
+        address pool
+    ) external onlyVault returns (IERC20[] memory tokens, uint256[] memory forwardedAmounts) {
+        (uint256[] memory totalSwapFees, uint256[] memory totalYieldFees) = _vault.collectAggregateFees(pool);
+        _receiveAggregateFees(pool, ProtocolFeeType.YIELD, totalYieldFees);
+        (IERC20[] memory poolTokens,) = _getPoolTokensAndCount(pool);
+        forwardedAmounts = _receiveAggregateFeesSwapForward(pool, poolTokens, totalSwapFees);
+        tokens = poolTokens;
+    }
+
+    /**
+     * @dev β1 swap-leg forward — for each `tokens[i]` with `totalSwapFees[i] > 0`, drains the
+     * Vault credit to FEE_ROUTING_HOOK via _vault.sendTo and emits SwapLegFeeForwarded. Never
+     * credits _protocolFeeAmounts (D17 invariant 1). The yield leg is handled separately by
+     * the upstream _receiveAggregateFees path inside collectAggregateFeesHookSwapForward.
+     */
+    // Rationale: forward executes inside Vault unlock context; Vault reentrancy lock held throughout the sendTo() calls and SwapLegFeeForwarded emissions.
+    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
+    function _receiveAggregateFeesSwapForward(
+        address pool,
+        IERC20[] memory tokens,
+        uint256[] memory totalSwapFees
+    ) internal returns (uint256[] memory forwardedAmounts) {
+        forwardedAmounts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (totalSwapFees[i] > 0) {
+                IERC20 token = tokens[i];
+
+                // slither-disable-next-line calls-loop
+                _vault.sendTo(token, FEE_ROUTING_HOOK, totalSwapFees[i]);
+                emit SwapLegFeeForwarded(pool, address(token), totalSwapFees[i]);
+                forwardedAmounts[i] = totalSwapFees[i];
             }
         }
     }
