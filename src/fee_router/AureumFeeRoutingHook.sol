@@ -282,6 +282,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 params.pool,
                 address(this)
             );
+            // onAfterSwap is onlyVault under the Vault's open unlock; external calls are into the Vault itself (the protocol's reentrancy guard); CEI ordering preserved. See D8 NOTES F1.
+            // slither-disable-next-line reentrancy-events
             emit SwapFeeRouted(
                 params.pool,
                 address(tokens[i]),
@@ -326,12 +328,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             // No-op: hook already holds `amount` svZCHF from the caller.
         } else if (address(feeToken) == address(ZCHF)) {
             IERC20(address(ZCHF)).forceApprove(address(SV_ZCHF), amount);
+            // Balance-sweep: phase-2 reads SV_ZCHF.balanceOf(this) at L336; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
+            // slither-disable-next-line unused-return,calls-loop
             IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
         } else {
             if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
             _swapExactInFeeTokenToSvZchfViaVault(feeToken, amount, swapPool);
         }
 
+        // Traced external call inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F4.
+        // slither-disable-next-line calls-loop
         bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
             SV_ZCHF.balanceOf(address(this)),
             bptRecipient
@@ -354,6 +360,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 amount,
         address swapPool
     ) private {
+        // Tuple discard: amountCalculated == amountOut for EXACT_IN, redundant; bounded fee-token loop. See D8 NOTES F5/F7.
+        // slither-disable-next-line unused-return,calls-loop
         (, uint256 amountIn, uint256 amountOut) = _vault.swap(
             VaultSwapParams({
                 kind: SwapKind.EXACT_IN,
@@ -366,7 +374,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             })
         );
         feeToken.safeTransfer(address(_vault), amountIn);
+        // settle returns credit equal to amountIn by construction (Vault reservesOf accounting); bounded fee-token loop. See D8 NOTES F6/F8.
+        // slither-disable-next-line unused-return,calls-loop
         _vault.settle(feeToken, amountIn);
+        // Vault sendTo inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F9.
+        // slither-disable-next-line calls-loop
         _vault.sendTo(SV_ZCHF, address(this), amountOut);
     }
 
@@ -397,13 +409,19 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 svZchfAmount,
         address to
     ) private returns (uint256 bptAmountOut) {
+        // svZchfAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
+        // slither-disable-next-line incorrect-equality
         if (svZchfAmount == 0) return 0;
+        // getPoolTokenCountAndIndexOfToken call inside bounded fee-token loop in onAfterSwap. See D8 NOTES F13.
+        // slither-disable-next-line calls-loop
         (uint256 tokenCount, uint256 svZchfIndex) =
             _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, SV_ZCHF);
 
         uint256[] memory maxAmountsIn = new uint256[](tokenCount);
         maxAmountsIn[svZchfIndex] = svZchfAmount;
 
+        // Tuple discard: returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
+        // slither-disable-next-line unused-return,calls-loop
         (uint256[] memory amountsIn, uint256 bptOut, ) = _vault.addLiquidity(
             AddLiquidityParams({
                 pool: DER_BODENSEE,
@@ -417,6 +435,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bptAmountOut = bptOut;
 
         SV_ZCHF.safeTransfer(address(_vault), amountsIn[svZchfIndex]);
+        // settle returns credit equal to amountsIn[svZchfIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
+        // slither-disable-next-line unused-return,calls-loop
         _vault.settle(SV_ZCHF, amountsIn[svZchfIndex]);
     }
 
@@ -443,6 +463,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             )
         );
         bptMinted = abi.decode(result, (uint256));
+        // Event reports bptMinted decoded from _vault.unlock callback; emission must follow unlock by causality; _vault.unlock is the Vault's reentrancy guard. See D8 NOTES F16.
+        // slither-disable-next-line reentrancy-events
         emit YieldFeeRouted(pool, address(feeToken), feeAmount, bptMinted);
     }
 
@@ -479,6 +501,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             )
         );
         bptMinted = abi.decode(result, (uint256));
+        // Event reports bptMinted decoded from _vault.unlock callback; emission must follow unlock by causality; _vault.unlock is the Vault's reentrancy guard. See D8 NOTES F17.
+        // slither-disable-next-line reentrancy-events
         emit GovernanceDepositRouted(address(token), amount, bptMinted);
     }
 
@@ -518,6 +542,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             )
         );
         bptMinted = abi.decode(result, (uint256));
+        // Event reports bptMinted decoded from _vault.unlock callback; emission must follow unlock by causality; _vault.unlock is the Vault's reentrancy guard. See D8 NOTES F18.
+        // slither-disable-next-line reentrancy-events
         emit IncendiaryDepositRouted(address(token), amount, bptMinted);
     }
 
