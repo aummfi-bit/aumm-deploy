@@ -720,13 +720,14 @@ contract AureumProtocolFeeControllerTest is Test {
         assertEq(controller.FEE_ROUTING_HOOK(), FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
-    function test_BodenseeBand_Constants() public view {
-        // OQ-11 swap-fee band for der Bodensee. Values are constitutionally
-        // pinned at Stage D; enforcement is the governance path's responsibility
-        // at Stage K. Canonical per docs/FINDINGS.md OQ-11.
-        assertEq(controller.BODENSEE_SWAP_FEE_MIN(),     0.001e18,  "MIN 0.10%");
-        assertEq(controller.BODENSEE_SWAP_FEE_MAX(),     0.01e18,   "MAX 1.00%");
-        assertEq(controller.BODENSEE_SWAP_FEE_GENESIS(), 0.0075e18, "GENESIS 0.75%");
+    function test_SwapFeeConstants() public view {
+        // OQ-11 superseded 2026-04-26 (E-D22): Bodensee fee is immutable at 0.75%
+        // (no band, no governance lever); Miliarium genesis 0.02% within 0.01%–0.30% band.
+        // Canonical per docs/FINDINGS.md OQ-11 and docs/STAGE_E_NOTES.md E-D22.
+        assertEq(controller.BODENSEE_SWAP_FEE(),          0.0075e18, "Bodensee 0.75% immutable");
+        assertEq(controller.MILIARIUM_SWAP_FEE_MIN(),     0.0001e18, "Miliarium MIN 0.01%");
+        assertEq(controller.MILIARIUM_SWAP_FEE_MAX(),     0.003e18,  "Miliarium MAX 0.30%");
+        assertEq(controller.MILIARIUM_SWAP_FEE_GENESIS(), 0.0002e18, "Miliarium GENESIS 0.02%");
     }
 
     // ─── Group F — D4.7b β1 swap-leg forward (controller-side) ──────────
