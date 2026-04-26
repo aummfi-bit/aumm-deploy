@@ -125,6 +125,39 @@ Der Bodensee retains `swapFeePercentage = 0.0075e18` (0.75%) as **immutable** fr
 
 `docs/FINDINGS.md` OQ-11 supersession is recorded at E1.3a-ter as a layered 2026-04-26 revision under the original 2026-04-15 resolution.
 
+### E-D23 — Deploy script architecture: abstract base + per-pilot wrappers, flat layout (2026-04-26)
+
+The Miliarium framework deploy script is split into a single abstract base + thin per-pilot concrete wrappers:
+
+- `script/pools/deploy-miliarium-pool.s.sol` — `abstract contract MiliariumPoolDeployer is Script`. Exposes `_config() internal pure virtual returns (PoolConfig memory)` and a concrete `run() external returns (address pool)`. The base reads env vars, builds the `TokenConfig[]` from `cfg.tokens / cfg.tokenTypes / cfg.rateProviders / cfg.paysYieldFees`, builds `PoolRoleAccounts`, performs the QG belt-and-suspenders re-assertion (per `docs/STAGE_E_PLAN.md` E-D3), and calls `AureumWeightedPoolFactory.create(...)`.
+- `script/pools/Deploy<PoolName>.s.sol` — concrete wrapper per pilot pool (`DeployIxHelvetia` at E1.4c, `DeployIxEdelweiss` at E2, `DeployIxAurebit` at E3). Each is ~5–10 lines: import the matching `*Config` library, override `_config()` to return its `config()`. No other logic in the wrapper.
+
+**Why abstract-base + wrappers (not single-contract dispatch).** Three reasons:
+
+1. **Explicit `<file>:<contract>` binding.** Invocation is `forge script script/pools/DeployIxHelvetia.s.sol:DeployIxHelvetia ...` — the path-and-name pair is the source of truth. No env-var dispatch (e.g. `POOL_KEY=ixHelvetia`) that can silently bind to the wrong config on a typo.
+2. **Additive at scale.** Adding the 27 remaining Miliarium pools means one new wrapper file per pool — purely additive, no edits to a central dispatch table that would grow linearly with pool count and concentrate merge conflicts on one file.
+3. **Matches the Stage D Bodensee precedent.** `script/DeployDerBodensee.s.sol` is one concrete script per deliverable, not a multiplexer. Stage A's `DeployAureumAuthorizer.s.sol` and Stage B's `DeployAureumVault.s.sol` follow the same shape. The Miliarium wrappers extend that style under `script/pools/`.
+
+**Why flat (not a `script/pools/deployers/` subdirectory).** Co-locates the abstract base, `PoolConfig.sol`, `configs/`, and the per-pilot wrappers under the single `script/pools/` bracket. Consistent with the existing top-level layout — `script/*.s.sol` is flat, and the only nested directory under `script/pools/` is `configs/` for the per-pool config libraries. A `script/pools/deployers/` (or `entrypoints/`) split is recordable as an optional refactor at Stage R if many one-off / chain-specific pool scripts proliferate; Stage E does not need it.
+
+**Env-var contract for the abstract base:**
+
+- `AUREUM_WEIGHTED_POOL_FACTORY` — address of `src/factory/AureumWeightedPoolFactory.sol` (deployed at E1.1; new env var introduced here at E1.4 first use; parallels the existing `AUREUM_VAULT` naming).
+- `FEE_ROUTING_HOOK` — existing Stage D env var, address of the deployed `AureumFeeRoutingHook`. Passed as the `poolHooksContract` argument to `AureumWeightedPoolFactory.create(...)`. Same hook is shared by Bodensee and all gauged Miliarium pools (the hook routes fees TO Bodensee from any attached pool).
+- `GOVERNANCE_MULTISIG` — existing Stage A env var. Used for both `pauseManager` and `swapFeeManager` on Miliarium pools.
+
+`WEIGHTED_POOL_FACTORY` (the existing env var pointing to the upstream Balancer `WeightedPoolFactory`) is **not** read by this script — that env continues to serve only the Stage D Bodensee chain per E-D16.
+
+**Pool role accounts (Miliarium):**
+
+- `pauseManager: governanceMultisig`
+- `swapFeeManager: governanceMultisig` — Miliarium swap fee is governance-adjustable within OQ-11's revised 0.01%–0.30% band per E-D22 (contrast Bodensee's `swapFeeManager: address(0)` immutability).
+- `poolCreator: address(0)` — consistent with Bodensee and with the factory's `StandardPoolWithCreator` revert when non-zero.
+
+**QG belt-and-suspenders re-assertion.** Before calling `AureumWeightedPoolFactory.create(...)`, the abstract base sums `cfg.normalizedWeights[i]` for each `i` where `cfg.tokenTypes[i] == TokenType.WITH_RATE && cfg.rateProviders[i] != IRateProvider(address(0))`; reverts with a deploy-script-side `QualityGateUnsatisfied(uint256 erc4626WeightSum, uint256 minRequired)` if the sum is below `52e16`. The factory enforces the same predicate at the contract level (E1.1) — this script-side check is defense-in-depth per `docs/STAGE_E_PLAN.md` E-D3 against (a) a future config-library bug producing a sub-52% composition (caught at script time before contract deployment), and (b) hypothetical reuse of this script against a non-Aureum factory.
+
+**Pool initialization is out of scope.** `AureumWeightedPoolFactory.create(...)` deploys + registers the pool with the Vault (per Stage D D28). Initial liquidity (β-pattern `Vault.unlock` + `IVault.initialize` + per-token `transfer` + `settle`, per E-D5 / D32) is the responsibility of the fork-test harness at E1.6, not the deploy script.
+
 ---
 
 ## Findings
