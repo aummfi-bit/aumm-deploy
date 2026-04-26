@@ -62,6 +62,55 @@ Compiler is `solc 0.8.26` per `foundry.toml`; both carets coexist in the compila
 
 **Naming ambiguity acknowledged.** `script/DeployAureumWeightedPoolFactory.s.sol` (Stage D) deploys upstream's `WeightedPoolFactory` but its filename reads as "deploys `AureumWeightedPoolFactory`" once `src/factory/AureumWeightedPoolFactory.sol` lands at E1.1 — readable but ambiguous. A one-line clarifying comment in the script's NatSpec is targeted for E5 (docs phase). **Rename of `script/DeployAureumWeightedPoolFactory.s.sol` is out of scope for Stage E unless pulled in as its own sub-step.**
 
+### E-D17 — Token addresses hardcoded as address constant literals in pilot configs (2026-04-26)
+
+`script/pools/configs/<NN>_*.s.sol` declare token vault addresses as address constant literals at file scope, consumed inline by function config(). The pure constraint locked at E-D2 precludes vm.envAddress(...) indirection — pure is a hard property of the function selector, not a soft preference.
+
+Canonical mainnet vault addresses for the pilot trio are anchored to aumm-site/07a_tokens.md (rows 58–59 for sUSDS / svZCHF; additional rows for ixEDEL, waEthUSDC, waEthUSDT, GHO, WBTC, cbBTC where pilot composition requires them per E-D4), with in-repo provenance via the docs/STAGE_D_NOTES.md D1 probe table (live getRate() values recorded at fork-pin block):
+
+svZCHF — 0xE5F130253fF137f9917C0107659A4c5262abf6b0 (rate provider 0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c)
+sUSDS — 0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD (rate provider 0x1195BE91e78ab25494C855826FF595Eef784d47B)
+script/DeployDerBodensee.s.sol and the Stage D fork-test fleet retain the vm.envAddress("SV_ZCHF") / vm.envAddress("SUSDS") lookup pattern unchanged per E-D16 (additive). Pilot configs and Stage D env values describe the same canonical mainnet contracts; consistency is established by .env-side population, not by source-tree linkage.
+
+### E-D18 — name / symbol convention for Miliarium pilot pools (2026-04-26)
+
+`name` field — verbatim canonical pool name from `aumm-site/06_miliarium_manifest.md` §xiii. ixHelvetia → "ixHelvetia", ixEdelweiss → "ixEdelweiss", ixAurebit → "ixAurebit". No "Aureum" / "Miliarium" prefix; the canonical lower-camel ix-prefix name is the brand surface.
+
+`symbol` field — ALL-CAPS of the canonical name, ix-prefix uppercased uniformly. ixHelvetia → "IXHELVETIA", ixEdelweiss → "IXEDELWEISS", ixAurebit → "IXAUREBIT". Parallel to Bodensee's "der-Bodensee" / "BODENSEE" (`script/DeployDerBodensee.s.sol:70-71`): on-chain symbol is uppercase-uniform across the repo.
+
+Mixed-case alternative "ixHELVETIA" (preserving the ix semantic prefix in the symbol) considered and declined: would invent a one-off Miliarium-specific casing rule diverging from the Bodensee precedent, and the ix mark is preserved at the name field's lower-camel form for human-facing surfaces.
+
+### E-D19 — sectorLabel content + two-axis taxonomy note (2026-04-26)
+
+`PoolConfig.sectorLabel` carries the finer sector label verbatim from `aumm-site/06_miliarium_manifest.md` §xiii column "Sector". Pilot trio:
+
+ixHelvetia (slot 01) — "Frankencoin MMA"
+
+ixEdelweiss (slot 05) — "Routing Infrastructure"
+
+ixAurebit (slot 14) — "Digital Gold / Bitcoin"
+
+Two-axis manifest taxonomy. Per `aumm-site/06_miliarium_manifest.md` §xiv, each Miliarium pool carries two orthogonal labels: registry category (five-way split: Yield / Bonds / Crypto-native gov / Stocks / Metals) and sector (the finer profile-file label captured here). `PoolConfig` carries the sector axis only; the registry-category axis is not in-config at Stage E. Recorded so Stage J does not assume `sectorLabel` is the five-way split.
+
+`registryCategory` deferred. Adding string `registryCategory` to `PoolConfig` is cheap mechanically (one field, all consumers re-touched) but widens every per-pool config file to carry a string the deploy script does not consume. Deferred until Stage J (`MiliariumRegistry.sol`) or Stage G (gauge-eligibility) demonstrates an in-config requirement to key off the five-way category from the same struct the deploy script reads. Tracked here, not promoted to OQ-* status; if J / G design pulls it in, a follow-up E-D* (or its stage-equivalent) extends `PoolConfig` and bumps `script/pools/PoolConfig.sol` before the per-pool consumers are re-touched.
+
+### E-D20 — Salt strategy: slot-derived bytes32(uint256(slot)) (2026-04-26)
+
+Pilot-pool salts are slot-derived literals: `bytes32(uint256(1))` for ixHelvetia, `bytes32(uint256(5))` for ixEdelweiss, `bytes32(uint256(14))` for ixAurebit. The convention scales to all 28 Miliarium slots without collision, is trivially readable in source, and requires no hash computation at config-write time.
+
+Stage E is fork-only (E-D5) so create3 address determinism is cosmetic at this stage; the convention establishes the salt pattern for Stage M / N production deploys. A future provenance-tagged variant — for example `keccak256(abi.encode("aureum-miliarium", uint256(slot), uint64(chainId)))` — is recordable at Stage R if production deployment policy requires pilot-vs-mainnet address differentiation. Slot-only is sufficient for Stage E and the lock carries forward to Stage M / N unless a later stage explicitly revises.
+
+### E-D21 — Config artifact shape: per-pool library + Bodensee-tier NatSpec (2026-04-26)
+
+Each per-pool config file is a Solidity library with a single internal pure function config():
+
+library IxHelvetiaConfig {
+    function config() internal pure returns (PoolConfig memory) { ... }
+}
+Caller idiom: `import { IxHelvetiaConfig } from "script/pools/configs/01_ixHelvetia.s.sol";` `PoolConfig memory cfg = IxHelvetiaConfig.config();`. `internal` visibility keeps the function inlined at call site (no external dispatch overhead in the deploy script). Free-function alternative considered and declined — would pollute the global function namespace as the framework scales to 28 configs, and a per-file function `ixHelvetiaConfig()` rename is uglier than `IxHelvetiaConfig.config()`.
+
+NatSpec richness matches the `script/DeployDerBodensee.s.sol` precedent: file-level `@title` / `@notice` / `@dev` block with cross-references to manifest row, E-D17 (token addresses), E-D18 (name / symbol), E-D19 (`sectorLabel`), E-D20 (salt), and E-D4 in `docs/STAGE_E_PLAN.md` (composition lock). Inline NatSpec on `config()` lists the composition (token / weight / RP / `paysYieldFees` triples) and explicitly notes the ascending-address sort decision applied at literal-write time.
+
 ---
 
 ## Findings
