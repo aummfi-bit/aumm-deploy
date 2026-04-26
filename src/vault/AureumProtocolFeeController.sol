@@ -211,15 +211,20 @@ contract AureumProtocolFeeController is
     address public immutable FEE_ROUTING_HOOK;
 
 
-    /// @notice OQ-11 Bodensee swap-fee band (per D-D8). The fee controller does
-    ///         NOT enforce the band at runtime during Stage D; enforcement is
-    ///         the governance path's responsibility at Stage K. These constants
-    ///         land here because they are immutable from block zero; the
-    ///         constitution pins them at Stage D to make the audit-visible
-    ///         surface available from stage one. See docs/FINDINGS.md OQ-11.
-    uint256 public constant BODENSEE_SWAP_FEE_MIN     = 0.001e18;   // 0.10%
-    uint256 public constant BODENSEE_SWAP_FEE_MAX     = 0.01e18;    // 1.00%
-    uint256 public constant BODENSEE_SWAP_FEE_GENESIS = 0.0075e18;  // 0.75%
+    /// @notice Der Bodensee swap fee — immutable from block 0 (`swapFeeManager: address(0)` at
+    ///         deployment of the Bodensee pool). No governance lever. The 2026-04-15 OQ-11
+    ///         "0.10% – 1.00% governance-adjustable" Bodensee band is superseded; see
+    ///         docs/FINDINGS.md OQ-11 (2026-04-26 status) and docs/STAGE_E_NOTES.md E-D22.
+    uint256 public constant BODENSEE_SWAP_FEE = 0.0075e18;  // 0.75% — immutable from block 0
+
+    /// @notice Miliarium pool swap-fee band (per E-D22 / OQ-11 supersession 2026-04-26).
+    ///         Per-pool `swapFeeManager` is `governanceMultisig`; governance adjusts the per-pool
+    ///         rate within the band via the standard proposal path with `BLOCKS_PER_EPOCH` cooldown.
+    ///         Controller does NOT enforce the band at runtime; enforcement is the governance path's
+    ///         responsibility at Stage K. See docs/FINDINGS.md OQ-11 and docs/STAGE_E_NOTES.md E-D22.
+    uint256 public constant MILIARIUM_SWAP_FEE_MIN     = 0.0001e18;  // 0.01%
+    uint256 public constant MILIARIUM_SWAP_FEE_MAX     = 0.003e18;   // 0.30%
+    uint256 public constant MILIARIUM_SWAP_FEE_GENESIS = 0.0002e18;  // 0.02% — deployment default for all 28
 
     constructor(
         IVault vault_,
