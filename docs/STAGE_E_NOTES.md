@@ -52,6 +52,16 @@ Compiler is `solc 0.8.26` per `foundry.toml`; both carets coexist in the compila
 
 `SPDX-License-Identifier: GPL-3.0-or-later` for all Stage E files — matches upstream `BasePoolFactory` / `WeightedPoolFactory` and Stage B's `AureumVaultFactory.sol`. No license boundary mid-tree.
 
+### E-D16 — AureumWeightedPoolFactory is additive; Bodensee + Stage D pipeline retain upstream WPF (2026-04-26)
+
+`src/factory/AureumWeightedPoolFactory.sol` (new at E1) is additive — used only by `script/pools/deploy-miliarium-pool.s.sol` to deploy Miliarium pools under the 52% ERC-4626 Quality Gate. Bodensee and the existing Stage D fork pipeline (`script/DeployAureumWeightedPoolFactory.s.sol` → `script/DeployDerBodensee.s.sol`, plus `test/fork/AureumFeeRoutingHook.t.sol` and `test/fork/DeployAureumVault.t.sol` consumers) continue to use upstream `WeightedPoolFactory` via the current `WEIGHTED_POOL_FACTORY` env contract — unchanged at Stage E.
+
+**Why additive, not unified.** Migrating the Stage D Bodensee deploy chain to the new Aureum-side factory would force every fork path that exercises `DeployAureumVault` → `DeployAureumWeightedPoolFactory` → `DeployDerBodensee` to re-qualify under the new factory before the Miliarium script is itself proven in isolation — a real triage cost for the benefit of one factory symbol in the repo. Bodensee's 40/30/30 (AuMM 40% STANDARD, sUSDS 30% WITH_RATE+RP, svZCHF 30% WITH_RATE+RP) is already 60% ERC-4626 on the QG sum, so unification would not change Bodensee's economics. Stage E's purpose per E-D1 / E-D3 is the Miliarium framework + factory-level QG; re-baselining Stage D's Bodensee bootstrap is out of that scope.
+
+**Implementation contract.** `script/pools/deploy-miliarium-pool.s.sol` (new at E1) instantiates or references `AureumWeightedPoolFactory` and never reaches into the `WEIGHTED_POOL_FACTORY` env that Bodensee uses; the Miliarium env-key naming is decided at E1.5 (deploy-script sub-step). `script/DeployAureumWeightedPoolFactory.s.sol` (the Stage D script) and `script/DeployDerBodensee.s.sol` retain their existing upstream `WeightedPoolFactory` import and the `WEIGHTED_POOL_FACTORY` env contract — neither file is edited at Stage E.
+
+**Naming ambiguity acknowledged.** `script/DeployAureumWeightedPoolFactory.s.sol` (Stage D) deploys upstream's `WeightedPoolFactory` but its filename reads as "deploys `AureumWeightedPoolFactory`" once `src/factory/AureumWeightedPoolFactory.sol` lands at E1.1 — readable but ambiguous. A one-line clarifying comment in the script's NatSpec is targeted for E5 (docs phase). **Rename of `script/DeployAureumWeightedPoolFactory.s.sol` is out of scope for Stage E unless pulled in as its own sub-step.**
+
 ---
 
 ## Findings
