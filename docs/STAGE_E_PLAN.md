@@ -83,6 +83,28 @@ These are the answers to the planning-stage questions resolved before this file 
 
 ---
 
+## Mid-stage supersessions
+
+Decisions resolved during Stage E that revise values or framing locked in by the planning-stage decisions above. Each entry preserves the canonical record location in `docs/STAGE_E_NOTES.md` (full reasoning) and `docs/FINDINGS.md` (OQ marker). The lock table is left intact as historical context — read these supersessions alongside it.
+
+### OQ-11 swap fees — Bodensee 0.75% immutable, Miliarium genesis 0.02% (2026-04-26)
+
+Supersedes the tail clause of **E-D4** ("Genesis swap fee 0.03% Miliarium default.") and the original 2026-04-15 OQ-11 resolution. **Canonical record:** `docs/STAGE_E_NOTES.md` E-D22. **FINDINGS marker:** `docs/FINDINGS.md` OQ-11 (Status 2026-04-26 blockquote; original 2026-04-15 body preserved verbatim below the blockquote for audit reference).
+
+Two values changed:
+
+1. **Der Bodensee** — fee re-pinned at `0.0075e18` (0.75%) **immutable** from block 0 (`swapFeeManager: address(0)` at deployment, no governance lever); the 0.10%–1.00% governance-adjustable band is dropped. Re-aligns with the constitutional "deep-friction reserve" framing in `10_constitution.md` §xxix.
+2. **Miliarium genesis** — `0.0003e18` (0.03%) → `0.0002e18` (0.02%); the 0.01%–0.30% band and `BLOCKS_PER_EPOCH` cooldown remain unchanged.
+
+On-chain landings (E1.3a-quater through E1.3a-septies):
+
+- `src/vault/AureumProtocolFeeController.sol` — `BODENSEE_SWAP_FEE_MIN/MAX` removed; `BODENSEE_SWAP_FEE_GENESIS` renamed to `BODENSEE_SWAP_FEE`; `MILIARIUM_SWAP_FEE_MIN/MAX/GENESIS` added.
+- `test/unit/AureumProtocolFeeController.t.sol` — `test_BodenseeBand_Constants` → `test_SwapFeeConstants`, referencing the new constants.
+- `script/DeployDerBodensee.s.sol` — `swapFeeManager: governanceMultisig` → `address(0)`, with natspec paragraph + inline comment.
+- `test/fork/AureumFeeRoutingHook.t.sol` — `bodenseePool` `swapFeeManager` → `address(0)` with inline comment; `tradingPool` (non-Miliarium AuMM/svZCHF test pool, not subject to E-D22) retains `GOVERNANCE_MULTISIG`.
+
+---
+
 ## What is explicitly NOT in Stage E
 
 - Gauge registry, gauge approval, eligibility checker — Stage G.
