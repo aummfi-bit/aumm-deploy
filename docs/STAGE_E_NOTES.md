@@ -111,6 +111,20 @@ Caller idiom: `import { IxHelvetiaConfig } from "script/pools/configs/01_ixHelve
 
 NatSpec richness matches the `script/DeployDerBodensee.s.sol` precedent: file-level `@title` / `@notice` / `@dev` block with cross-references to manifest row, E-D17 (token addresses), E-D18 (name / symbol), E-D19 (`sectorLabel`), E-D20 (salt), and E-D4 in `docs/STAGE_E_PLAN.md` (composition lock). Inline NatSpec on `config()` lists the composition (token / weight / RP / `paysYieldFees` triples) and explicitly notes the ascending-address sort decision applied at literal-write time.
 
+### E-D22 — Pilot-pool initial swap fee `0.0002e18` (0.02%); Bodensee 0.75% immutable (2026-04-26)
+
+Miliarium pilot pools (and by extension all 28 Miliarium pools) initialize at `swapFeePercentage = 0.0002e18` (0.02%), governance-adjustable within OQ-11's revised band of 0.01% – 0.30% (`MILIARIUM_SWAP_FEE_MIN = 0.0001e18`, `MILIARIUM_SWAP_FEE_MAX = 0.003e18`, `MILIARIUM_SWAP_FEE_GENESIS = 0.0002e18`). Per-pool `swapFeeManager` is `governanceMultisig` so the rate is reachable through the standard governance proposal path with `BLOCKS_PER_EPOCH` cooldown.
+
+Der Bodensee retains `swapFeePercentage = 0.0075e18` (0.75%) as **immutable** from block 0 — `swapFeeManager: address(0)` at deployment, no governance lever. This reverts the 2026-04-15 OQ-11 resolution's Bodensee-band stance (0.10% – 1.00% governance-adjustable) and re-aligns Bodensee with the constitutional "deep-friction reserve" framing (`10_constitution.md` §xxix) and the long-standing in-spec assertion of "0.75% immutable" across `aumm-site` (`docs/FINDINGS.md` L197).
+
+**Why the genesis revision (0.03% → 0.02%).** The 2026-04-15 genesis figure was anchored on a "stable-pair routing tier" reading. Pilot-pool composition spans FX-with-yield (ixHelvetia), routing infrastructure (ixEdelweiss), and yield-bearing BTC (ixAurebit); 0.02% better positions Miliarium pools as low-friction routing infrastructure inside the Aureum mesh while preserving the 0.30% upper bound for governance to react to volume / TVL conditions.
+
+**Why the Bodensee revision (governance-adjustable → immutable).** The 2026-04-15 governance-adjustable framing introduced a real policy lever that conflicted with the constitutional and tokenomic framing of Bodensee as a structurally immutable reserve. Re-pinning to `address(0)` matches the audit-visible `swapFeeManager` pattern for "no one can change," removes a governance attack surface, and aligns code with the dominant `aumm-site` narrative.
+
+**Stage D scope acknowledgment.** This revision modifies `src/vault/AureumProtocolFeeController.sol` (constants — remove `BODENSEE_SWAP_FEE_MIN` and `BODENSEE_SWAP_FEE_MAX`; rename `BODENSEE_SWAP_FEE_GENESIS` to `BODENSEE_SWAP_FEE` with immutability NatSpec — the `_GENESIS` suffix loses meaning once Bodensee carries a single, perpetual value; add `MILIARIUM_SWAP_FEE_MIN`, `MILIARIUM_SWAP_FEE_MAX`, `MILIARIUM_SWAP_FEE_GENESIS`) and `script/DeployDerBodensee.s.sol` (`swapFeeManager: governanceMultisig` → `address(0)`). Both are policy-parameter adjustments to existing Stage D surfaces, not architectural changes; E-D16's "Bodensee + Stage D pipeline unchanged at Stage E" framing covered the factory architecture, not the swap-fee policy parameters.
+
+`docs/FINDINGS.md` OQ-11 supersession is recorded at E1.3a-ter as a layered 2026-04-26 revision under the original 2026-04-15 resolution.
+
 ---
 
 ## Findings
