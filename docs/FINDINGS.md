@@ -900,6 +900,10 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 
 ### OQ-14 (RESOLVED): Aequilibrium pool factories — use upstream Balancer V3 as-is, no fork
 
+> **Status (2026-04-26):** Headline **superseded** by E-D3 / E-D11 in `docs/STAGE_E_PLAN.md` and `docs/STAGE_E_NOTES.md`. Replacement statement: **a new `src/factory/AureumWeightedPoolFactory.sol` peer-inherited from `BasePoolFactory`, zero edits to `lib/balancer-v3-monorepo/`, same pool bytecode produced.** The factory enforces the 52% ERC-4626 Quality Gate at the contract level (`QualityGateUnsatisfied` revert when `sum(normalizedWeights[i] where tokenTypes[i] == WITH_RATE && rateProviders[i] != IRateProvider(address(0))) < 52e16`); the deployment script re-asserts the gate as belt-and-suspenders. The underlying invariant — **don't muck with Balancer's vendored `WeightedPoolFactory` source** — is preserved. See `docs/STAGE_E_NOTES.md` E-D11 for the full rationale.
+>
+> **Factual correction (2026-04-26).** The "Stage B already forked `Vault.sol` → `AureumVault.sol` (22-line authorizer redirect)" line in the original 2026-04-15 decision below is wrong. No `AureumVault.sol` exists in this repo; Stage B's actual fork surface per `CLAUDE.md` §1 is `AureumProtocolFeeController.sol`, `AureumVaultFactory.sol`, and `AureumAuthorizer.sol`. The Vault contracts (`Vault.sol`, `VaultAdmin.sol`, `VaultExtension.sol`) are **byte-identical to audited Balancer V3 source**; `AureumVaultFactory` deploys upstream Vault bytecode pinned by hash, with the authorizer redirect happening via `AureumAuthorizer` wiring rather than a Vault.sol fork.
+
 **Decision (2026-04-15):** Aureum uses upstream Balancer V3 pool factories directly. No `AureumWeightedPoolFactory` fork. Aureum-specific logic lives in the Vault's registration path and in deployment scripts, not in a forked factory.
 
 **Minimal Aureum fork surface is preserved:**
