@@ -137,9 +137,11 @@ contract AureumFeeRoutingHookForkTest is Test {
             "BODENSEE",
             _bodenseeTokenConfigs(),
             _bodenseeWeights(),
+            // E-D22 / OQ-11: Bodensee swap fee is immutable from block 0.
+            // `swapFeeManager: address(0)` is BAL v3's "no one can change" sentinel.
             PoolRoleAccounts({
                 pauseManager: GOVERNANCE_MULTISIG,
-                swapFeeManager: GOVERNANCE_MULTISIG,
+                swapFeeManager: address(0),
                 poolCreator: address(0)
             }),
             0.0075e18,
