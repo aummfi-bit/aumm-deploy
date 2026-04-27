@@ -103,6 +103,12 @@ On-chain landings (E1.3a-quater through E1.3a-septies):
 - `script/DeployDerBodensee.s.sol` — `swapFeeManager: governanceMultisig` → `address(0)`, with natspec paragraph + inline comment.
 - `test/fork/AureumFeeRoutingHook.t.sol` — `bodenseePool` `swapFeeManager` → `address(0)` with inline comment; `tradingPool` (non-Miliarium AuMM/svZCHF test pool, not subject to E-D22) retains `GOVERNANCE_MULTISIG`.
 
+### E-D6 env-key suffix — superseded by E-D24 in-process pattern (2026-04-27)
+
+Supersedes the wording in **E-D6** ("Shared parameterized base contract per E-D6; three derived contracts per pilot, each setting a unique env-key suffix to satisfy the D36 invariant") in the `test/fork/PilotPools.t.sol` plan line. **Canonical record:** `docs/STAGE_E_NOTES.md` E-D24.
+
+The E-D6 wording assumed race-safety required per-contract key namespacing. E-D24 establishes that within Stage E, all three pilot test contracts write the E-D23 fixed env names with the *same value* (the deployed-once hook address from the shared base's `setUp`), making them race-safe without per-contract key suffixes. The `--threads 1` fork-suite invocation flag (D35 / D36) remains the cross-suite belt against legacy Stage D fork tests that write `FEE_ROUTING_HOOK` to conflicting addresses; it is a per-suite invocation flag, not a per-test harness workaround. No per-pool key suffix is introduced to `test/fork/PilotPools.t.sol`; the E-D23 fixed env names are used as-is.
+
 ---
 
 ## What is explicitly NOT in Stage E
