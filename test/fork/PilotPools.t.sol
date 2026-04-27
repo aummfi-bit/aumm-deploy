@@ -24,6 +24,7 @@ import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeCo
 import { AureumWeightedPoolFactory } from "../../src/factory/AureumWeightedPoolFactory.sol";
 import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 import { MiliariumPoolDeployer } from "../../script/pools/deploy-miliarium-pool.s.sol";
+import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 
 /**
  * @title MiliariumPilotPoolBase
@@ -344,5 +345,26 @@ abstract contract MiliariumPilotPoolBase is Test {
         vault.settle(tokenIn, inUsed);
         vault.sendTo(tokenOut, address(this), outRcvd);
         amountOut = outRcvd;
+    }
+}
+
+contract IxHelvetiaPilotTest is MiliariumPilotPoolBase {
+    function _deployer() internal override returns (MiliariumPoolDeployer) {
+        return new DeployIxHelvetia();
+    }
+
+    function _seedAmounts() internal pure override returns (uint256[] memory) {
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = INIT_SEED;
+        amounts[1] = INIT_SEED;
+        return amounts;
+    }
+
+    function test_Fork_IxHelvetia_DeploysAndRoutesFee() external {
+        assertTrue(pilotPool != address(0));
+        uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        _performSwap(pilotPool, IERC20(address(susds)), svZchf, 1e18);
+        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 }
