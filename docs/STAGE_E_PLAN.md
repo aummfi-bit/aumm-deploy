@@ -109,6 +109,21 @@ Supersedes the wording in **E-D6** ("Shared parameterized base contract per E-D6
 
 The E-D6 wording assumed race-safety required per-contract key namespacing. E-D24 establishes that within Stage E, all three pilot test contracts write the E-D23 fixed env names with the *same value* (the deployed-once hook address from the shared base's `setUp`), making them race-safe without per-contract key suffixes. The `--threads 1` fork-suite invocation flag (D35 / D36) remains the cross-suite belt against legacy Stage D fork tests that write `FEE_ROUTING_HOOK` to conflicting addresses; it is a per-suite invocation flag, not a per-test harness workaround. No per-pool key suffix is introduced to `test/fork/PilotPools.t.sol`; the E-D23 fixed env names are used as-is.
 
+### E10 deal(adjust=true) vs Reserve-DTF tokens — drop the third argument for ixEDEL compatibility (2026-04-27)
+
+Supersedes the example in **E-D7** ("`deal(token, address(this), amount, true)`") and the corresponding example in the Stage E Builds section above ("Account funding via `deal(token, address(this), amount, true)`"). **Canonical record:** `docs/STAGE_E_NOTES.md` E10.
+
+forge-std `deal()` third-argument `adjust=true` writes both the holder balance slot and the `totalSupply()` slot via heuristic. For tokens with dynamic `totalSupply()` like Reserve DTFs (ixEDEL — fee-decay accrual), no canonical supply slot exists; the supply-adjust path arithmetic-wraps and reverts panic 0x11 on first call. Fix: drop the third argument (`deal(token, holder, amount)`) — writes holder balance only, leaves `totalSupply()` untouched. Vault / WeightedPool initialization reads raw transferred balances during `IVault.settle`, not ERC20 `totalSupply()`, so the omission is functionally equivalent for the pool-init liquidity-source policy.
+
+Mixed-decimal pilots additionally require per-token decimal-matched seed amounts in `_seedAmounts()` instead of a uniform `INIT_SEED` literal: ixEdelweiss `1_000e6 / 1_000e6 / 1_000e18 / 1_000e18` for waEthUSDT (6-dec) / waEthUSDC (6-dec) / ixEDEL (18-dec) / svZCHF (18-dec) at address-sorted slot order; ixAurebit similarly threads `1_000e8` for the 8-decimal WBTC and cbBTC slots alongside `1_000e18` for the three 18-decimal slots.
+
+DTF-as-`tokenIn` swap-path consideration: the same `adjust=false` rule applies to `_performSwap` when `tokenIn` is a Reserve DTF; current `_performSwap` retains `adjust=true` because the deployed E2 / E3 representative swap vectors (waEthUSDC 6-dec, WBTC 8-dec) are not DTFs. A future ixAurebit or other-pilot vector using ixEDEL as `tokenIn` will need the same drop.
+
+On-chain landing:
+
+- **E2.3-fix** (`fd554c1`, 2026-04-27): `test/fork/PilotPools.t.sol` — drops `, true` from `_initializePool` mint loop at L302; per-decimal `_seedAmounts()` literals matched to address-sorted slot order at L383–L386; ixEdelweiss representative swap vector amended to `1e6` (not `1e18`) for 6-dec waEthUSDC at L393.
+
+
 ---
 
 ## What is explicitly NOT in Stage E
