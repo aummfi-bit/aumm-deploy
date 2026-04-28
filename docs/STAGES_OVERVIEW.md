@@ -285,7 +285,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 **Testing strategy:** mainnet fork. Deploy each pool, verify Quality Gate check passes (per F8b, ixAetheron/ixEdelweiss/ixLibertas sit 2-5% above floor — tight validation), verify Rate Providers wire correctly, verify the hook attaches, verify initial emission distribution reaches each pool.
 
-**Token-availability preflight:** before running the deploy scripts, verify on-chain addresses for all ERC-4626 vault components (waEth*** wrappers, GHO, sUSDS, scrvUSD, sfrxUSD, various Aave V3 stataTokens) and confirm each has sufficient depth for the registration-time minimum-liquidity check.
+**Token-availability preflight:** before running the deploy scripts, verify on-chain addresses for all ERC-4626 vault components (waEth*** wrappers, Aave Prime GHO, sUSDS, scrvUSD, sfrxUSD, various Aave V3 stataTokens) and confirm each has sufficient depth for the registration-time minimum-liquidity check.
 
 **Tag:** `stage-m-complete`.
 
@@ -335,7 +335,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 **Goal:** get the full protocol running as one system on a public testnet. First stage where the whole stack exists in one deployment.
 
 **Builds:**
-- `test-stubs/` — minimal stub contracts for: svZCHF, sUSDS, ixEDEL, and the major theme tokens (waEth wrappers, GHO, fBRZ, `*on` tokenized-asset stand-ins, JPYC, tGBP). Each stub: deterministic, non-upgradeable, ~50-100 LOC, implements the relevant interfaces (`IERC20`, `IERC4626` with `totalAssets` / `convertToShares` / `convertToAssets`, NAV-providing methods for ixEDEL). Kept under the same audit-inheritance discipline as real contracts.
+- `test-stubs/` — minimal stub contracts for: svZCHF, sUSDS, ixEDEL, and the major theme tokens (waEth wrappers, Aave Prime GHO, fBRZ, `*on` tokenized-asset stand-ins, JPYC, tGBP). Each stub: deterministic, non-upgradeable, ~50-100 LOC, implements the relevant interfaces (`IERC20`, `IERC4626` with `totalAssets` / `convertToShares` / `convertToAssets`, NAV-providing methods for ixEDEL). Kept under the same audit-inheritance discipline as real contracts.
 - Holesky deployment scripts for the full Aureum stack pointing at the stubs.
 - Frontend integration: the `aumm-app` MVP (separate repo per OQ-18) wires against the Holesky deployment.
 

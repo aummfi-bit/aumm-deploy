@@ -223,7 +223,7 @@ While I'm here:
 - ixHelvetia: 100% ERC-4626 (svZCHF 80% + sUSDS 20%) — comfortable margin
 - ixAetheron: 54% (waEthrETH 27% + waEthweETH 27%) — 2% margin
 - ixEdelweiss: 54% (waEthUSDC 18% + waEthUSDT 18% + svZCHF 18%) — 2% margin
-- ixLibertas: 57% (scrvUSD 15% + GHO 14% + sUSDS 14% + sfrxUSD 14%) — 5% margin
+- ixLibertas: 57% (scrvUSD 15% + Aave Prime GHO 14% + sUSDS 14% + sfrxUSD 14%) — 5% margin
 - ixCambio: 32% (svZCHF 16% + aEURS 16%) — 20% **deficit** (per F8a)
 
 The 2–5% margins on ixAetheron, ixEdelweiss, ixLibertas mean small drift in token weights (e.g. due to rebalancing or composition challenges) could trip the 52% floor. Worth knowing — not actionable yet.
@@ -309,7 +309,7 @@ The spec depends on real, mainnet-only token contracts:
 - **svZCHF** — Frankencoin's savings vault, exists on mainnet
 - **sUSDS** — Sky savings rate vault, exists on mainnet
 - **ixEDEL** — Reserve Protocol DTF, exists on mainnet
-- **GHO**, **scrvUSD**, **sfrxUSD**, **PYUSD** — major stables/ERC-4626 vaults on mainnet
+- **Aave Prime GHO**, **scrvUSD**, **sfrxUSD**, **PYUSD** — major stables/ERC-4626 vaults on mainnet
 - **waEth*** — Aave V3 stata token wrappers
 - **fWSTETH**, **fWETH**, **fBRZ** — Flux Finance vaults
 - All the `*on` tokenized ETFs and equities — depend on the issuer (Backed, etc.)
@@ -892,7 +892,7 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 - Same profile, Performance Discipline table — change "4626 Quality Gate | Monitoring required — 32% confirmed ERC-4626..." to **"4626 Quality Gate | ≥52% — met by svZCHF (19%) + st-EURA (18%) + aEURS (18%) = 55%"**.
 - Same profile, Risk Profile — **remove** "4626 Quality Gate compliance requires monitoring (currently borderline)". Replace with "JPYC regulatory risk (PSA-licensed, Japan-specific compliance)".
 - `07a_tokens.md` — change `st-EURA` row's "Token type" from ERC-20 to **ERC-4626** with note about Angle's `SavingsNameable`. Change `s-tGBP` entry to `tGBP` as ERC-20. Add JPYC row per OQ-12.
-- `miliarium_profiles/04_ixViatica.md` — update st-EURA type to ERC-4626; update ERC-4626 composition from 52% to 68% (svZCHF 26% + GHO 26% + st-EURA 16%); raises ixViatica from "at the floor" to "comfortable margin."
+- `miliarium_profiles/04_ixViatica.md` — update st-EURA type to ERC-4626; update ERC-4626 composition from 52% to 68% (svZCHF 26% + Aave Prime GHO 26% + st-EURA 16%); raises ixViatica from "at the floor" to "comfortable margin."
 
 **This resolution also updates F8a and F8b in the Findings section** — F8a is no longer HIGH severity; F8b's "borderline margin" note for ixCambio is inverted (now 3 points *above* floor, not 20 points below).
 
@@ -938,7 +938,7 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 
 **Decision (2026-04-15):** Option (c) — hybrid strategy.
 
-- **Public testnet (Holesky):** deploy minimal stub versions of svZCHF, sUSDS, ixEDEL, and the major theme tokens (waEth wrappers, GHO, fBRZ, JPYC equivalents, the `*on` tokenized assets). Stubs implement the relevant interfaces (`IERC20`, `IERC4626 totalAssets/convertToShares/convertToAssets`, NAV-providing methods for ixEDEL) but are inert with respect to real-world value. Anyone can interact with this deployment to validate Aureum-owned logic in production-like conditions, including governance flows, gauge approvals, fee routing, the OQ-1 hook behavior, and CCB scoring.
+- **Public testnet (Holesky):** deploy minimal stub versions of svZCHF, sUSDS, ixEDEL, and the major theme tokens (waEth wrappers, Aave Prime GHO, fBRZ, JPYC equivalents, the `*on` tokenized assets). Stubs implement the relevant interfaces (`IERC20`, `IERC4626 totalAssets/convertToShares/convertToAssets`, NAV-providing methods for ixEDEL) but are inert with respect to real-world value. Anyone can interact with this deployment to validate Aureum-owned logic in production-like conditions, including governance flows, gauge approvals, fee routing, the OQ-1 hook behavior, and CCB scoring.
 - **Mainnet fork (local Anvil + Tenderly devnet):** for end-to-end integration testing against real Frankencoin / Aave V3 / Reserve Protocol DTF / Sky / Flux behavior. Used by the founding team and the audit firm during code review; not publicly accessible.
 
 **Why hybrid:** the stubs let real users (including third-party gauge proposers, Sandbox-pool deployers, and the audit team) interact with Aureum's logic on a live public chain without waiting for mainnet integration partners. The mainnet fork validates that the integration story actually works against real upstream contracts. Neither alone covers both needs.
