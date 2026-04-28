@@ -299,7 +299,7 @@ abstract contract MiliariumPilotPoolBase is Test {
         returns (uint256 bptOut)
     {
         for (uint256 i = 0; i < tokens.length; ++i) {
-            deal(address(tokens[i]), address(this), amountsIn[i], true);
+            deal(address(tokens[i]), address(this), amountsIn[i]);
         }
         bytes memory result = vault.unlock(abi.encodeCall(this._initializePoolCallback, (pool, tokens, amountsIn)));
         bptOut = abi.decode(result, (uint256));
@@ -378,17 +378,19 @@ contract IxEdelweissPilotTest is MiliariumPilotPoolBase {
 
     function _seedAmounts() internal pure override returns (uint256[] memory) {
         uint256[] memory amounts = new uint256[](4);
-        amounts[0] = INIT_SEED;
-        amounts[1] = INIT_SEED;
-        amounts[2] = INIT_SEED;
-        amounts[3] = INIT_SEED;
+        // Per E10 / E-D25 — 1_000 × 10**decimals(token), matched to address-sorted slot order from
+        // IxEdelweissConfig: waEthUSDT (6) / waEthUSDC (6) / ixEDEL (18) / svZCHF (18).
+        amounts[0] = 1_000e6;
+        amounts[1] = 1_000e6;
+        amounts[2] = 1_000e18;
+        amounts[3] = 1_000e18;
         return amounts;
     }
 
     function test_Fork_IxEdelweiss_DeploysAndRoutesFee() external {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
-        _performSwap(pilotPool, IERC20(IxEdelweissConfig.WAETHUSDC), svZchf, 1e18);
+        _performSwap(pilotPool, IERC20(IxEdelweissConfig.WAETHUSDC), svZchf, 1e6);
         assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
