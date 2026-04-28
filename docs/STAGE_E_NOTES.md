@@ -215,3 +215,33 @@ ixEDEL is a Reserve DTF: `totalSupply()` is dynamic (fee-decay accrual), and the
 **Amendment to E-D25:** the uniform `INIT_SEED` constant is wrong for mixed-decimal pilots (6 / 6 / 18 / 18 in ixEdelweiss; 8 / 8 in ixAurebit's WBTC/cbBTC). `_seedAmounts()` must return per-token `1_000 * 10**decimals(token)`. Call out 8-decimal WBTC/cbBTC explicitly so it is not re-discovered at ixAurebit.
 
 **Amendment to E2.3 swap-vector:** the waEthUSDC representative swap amount is `1e6` (6 decimals), not `1e18`.
+
+### E11 — "GHO" misnaming corrected: pilot composition uses Aave Prime GHO (ERC-4626 wrapper of GHO), not the underlying GHO stablecoin (2026-04-28)
+
+E-D4 locks ixAurebit's "GHO 26%" at vault `0xC71Ea051a5F82c67ADcF634c36FFE6334793D24C` and RP `0x851b73c4BFd5275D47FFf082F9e8B4997dCCB253` with +0 pp boundary margin. E-D13 L39 lists "GHO" as gate-ineligible alongside ixEDEL / WBTC / cbBTC / tGBP / JPYC; read literally, the two collapse the gate sum to svZCHF 26% and `AureumWeightedPoolFactory.create()` would revert `QualityGateUnsatisfied(26e16, 52e16)`.
+
+Reconciliation — **naming, not predicate**. Vault `0xC71Ea051a5F82c67ADcF634c36FFE6334793D24C` is Aave Prime GHO, an Aave-issued ERC-4626 vault wrapping the GHO stablecoin, with a deployed rate provider at `0x851b73c4BFd5275D47FFf082F9e8B4997dCCB253`; registers as `TokenType.WITH_RATE` with non-zero RP, gate-eligible. Bare GHO stablecoin lives at `0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f` — ERC-20, no Aureum-side RP, gate-ineligible — and is not used in any Aureum pilot composition through Stage E.
+
+**Predicate-vs-list distinction** — E-D13's `WITH_RATE && rateProvider != address(0)` predicate is correct; the L39 summary list was wrong to lump "GHO" with the gate-ineligible ERC-20 set. Once Aave Prime GHO and bare GHO ERC-20 are named distinctly, both sources reconcile.
+
+**Naming convention locked.** Docs: "Aave Prime GHO" verbose form. Solidity at E3.1 (`IxAurebitConfig`): `AAVE_PRIME_GHO` for the vault address constant; `AAVE_PRIME_GHO_RATE_PROVIDER` for the rate provider. Matches the SCREAMING_SNAKE_CASE precedent of `IxEdelweissConfig` (`WAETHUSDT`, `WAETHUSDC`, `IXEDEL`, `SVZCHF`). Bare GHO ERC-20 at `0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f` is not referenced in any pilot config.
+
+**In-repo rename sweep (E11.1 through E11.6).**
+
+- E11.1 — this finding section appended to `docs/STAGE_E_NOTES.md`, locking the convention.
+- E11.2 — `docs/STAGE_E_NOTES.md` E-D13 (L39) carve-out + E-D17 (L69) anchor-list rename.
+- E11.3 — `docs/STAGE_E_PLAN.md` E-D4 (L76) rename + inline disambiguation pointer to bare GHO ERC-20.
+- E11.4 — `docs/FINDINGS.md` rename at L226 (ixLibertas margin), L312 (mainnet ERC-4626 vault list), L895 (ixViatica composition in OQ-12a's "Spec edits required" list), L941 (Holesky testnet stubs).
+- E11.5 — `docs/STAGES_OVERVIEW.md` rename at L288 (preflight) + L338 (test stubs).
+- E11.6 — `CLAUDE.md` §11 rename at L403 (composition recap) + L436 (resume step 3) + L440 (decimal mapping step 7).
+
+**Project-knowledge-only fixes (out-of-repo, user-side).** Per CLAUDE.md §4 these are invisible to Claude Code; the user owns the edit.
+
+- `aumm-site/07a_tokens.md` — distinguish bare GHO (ERC-20 stablecoin) row from Aave Prime GHO (ERC-4626 vault) row; latter is the canonical pilot token.
+- `aumm-site/06_miliarium_manifest.md` — ixAurebit (slot 14), ixViatica, ixLibertas rows: rename "GHO" to "Aave Prime GHO".
+- `aumm-site/05_miliarium_aureum.md` Section xi Yield table — ixAurebit / ixViatica / ixLibertas rows: same.
+- `aumm-site/miliarium_profiles/04_ixViatica.md`, `09_ixLibertas.md`, `14_ixAurebit.md` — composition tables, "ERC-4626 composition" lines, Quality Gate lines.
+
+**OQ-12a relationship.** OQ-12a is specifically about ixCambio reweighting and does not enumerate ixAurebit / ixViatica / ixLibertas compositions. Its "ERC-4626 / ERC-20" type tags map cleanly to wrapper-vs-underlying once "GHO" in pool compositions is read as Aave Prime GHO. No content change required to OQ-12a itself.
+
+**Implementation impact for E3.** `IxAurebitConfig` (E3.1) declares `AAVE_PRIME_GHO = 0xC71Ea051a5F82c67ADcF634c36FFE6334793D24C` and `AAVE_PRIME_GHO_RATE_PROVIDER = 0x851b73c4BFd5275D47FFf082F9e8B4997dCCB253`; registers as `TokenType.WITH_RATE` with non-zero RP at the position dictated by ascending-address sort. ixAurebit's QG sum is exactly `52e16` (svZCHF `26e16` + Aave Prime GHO `26e16`); `AureumWeightedPoolFactory.create()` uses the `>=` comparator at the gate check per E-D11, so the boundary case clears without revert. `_seedAmounts()` decimal mapping per E-D25 + E10: Aave Prime GHO is 18-decimal (ERC-4626 share decimals match the underlying GHO's 18 decimals).
