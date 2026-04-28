@@ -26,7 +26,9 @@ import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 import { MiliariumPoolDeployer } from "../../script/pools/deploy-miliarium-pool.s.sol";
 import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
+import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
 import { IxEdelweissConfig } from "../../script/pools/configs/05_ixEdelweiss.s.sol";
+import { IxAurebitConfig } from "../../script/pools/configs/14_ixAurebit.s.sol";
 
 /**
  * @title MiliariumPilotPoolBase
@@ -391,6 +393,32 @@ contract IxEdelweissPilotTest is MiliariumPilotPoolBase {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
         _performSwap(pilotPool, IERC20(IxEdelweissConfig.WAETHUSDC), svZchf, 1e6);
+        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
+    }
+}
+
+contract IxAurebitPilotTest is MiliariumPilotPoolBase {
+    function _deployer() internal override returns (MiliariumPoolDeployer) {
+        return new DeployIxAurebit();
+    }
+
+    function _seedAmounts() internal pure override returns (uint256[] memory) {
+        uint256[] memory amounts = new uint256[](5);
+        // Per E10 / E-D25 — 1_000 × 10**decimals(token), matched to address-sorted slot order from
+        // IxAurebitConfig: WBTC (8) / Aave Prime GHO (18) / cbBTC (8) / ixEDEL (18) / svZCHF (18).
+        amounts[0] = 1_000e8;
+        amounts[1] = 1_000e18;
+        amounts[2] = 1_000e8;
+        amounts[3] = 1_000e18;
+        amounts[4] = 1_000e18;
+        return amounts;
+    }
+
+    function test_Fork_IxAurebit_DeploysAndRoutesFee() external {
+        assertTrue(pilotPool != address(0));
+        uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        _performSwap(pilotPool, IERC20(IxAurebitConfig.WBTC), svZchf, 1e8);
         assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
