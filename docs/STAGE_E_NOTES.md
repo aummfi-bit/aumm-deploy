@@ -200,4 +200,18 @@ E2 ships ixEdelweiss (slot 05) atop the E1 framework with no new framework artif
 
 ## Findings
 
-> `E10` onward populates as implementation incidents emerge.
+> `E11` onward populates as implementation incidents emerge.
+
+### E10 — forge-std `deal(adjust=true)` incompatible with Reserve-DTF dynamic-supply tokens (ixEDEL); per-decimal `_seedAmounts()` required for mixed-decimal pilots (2026-04-27)
+
+E2.4's first attempt panicked on the third `deal(...)` call inside `MiliariumPilotPoolBase._initializePool` (`test/fork/PilotPools.t.sol` L301–L303). `forge test -vvvv` traces the panic inside forge-std `deal` against ixEDEL—not in `vault.initialize` or `WeightedMath.computeInvariant()`.
+
+ixEDEL is a Reserve DTF: `totalSupply()` is dynamic (fee-decay accrual), and there is no single canonical balance/supply slot for forge-std's `adjust` heuristic to update consistently, so the supply-adjust path arithmetic-wraps and reverts with panic `0x11`.
+
+**Resolution:** call `deal(...)` without the third argument (i.e. `adjust=false`) in pilot mint loops—writes the holder balance slot only and leaves `totalSupply()` untouched. The Vault/WeightedPool init path reads raw token balances transferred to the Vault, not ERC20 `totalSupply()`, so the unadjusted `deal` is sound for pool-initialization seeding.
+
+**Amendment to E-D24:** the `MiliariumPilotPoolBase._initializePool` mint loop at `test/fork/PilotPools.t.sol` L301–L303 drops `adjust=true`; the same rule applies to any `_performSwap` (current L324) where `tokenIn` is itself a Reserve DTF—flag this for E3 so DTF-as-`tokenIn` swap paths inherit the constraint.
+
+**Amendment to E-D25:** the uniform `INIT_SEED` constant is wrong for mixed-decimal pilots (6 / 6 / 18 / 18 in ixEdelweiss; 8 / 8 in ixAurebit's WBTC/cbBTC). `_seedAmounts()` must return per-token `1_000 * 10**decimals(token)`. Call out 8-decimal WBTC/cbBTC explicitly so it is not re-discovered at ixAurebit.
+
+**Amendment to E2.3 swap-vector:** the waEthUSDC representative swap amount is `1e6` (6 decimals), not `1e18`.
