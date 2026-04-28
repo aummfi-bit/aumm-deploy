@@ -176,6 +176,26 @@ The Stage E pilot-pool fork tests live in `test/fork/PilotPools.t.sol` and follo
 
 **Sub-step layout.** **E1.6a** — `MiliariumPilotPoolBase` shared base contract (deploy chain in `setUp`, β-pattern `_initializePool` and `_performSwap` helpers, virtual `_deployer` and `_seedAmounts`). **E1.6b** — `IxHelvetiaPilotTest` derived contract (overrides + `test_Fork_IxHelvetia_DeploysAndRoutesFee()` body). Edelweiss + Aurebit derived contracts land at E2 / E3 atop the same base, with their own derived-contract sub-steps.
 
+### E-D25 — E2 ixEdelweiss sub-step layout + locked decisions (2026-04-27)
+
+E2 ships ixEdelweiss (slot 05) atop the E1 framework with no new framework artifacts. Five sub-steps, each one §8e.1 + commit:
+
+- **E2.1** — `script/pools/configs/05_ixEdelweiss.s.sol`: `IxEdelweissConfig` library mirroring `IxHelvetiaConfig` shape (E-D21). `internal constant` literals for the four token addresses + three Rate Provider addresses; `function config() internal pure returns (PoolConfig memory)` returning the locked composition. NatSpec block cross-references E-D4 (composition lock), E-D17 (token addresses sourcing), E-D18 (`name = "ixEdelweiss"`, `symbol = "IXEDELWEISS"`), E-D19 (`sectorLabel = "Routing Infrastructure"`), E-D20 (`salt = bytes32(uint256(5))`), E-D21 (library shape), and E-D22 (`swapFeePercentage = 0.0002e18`).
+- **E2.2** — `script/pools/DeployIxEdelweiss.s.sol`: ~17-line concrete wrapper inheriting `MiliariumPoolDeployer` (E-D23), overriding `_config()` to return `IxEdelweissConfig.config()`. Mirrors `script/pools/DeployIxHelvetia.s.sol`.
+- **E2.3** — `IxEdelweissPilotTest` derived contract appended to `test/fork/PilotPools.t.sol`, atop `MiliariumPilotPoolBase` (E-D24). Overrides `_deployer()` (returns `new DeployIxEdelweiss()`) and `_seedAmounts()` (returns four `INIT_SEED` literals). Test method `test_Fork_IxEdelweiss_DeploysAndRoutesFee()` mirrors the E1.6b body shape: `assertTrue(pilotPool != address(0))`, snapshot `IERC20(bodenseePool).totalSupply()`, perform swap, assert BPT supply expansion + `svZchf.balanceOf(address(hook)) == 0`.
+- **E2.4** — Single-test fork run: `forge test --match-path "test/fork/PilotPools.t.sol" --match-test "test_Fork_IxEdelweiss" --fork-url $MAINNET_RPC_URL -vv --threads 1`.
+- **E2.5** — Full fork-suite regression: `forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL -vv --threads 1`. Expect 11/11 (the 10 confirmed at E1.6b + IxEdelweiss).
+
+**Composition recap (locked by E-D4 + E-D17, sorted ascending-address at literal-write time per E-D21):** index 0 waEthUSDT (`0x7Bc3485026Ac48b6cf9BaF0A377477Fff5703Af8`, WITH_RATE, RP `0xEdf63cce4bA70cbE74064b7687882E71ebB0e988`, `0.18e18`, `paysYieldFees: true`); index 1 waEthUSDC (`0xD4fa2D31b7968E448877f69A96DE69f5de8cD23E`, WITH_RATE, RP `0x8f4E8439b970363648421C692dd897Fb9c0Bd1D9`, `0.18e18`, `paysYieldFees: true`); index 2 ixEDEL (`0xe4a10951f962e6cB93Cb843a4ef05d2F99DB1F94`, STANDARD, no RP, `0.46e18`, `paysYieldFees: false`); index 3 svZCHF (`0xE5F130253fF137f9917C0107659A4c5262abf6b0`, WITH_RATE, RP `0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c`, `0.18e18`, `paysYieldFees: true`). ERC-4626 weight sum = `0.54e18` (54%); clears the 52% Quality Gate (E-D3) by +2 pp.
+
+**E2.3 swap direction — `waEthUSDC → svZCHF`, 1e18 in.** Continuity with E1.6b's `sUSDS → svZCHF` (same structural story: ERC-4626-with-RP → svZCHF), so the new fork test reads as "same fee-routing story, next pool." The fee-landing assertion is fee-token-agnostic per E-D24, so the choice is about coverage breadth across pilots, not correctness. STANDARD-token-input coverage is reserved for E3 (ixAurebit) where WBTC / cbBTC / ixEDEL provide three STANDARD-typed `tokenIn` candidates.
+
+**Constants exposure in derived test.** Pilot-specific tokens (waEthUSDC) accessed via `IxEdelweissConfig.WAETHUSDC` qualifier in `IxEdelweissPilotTest`. The `MiliariumPilotPoolBase` carries only svZCHF + sUSDS as base-contract state because Bodensee composition requires both at base-contract `setUp` (E-D24); pilot-specific tokens stay scoped to their pilot's config library to avoid base-contract bloat as more pilots land at E3 / Stage M / N.
+
+**INIT_SEED parity per E-D24.** `[INIT_SEED, INIT_SEED, INIT_SEED, INIT_SEED]` (four `1_000e18` literals). Equal-amount seeding with uneven 18/18/46/18 weights produces a valid initial Balancer-V3 weighted-pool invariant; the 1e18 representative swap is small enough that the off-axis curve excursion against the 18/46 differential is negligible for the fee-routing assertion, matching the same rationale that justifies INIT_SEED parity at ixHelvetia's 20/80 differential.
+
+**Cross-suite race expectations.** `IxEdelweissPilotTest`'s `setUp` writes the same E-D23 fixed env names (`AUREUM_WEIGHTED_POOL_FACTORY`, `FEE_ROUTING_HOOK`, `GOVERNANCE_MULTISIG`) that `IxHelvetiaPilotTest` writes; each pilot test contract independently re-runs the full deploy chain in its own `setUp`, producing the same env values from the same nonce-prediction sequence. Same-value writes are race-safe per E-D24; the `--threads 1` flag remains required as the cross-suite belt against legacy Stage D fork tests writing `FEE_ROUTING_HOOK` to its own predicted addresses.
+
 ---
 
 ## Findings
