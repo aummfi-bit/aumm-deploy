@@ -154,3 +154,39 @@ The E-D6 wording assumed race-safety required per-contract key namespacing. E-D2
 
 | Sub-step | Commit | Date | Summary |
 |----------|--------|------|---------|
+| E0 | 24a0e7d | 2026-04-26 | E0: docs/STAGE_E_PLAN.md + docs/STAGE_E_NOTES.md — Stage E scaffold |
+| docs (E-D11–E-D15) | 793f504 | 2026-04-26 | docs: STAGE_E_NOTES.md E-D11–E-D15 + STAGE_E_PLAN.md E-D3 + FINDINGS.md OQ-14 — E1 pre-flight factory-pattern decisions |
+| docs (E-D16) | 0037104 | 2026-04-26 | docs: STAGE_E_NOTES.md E-D16 — AureumWeightedPoolFactory additive; Bodensee retains upstream WPF |
+| E1.1 | 472c023 | 2026-04-26 | E1.1: src/factory/AureumWeightedPoolFactory.sol |
+| E1.2 | eabc787 | 2026-04-26 | E1.2: script/pools/PoolConfig.sol |
+| docs (E-D17–E-D21) | 796787f | 2026-04-26 | docs: STAGE_E_NOTES.md E-D17–E-D21 — pilot-pool config decisions (token addresses, name/symbol, sectorLabel, salt, config artifact) |
+| docs (E-D22) | 2b5d216 | 2026-04-26 | docs: STAGE_E_NOTES.md E-D22 — pilot swap fee 0.02% + Bodensee 0.75% immutable (OQ-11 supersession pointer) |
+| docs (OQ-11 FINDINGS) | 92a5d89 | 2026-04-26 | docs: FINDINGS.md OQ-11 supersession — Bodensee 0.75% immutable + Miliarium genesis 0.02% |
+| OQ-11 (src) | 46fee7b | 2026-04-26 | src: AureumProtocolFeeController.sol — BODENSEE_SWAP_FEE_GENESIS→BODENSEE_SWAP_FEE (rename); BODENSEE_SWAP_FEE_MIN/MAX removed; MILIARIUM_SWAP_FEE_MIN/MAX/GENESIS added (E-D22 / OQ-11 supersession) |
+| OQ-11 (test) | cd0cc56 | 2026-04-26 | test: AureumProtocolFeeController.t.sol — test_BodenseeBand_Constants→test_SwapFeeConstants; BODENSEE_SWAP_FEE + MILIARIUM_SWAP_FEE_* constants (E-D22 / OQ-11) |
+| OQ-11 (script) | dc62325 | 2026-04-26 | script: DeployDerBodensee.s.sol — swapFeeManager: address(0) (Bodensee fee immutable per E-D22 / OQ-11 supersession) |
+| OQ-11 (test) | 778ecb5 | 2026-04-26 | test: AureumFeeRoutingHook.t.sol — bodenseePool swapFeeManager: address(0) (immutable per E-D22 / OQ-11 supersession) |
+| docs (OQ-11 PLAN) | ece718f | 2026-04-26 | docs: STAGE_E_PLAN.md — Mid-stage supersessions section; OQ-11 swap fees (Bodensee 0.75% immutable, Miliarium genesis 0.02% / E-D22) |
+| E1.3b | 0f53d65 | 2026-04-26 | E1.3b: script/pools/configs/01_ixHelvetia.s.sol — IxHelvetiaConfig per-pool config library (svZCHF 80% / sUSDS 20%, slot 01) |
+| docs (E-D23) | 6a98eae | 2026-04-26 | docs: STAGE_E_NOTES.md E-D23 — deploy script architecture (abstract base + per-pilot wrappers, flat layout, env-var contract) |
+| E1.4a | 9d6db38 | 2026-04-27 | E1.4a: script/pools/deploy-miliarium-pool.s.sol — MiliariumPoolDeployer abstract base (E-D23) |
+| E1.4c | 36c6f88 | 2026-04-27 | E1.4c: script/pools/DeployIxHelvetia.s.sol — DeployIxHelvetia concrete wrapper (E-D23) |
+| docs (E-D24) | 7276398 | 2026-04-27 | docs: STAGE_E_NOTES.md E-D24 — fork-test harness shape (in-process deployer, --threads 1 belt, INIT_SEED parity) |
+| docs (E-D6→E-D24) | ec25324 | 2026-04-27 | docs: STAGE_E_PLAN.md — E-D6 env-key suffix superseded by E-D24 (mid-stage supersession) |
+| E1.6a | 3f47f43 | 2026-04-27 | E1.6a: test/fork/PilotPools.t.sol — MiliariumPilotPoolBase abstract shared base |
+| E1.6b | 041d517 | 2026-04-27 | E1.6b: test/fork/PilotPools.t.sol — IxHelvetiaPilotTest derived contract + fee-routing test |
+| docs (E-D25) | e079457 | 2026-04-27 | docs: STAGE_E_NOTES.md E-D25 — E2 ixEdelweiss sub-step layout + locked decisions |
+| E2.1 | 3289ade | 2026-04-27 | E2.1: script/pools/configs/05_ixEdelweiss.s.sol — IxEdelweissConfig per-pool config library (waEthUSDT 18% / waEthUSDC 18% / ixEDEL 46% / svZCHF 18%, slot 05) |
+| E2.2 | cdd7a5d | 2026-04-27 | E2.2: script/pools/DeployIxEdelweiss.s.sol — concrete MiliariumPoolDeployer wrapper for ixEdelweiss (slot 05) |
+| E2.3 | efb7a10 | 2026-04-27 | E2.3: test/fork/PilotPools.t.sol — IxEdelweissPilotTest derived contract + fee-routing test (waEthUSDC → svZCHF) |
+| docs (E10) | 393cea0 | 2026-04-27 | docs: STAGE_E_NOTES.md E10 — forge-std deal(adjust=true) vs Reserve-DTF ixEDEL; per-decimal _seedAmounts() for mixed-decimal pilots |
+| E2.3-fix | fd554c1 | 2026-04-27 | E2.3-fix: test/fork/PilotPools.t.sol — drop deal(adjust=true) in _initializePool, per-decimal _seedAmounts(), 1e6 swap vector (per E10) |
+| docs (§11 mid) | 752c032 | 2026-04-28 | docs: CLAUDE.md §11 refresh — Stage E mid-stage (E1 + E2 closed, E3 ixAurebit next) |
+| docs (E11) | 6a92d3c | 2026-04-28 | docs: STAGE_E_NOTES.md E11 — Aave Prime GHO naming convention locked; GHO misnaming corrected |
+| docs (E11 sweep) | 5dec629 | 2026-04-28 | docs: E11.2–E11.6 rename sweep — GHO → Aave Prime GHO across STAGE_E_NOTES / STAGE_E_PLAN / FINDINGS / STAGES_OVERVIEW / CLAUDE.md §11 |
+| E3.1 | 34ceacb | 2026-04-28 | E3.1: script/pools/configs/14_ixAurebit.s.sol — IxAurebitConfig per-pool config library (WBTC 16% / Aave Prime GHO 26% / cbBTC 16% / ixEDEL 16% / svZCHF 26%, slot 14) |
+| E3.2 | 9a3bb18 | 2026-04-28 | E3.2: script/pools/DeployIxAurebit.s.sol — concrete MiliariumPoolDeployer wrapper for ixAurebit (slot 14) |
+| E3.3 | 4a5fcb6 | 2026-04-28 | E3.3: test/fork/PilotPools.t.sol — IxAurebitPilotTest derived contract + fee-routing test (WBTC → svZCHF) |
+| E4.1 | 3d35244 | 2026-04-28 | E4.1: test/unit/AureumWeightedPoolFactory.t.sol — QG revert-path unit tests (5 methods, mock vault, per E-D13) |
+| docs (E-D26) | cf9fc37 | 2026-04-28 | docs: STAGE_E_NOTES.md E-D26 — E4 unit-test scope, E-D9 closure, Cursor NatSpec-hyperlink artifact |
+| docs (§11 close) | ca24e5c | 2026-04-28 | docs: CLAUDE.md §11 refresh — Stage E mid-stage (E1+E2+E3+E4 closed, E5 docs / E9 close ahead) |
