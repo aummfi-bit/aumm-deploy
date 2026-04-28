@@ -25,6 +25,8 @@ import { AureumWeightedPoolFactory } from "../../src/factory/AureumWeightedPoolF
 import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 import { MiliariumPoolDeployer } from "../../script/pools/deploy-miliarium-pool.s.sol";
 import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
+import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
+import { IxEdelweissConfig } from "../../script/pools/configs/05_ixEdelweiss.s.sol";
 
 /**
  * @title MiliariumPilotPoolBase
@@ -364,6 +366,29 @@ contract IxHelvetiaPilotTest is MiliariumPilotPoolBase {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
         _performSwap(pilotPool, IERC20(address(susds)), svZchf, 1e18);
+        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
+    }
+}
+
+contract IxEdelweissPilotTest is MiliariumPilotPoolBase {
+    function _deployer() internal override returns (MiliariumPoolDeployer) {
+        return new DeployIxEdelweiss();
+    }
+
+    function _seedAmounts() internal pure override returns (uint256[] memory) {
+        uint256[] memory amounts = new uint256[](4);
+        amounts[0] = INIT_SEED;
+        amounts[1] = INIT_SEED;
+        amounts[2] = INIT_SEED;
+        amounts[3] = INIT_SEED;
+        return amounts;
+    }
+
+    function test_Fork_IxEdelweiss_DeploysAndRoutesFee() external {
+        assertTrue(pilotPool != address(0));
+        uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        _performSwap(pilotPool, IERC20(IxEdelweissConfig.WAETHUSDC), svZchf, 1e18);
         assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
