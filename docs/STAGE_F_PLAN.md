@@ -73,7 +73,9 @@ These are the answers to the planning-stage questions resolved before this file 
 
 > Decisions resolved during Stage F that revise values or framing locked in by the planning-stage decisions above. Each entry preserves the canonical record location in `docs/STAGE_F_NOTES.md` (full reasoning) and `docs/FINDINGS.md` (OQ marker). The lock table is left intact as historical context — read these supersessions alongside it.
 
-> Populates as Stage F sub-steps land. Empty at F0.
+- **F-D3 → OQ-22 (RESOLVED at F0.2, FINDINGS L1102):** TVL denomination = svZCHF; per-token valuation = RP-aware unwrap + constellation-spot averaging (option (c) of the F-D3 stub); concrete oracle implementation deferred to OQ-22 resolution stage; `ITVLOracle.tvl(address pool) external view returns (uint256)` interface shape pinned. F-D3's "three live options" superseded by the resolved single-option valuation pipeline.
+
+- **F-D4 → OQ-5a-bis (RESOLVED at F0.3, FINDINGS L1150):** TVL accumulator vs spot-at-sample — option (b) selected. `EMASampler.sol` reads `ITVLOracle.tvl(pool)` once per `BLOCKS_PER_DAY` at the sample boundary; no cumulative-balance accumulator; no Stage D `AureumFeeRoutingHook` modification. F-D4's "two paths, pre-F1 resolution required" superseded. OQ-5a's cumulative-TVL framing is superseded in part by this resolution (cumulative accumulator dropped; per-day spot read substituted; protection model relies on EMA(60) + F-10 efficiency tournament + tier caps as a layered defense).
 
 ---
 

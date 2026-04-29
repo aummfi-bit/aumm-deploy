@@ -586,6 +586,8 @@ Epoch and month cadences are deliberately independent rhythms: 26.07 epochs per 
 - **`10_constitution.md` §xxix:** add `EMA_HORIZON_DAYS = 60`, `TWAP_WINDOW_BLOCKS = 720`, and the alpha numerator/denominator to the immutable parameters table.
 - **`03_theoretical_foundation.md` §vi-b:** small rewording — "today's TVL" can stay, but flag that "today" is a `BLOCKS_PER_DAY`-sized window with intra-day averaging at the boundary.
 
+**Superseded in part by OQ-5a-bis (2026-04-29, FINDINGS L1150+):** the cumulative-TVL accumulator + intra-day TWAP commitment described in this resolution is replaced with a per-day spot read of `ITVLOracle.tvl(pool)`. `BLOCKS_PER_DAY` cadence and `alpha = 2/61` constants preserved; `TWAP_WINDOW_BLOCKS = 720` dropped. See OQ-5a-bis below for the full supersession reasoning and the layered defense (EMA(60) + F-10 efficiency tournament + tier caps + Year-1 activation buffer) substituting for the accumulator-side single-block-spike defense.
+
 ### OQ-6 (RESOLVED): der Bodensee "hidden Months 0–6" = frontend-only; pool address not shared with routers/aggregators
 
 **Decision (2026-04-15):** Pure frontend convention with deliberate no-share-to-routers operational policy. The pool is fully on-chain, registered with the Aureum Vault, and tradeable from genesis. No on-chain pause, no hook on Bodensee, no swap-blocking mechanism — keeps OQ-2's clean "no hook on Bodensee, standard Balancer V3 weighted pool" architecture intact.
@@ -1147,23 +1149,53 @@ F1's `EMASampler.sol` takes `ITVLOracle` as an injectable immutable; the concret
 - **`11_formulas.md` F-4:** amend the *"internal cumulativeTVL accumulators ... entirely protocol-internal, oracle-free"* prose to acknowledge OQ-5a-bis's accumulator-leg supersession (cumulativeTVL accumulators dropped per OQ-5a-bis (b); spot-at-sample reads from `ITVLOracle`); the oracle-free invariant is preserved.
 - **`12_aureum_glossary.md`:** new glossary entry — *TVL valuation: RP-aware unwrap to underlying then constellation-spot averaging to svZCHF, per OQ-22.*
 
-### OQ-5a-bis — TVL accumulator hook integration vs spot-at-sample
+### OQ-5a-bis (RESOLVED): TVL accumulator dropped; EMASampler reads spot via ITVLOracle once per BLOCKS_PER_DAY
 
-**Status.** Proposed, pending F1. Stub here so the OQ-5a accumulator commitment is reconciled with Stage D's hook-slot occupancy before `EMASampler.sol` ships.
+**Decision (2026-04-29):** Option **(b)** of the OQ-5a-bis stub (raised at F0.1, FINDINGS L1150 prior to this resolution). `EMASampler.sol` reads `ITVLOracle.tvl(pool)` once per `BLOCKS_PER_DAY` at the sample boundary. No cumulative-balance accumulator. No modification to Stage D's `AureumFeeRoutingHook`. The single-block-spike attack surface noted in OQ-5a-bis option (b) is accepted, defended in depth by the layered protection stack below rather than by hook-side accumulator state.
 
-**Context.** OQ-5a (RESOLVED, FINDINGS L555+) specifies a Uniswap-style cumulative TVL accumulator updated on every swap / liquidity event, with TWAP read at sample time as `(cumulativeTVL_now − cumulativeTVL_dayAgo) / TWAP_WINDOW_BLOCKS`. That commitment was made before Stage D's `AureumFeeRoutingHook` shipped. Balancer V3 allows one hook per pool; Stage D's fee-routing hook already occupies that slot on every gauged pool. The accumulator-write logic that OQ-5a's resolution implicitly requires has nowhere to live without modifying Stage D's hook.
+**Mechanism (what `EMASampler.updateEMA(pool)` does):**
 
-**Question.** Where do the per-block accumulator writes that OQ-5a's TWAP read assumes actually happen?
+1. Per-pool state: `tvlEMA[pool]`, `lastEMAUpdateBlock[pool]`. No intra-day accumulator, no cumulative-balance state.
+2. Permissionless `updateEMA(address pool)` callable once `block.number >= lastEMAUpdateBlock[pool] + BLOCKS_PER_DAY`. Reverts otherwise.
+3. At each call: `spotTVL = ITVLOracle.tvl(pool)` (single read, returns svZCHF-denominated TVL at 18 decimals per OQ-22). EMA update: `tvlEMA_new = (2 × spotTVL + 59 × tvlEMA_old) / 61` (alpha = 2/61, half-life ~21 days, 60-day horizon framing).
+4. No hook callbacks consumed; Stage D `AureumFeeRoutingHook` continues to subscribe only to `onAfterSwap` per its existing `getHookFlags()` definition.
 
-**Options considered.**
+**Why (b) over (a):**
 
-- **Option (a) — extend `AureumFeeRoutingHook` with accumulator state and accumulator-write logic.** Add `cumulativeTVL` + `lastAccumulatorBlock` storage per pool to the hook, and write the accumulator update at the start of `onAfterSwap`, `onAfterAddLiquidity`, `onAfterRemoveLiquidity`. Touches a Stage D contract; requires careful audit; preserves OQ-5a's manipulation-resistance guarantee (the 1-hour TWAP window dampens single-block TVL spikes). Cost: Stage D's hook is already audit-frozen at `stage-d-complete` — modifying it re-opens the audit surface and forces a Stage D re-derivation.
-- **Option (b) — read TVL spot at sample time via `ITVLOracle`, no in-day TWAP.** Drop the OQ-5a accumulator commitment; revise OQ-5a to "spot-at-sample with no in-day TWAP." `EMASampler.updateEMA(pool)` reads `ITVLOracle.tvl(pool)` once at the sample boundary; that single read is the EMA input. Accepts the noted single-block-spike attack surface (an actor briefly spikes TVL right at the sample block to bias that day's contribution; the 60-day smoothing dampens to ~3.3% influence per day). Trivial implementation; no Stage D modification; the attack surface is bounded by the EMA's smoothing and by the cost of holding the spike for the full protocol-day window.
-- **Option (c) — separate `AureumTVLAccumulator` hook on a sibling slot.** Rejected up front: Balancer V3 allows one hook per pool, and Stage D's fee-routing hook is non-negotiable on every gauged pool. No sibling slot exists.
+OQ-5a's accumulator-leg manipulation defense targets single-block-spike attacks against pool balances at the sample boundary. Re-evaluating the attack with realistic flash-loan economics and the protocol's full defense stack:
 
-**Pre-F1 resolution required.** F1's `EMASampler.sol` shape differs between (a) and (b): (a) consumes a TWAP from accumulator state external to the sampler; (b) consumes a single spot read. The `ITVLOracle` interface and the sampler's update math both depend on the choice.
+- **Flash-loan attack profile.** Attacker borrows balanced multi-token amounts, executes `add → updateEMA → remove` in one transaction. Spike of factor `s` shifts the EMA by `(2/61) × (s−1) × T` for one day, decaying over ~21-day half-life. Total bonus emissions: `E_daily × (s−1) × share_i` summed over decay (impulse-response area = 1 for unit input). For `share_i = 1/28 ≈ 3.57%`, `s = 2`, `E_daily ≈ 3500 AuMM`, total bonus ≈ 125 AuMM per attack.
+- **Cost floor.** Aave flash-loan fee 5 bps on the borrowed amount; for a doubling spike on a $1M pool, cost ≈ $500. Break-even at AuMM ≈ $4. Below break-even the attack is unprofitable; above, profit scales linearly with AuMM price but is bounded by the F-10 tier caps below.
+- **F-10 efficiency tournament caps the take.** F-10 (FINDINGS L130, L500–L502, L521, L840) tiers gauge-eligible pools by efficiency rank with hard caps at 1% / 0.5% / 0.1% (15th / 10th / 5th percentiles). Efficiency is a multi-axis metric — TVL × fee revenue × volume per FINDINGS L840: *"pool operators / governance can tune fees to improve efficiency rank — higher volume via lower fees, or higher per-swap revenue via higher fees, whichever optimizes the pool's efficiency score."* A pure-TVL spike does not move the fee-revenue axis. Pools above tier ceilings cannot extract additional emissions from EMA shifts.
+- **F-10 6-week smoothing window.** `EFFICIENCY_TOURNAMENT_SMOOTHING_EPOCHS = 3` (FINDINGS L500) gives a 302,400-block (~6-week) moving average on efficiency rank. To shift a pool's tier classification, sustained performance across the smoothing window is required — flash loans cannot reach.
+- **Year-1 buffer.** F-10 activates at `MONTH_13_START_BLOCK` (FINDINGS L534). During Months 1–12, emission allocation follows F-0 bootstrap and F-3 transition, not F-5/F-6 CCB scoring. The earliest an EMA-spike attack can pay any share-allocation dividend is post-Year-1.
+- **Sustained-attack-as-LP framing.** A multi-day attack capable of meaningfully shifting the EMA equilibrium requires sustained capital deployment — i.e., being a real LP for the duration. The mechanism gracefully degrades: capital that earns emissions is exactly the capital the protocol intends to incentivize. "Gaming" via multi-week LP positions is the design, not a failure mode.
 
-**Spec edit flag (aumm-site, user-side — not a repo edit).** If (b) is selected, OQ-5a's "Mechanism" subsection in this file (FINDINGS L559-L568) needs amendment to drop the TWAP-window text and acknowledge the single-block-spike attack surface explicitly. The spec-side `11_formulas.md` F-4 amendment listed in OQ-5a's "Spec edits required" subsection (FINDINGS L584) also needs revision.
+The accumulator's defensive value is asymmetric to the attack surface in the layered defense above: it would prevent the bounded single-tx flash-loan attack at the cost of modifying a tagged Stage D contract and expanding `AureumFeeRoutingHook`'s audit surface. The cost-benefit tilts to (b).
+
+**What this resolution accepts:**
+
+- Single-tx flash-loan-spike attacks against the EMA-only filter are possible and bounded as quantified above. At realistic AuMM prices and pool TVLs the attack is marginally profitable in expectation; F-10 tier ceilings cap the upside; Stage G's eligibility design (separate concern from this F1 decision) can layer additional anti-wash defenses on the F-10 fee-revenue axis if Stage G's design surface so requires.
+- OQ-5a's cumulative-TVL framing is superseded in part. The cumulative-balance accumulator commitment is dropped; the per-day spot read via `ITVLOracle` substitutes. OQ-5a's `BLOCKS_PER_DAY` cadence and `alpha = 2/61` constants are preserved.
+
+**What this resolution does NOT change:**
+
+- OQ-22's resolved valuation pipeline (RP-aware unwrap + constellation-spot via `ITVLOracle.tvl(pool)`) is unchanged.
+- Stage D `AureumFeeRoutingHook` is unchanged. No Stage D supersession entry required.
+- The "60-day EMA" framing in `02_mental_model.md` §iii / `03_theoretical_foundation.md` §vi-b / `11_formulas.md` F-4 is preserved at the protocol level.
+- F-10's design and Stage G's eligibility checker are unchanged.
+
+**Constants this pins:**
+
+- `EMA_ALPHA_NUMERATOR = 2`, `EMA_ALPHA_DENOMINATOR = 61` (preserved from OQ-5a).
+- `BLOCKS_PER_DAY = 7,200` (preserved from OQ-5).
+- `TWAP_WINDOW_BLOCKS = 720` from OQ-5a is **dropped**. The intra-day TWAP window is not used in the (b) design.
+
+**Spec edits required (aumm-site, user-side — not a repo edit):**
+
+- **`11_formulas.md` F-4:** rewrite the *"internal cumulativeTVL accumulators ... entirely protocol-internal, oracle-free"* prose and the OQ-5a `(cumulativeTVL_now − cumulativeTVL_dayAgo) / TWAP_WINDOW_BLOCKS` formula. Replace with the per-day spot read of `ITVLOracle.tvl(pool)` and the EMA update `tvlEMA_new = (2 × spotTVL + 59 × tvlEMA_old) / 61`. Acknowledge the single-block-spike attack surface explicitly with reference to F-10's layered defense (tier caps + 6-week smoothing window + multi-axis efficiency).
+- **`10_constitution.md` §xxix:** if `TWAP_WINDOW_BLOCKS = 720` was added per OQ-5a's prior edit list, remove it; OQ-5a-bis supersedes the TWAP-window framing.
+- **`12_aureum_glossary.md`:** if a TWAP-window entry was added per OQ-5a, remove or amend to reflect the per-day spot-read framing.
 
 ### OQ-23 — F-8 multiplier interpretive ambiguities + 90-day boost composition
 
