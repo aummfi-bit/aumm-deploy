@@ -101,13 +101,18 @@ A stage that doesn't yet exist has no directory under `src/` until its first fil
 | `docs/balancer_v3_reference.md` | Balancer V3 substrate working notes |
 | `.cursorrules` | Cursor editor conventions + the "Cursor operation scope — executor under Claude Code planning" rules |
 
-### Project-knowledge-only (invisible to Claude Code)
+### External canonical spec — `aummfi-bit/aumm-site` (read via WebFetch)
 
-These files exist in the `claude.ai` project sidebar but **are not in the repo**. Claude Code cannot read them directly.
+The protocol's canonical specification lives in a separate public GitHub repo: <https://github.com/aummfi-bit/aumm-site> (default branch `main`). Claude Code reads from it directly via WebFetch on raw URLs of the form `https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/<file>`.
 
-* **`aumm-specs.md`** and the **18 numbered spec docs** (`01_intro.md`, `02_*.md`, ..., `18_*.md`), plus the **28 pool-profile documents**. These are the protocol's canonical specification: tokenomics (§ix in `04_tokenomics.md`), constitution (§xxix in `10_constitution.md`), formulas F-0 through F-10 (`11_formulas.md`), bootstrap rules (`08_bootstrap.md`), appendices (`13_appendices.md`).
+Layout at the repo root:
 
-When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — Claude Code does not have these files. The correct move is to **ask the user to paste the relevant section into chat**, not to guess or fabricate the content. FINDINGS.md often quotes or summarises the relevant spec passages; check there first.
+* **Numbered spec docs** — `01_intro.json` through `16_team.md` (with `07a_tokens.md` as a sub-doc). Canonical sections referenced from this repo include tokenomics (§ix in `04_tokenomics.md`), constitution (§xxix in `10_constitution.md`), formulas F-0 through F-12 (`11_formulas.md`), bootstrap rules (`08_bootstrap.md`), appendices (`13_appendices.md`), CCB narrative + multiplier engine (`03_theoretical_foundation.md`).
+* **Pool profiles** — `miliarium_profiles/` directory holds the 28 individual Miliarium pool documents.
+* **Other prose** — `aureum_schedule.md`, `project_aureum_design_final.md`, `script.md`, `15_overview.md`.
+* **AI-consumption versions** — `llms.txt` (curated index) and `llms-full.txt` (full corpus concatenation) at the repo root, for cases where a single round-trip read is preferred over per-doc fetches.
+
+When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — fetch the doc directly: `WebFetch(url=https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/11_formulas.md, prompt=...)`. **Do not fabricate spec content.** If WebFetch fails or the relevant section is ambiguous after fetch, ask the user to paste from their local clone or the GitHub web view. FINDINGS.md often quotes or summarises the relevant spec passages; checking there first can avoid an unneeded fetch.
 
 ---
 
@@ -433,7 +438,7 @@ Earlier Stage E commits (E0 scaffold, E1.1–E1.2 framework + ixHelvetia, E2 ixE
 2. Confirm clean working tree: `git status -sb` shows `main` tracking, no modifications.
 3. Read `docs/STAGES_OVERVIEW.md` Stage F section — CCB (Compound Centrifugal Balance) scoring engine, gauge eligibility prerequisites, F-7 formula reference; testing strategy notes.
 4. Read `docs/FINDINGS.md` for any unresolved OQs that touch CCB scoring (block-number cadences OQ-3 / OQ-4 / OQ-5 already resolved; flag anything CCB-specific).
-5. **Project-knowledge-only reads (ask user to paste):** `aumm-specs/11_formulas.md` F-7 (CCB scoring formula) and any related sections from `04_tokenomics.md` / `08_bootstrap.md` — invisible to Claude Code per §4.
+5. **External spec reads (WebFetch from `aummfi-bit/aumm-site` per §4):** `11_formulas.md` F-4 / F-5 / F-6 / F-8 (CCB engine formulas — F-7 is the Stage H per-block emission sequence but useful as design context), `03_theoretical_foundation.md` (CCB narrative + EMA design + multiplier engine), `04_tokenomics.md` §vii (Miliarium-only multiplier scope), `08_bootstrap.md` §xxi (90-day gauge boost = 1.2× CCB multiplier).
 6. Author `docs/STAGE_F_PLAN.md` and `docs/STAGE_F_NOTES.md` scaffolds (F0 sub-step) on a new `stage-f` branch cut from `main` HEAD.
 7. Stage F entry mode per §13: **Opus extra-high** for formula review + design surface (CCB is the protocol's gauge-scoring primitive — load-bearing math); **Opus high** through implementation; Sonnet only for narrow scaffolding / test-boilerplate beats.
 
@@ -445,7 +450,7 @@ Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user'
 * Cursor Auto-Run stays "Ask Every Time," Command Allowlist stays empty, Browser / MCP / File-Deletion / External-File Protection toggles stay on.
 * **Claude Code does not write files.** All file writes flow through Cursor. Claude Code plans, authors prompts, audits Cursor's output, drafts commit messages and terminal commands for the user.
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
-* Project-knowledge-only files (aumm-specs and friends, section 4) are invisible to Claude Code. If a plan or notes reference requires spec text, ask the user to paste the relevant section.
+* External canonical spec lives at `https://github.com/aummfi-bit/aumm-site` (default branch `main`). Claude Code reads it directly via WebFetch on raw URLs (e.g. `https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/11_formulas.md`). When a plan or notes reference requires spec text, fetch directly; ask the user to paste only if WebFetch fails or the section is ambiguous. See §4 for the full layout.
 * **§8e.1 template is two blocks.** Every filled §8e.1 has a `### CURSOR PROMPT — paste to Cursor verbatim; Cursor only` block and a separate `### USER VERIFY — run in the user's terminal after Cursor's save; not part of the Cursor prompt` block. Cursor never sees USER VERIFY. USER VERIFY and all terminal command blocks (including git sequences) begin with `clear` on their own line. **When Claude Code emits a filled §8e.1 in chat, the two blocks must be in two physically separate ` ```text ``` ` code fences — never a single combined fence — so the user's paste to Cursor cannot accidentally include the USER VERIFY shell commands.** When the same template is pasted into a stage-plan or notes file for editor-preview rendering (per the §8e.1 chat-safe-formatting paragraph hardened at `8197aaa`), each block is also wrapped in its own contiguous ` ```text ``` ` fence so the preview keeps each block as a single copyable unit. See §8e.1 + D31.
 * **`.cursorrules` USER VERIFY hard-stop (`5f3b4fc`).** Defense-in-depth on top of the §8e.1 two-block split: if any prompt passed to Cursor contains the literal text `### USER VERIFY`, Cursor must treat everything from that header to end-of-message as out of scope, report "USER VERIFY section detected — treating as out of scope per .cursorrules", and proceed only on the content above. Catches paste accidents where the user copies past the divider.
 * **§13 Sonnet dispatch is not session-scoped.** Every filled §8e.1 turn must close with the Sonnet dispatch line per §13's "Relay after a §8e.1 draft" — across sessions, resumes, and compactions. If Claude Code forgets, user says "mode?" and Claude Code emits the dispatch.
