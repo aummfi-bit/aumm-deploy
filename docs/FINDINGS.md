@@ -1197,41 +1197,91 @@ The accumulator's defensive value is asymmetric to the attack surface in the lay
 - **`10_constitution.md` §xxix:** if `TWAP_WINDOW_BLOCKS = 720` was added per OQ-5a's prior edit list, remove it; OQ-5a-bis supersedes the TWAP-window framing.
 - **`12_aureum_glossary.md`:** if a TWAP-window entry was added per OQ-5a, remove or amend to reflect the per-day spot-read framing.
 
-### OQ-23 — F-8 multiplier interpretive ambiguities + 90-day boost composition
+### OQ-23 (RESOLVED): F-8 multiplier — per-channel ±0.05 step + per-channel dead zone + sum-of-EMAs aggregate + simple-mean Miliarium + boost gates output + pauses F-8 state
 
-**Status.** Proposed, pending F3. Stub here so the design surface is on record before `CCBMultiplier.sol` ships.
+**Decision (2026-04-29):** All five sub-items of OQ-23 resolved. Selections made under discrete-step semantics — F-8's "step" is a fixed-magnitude impulse, not a capped continuous delta. Each channel produces a signal in `{−STEP_SIZE, 0, +STEP_SIZE}`; total per-update Δ ∈ `{−2·STEP_SIZE, −STEP_SIZE, 0, +STEP_SIZE, +2·STEP_SIZE}`.
 
-**Context.** F-8 ("multiplier engine") is pinned in `10_constitution.md` §xxix with three numerical constants: `Step size: ±0.05`, `Clamp: [0.75, 1.25]`, `Dead zone: 0.1%`. The constants resolve cleanly to fixed-point literals (`STEP_SIZE = 0.05e18`, `CLAMP_FLOOR = 0.75e18`, `CLAMP_CEILING = 1.25e18`, `DEAD_ZONE = 1e15`), but four interpretive ambiguities and one boost-composition question remain in the spec text. F3 cannot ship `CCBMultiplier.sol` without resolving them.
+**(i) Step-size scope: per-channel cap (option (i.a) of the OQ-23 stub).** `delta_global` and `delta_intra` are independently bounded at `±STEP_SIZE = ±0.05e18`. Each channel produces a signal in `{−0.05e18, 0, +0.05e18}`. Total per-update Δ ∈ `{−0.10e18, −0.05e18, 0, +0.05e18, +0.10e18}`. The clamp band `[CLAMP_FLOOR, CLAMP_CEILING] = [0.75e18, 1.25e18]` is the global guardrail.
 
-**Sub-items.**
+**(ii) Dead-zone scope: both channels independently (option (ii.c) of the OQ-23 stub).** Each channel's TVL ratio is independently filtered against `DEAD_ZONE = 1e15` (0.1% in 1e18 fixed-point). If `|ratio| < DEAD_ZONE`, that channel's delta = 0; else `±STEP_SIZE`.
 
-**(i) Step-size scope — per-channel cap or per-update total?**
+**(iii) Protocol-aggregate-EMA: sum of per-pool EMAs (option (iii.b) of the OQ-23 stub).** `protocolTVLEMA(t) = sum(emaSampler.tvlEMA(pool_i) for i ∈ MiliariumPools)`. Computed at read time inside `CCBMultiplier.updateMultiplier()`. No additional EMA state in `CCBMultiplier`; no separate aggregate-EMA update entry point. The previous-epoch aggregate is stored as `lastProtocolAggregateEMA` for the next-epoch direction comparison.
 
-`Step size: ±0.05` could mean (i.a) the per-channel cap — `delta_global ∈ [−0.05, +0.05]` AND `delta_intra ∈ [−0.05, +0.05]`, total per-update Δ ∈ [−0.10, +0.10]; or (i.b) the per-update total — combined `(delta_global + delta_intra) ∈ [−0.05, +0.05]` regardless of per-channel split. (i.a) is the literal reading of the spec text; (i.b) gives a tighter steady-state convergence and a smaller per-epoch swing budget.
+**(iv) Miliarium-average-EMA: simple arithmetic mean (option (iv.a) of the OQ-23 stub).** `miliariumAvgEMA(t) = protocolTVLEMA(t) / 28`. Computed at read time. Simple mean delivers strong intra correction signal when the constellation is imbalanced — dominant pools see `delta_intra` pushing them down, small pools see it pushing them up.
 
-**(ii) Dead-zone scope — which channel does `Dead zone: 0.1%` apply to?**
+**(v) 90-day boost composition: NEW option (v.d) — boost gates effective output AND pauses F-8 state during boost window.** This option supersedes stub options (v.a) / (v.b) / (v.c) of the F0.1 OQ-23 stub. Mechanism:
 
-(ii.a) `delta_global` only — the protocol-aggregate signal must move by ≥0.1% to trigger an update; intra-pool signal applies unfiltered. (ii.b) `delta_intra` only — the per-pool deviation from the Miliarium-set average must exceed 0.1% to trigger an update; aggregate signal unfiltered. (ii.c) both — each channel independently dead-zoned at 0.1% before contributing to the per-update Δ.
+1. At gauge approval (Stage G integration point — not Stage F): `CCBMultiplier.activateBoost(pool)` sets `boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS` (= 648,000 blocks per `10_constitution.md` §xxix). Entry-point access-control restricted to the injected gauge-registry interface (placeholder until Stage G ships); same one-shot-setter pattern as `IMiliariumRegistry` per F-D9.
+2. `M_i[pool]` initialized to `INITIAL_MULTIPLIER = 1e18` (cold-start neutral, per F-8 spec text "initialized at 1.00").
+3. `CCBMultiplier.getMultiplier(pool)` (view) returns:
+   - `1e18` if `pool` is non-Miliarium (per F-D9).
+   - `BOOST_FACTOR = 1.2e18` if `block.number < boostExpiryBlock[pool]` (boost active).
+   - `M_i[pool]` otherwise (already clamped to `[0.75e18, 1.25e18]` by `updateMultiplier`).
+4. `CCBMultiplier.updateMultiplier(pool)` is no-op during the boost window: marks `lastMultiplierUpdateBlock[pool] = block.number` (so the bi-weekly cadence ticks correctly) but returns early without modifying `M_i[pool]` and without updating `lastProtocolAggregateEMA`. F-8 evolution paused per-pool while boost is active.
+5. `EMASampler.tvlEMA[pool]` updates normally during boost — the boost gates the multiplier engine, not the TVL EMA. At boost expiry the pool's EMA already has 90 days of bake-time, satisfying §xxi's "the CCB takes over seamlessly" framing.
 
-**(iii) Protocol-aggregate-EMA definition.**
+**Why (v.d) over (v.a) / (v.b) / (v.c):**
 
-F-8's "global delta" reads off a protocol-aggregate EMA, but the spec doesn't pin its construction. (iii.a) A separate EMA on summed protocol TVL (one EMA value per protocol cycle, separate state). (iii.b) The sum of per-pool EMAs (no separate state, just a read across `EMASampler` storage). (iii.b) is computationally cheaper but linearly composes per-pool noise; (iii.a) smooths the aggregate independently and reduces noise correlation.
+§xxi specifies three properties: "fixed 1.2× CCB multiplier for 90 days" + "activates when the gauge passes, expires on its own" + "the CCB takes over seamlessly." Only (v.d) honors all three.
 
-**(iv) Miliarium-average-EMA definition.**
+- (v.a) initialized `M_i` at 1.2 with normal F-8 evolution: the multiplier output decays from 1.2 over the boost window, contradicting "fixed 1.2×". There is no explicit expire event ("expires on its own" misaligned).
+- (v.b) effective output = 1.2 with F-8 still running on `M_i`: under cold-start dynamics (rising aggregate + faster-than-average growth both push `delta_global` and `delta_intra` downward), `M_i` decays during boost to ~0.75–0.85 by day 91; transition cliff at expiry is 25–37%, contradicting "seamless".
+- (v.c) multiplicative composition `min(1.2 × M_i, 1.25)`: pools at `M_i = 1.25` (top of clamp) see effective = 1.25 instead of the boosted 1.5 (capped) — disabling the boost for high-multiplier pools; the boost reward is non-uniform across the eligible-pool set.
+- (v.d) effective output fixed at `1.2e18` ✓ ("fixed 1.2×"); boost expires at block-number gate ✓ ("expires on its own"); `M_i = 1e18` at expiry, transition is 1.2 → 1.0 (16.7% drop — the smallest among options that honor "fixed 1.2×" and "expires") ✓ ("seamless"); F-8 evolution continues from neutral baseline post-expiry ✓.
 
-F-8's "intra-pool delta" reads off a 28-pool average. (iv.a) Simple arithmetic mean of the 28 per-pool EMAs. (iv.b) TVL-weighted mean (each per-pool EMA weighted by its current EMA value when computing the average). (iv.b) gives a more honest "where the constellation's mass actually is" signal; (iv.a) is the literal reading and is simpler.
+**Why (i.a) over (i.b):**
 
-**(v) 90-day gauge boost composition with F-8 state and clamp band.**
+F-8's formula `M_i(t-1) + delta_global + delta_intra_i` is written with two separate delta terms summed. Treating "step size" as a per-term cap is the natural reading of two-term summation. Anti-cyclical design wants signal-aligned channels (both saying "shrink" or both "grow") to produce the strongest correction; per-channel caps deliver this — total Δ ∈ `{−0.10, −0.05, 0, +0.05, +0.10}` cleanly aligned with channel agreement. The narrative in `03_theoretical_foundation.md` explicitly calls them "two small steps" — separate, both small. (i.b) would require redefining the discretization (combined ±0.05 capped) and would weaken signal alignment.
 
-`08_bootstrap.md` §xxi specifies "1.2× CCB multiplier for 90 days" as a gauge-approval boost but does not specify how this interacts with the F-8 evolution of `M_i(t)` and the clamp band `[0.75, 1.25]`. Three live readings:
+**Why (ii.c) over (ii.a) / (ii.b):**
 
-- (v.a) `M_i` is initialized at `1.2e18` at gauge approval (replaces the 1.0 cold-start). F-8 evolution during the boost window is normal. The boost "expires" via natural F-8 decay toward steady-state. Clamp `[0.75, 1.25]` applies to `M_i`. Risk: the boost is invisible at the multiplier-output layer once F-8 has decayed; no explicit "boost end" event.
-- (v.b) Effective multiplier returned by `CCBMultiplier` is `boost ? 1.2e18 : M_i(t)` for the boost window — `M_i` state still updates via F-8 every `BLOCKS_PER_EPOCH` but is not read for scoring during boost. Clamp applies to `M_i`, not to the effective output. Risk: at boost expiry there can be a discontinuity from `1.2e18` to whatever `M_i(t)` has evolved to; a pool that's been F-8-eroded during boost falls off a cliff.
-- (v.c) Effective multiplier is `min(1.2e18 × M_i(t) / 1e18, CLAMP_CEILING)` — multiplicative composition with the ceiling re-applied. Boosted pools at `M_i = 1.0` see `1.2`, pools at `M_i = 1.25` (top of clamp) stay at `1.25`, pools at `M_i = 0.75` see `0.9`. Risk: the boost reward is non-uniform across the eligible-pool set.
+F-8 narrative says "if the TVL ratio is within the dead zone of neutral, no step is applied" — both channels measure a TVL ratio (aggregate-direction ratio for global, pool-vs-average ratio for intra), and both can produce noise. Symmetric treatment matches F-8's two-axis architecture. (ii.a) / (ii.b) introduce design asymmetry without clear motivation — protecting one axis from noise but not the other has no clear protocol-level benefit.
 
-**Pre-F3 resolution required.** `CCBMultiplier.sol` cannot ship without selecting (i), (ii), (iii), (iv), and (v). The selections determine the contract's update math, its public read interface, and its test surface.
+**Why (iii.b) over (iii.a):**
 
-**Spec edit flag (aumm-site, user-side — not a repo edit).** `10_constitution.md` §xxix needs amendment to pin (i), (ii), (iii), and (iv) explicitly; `08_bootstrap.md` §xxi needs amendment to pin (v) explicitly. Flagged for user's spec-side update; not a repo edit.
+No additional EMA state in `CCBMultiplier`; no separate update entry point. Sum of per-pool EMAs is mathematically equivalent to a separate aggregate EMA when all pools sample at the same block; deviations are bounded by per-pool EMA freshness (max one `BLOCKS_PER_DAY` per OQ-5a's cadence). The OQ-5a-bis threat model already accepts that single-block-spike defense is layered (F-10 efficiency caps + tier smoothing + Year-1 buffer) rather than achieved at the EMASampler layer; (iii.a)'s spike-resistance benefit doesn't materially change the threat surface, and the additional update entry point would be a Stage F surface expansion without commensurate value.
+
+**Why (iv.a) over (iv.b):**
+
+Simple arithmetic mean delivers strong intra correction when the constellation is imbalanced. Under TVL-weighted mean (`sum(EMA²) / sum(EMA)`), the dominant pool is near the weighted mean by construction and gets minimal intra correction — a perverse property that contradicts F-8's anti-cyclical design intent. Simple mean also matches the literal reading of "Miliarium average" without weight qualifier.
+
+**What this resolution does NOT change:**
+
+- **F-D9** (`04_tokenomics.md` §vii): non-Miliarium gauged pools use `CCB_mult = 1.0`. `getMultiplier(pool)` returns `1e18` for non-Miliarium pools regardless of boost-window state. Unchanged.
+- **F-D5** (OQ-5a): permissionless `EMASampler.updateEMA(pool)` cadence at `BLOCKS_PER_DAY = 7,200`. Unchanged.
+- **F-D6**: permissionless `CCBMultiplier.updateMultiplier(pool)` cadence at `BLOCKS_PER_EPOCH = 100,800`. Unchanged.
+- **OQ-22**: TVL denomination = svZCHF; `ITVLOracle.tvl(pool)` returns 18-decimal svZCHF-denominated TVL. Unchanged.
+- **OQ-5a-bis**: `EMASampler` reads `ITVLOracle.tvl(pool)` once per `BLOCKS_PER_DAY` at the sample boundary; no cumulative-balance accumulator; protection model relies on F-10 layered defense. Unchanged.
+- **F-D7** (`10_constitution.md` §xxix constants): `STEP_SIZE = 0.05`, `CLAMP = [0.75, 1.25]`, `DEAD_ZONE = 0.1%`. The numerical constants are unchanged; the interpretive ambiguities flagged for OQ-23 are now pinned.
+- **Stage G** gauge state machine, **Stage J** `MiliariumRegistry`, **Stage H** emission distributor — all unchanged. `CCBMultiplier.activateBoost(pool)` is a Stage F integration point that Stage G's gauge-approval flow will call; the access-control interface (`IGaugeRegistry`) is injected at deployment with a placeholder, replaced via one-shot setter when Stage G ships (same pattern as `IMiliariumRegistry` per F-D9).
+
+**Constants this pins:**
+
+- `STEP_SIZE = 5e16` (0.05 in 1e18 fixed-point; per-channel cap; preserved from §xxix).
+- `CLAMP_FLOOR = 75e16` and `CLAMP_CEILING = 125e16` (preserved from §xxix).
+- `DEAD_ZONE = 1e15` (0.1% in 1e18 fixed-point; per-channel; preserved from §xxix).
+- `INITIAL_MULTIPLIER = 1e18` (cold-start; per F-8 spec text "initialized at 1.00").
+- `BOOST_FACTOR = 1.2e18` (per `08_bootstrap.md` §xxi).
+- `GAUGE_BOOST_DURATION_BLOCKS = 648_000` (90 days at `BLOCKS_PER_DAY = 7,200`; preserved from §xxix).
+- `BLOCKS_PER_EPOCH = 100_800` (multiplier-update cadence; preserved from OQ-3).
+
+**Test surface required at F3:**
+
+- Per-channel discrete-step semantics: each channel produces `±STEP_SIZE` or 0; combinations yield total Δ ∈ `{−2·STEP_SIZE, −STEP_SIZE, 0, +STEP_SIZE, +2·STEP_SIZE}`.
+- Dead-zone gating per channel: ratios just below `DEAD_ZONE` gate to 0; just above gate to `±STEP_SIZE`.
+- Clamp band: `M_i + total` clamps to `[CLAMP_FLOOR, CLAMP_CEILING]`; over-step does not breach.
+- Boost gating: `getMultiplier(pool)` returns `BOOST_FACTOR` within the boost window; `M_i[pool]` otherwise.
+- Boost pause: `updateMultiplier(pool)` during boost ticks `lastMultiplierUpdateBlock` but does not modify `M_i` state.
+- Boost expiry: at `boostExpiryBlock[pool]`, `getMultiplier` switches from `BOOST_FACTOR` to `M_i[pool]` (= `INITIAL_MULTIPLIER` if F-8 has not yet fired); first F-8 update after expiry behaves normally per the per-channel semantics above.
+- Miliarium-only scope: non-Miliarium pools return `1e18` unconditionally per F-D9; `updateMultiplier` either reverts or no-ops for non-Miliarium (selected at F3 — both are F-D9-compliant).
+- Aggregate-EMA / simple-mean reads: synthetic 28-pool EMA arrays produce expected sum / mean values; intra deltas computed against simple mean align with sub-item (iv.a).
+
+**Spec edits required (aumm-site, user-side — not a repo edit):**
+
+- **`10_constitution.md` §xxix** amendment: append after the existing "Step size: ±0.05" / "Clamp: [0.75, 1.25]" / "Dead zone: 0.1%" trio: "Step size is per-channel — `delta_global` and `delta_intra` each independently ∈ `{−0.05, 0, +0.05}`; total per-update Δ ∈ `[−0.10, +0.10]`. Dead zone is per-channel — each channel's TVL ratio is independently filtered at 0.1% before contributing. Protocol-aggregate EMA = sum of the 28 Miliarium-pool TVL EMAs (no separate accumulator). Miliarium-average EMA = simple arithmetic mean of the 28 per-pool TVL EMAs."
+- **`08_bootstrap.md` §xxi** amendment: append after "Activates when the gauge passes, expires on its own — no vote, no renewal": "During the 90-day boost window, the F-8 multiplier engine is paused for the boosted pool — `M_i` remains at its initial value of 1.0 throughout the window. At day 91, the boost expires and `M_i` resumes per-epoch F-8 evolution; effective `CCB_mult` transitions from 1.2 to 1.0 at boost expiry, and from 1.0 onward as F-8 deltas accumulate against the constellation's protocol-aggregate and Miliarium-average reads."
+- **`11_formulas.md` F-8** annotation pointing to the §xxix and §xxi amendments above. The formula `M_i(t) = clamp(M_i(t-1) + delta_global + delta_intra_i, 0.75, 1.25)` is unchanged; the discretization of `delta_global` / `delta_intra` and the boost composition are pinned in §xxix / §xxi as above.
+- **`03_theoretical_foundation.md`** prose amendment to clarify that the "two small steps" are per-channel `±0.05` discrete impulses with per-channel dead-zone gating — currently reads as design-intent prose without numerical detail.
 
 ---
 

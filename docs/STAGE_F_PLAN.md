@@ -77,6 +77,8 @@ These are the answers to the planning-stage questions resolved before this file 
 
 - **F-D4 → OQ-5a-bis (RESOLVED at F0.3, FINDINGS L1150):** TVL accumulator vs spot-at-sample — option (b) selected. `EMASampler.sol` reads `ITVLOracle.tvl(pool)` once per `BLOCKS_PER_DAY` at the sample boundary; no cumulative-balance accumulator; no Stage D `AureumFeeRoutingHook` modification. F-D4's "two paths, pre-F1 resolution required" superseded. OQ-5a's cumulative-TVL framing is superseded in part by this resolution (cumulative accumulator dropped; per-day spot read substituted; protection model relies on EMA(60) + F-10 efficiency tournament + tier caps as a layered defense).
 
+- **F-D7 + F-D8 → OQ-23 (RESOLVED at F0.4, FINDINGS L1200):** F-8 multiplier interpretive ambiguities (i)–(iv) + 90-day boost composition (v) all resolved. (i) per-channel ±0.05 cap (`delta_global` and `delta_intra` each ∈ `{−0.05, 0, +0.05}` independently); (ii) per-channel dead zone (each channel's TVL ratio filtered at 0.1% independently); (iii) protocol-aggregate EMA = sum of per-pool EMAs (no separate accumulator); (iv) Miliarium-average EMA = simple arithmetic mean of 28 per-pool EMAs; (v) NEW option (v.d) supersedes stub options (v.a)/(v.b)/(v.c) — boost gates effective output to `1.2e18` AND pauses F-8 state evolution during the 90-day window; `M_i` initialized at `1e18` at gauge approval, frozen during boost; at boost expiry effective output transitions 1.2 → 1.0 (16.7% drop) and F-8 evolution resumes from `1e18` baseline. F-D7's (i)–(iv) deferral closed; F-D8's (a)/(b)/(c) live readings superseded by (v.d).
+
 ---
 
 ## What is explicitly NOT in Stage F
