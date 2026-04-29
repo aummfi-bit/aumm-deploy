@@ -1,6 +1,6 @@
 # Stage E — Pool-deployment framework + 3 pilot pools
 
-> **Status:** Ready to start. Stage D is complete at `stage-d-complete` (commit `951c338`, 2026-04-25). Prerequisites checked and green on 2026-04-25: 160/160 tests green on mainnet fork (151 unit + 9 fork) per the D35 split-form invocation.
+> **Status:** Complete at `stage-e-complete` (commit `41a7590`, 2026-04-28). 168/168 tests green on mainnet fork (156 unit + 12 fork) per the D35 split-form invocation.
 >
 > **Audience:** Sagix, plus any future Claude session that needs to know what Stage E is and what it produces.
 >
@@ -205,3 +205,5 @@ On-chain landing:
 | E4.1 | 3d35244 | 2026-04-28 | E4.1: test/unit/AureumWeightedPoolFactory.t.sol — QG revert-path unit tests (5 methods, mock vault, per E-D13) |
 | docs (E-D26) | cf9fc37 | 2026-04-28 | docs: STAGE_E_NOTES.md E-D26 — E4 unit-test scope, E-D9 closure, Cursor NatSpec-hyperlink artifact |
 | docs (§11 close) | ca24e5c | 2026-04-28 | docs: CLAUDE.md §11 refresh — Stage E mid-stage (E1+E2+E3+E4 closed, E5 docs / E9 close ahead) |
+| docs (E10 PLAN) | 301d67b | 2026-04-28 | docs: STAGE_E_PLAN.md — E10 mid-stage supersession (deal(adjust=true) / E-D7 superseded) |
+| docs (E-D26 amend) | 41a7590 | 2026-04-28 | docs: STAGE_E_NOTES.md E-D26 amendment — NatSpec-hyperlink artifact reclassified as paste-rendering (E5 docs sweep) |
