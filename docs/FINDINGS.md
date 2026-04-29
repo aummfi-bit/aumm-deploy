@@ -1099,6 +1099,78 @@ The throttle stamp updates only after `routeYieldFee` returns successfully. If t
 
 **Spec edit flag (aumm-site, user-side — not a repo edit).** `aumm-site/04_tokenomics.md` §ix needs amendment for bi-weekly cadence policy.
 
+### OQ-22 — TVL denomination + oracle source for CCB EMA inputs
+
+**Status.** Proposed, pending F1. Stub here so the design surface is on record before `EMASampler.sol` ships and before the `ITVLOracle` interface concretizes.
+
+**Context.** F-4's EMA, F-5's score, and F-6's share all consume per-pool TVL as a scalar. The spec — `02_mental_model.md` §iii, `03_theoretical_foundation.md` §vi-b, `11_formulas.md` F-4, `10_constitution.md` §xxix — uses "TVL" without pinning a numéraire, oracle, or price source. Stage F builds the EMA infrastructure and (per F-D3) accepts an injectable `ITVLOracle` interface so the contract structure does not block on this resolution; the concrete oracle implementation lands at the OQ-22 resolution stage (likely Stage G or pre-Stage-H, before live emissions).
+
+**Question.** What numéraire and what oracle does `ITVLOracle.tvl(pool)` return for the CCB engine?
+
+**Options considered.**
+
+- **Option (a) — svZCHF as numéraire, on-chain price via constellation-spot averaging.** Extends the OQ-8 BTC-pricing precedent ("spot average across all gauged pools holding any registered BTC wrapper") to the general TVL case: for each non-svZCHF token in a pool, derive its svZCHF price as a TWAP-of-spots across all gauged Aureum pools that hold both the token and svZCHF (or a path through svZCHF via another constellation token). No external oracle dependency; consistent with `10_constitution.md` §xxvii's "no off-chain dependencies for core operation" framing. Cost: bootstrapping problem at protocol genesis (no constellation-spot signal until pools have depth) — but F-0 bootstrap fills Bodensee within the first ~10 protocol-months, and Stage F → Stage H sequencing means the engine ships before live emissions anyway.
+- **Option (b) — USD via external oracle (Chainlink / Pyth).** Standard approach. Adds an external dependency; contradicts §xxvii framing; adds liveness, manipulation, and freshness attack surfaces. Operational simplicity not worth the architectural compromise on a protocol whose stated invariant is on-chain-only valuation.
+- **Option (c) — hybrid.** ERC-4626 tokens with a Rate Provider use `RP.rate() × balance` (the Rate Provider's intrinsic conversion to underlying); STANDARD tokens use constellation-spot averaging per (a). Reduces the number of constellation-spot lookups (~half the 64-row token inventory has Rate Providers per Stage E pilot configs) at the cost of hybrid-path code complexity.
+
+**Pre-F1 resolution required.** Implementation at F1 takes the `ITVLOracle` interface as injectable; the chosen option determines the concrete oracle contract that ships at the resolution stage. The interface shape (`tvl(address pool) external view returns (uint256)` with svZCHF or USD denomination implied) is itself a function of the resolution.
+
+**Spec edit flag (aumm-site, user-side — not a repo edit).** `02_mental_model.md` §iii, `03_theoretical_foundation.md` §vi-b, `10_constitution.md` §xxix, and `11_formulas.md` F-4 all reference "TVL" as if the numéraire were settled. Once OQ-22 resolves, those passages need amendment to pin the numéraire and the oracle convention. Flagged for user's spec-side update; not a repo edit.
+
+### OQ-5a-bis — TVL accumulator hook integration vs spot-at-sample
+
+**Status.** Proposed, pending F1. Stub here so the OQ-5a accumulator commitment is reconciled with Stage D's hook-slot occupancy before `EMASampler.sol` ships.
+
+**Context.** OQ-5a (RESOLVED, FINDINGS L555+) specifies a Uniswap-style cumulative TVL accumulator updated on every swap / liquidity event, with TWAP read at sample time as `(cumulativeTVL_now − cumulativeTVL_dayAgo) / TWAP_WINDOW_BLOCKS`. That commitment was made before Stage D's `AureumFeeRoutingHook` shipped. Balancer V3 allows one hook per pool; Stage D's fee-routing hook already occupies that slot on every gauged pool. The accumulator-write logic that OQ-5a's resolution implicitly requires has nowhere to live without modifying Stage D's hook.
+
+**Question.** Where do the per-block accumulator writes that OQ-5a's TWAP read assumes actually happen?
+
+**Options considered.**
+
+- **Option (a) — extend `AureumFeeRoutingHook` with accumulator state and accumulator-write logic.** Add `cumulativeTVL` + `lastAccumulatorBlock` storage per pool to the hook, and write the accumulator update at the start of `onAfterSwap`, `onAfterAddLiquidity`, `onAfterRemoveLiquidity`. Touches a Stage D contract; requires careful audit; preserves OQ-5a's manipulation-resistance guarantee (the 1-hour TWAP window dampens single-block TVL spikes). Cost: Stage D's hook is already audit-frozen at `stage-d-complete` — modifying it re-opens the audit surface and forces a Stage D re-derivation.
+- **Option (b) — read TVL spot at sample time via `ITVLOracle`, no in-day TWAP.** Drop the OQ-5a accumulator commitment; revise OQ-5a to "spot-at-sample with no in-day TWAP." `EMASampler.updateEMA(pool)` reads `ITVLOracle.tvl(pool)` once at the sample boundary; that single read is the EMA input. Accepts the noted single-block-spike attack surface (an actor briefly spikes TVL right at the sample block to bias that day's contribution; the 60-day smoothing dampens to ~3.3% influence per day). Trivial implementation; no Stage D modification; the attack surface is bounded by the EMA's smoothing and by the cost of holding the spike for the full protocol-day window.
+- **Option (c) — separate `AureumTVLAccumulator` hook on a sibling slot.** Rejected up front: Balancer V3 allows one hook per pool, and Stage D's fee-routing hook is non-negotiable on every gauged pool. No sibling slot exists.
+
+**Pre-F1 resolution required.** F1's `EMASampler.sol` shape differs between (a) and (b): (a) consumes a TWAP from accumulator state external to the sampler; (b) consumes a single spot read. The `ITVLOracle` interface and the sampler's update math both depend on the choice.
+
+**Spec edit flag (aumm-site, user-side — not a repo edit).** If (b) is selected, OQ-5a's "Mechanism" subsection in this file (FINDINGS L559-L568) needs amendment to drop the TWAP-window text and acknowledge the single-block-spike attack surface explicitly. The spec-side `11_formulas.md` F-4 amendment listed in OQ-5a's "Spec edits required" subsection (FINDINGS L584) also needs revision.
+
+### OQ-23 — F-8 multiplier interpretive ambiguities + 90-day boost composition
+
+**Status.** Proposed, pending F3. Stub here so the design surface is on record before `CCBMultiplier.sol` ships.
+
+**Context.** F-8 ("multiplier engine") is pinned in `10_constitution.md` §xxix with three numerical constants: `Step size: ±0.05`, `Clamp: [0.75, 1.25]`, `Dead zone: 0.1%`. The constants resolve cleanly to fixed-point literals (`STEP_SIZE = 0.05e18`, `CLAMP_FLOOR = 0.75e18`, `CLAMP_CEILING = 1.25e18`, `DEAD_ZONE = 1e15`), but four interpretive ambiguities and one boost-composition question remain in the spec text. F3 cannot ship `CCBMultiplier.sol` without resolving them.
+
+**Sub-items.**
+
+**(i) Step-size scope — per-channel cap or per-update total?**
+
+`Step size: ±0.05` could mean (i.a) the per-channel cap — `delta_global ∈ [−0.05, +0.05]` AND `delta_intra ∈ [−0.05, +0.05]`, total per-update Δ ∈ [−0.10, +0.10]; or (i.b) the per-update total — combined `(delta_global + delta_intra) ∈ [−0.05, +0.05]` regardless of per-channel split. (i.a) is the literal reading of the spec text; (i.b) gives a tighter steady-state convergence and a smaller per-epoch swing budget.
+
+**(ii) Dead-zone scope — which channel does `Dead zone: 0.1%` apply to?**
+
+(ii.a) `delta_global` only — the protocol-aggregate signal must move by ≥0.1% to trigger an update; intra-pool signal applies unfiltered. (ii.b) `delta_intra` only — the per-pool deviation from the Miliarium-set average must exceed 0.1% to trigger an update; aggregate signal unfiltered. (ii.c) both — each channel independently dead-zoned at 0.1% before contributing to the per-update Δ.
+
+**(iii) Protocol-aggregate-EMA definition.**
+
+F-8's "global delta" reads off a protocol-aggregate EMA, but the spec doesn't pin its construction. (iii.a) A separate EMA on summed protocol TVL (one EMA value per protocol cycle, separate state). (iii.b) The sum of per-pool EMAs (no separate state, just a read across `EMASampler` storage). (iii.b) is computationally cheaper but linearly composes per-pool noise; (iii.a) smooths the aggregate independently and reduces noise correlation.
+
+**(iv) Miliarium-average-EMA definition.**
+
+F-8's "intra-pool delta" reads off a 28-pool average. (iv.a) Simple arithmetic mean of the 28 per-pool EMAs. (iv.b) TVL-weighted mean (each per-pool EMA weighted by its current EMA value when computing the average). (iv.b) gives a more honest "where the constellation's mass actually is" signal; (iv.a) is the literal reading and is simpler.
+
+**(v) 90-day gauge boost composition with F-8 state and clamp band.**
+
+`08_bootstrap.md` §xxi specifies "1.2× CCB multiplier for 90 days" as a gauge-approval boost but does not specify how this interacts with the F-8 evolution of `M_i(t)` and the clamp band `[0.75, 1.25]`. Three live readings:
+
+- (v.a) `M_i` is initialized at `1.2e18` at gauge approval (replaces the 1.0 cold-start). F-8 evolution during the boost window is normal. The boost "expires" via natural F-8 decay toward steady-state. Clamp `[0.75, 1.25]` applies to `M_i`. Risk: the boost is invisible at the multiplier-output layer once F-8 has decayed; no explicit "boost end" event.
+- (v.b) Effective multiplier returned by `CCBMultiplier` is `boost ? 1.2e18 : M_i(t)` for the boost window — `M_i` state still updates via F-8 every `BLOCKS_PER_EPOCH` but is not read for scoring during boost. Clamp applies to `M_i`, not to the effective output. Risk: at boost expiry there can be a discontinuity from `1.2e18` to whatever `M_i(t)` has evolved to; a pool that's been F-8-eroded during boost falls off a cliff.
+- (v.c) Effective multiplier is `min(1.2e18 × M_i(t) / 1e18, CLAMP_CEILING)` — multiplicative composition with the ceiling re-applied. Boosted pools at `M_i = 1.0` see `1.2`, pools at `M_i = 1.25` (top of clamp) stay at `1.25`, pools at `M_i = 0.75` see `0.9`. Risk: the boost reward is non-uniform across the eligible-pool set.
+
+**Pre-F3 resolution required.** `CCBMultiplier.sol` cannot ship without selecting (i), (ii), (iii), (iv), and (v). The selections determine the contract's update math, its public read interface, and its test surface.
+
+**Spec edit flag (aumm-site, user-side — not a repo edit).** `10_constitution.md` §xxix needs amendment to pin (i), (ii), (iii), and (iv) explicitly; `08_bootstrap.md` §xxi needs amendment to pin (v) explicitly. Flagged for user's spec-side update; not a repo edit.
+
 ---
 
 ## What this document does NOT decide
