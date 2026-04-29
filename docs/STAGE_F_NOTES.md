@@ -56,3 +56,30 @@
 ## Findings
 
 > `F10` onward populates as implementation incidents emerge.
+
+### F10 — Solidity optimizer hoists `block.number` out of `vm.roll`-driven loops
+
+**Caught 2026-04-29 at F1.4 forge-test (commit `7e47283` corrective).** `test_updateEMA_convergesTowardSpot_overManyDays` reverted `TooEarly(727_200, 734_400)` on the *second* loop iteration; total gas usage `89_967` (close to a single-second-call test's `89_849`, far short of two successful updates plus a revert) confirmed the failure was at iteration 1, not later. The loop body `vm.roll(block.number + AureumTime.BLOCKS_PER_DAY)` was hoisted out of the loop by the Solidity optimizer (solc 0.8.26 with `via_ir = true` + 9999 runs). Because `block.number` is constant within a transaction in real EVM execution, the optimizer treats `block.number + BLOCKS_PER_DAY` as loop-invariant — and the cheatcode's effect on `block.number` is opaque to the compiler's effect model (`vm.roll` is a `CALL` to the cheatcode address with no declared semantics). Result: every iteration's `vm.roll` received the same hoisted target `START_BLOCK + BLOCKS_PER_DAY = 727_200`, advancing on iteration 0 and degenerating to a no-op for iterations 1..59. Iteration 1's `updateEMA` then reverted `TooEarly` because `last == 727_200 == block.number` and `nextEligible == 734_400`.
+
+**Fix.** Replace `vm.roll(block.number + BLOCKS_PER_DAY)` inside the loop with an explicit local counter:
+
+```solidity
+uint256 currentBlock = START_BLOCK;
+for (uint256 i = 0; i < 60; i++) {
+    currentBlock += AureumTime.BLOCKS_PER_DAY;
+    vm.roll(currentBlock);
+    ...
+}
+```
+
+**Why the fix works.** An explicit `currentBlock` counter is a loop-carried dependency: each iteration's `vm.roll(currentBlock)` depends on the mutable `currentBlock` incremented in the same body. The optimizer cannot hoist a value that is provably different on every iteration. The local variable is the correct forcing mechanism; wrapping `block.number` in a no-op function call would not help — the optimizer sees through transparent wrappers in the Yul IR.
+
+**Why other tests in this file pass.** All other multi-call tests advance `block.number` *once* before a *single* `updateEMA` call — there is no loop with a repeated increment. `vm.roll(block.number + AureumTime.BLOCKS_PER_DAY)` outside a loop advances to the correct target on first call and is never revisited. The hoisting defect is strictly a loop-body pattern; single `vm.roll` calls are unaffected.
+
+**Generalization for future stages.** Any test with a `for` or `while` loop that advances chain state via `vm.roll(block.number + k)` is potentially unsafe under `via_ir = true` + aggressive optimization. The safe pattern is always an explicit tracked counter incremented inside the loop body. The same caution applies to `vm.warp` (`block.timestamp`) under identical conditions.
+
+**Cross-references:**
+
+- **`test/unit/EMASampler.t.sol` L150-168** (`test_updateEMA_convergesTowardSpot_overManyDays`) — affected test; tracked-counter pattern applied at F1.4b.
+- **Solidity `via_ir` + Yul IR optimizer** — IR compilation exposes `block.number` reads as pure SSA values with no declared side-effects; loop-invariant code motion hoists the computation before Foundry's `vm.roll` `CALL` executes.
+- **F1.4b** (commit `7e47283`) — corrective commit that introduced the tracked-counter fix.
