@@ -289,7 +289,7 @@ The diff should be almost entirely `rename` operations plus path-string replacem
 
 ### C2.1 — Read sources
 
-Primary source is `aumm-specs.md` attached to project knowledge. Read in full:
+Primary source is the canonical spec corpus at `aummfi-bit/aumm-site` (read via WebFetch per CLAUDE.md §4). Read in full:
 
 - §ix in `04_tokenomics.md` — Token Design: AuMM. Supply rules, emission schedule table, emission distribution.
 - §xxix in `10_constitution.md` — Immutable Parameters. Full list including the canonical time-constant table and derived time boundaries.
@@ -303,7 +303,7 @@ Also read in `FINDINGS.md`:
 - OQ-5 — `BLOCKS_PER_ERA = 10_512_000` plus the canonical time-constant table and the "block numbers are canonical" rule.
 - OQ-5a — per-day EMA sampling (informational; EMA itself is Stage F, not C).
 
-(If `aumm-site` is attached as a project knowledge source in a given session, the same content is in its originating files. `aumm-specs.md` is authoritative for Stage C.)
+(`aummfi-bit/aumm-site` is the canonical source — Stage C cross-references reference these per-doc files directly per CLAUDE.md §4.)
 
 ### C2.2 — Record constants in notes
 

@@ -52,10 +52,10 @@ The full document below has 12 findings (F1–F12, plus F8a–F8d) and 19 open q
 
 ## Methodology
 
-- Read the full canonical spec corpus — 18 numbered/supporting docs (`/mnt/user-data/uploads/aumm-specs.md`, 2190 lines) and the 28 pool profiles (`/mnt/user-data/uploads/aumm-pools.md`, 1542 lines).
+- Read the full canonical spec corpus from `aummfi-bit/aumm-site` (see CLAUDE.md §4) — 18 numbered/supporting docs and the 28 pool profiles in `miliarium_profiles/`. At audit time these were concatenated into a ~2190-line aggregator and a ~1542-line pool-profiles bundle for line-anchored cross-referencing throughout this document.
 - Cross-referenced against the `aumm-deploy` source tree at `stage-b-complete` (project knowledge sync).
 - Used `script.md` (the spec-side internal review log) as a hint, but verified each item — multiple R-* items in `script.md` are now stale and have been fixed in the live spec.
-- For every claim with a numeric or structural implication, cite the source line in the spec bundle (line numbers are within `aumm-specs.md` unless noted).
+- For every claim with a numeric or structural implication, cite the source line in the audit-time aggregator (line numbers throughout this document reference the ~2190-line aggregator generated from `aummfi-bit/aumm-site` at audit time unless noted; for live reads, fetch the per-doc files from the GitHub repo per CLAUDE.md §4).
 - Where the spec is ambiguous or under-specified, log it as an open question (`OQ-N`) instead of guessing.
 
 ---
@@ -1138,5 +1138,5 @@ Every other architectural decision is resolved. The protocol is now specified ti
 | `16_team.md` | 56 | Founding team, prior work, disclaimer |
 | 28 pool profiles | ~55 each | Composition + sector + risk per slot |
 
-Total spec corpus: 2190 lines (`aumm-specs.md`) + 1542 lines (`aumm-pools.md`) = 3732 lines.
+Total spec corpus at audit time: ~2190 lines (aggregator from `aummfi-bit/aumm-site`) + ~1542 lines (pool-profiles bundle from `aummfi-bit/aumm-site/miliarium_profiles/`) = ~3732 lines (see CLAUDE.md §4).
 

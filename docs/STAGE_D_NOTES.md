@@ -128,7 +128,7 @@ D8.3 lands the inline `// slither-disable-next-line` directives in `src/fee_rout
 - **`protocolSwapFeePercentage` override at registration:** `0` (cosmetic — `AureumProtocolFeeController.registerPool` pins the swap-side aggregate to `_globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE = 50e16` regardless of this field, per the D0.5 retrofit at `e5dc936` and **D-D15** saturate-not-bypass).
 - **Yield-fee collection on Bodensee:** **disabled** per **D-D9** / **OQ-2** — `collectAggregateFees(DER_BODENSEE_POOL)` reverts `BodenseeYieldCollectionDisabled()`.
 - **Pause manager:** governance Safe multisig (same as Authorizer per CLAUDE.md §2).
-- **Pool creator:** `address(0)` — no creator fees, ever (per **D-D15** and `aumm-specs` §xxix no-creator-fees constitutional rule).
+- **Pool creator:** `address(0)` — no creator fees, ever (per **D-D15** and the §xxix no-creator-fees constitutional rule in `10_constitution.md` per `aummfi-bit/aumm-site`; see CLAUDE.md §4).
 - **Unbalanced-liquidity operations:** **enabled** (fee-routing deposits into Bodensee are one-sided `addLiquidity` in svZCHF per **OQ-2**; disabling would break the fee router).
 - **Swap-enabled at registration:** true (default).
 
