@@ -1099,23 +1099,53 @@ The throttle stamp updates only after `routeYieldFee` returns successfully. If t
 
 **Spec edit flag (aumm-site, user-side — not a repo edit).** `aumm-site/04_tokenomics.md` §ix needs amendment for bi-weekly cadence policy.
 
-### OQ-22 — TVL denomination + oracle source for CCB EMA inputs
+### OQ-22 (RESOLVED): TVL denomination = svZCHF; valuation = RP-aware unwrap + constellation-spot
 
-**Status.** Proposed, pending F1. Stub here so the design surface is on record before `EMASampler.sol` ships and before the `ITVLOracle` interface concretizes.
+**Decision (2026-04-29):** Numéraire = svZCHF; per-token valuation is two-step. Option **(c)** over **(a)** and **(b)** per the OQ-22 stub (raised at F0.1, FINDINGS L1102 prior to this resolution).
 
-**Context.** F-4's EMA, F-5's score, and F-6's share all consume per-pool TVL as a scalar. The spec — `02_mental_model.md` §iii, `03_theoretical_foundation.md` §vi-b, `11_formulas.md` F-4, `10_constitution.md` §xxix — uses "TVL" without pinning a numéraire, oracle, or price source. Stage F builds the EMA infrastructure and (per F-D3) accepts an injectable `ITVLOracle` interface so the contract structure does not block on this resolution; the concrete oracle implementation lands at the OQ-22 resolution stage (likely Stage G or pre-Stage-H, before live emissions).
+**Mechanism (the two-step shape `ITVLOracle.tvl(pool)` returns):**
 
-**Question.** What numéraire and what oracle does `ITVLOracle.tvl(pool)` return for the CCB engine?
+1. **Per-token unwrap to underlying.** For each token in the pool's `TokenConfig`:
+   - **Balancer V3 `WITH_RATE` tokens** (Rate-Provider-equipped ERC-4626 — svZCHF, sUSDS, waEthUSDC, the sDAI / Aave-wrapper family, etc.): `tvlPerToken = RP.rate() × balance` — inherits the upstream vault's deterministic accounting (Frankencoin's savings module, Sky's sUSDS rate, Aave wrapped-token rate), not an AMM-derived approximation.
+   - **Balancer V3 `STANDARD` tokens** (no Rate Provider — WBTC, GHO, plain ZCHF, plain USDC, etc.): identity. `tvlPerToken = balance`.
+2. **Underlying-to-svZCHF cross-asset leg.** For tokens whose underlying ≠ svZCHF, convert via constellation-spot averaging across all gauged Aureum pools holding both the underlying and svZCHF (or a 2-hop path through ZCHF or sUSDS), per the OQ-8 BTC-pricing precedent extended (FINDINGS L656-L670).
+3. **Sum.** Pool TVL = Σ tvlPerToken-in-svZCHF across all pool tokens, returned at 18 decimals.
 
-**Options considered.**
+**Why (c) over (a):**
 
-- **Option (a) — svZCHF as numéraire, on-chain price via constellation-spot averaging.** Extends the OQ-8 BTC-pricing precedent ("spot average across all gauged pools holding any registered BTC wrapper") to the general TVL case: for each non-svZCHF token in a pool, derive its svZCHF price as a TWAP-of-spots across all gauged Aureum pools that hold both the token and svZCHF (or a path through svZCHF via another constellation token). No external oracle dependency; consistent with `10_constitution.md` §xxvii's "no off-chain dependencies for core operation" framing. Cost: bootstrapping problem at protocol genesis (no constellation-spot signal until pools have depth) — but F-0 bootstrap fills Bodensee within the first ~10 protocol-months, and Stage F → Stage H sequencing means the engine ships before live emissions anyway.
-- **Option (b) — USD via external oracle (Chainlink / Pyth).** Standard approach. Adds an external dependency; contradicts §xxvii framing; adds liveness, manipulation, and freshness attack surfaces. Operational simplicity not worth the architectural compromise on a protocol whose stated invariant is on-chain-only valuation.
-- **Option (c) — hybrid.** ERC-4626 tokens with a Rate Provider use `RP.rate() × balance` (the Rate Provider's intrinsic conversion to underlying); STANDARD tokens use constellation-spot averaging per (a). Reduces the number of constellation-spot lookups (~half the 64-row token inventory has Rate Providers per Stage E pilot configs) at the cost of hybrid-path code complexity.
+- **Inherited deterministic accounting for RP-equipped tokens.** Rate Providers on Balancer V3 return `rate()` from upstream-protocol accumulator state (Frankencoin savings, Sky's sUSDS, Aave wrappers); the rate is consensus-deterministic at every block, not market-derived. Using constellation-spot for the unwrap step would replace that with an AMM-derived approximation — strictly worse signal quality for tokens that *have* an upstream-determined fair value. Strength-of-signal caveat: this is "inherits upstream vault's deterministic accounting," not "mathematical impossibility of single-block manipulation" — RP rate quality is upper-bounded by the upstream vault's own rate-correctness audit. For the production wrappers in the Stage E pilot inventory this has been accepted; a future RP for an unaudited wrapper would inherit only the strength of *that* upstream's accounting.
+- **Path/depth gates shrink, do not vanish.** Constellation-spot still bears the bootstrapping concern (no signal until pools have depth) for the cross-asset leg under both (a) and (c); (c) shrinks the per-token surface where this concern bites. RP-equipped tokens whose underlying *is* svZCHF (notably svZCHF itself) skip the cross-asset leg entirely; RP-equipped tokens whose underlying ≠ svZCHF still need the leg, but the per-token volatility is bounded by the underlying's stability (USDC/CHF, USDS/CHF), not by the wrapped-token's market. Roughly half the 64-row token inventory has Rate Providers per the Stage E pilot configs.
+- **Gas.** RP read is one SLOAD + multiplication; constellation-spot averaging is gauged-pool enumeration + N spot reads + average (~50-200k gas per cross-asset leg, scaling with N). For 28 Miliarium pools × ~3-5 tokens each across `BLOCKS_PER_DAY`-cadence EMA samples, the gas delta between (a) and (c) is significant at protocol scale.
 
-**Pre-F1 resolution required.** Implementation at F1 takes the `ITVLOracle` interface as injectable; the chosen option determines the concrete oracle contract that ships at the resolution stage. The interface shape (`tvl(address pool) external view returns (uint256)` with svZCHF or USD denomination implied) is itself a function of the resolution.
+**Why not (b):**
 
-**Spec edit flag (aumm-site, user-side — not a repo edit).** `02_mental_model.md` §iii, `03_theoretical_foundation.md` §vi-b, `10_constitution.md` §xxix, and `11_formulas.md` F-4 all reference "TVL" as if the numéraire were settled. Once OQ-22 resolves, those passages need amendment to pin the numéraire and the oracle convention. Flagged for user's spec-side update; not a repo edit.
+The constitution and the spec corpus are explicit about on-chain-only valuation:
+
+- **`10_constitution.md` §xxvii:** *"Aureum is immutable and non-custodial from block 0: no admin keys, no multisig, no upgradeability, no pause function, no voting over emissions, no off-chain dependencies for core operation."* Reinforced by the Proposal Data Integrity Rule: *"All proposals must reference verifiable on-chain state only — contract addresses, block ranges, and deterministic on-chain metrics. Off-chain-only claims, unverifiable dashboards, social polling, or discretionary narratives are invalid."*
+- **`02_mental_model.md` §iii:** *"Base weight = 60-day EMA of on-chain TVL."*
+- **`03_theoretical_foundation.md` §vi-b:** *"For each pool separately, the protocol maintains a 60-day exponential moving average of that pool's on-chain TVL. ... uses only on-chain state the contracts can read."*
+- **`11_formulas.md` F-4:** *"internal cumulativeTVL accumulators ... entirely protocol-internal, oracle-free."* (The accumulator-leg framing is superseded in part by OQ-5a-bis below; the oracle-free invariant is preserved.)
+- **OQ-8 precedent (FINDINGS L650+):** the F-12 BTC-pricing problem already resolved to *"averaged spot price across all gauged pools holding any registered wrapped-BTC token. ... no oracle dependency, no off-chain prices, no Chainlink."* OQ-22's general TVL case extends the same pattern.
+
+Adopting Chainlink / Pyth / any external oracle would require amending §xxvii itself — not on the table.
+
+**Constants this pins:**
+
+- **Numéraire** = `svZCHF` (18 decimals).
+- **`ITVLOracle.tvl(address pool) external view returns (uint256)`** — returns svZCHF-denominated pool TVL at 18 decimals.
+- **Per-token valuation contract** = RP-aware unwrap (step 1) + constellation-spot to svZCHF (step 2). Pinned at the protocol layer; concrete oracle contract is deferred (next bullet).
+
+**Concrete oracle implementation deferred:**
+
+F1's `EMASampler.sol` takes `ITVLOracle` as an injectable immutable; the concrete contract that implements the RP-unwrap + constellation-spot pipeline ships at a later stage (likely Stage G or pre-Stage-H, before live emissions). Stage F unit + fork tests use a mock `ITVLOracle` to drive synthetic TVL signals, decoupling the EMA infrastructure ship from the oracle ship. The deferral is engineering staging, not architectural ambiguity — the interface shape and the two-step valuation contract are fixed by this resolution.
+
+**Spec edits required (aumm-site, user-side — not a repo edit):**
+
+- **`02_mental_model.md` §iii:** amend *"60-day EMA of on-chain TVL"* with the explicit svZCHF-denomination + RP-aware-unwrap framing.
+- **`03_theoretical_foundation.md` §vi-b:** amend the *"on-chain TVL"* and *"only on-chain state the contracts can read"* passages to reference the OQ-22-pinned valuation contract.
+- **`10_constitution.md` §xxix:** add to the immutable parameters table — *Numéraire: svZCHF*; *Per-token valuation: RP unwrap + constellation-spot per OQ-22*.
+- **`11_formulas.md` F-4:** amend the *"internal cumulativeTVL accumulators ... entirely protocol-internal, oracle-free"* prose to acknowledge OQ-5a-bis's accumulator-leg supersession (cumulativeTVL accumulators dropped per OQ-5a-bis (b); spot-at-sample reads from `ITVLOracle`); the oracle-free invariant is preserved.
+- **`12_aureum_glossary.md`:** new glossary entry — *TVL valuation: RP-aware unwrap to underlying then constellation-spot averaging to svZCHF, per OQ-22.*
 
 ### OQ-5a-bis — TVL accumulator hook integration vs spot-at-sample
 
