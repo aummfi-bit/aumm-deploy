@@ -147,9 +147,15 @@ contract EMASamplerTest is Test {
         sampler.updateEMA(POOL_A);
         oracle.setTvl(POOL_A, 1000e18);
 
+        // Tracked block counter — vm.roll(block.number + ...) in
+        // a loop is unsafe; the optimizer hoists block.number out
+        // of the body because it's logically constant within a
+        // transaction (vm.roll's effect is opaque to the compiler).
+        uint256 currentBlock = START_BLOCK;
         uint256 prev = 100e18;
         for (uint256 i = 0; i < 60; i++) {
-            vm.roll(block.number + AureumTime.BLOCKS_PER_DAY);
+            currentBlock += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(currentBlock);
             uint256 newEMA = sampler.updateEMA(POOL_A);
             assertGe(newEMA, prev);
             prev = newEMA;
