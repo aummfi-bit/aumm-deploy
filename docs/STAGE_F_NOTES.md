@@ -128,7 +128,7 @@
 
 **Edge case — pre-Stage-J empty Miliarium set.** Placeholder `IMiliariumRegistry` returns `miliariumPoolsCount() == 0`, so `currentProtocolAggregateEMA = sum of empty set = 0`. First `updateMultiplier` call would attempt to seed `lastProtocolAggregateEMA = 0`, leaving the sentinel unchanged. But this code path is unreachable: `updateMultiplier(pool)` reverts `NotMiliariumPool` per F-D16 before reaching the aggregate computation. F-D18's seed runs only after Stage J ships the MiliariumRegistry with at least one pool, at which point `currentProtocolAggregateEMA > 0` (post-F-D15 EMASampler seed) and the sentinel transitions cleanly.
 
-**Edge case — single Miliarium pool active.** Pre-full-constellation Stage J could ship the registry incrementally (one pool at a time). With one Miliarium pool, `protocolTVLEMA = pool's EMA`, `miliariumAvgEMA = pool's EMA / 28`. The sole pool's `delta_intra` registers as far above `miliariumAvgEMA` (its own EMA is 28× the mean), pushing `M_i` upward. Correct math given the constellation isn't full but operationally degenerate. Not Stage F's concern: production Stage J ships the full 28-pool registry per `04_tokenomics.md` §vii.
+**Edge case — single Miliarium pool active.** Pre-full-constellation Stage J could ship the registry incrementally (one pool at a time). With one Miliarium pool, `protocolTVLEMA = pool's EMA`, `miliariumAvgEMA = pool's EMA / 28`. The sole pool's `delta_intra` registers as far above `miliariumAvgEMA` (its own EMA is 28× the mean), pushing `M_i` downward per F-D19 anti-cyclical polarity. Correct math given the constellation isn't full but operationally degenerate. Not Stage F's concern: production Stage J ships the full 28-pool registry per `04_tokenomics.md` §vii.
 
 **Cross-references:**
 
@@ -143,6 +143,58 @@
 - Second `updateMultiplier` at next epoch with aggregate movement below dead-zone yields `delta_global = 0`.
 - First `updateMultiplier` does NOT cause universal `M_i` shift across Miliarium pools (verifies seed-and-zero, not formula-always).
 - Sentinel is one-shot: subsequent calls do not re-seed even if `currentProtocolAggregateEMA == lastProtocolAggregateEMA` momentarily.
+
+---
+
+### F-D19 — F-8 anti-cyclical sign convention; relative-band dead-zone with strict inequalities; baselines guarded by F-D15 + F-D18 seeds
+
+**Resolved 2026-04-30 at F3.2.5.** F-8's `delta_global` and `delta_intra_i` follow F-8's anti-cyclical narrative authority in `11_formulas.md`: rising aggregate TVL applies *downward* pressure on `M_i` (`delta_global = −STEP_SIZE` outside the dead zone); falling aggregate applies *upward* pressure (`+STEP_SIZE`). Per-channel polarity:
+
+- `delta_global = −STEP_SIZE` when `currentProtocolAggregateEMA > lastProtocolAggregateEMA × (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE`.
+- `delta_global = +STEP_SIZE` when `currentProtocolAggregateEMA < lastProtocolAggregateEMA × (FixedPoint.ONE − DEAD_ZONE) / FixedPoint.ONE`.
+- `delta_global = 0` otherwise (relative move within `±DEAD_ZONE` of the seeded baseline; equality at boundary stays neutral).
+- `delta_intra_i = −STEP_SIZE` when `poolEMA > miliariumAvgEMA × (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE`.
+- `delta_intra_i = +STEP_SIZE` when `poolEMA < miliariumAvgEMA × (FixedPoint.ONE − DEAD_ZONE) / FixedPoint.ONE`.
+- `delta_intra_i = 0` otherwise.
+
+**The gap.** OQ-23 (i) at FINDINGS L1234, (ii.c) at L1206, (iv.a) at L1210, and (v.b) at L1228 each frame F-8 as anti-cyclical in narrative — "signal-aligned channels (both saying 'shrink' or both 'grow')", "dominant pools see `delta_intra` pushing them down", "rising aggregate + faster-than-average growth both push `delta_global` and `delta_intra` downward". OQ-23 (iii.b) at L1208 introduces the term "next-epoch direction comparison" and pins `lastProtocolAggregateEMA` storage for that comparison, but the resolution body does not include an explicit polarity formula. F-D18 at L119 attributes a procyclical reading `delta_global = sign(curr − last) × STEP_SIZE` to OQ-23 (iii.b) when in fact FINDINGS L1208 only pins the aggregate definition + baseline storage, not polarity. Risk path absent F-D19: an implementer reads "direction comparison" (or F-D18's quoted shorthand) and writes the naive `sign(currentAgg − lastAgg) × STEP_SIZE`, which is *procyclical* and contradicts F-8's spec narrative + (v.b)'s rejection rationale. F-D19 closes the gap by making polarity explicit at NOTES authority for downstream `Must match` consumption; F-D18's seed-and-zero mechanic is independent of polarity and unchanged.
+
+**F-8 spec authority.** `11_formulas.md` F-8 narrative pins anti-cyclical direction in both channels: rising TVL applies downward pressure on the multiplier; falling TVL applies upward pressure; pools growing faster than average are nudged down; pools shrinking relative to average are nudged up. F-D19 maps this directly to the polarity table above.
+
+**Why strict inequalities at the dead-zone boundary.** Equality `currentAgg == lastAgg × (FixedPoint.ONE ± DEAD_ZONE) / FixedPoint.ONE` denotes a relative move *exactly* at the 0.1% boundary. F-8 narrative reads "if the TVL ratio is within the dead zone of neutral, no step is applied" — the boundary is part of "within". Strict `<` / `>` at the firing path keeps boundary cases in the neutral band; the inverse choice (`<=` / `>=` firing) would emit `±STEP_SIZE` for a movement that is exactly the threshold, contradicting the "within" framing.
+
+**Why relative-band-against-baseline rather than absolute |Δ|.** `DEAD_ZONE = 1e15` is 0.1% of `FixedPoint.ONE = 1e18`, not 0.1% of TVL in svZCHF. Reading `|currentAgg − lastAgg| < DEAD_ZONE` literally yields a 1e15-wei svZCHF threshold ≈ 0.001 svZCHF — vanishing against any real protocol TVL, so the dead zone would never fire. The relative formulation `current vs last × (FixedPoint.ONE ± DEAD_ZONE) / FixedPoint.ONE` reads as `|Δ/last| < 0.1%`, matching OQ-23 (ii.c)'s "TVL ratio" framing and `10_constitution.md` §xxix's "0.1% nominal threshold" framing. Multiplication-form preserves precision; an explicit `mulDiv(abs(Δ), FixedPoint.ONE, last)` div-form risks precision loss when `last` is large and `Δ` is small relative to it (the realistic case for daily aggregate movement).
+
+**Baseline guards — why no zero-baseline divide.** `lastProtocolAggregateEMA × (FixedPoint.ONE ± DEAD_ZONE) / FixedPoint.ONE` operates on a zero baseline only if `lastProtocolAggregateEMA == 0`. F-D18's first-epoch seed writes `lastProtocolAggregateEMA = currentProtocolAggregateEMA` and forces `delta_global = 0` for that epoch *before* the dead-zone gate runs, so the gate never sees a zero baseline. Symmetrically: `miliariumAvgEMA = currentProtocolAggregateEMA / 28` is nonzero whenever the Miliarium pool set has at least one pool with a nonzero EMA — guaranteed post-F-D15 seed for any sampled pool. The empty-Miliarium-set degeneracy is unreachable per F-D16's `NotMiliariumPool` revert ahead of any aggregate computation. `CCBMultiplier`'s implementation does *not* need explicit zero-baseline branches; F-D15 + F-D18 + F-D16 form the layered precondition.
+
+**Cross-references:**
+
+- **F-8** (`11_formulas.md`) — anti-cyclical narrative authority for both channels; F-D19's polarity table is the literal mapping.
+- **OQ-23 (i)** (FINDINGS L1234) — "signal-aligned channels" anti-cyclical confirmation in `Why (i.a) over (i.b)` rationale.
+- **OQ-23 (ii.c)** (FINDINGS L1206) — "TVL ratio" framing matches relative-band formulation.
+- **OQ-23 (iii.b)** (FINDINGS L1208) — direction-comparison shorthand reconciled here; aggregate definition + baseline storage pinned in (iii.b), polarity unspecified in resolution body.
+- **OQ-23 (iv.a)** (FINDINGS L1210) — intra anti-cyclical narrative quoted directly from the (iv.a) resolution bullet ("dominant pools see `delta_intra` pushing them down, small pools see it pushing them up").
+- **OQ-23 (iv.a) supplementary** (FINDINGS L1244–L1246) — `Why (iv.a) over (iv.b)` rationale: TVL-weighted mean has a perverse minimal-correction property for dominant pools, contradicting F-8 anti-cyclical intent.
+- **OQ-23 (v.b)** (FINDINGS L1228) — `(v.b)` rejection rationale explicitly cites anti-cyclical polarity ("rising aggregate + faster-than-average growth both push `delta_global` and `delta_intra` downward").
+- **F-D7** (`STAGE_F_PLAN.md` L61) — `STEP_SIZE = 5e16`, `DEAD_ZONE = 1e15`, `CLAMP = [75e16, 125e16]`. Constants unchanged.
+- **F-D15** (`STAGE_F_NOTES.md` L23) — per-pool EMA cold-start seed; ensures `poolEMA > 0` for any sampled pool.
+- **F-D17** (`STAGE_F_NOTES.md` L84) — boost window suspends F-8 state evolution; F-D19 polarity rules apply only outside boost windows.
+- **F-D18** (`STAGE_F_NOTES.md` L115) — `lastProtocolAggregateEMA` cold-start seed; first-epoch `delta_global = 0` ensures dead-zone gate never operates against a zero baseline. F-D18's L119 attribution of the procyclical formula to OQ-23 (iii.b) is corrected here at the polarity layer; F-D18's seed-and-zero resolution mechanic is unchanged. F-D18's L131 single-pool-degeneracy direction ("pushing `M_i` upward") is inconsistent with F-D19's polarity table and is scheduled for one-sentence reconciliation at F3.2.6 before F3.3 lands.
+
+**Test surface flagged for F3.4:**
+
+- Aggregate growth above `DEAD_ZONE`: `delta_global = −STEP_SIZE` (anti-cyclical down).
+- Aggregate decline below `−DEAD_ZONE`: `delta_global = +STEP_SIZE` (anti-cyclical up).
+- Aggregate flat (`currentAgg == lastAgg`): `delta_global = 0` (strict inequality keeps boundary neutral).
+- Aggregate exactly at upper boundary (`currentAgg == lastAgg × (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE`): `delta_global = 0`.
+- Aggregate one wei above upper boundary: `delta_global = −STEP_SIZE`.
+- Aggregate one wei below lower boundary: `delta_global = +STEP_SIZE`.
+- Pool above `miliariumAvgEMA × (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE`: `delta_intra = −STEP_SIZE`.
+- Pool below `miliariumAvgEMA × (FixedPoint.ONE − DEAD_ZONE) / FixedPoint.ONE`: `delta_intra = +STEP_SIZE`.
+- Pool exactly at mean: `delta_intra = 0`.
+- Combined alignment (aggregate growing AND pool above mean): total Δ `= −2 × STEP_SIZE`; channels reinforce.
+- Combined opposition (aggregate growing BUT pool below mean): total Δ `= 0`; channels cancel.
+- Boundary-exact combinations: dead-zone strict-inequality boundary applied per channel independently, so global-fires + intra-neutral and global-neutral + intra-fires both reachable in adjacent test cases.
 
 ---
 
