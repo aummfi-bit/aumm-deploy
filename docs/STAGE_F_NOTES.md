@@ -51,6 +51,99 @@
 - Calling before `last + BLOCKS_PER_DAY` reverts `TooEarly` with the next-eligible block in the error data.
 - `spotTVL == 0` at second call (post non-zero seed) decays via formula; no re-seed path.
 
+### F-D16 — `updateMultiplier` reverts for non-Miliarium pools; `getMultiplier` returns `1e18`; unit tests inject mock `IMiliariumRegistry`
+
+**Resolved 2026-04-30 at F3.0.** `updateMultiplier(pool)` reverts `NotMiliariumPool(pool)` if `miliariumRegistry.isMiliarium(pool) == false`. `getMultiplier(pool) view` returns `INITIAL_MULTIPLIER = 1e18` for non-Miliarium pools without reverting. Unit tests inject a `MockMiliariumRegistry` exposing `setMiliarium(pool, bool)` to flag tested pools as Miliarium and `setPoolList(address[])` to populate the enumeration surface (`miliariumPoolsCount` + `miliariumPoolAt(i)`) per OQ-23 (iii.b)'s protocol-aggregate-EMA sum.
+
+**The gap.** F-D9 pins `CCB_mult = 1.0` for non-Miliarium gauged pools via `04_tokenomics.md` §vii but leaves the implementation choice between revert and no-op explicit at F3 — both are F-D9-compliant. Conflating a write entry point (`updateMultiplier`) with a read entry point (`getMultiplier`) under one rule misses that the two have different consumer-side ergonomics.
+
+**Why `updateMultiplier` reverts.** Explicit failure is loud; a silent no-op would consume gas with no state change and obscure miswiring at higher layers. Stage H's emission distributor pre-filters by Miliarium status before scoring (per F-D10's eligible-pool array semantics), so a non-Miliarium `updateMultiplier` call is a caller-side bug, not protocol-routine. Pre-Stage-J the placeholder registry returns `false` for every pool (per F-D9), so all `updateMultiplier` calls revert until Stage J's `MiliariumRegistry` ships and is wired via the one-shot setter — acceptable: pre-Stage-J the protocol isn't running gauged emissions yet.
+
+**Why `getMultiplier` does not revert.** `getMultiplier(pool)` is a hot-path read for Stage H's emission distributor, which scores all gauged pools (Miliarium and non-Miliarium together) every block per F-D9. Reverting would force the distributor to branch on Miliarium status before reading. Returning `INITIAL_MULTIPLIER = 1e18` for non-Miliarium pools lets the distributor read uniformly and matches F-D9's mathematical contract (`CCB_mult = 1.0`). The boost-window check is also inside `getMultiplier` and only fires for Miliarium pools — a non-Miliarium pool cannot have an active boost because `activateBoost` is gated by both `IGaugeRegistry` caller verification and the same Miliarium check applied to `updateMultiplier`.
+
+**Mock registry pattern.** `MockMiliariumRegistry` is a test-only contract co-located with `test/unit/CCBMultiplier.t.sol` (separate file under `test/unit/mocks/` only if Cursor finds the inline pattern unwieldy at F3.4). Surface: `setMiliarium(pool, bool)`, `setPoolList(address[])`, `isMiliarium(pool) view`, `miliariumPoolsCount() view`, `miliariumPoolAt(i) view`. Defaults: `false` for all `isMiliarium` queries unless explicitly set, matching F-D9's pre-Stage-J placeholder behavior. Reuses the test-shape used for `ITVLOracle` in F1's EMASampler tests.
+
+**Cross-references:**
+
+- **F-D9** (`STAGE_F_PLAN.md` L63) — Miliarium-only scope; F-D16 disambiguates the revert-vs-no-op choice flagged at plan time.
+- **F-D11** (`STAGE_F_PLAN.md` L65) — test layout; mock registry pattern matches F-D11's "registry-placeholder Miliarium filtering" callout.
+- **OQ-23 (iii.b)** (FINDINGS L1208) — protocol-aggregate-EMA = sum of per-pool EMAs; mock must expose enumeration to support this read.
+- **OQ-23 (iv.a)** (FINDINGS L1210) — Miliarium-average-EMA = `protocolTVLEMA / 28`; division denominator is the constant `28`, not `miliariumPoolsCount()`, per `04_tokenomics.md` §vii's fixed 28-pool constellation. Mock enumeration is for the sum, not the divisor.
+
+**Test surface flagged for F3.4:**
+
+- `updateMultiplier(nonMiliariumPool)` reverts `NotMiliariumPool(pool)`.
+- `getMultiplier(nonMiliariumPool)` returns `1e18`, no revert.
+- `getMultiplier(miliariumPool, no_boost)` returns `M_i[pool]` (= `1e18` if F-8 has not yet fired).
+- `getMultiplier(miliariumPool, in_boost)` returns `BOOST_FACTOR = 1.2e18`.
+- Mock registry returns `false` for unconfigured pools by default.
+- Mock registry's `setMiliarium(pool, false)` toggles a previously-true pool back to non-Miliarium for revert-path tests.
+
+---
+
+### F-D17 — `activateBoost(pool)` reverts on active boost; permits post-expiry re-activation
+
+**Resolved 2026-04-30 at F3.0.** `activateBoost(pool)` reverts `BoostAlreadyActive(pool)` if `block.number < boostExpiryBlock[pool]`. Otherwise sets `boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS` (`= 648_000` blocks ≈ 90 days). Caller is gated by `IGaugeRegistry.isGaugeApproved(msg.sender)` (final shape locked at F3.2 when `IGaugeRegistry.sol` lands) plus `miliariumRegistry.isMiliarium(pool)` Miliarium check.
+
+**The gap.** `08_bootstrap.md` §xxi specifies "fixed 1.2× CCB multiplier for 90 days" plus "activates when the gauge passes, expires on its own — no vote, no renewal". OQ-23 (v.d) (FINDINGS L1212-L1230) inherits this and pins boost composition (effective output gated to `BOOST_FACTOR`, F-8 state paused during window). But the implementation must decide what happens if `activateBoost` is called twice for the same pool — reachable via gauge-registry replay, gauge-registry bug, or attacker holding placeholder access pre-Stage-G.
+
+**Why revert during active boost.** Allowing re-activation while a boost is live would be effective extension, contradicting §xxi's "no vote, no renewal" rule. Explicit revert makes the rule loud and gives Stage G's gauge-registry implementation a clear failure signal if it ever tries to double-activate (e.g. a gauge re-approval path that calls `activateBoost` unconditionally without checking the pool's current boost state). The gauge registry should not ship that bug, but Stage F's `activateBoost` defends in depth.
+
+**Why post-expiry re-activation succeeds.** After `boostExpiryBlock[pool]` passes, `activateBoost(pool)` allows another 90-day window to start. Whether Stage G's gauge-approval flow ever does this is Stage G's concern — Stage F's `activateBoost` does not restrict post-expiry calls. `M_i` remains at `INITIAL_MULTIPLIER = 1e18` across the prior boost (F-8 paused per OQ-23 (v.d)), so a post-expiry re-activation effectively gives another 90-day boost from a fresh `M_i = 1.0` baseline — clean re-seeding behavior with no boost-decay state to clean up. §xxi's "expires on its own" describes the natural one-shot lifecycle; it does not prohibit deliberate Stage-G-side renewal mechanisms layered above.
+
+**Layered defense.** Stage G's gauge approval flow ships at Stage G; Stage F cannot constrain its replay safety. F-D17's revert path is Stage F's contribution: the gauge registry might mis-call `activateBoost` for various reasons (re-org replay, governance proposal that re-runs the approval flow, etc.); the revert ensures the boost window cannot be silently extended.
+
+**Cross-references:**
+
+- **OQ-23 (v.d)** (FINDINGS L1212-L1230) — boost composition pinned: effective output gated to BOOST_FACTOR during window; F-8 paused during window; expiry hands off to `M_i[pool] = INITIAL_MULTIPLIER`.
+- **F-D8** — superseded by OQ-23 (v.d); F-D17 fills the entry-point semantics gap that OQ-23 (v.d) does not address.
+- **`08_bootstrap.md` §xxi** — "expires on its own — no vote, no renewal"; F-D17's active-boost revert is the no-renewal enforcement.
+- **F-D9 / F-D16** — Miliarium check on `activateBoost` complements the Miliarium check on `updateMultiplier`.
+
+**Test surface flagged for F3.4:**
+
+- `activateBoost(pool)` from approved gauge succeeds at block `t`, sets `boostExpiryBlock[pool] = t + 648_000`.
+- `activateBoost(pool)` from approved gauge at block `t + 1` (boost still active) reverts `BoostAlreadyActive(pool)`.
+- `activateBoost(pool)` from non-approved caller reverts the gauge-registry access-control error (final shape per F3.2).
+- `activateBoost(nonMiliariumPool)` from approved gauge reverts the Miliarium check error per F-D16.
+- `activateBoost(pool)` at block `t + 648_001` (post-expiry) succeeds; new `boostExpiryBlock = t + 648_001 + 648_000`.
+- During boost: `updateMultiplier(pool)` ticks `lastMultiplierUpdateBlock` but leaves `M_i[pool]` unchanged (per OQ-23 (v.d)).
+- `getMultiplier(pool)` returns `BOOST_FACTOR` for `block.number < boostExpiryBlock[pool]`; returns `M_i[pool]` thereafter.
+
+---
+
+### F-D18 — `lastProtocolAggregateEMA` cold-start: seed on first protocol-wide `updateMultiplier`; `delta_global = 0` for that epoch
+
+**Resolved 2026-04-30 at F3.0.** First `updateMultiplier(pool)` call across the entire protocol — detected by `lastProtocolAggregateEMA == 0` — seeds `lastProtocolAggregateEMA = currentProtocolAggregateEMA` and computes that pool's multiplier with `delta_global = 0` for that epoch. `delta_intra` is computed normally (against the seeded `miliariumAvgEMA = currentProtocolAggregateEMA / 28`). Subsequent `updateMultiplier` calls compare current aggregate to the seeded baseline per OQ-23 (iii.b)'s direction-comparison rule.
+
+**The gap.** OQ-23 (iii.b) (FINDINGS L1208) pins `protocolTVLEMA(t) = sum(emaSampler.tvlEMA(pool_i) for i ∈ MiliariumPools)` and the next-epoch direction comparison `delta_global = sign(protocolTVLEMA(t) − lastProtocolAggregateEMA(t-1)) × STEP_SIZE` (with dead-zone gating). But it does not specify first-epoch behavior. Naive application with `lastProtocolAggregateEMA = 0` baseline yields `protocolTVLEMA(t) − 0 > 0` for any nonzero aggregate, so `delta_global` registers nonzero universally on first epoch — every Miliarium pool's `M_i` shifts by the same amount despite no actual aggregate movement. Same defect class as F-D15's EMA cold-start ramp: a baseline of zero is a pathological starting point for direction comparisons.
+
+**Why seed-and-zero rather than alternatives.**
+
+- **Apply formula always (`delta_global` derived from `0` baseline).** Produces the universal first-epoch shift described above. Wrong cold-start protocol; wastes one of F-8's per-epoch step credits on a non-event.
+- **Skip first-epoch entirely (no `M_i` update on the first call).** Asymmetric across pools: if pool A's `updateMultiplier` triggers the seed, pool B's later first call in the same epoch would see a populated baseline and compute a real `delta_global` despite being "the first call" for pool B. The semantic distinction "first call protocol-wide" vs "first call per pool" matters: F-D18 picks the former.
+- **Seed on construction.** Operationally infeasible: the Miliarium pool set is not known at `CCBMultiplier` deployment (Stage J's registry has not shipped). Even if seeded with placeholder `0`, the seed is meaningless until the registry is wired. F-D18 defers seeding to first call, when the registry is guaranteed populated (otherwise `updateMultiplier` reverts `NotMiliariumPool` per F-D16 and the seed code path is unreachable).
+
+**Sentinel reliability.** `lastProtocolAggregateEMA == 0` is unambiguously "never updated" because (i) the slot is only written by `updateMultiplier`'s aggregate update path; (ii) `updateMultiplier` always writes a nonzero value post-cold-start (sum of at least one nonzero per-pool EMA after F-D15's seed ensures EMASampler returns nonzero values for any sampled pool); (iii) no constructor pre-seed. Same sentinel reasoning as F-D15: a zero baseline is provably "never written" given the write surface.
+
+**Edge case — pre-Stage-J empty Miliarium set.** Placeholder `IMiliariumRegistry` returns `miliariumPoolsCount() == 0`, so `currentProtocolAggregateEMA = sum of empty set = 0`. First `updateMultiplier` call would attempt to seed `lastProtocolAggregateEMA = 0`, leaving the sentinel unchanged. But this code path is unreachable: `updateMultiplier(pool)` reverts `NotMiliariumPool` per F-D16 before reaching the aggregate computation. F-D18's seed runs only after Stage J ships the MiliariumRegistry with at least one pool, at which point `currentProtocolAggregateEMA > 0` (post-F-D15 EMASampler seed) and the sentinel transitions cleanly.
+
+**Edge case — single Miliarium pool active.** Pre-full-constellation Stage J could ship the registry incrementally (one pool at a time). With one Miliarium pool, `protocolTVLEMA = pool's EMA`, `miliariumAvgEMA = pool's EMA / 28`. The sole pool's `delta_intra` registers as far above `miliariumAvgEMA` (its own EMA is 28× the mean), pushing `M_i` upward. Correct math given the constellation isn't full but operationally degenerate. Not Stage F's concern: production Stage J ships the full 28-pool registry per `04_tokenomics.md` §vii.
+
+**Cross-references:**
+
+- **F-D15** — same cold-start sentinel pattern (per-pool EMASampler vs protocol-wide CCBMultiplier); F-D18 mirrors F-D15's design rationale at a different scope.
+- **OQ-23 (iii.b)** (FINDINGS L1208) — protocol-aggregate-EMA definition + direction-comparison rule; F-D18 fills the first-epoch behavior gap.
+- **F-D9 / F-D16** — Miliarium-only scope; aggregate is summed only over Miliarium pools, not all gauged pools.
+
+**Test surface flagged for F3.4:**
+
+- First `updateMultiplier` across protocol seeds `lastProtocolAggregateEMA = currentProtocolAggregateEMA`; `delta_global` for that epoch's pool is `0`.
+- Second `updateMultiplier` at next epoch with aggregate movement above dead-zone yields nonzero `delta_global`.
+- Second `updateMultiplier` at next epoch with aggregate movement below dead-zone yields `delta_global = 0`.
+- First `updateMultiplier` does NOT cause universal `M_i` shift across Miliarium pools (verifies seed-and-zero, not formula-always).
+- Sentinel is one-shot: subsequent calls do not re-seed even if `currentProtocolAggregateEMA == lastProtocolAggregateEMA` momentarily.
+
 ---
 
 ## Findings
