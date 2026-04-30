@@ -127,4 +127,16 @@ These are the answers to the planning-stage questions resolved before this file 
 
 | Sub-step | Commit | Date | Summary |
 |----------|--------|------|---------|
-| F0 | TBD | 2026-04-29 | F0: docs/STAGE_F_PLAN.md + docs/STAGE_F_NOTES.md — Stage F scaffold |
+| F0 | 31b20ea | 2026-04-29 | docs/STAGE_F_PLAN.md + docs/STAGE_F_NOTES.md — Stage F scaffold |
+| F0.1 | 41160d0 | 2026-04-29 | docs/FINDINGS.md — OQ-22 + OQ-5a-bis + OQ-23 stubs |
+| F0.2 | 3854652 | 2026-04-29 | docs/FINDINGS.md — OQ-22 RESOLVED (svZCHF numéraire; RP-unwrap + constellation-spot) |
+| F0.3 | 4a265c8 | 2026-04-29 | docs/FINDINGS.md + docs/STAGE_F_PLAN.md — OQ-5a-bis RESOLVED (EMASampler spot-per-day; accumulator dropped) |
+| F0.4 | 8a3b544 | 2026-04-29 | docs/FINDINGS.md + docs/STAGE_F_PLAN.md — OQ-23 RESOLVED (i.a per-channel ±0.05; ii.c dead zone; iii.b sum-of-EMAs; iv.a simple mean; v.d boost-gate-and-pause) |
+| F1.1 | 57ddc2c | 2026-04-29 | src/ccb/ITVLOracle.sol — TVL oracle interface (OQ-22) |
+| F1.2 | d99f4c4 | 2026-04-29 | docs/STAGE_F_NOTES.md — F-D15 (EMASampler cold-start sentinel) |
+| F1.3 | b01bdcc | 2026-04-29 | src/ccb/EMASampler.sol — F-4 per-pool TVL EMA sampler (OQ-5a-bis / F-D15) |
+| F1.4 | 8800ce7 | 2026-04-29 | test/unit/EMASampler.t.sol — EMASampler unit tests (F-4 formula, F-D15 cold-start, cadence guard, fuzz) |
+| F1.4b | 7e47283 | 2026-04-29 | test/unit/EMASampler.t.sol — tracked block counter in convergence test (F10 optimizer-hoist fix) |
+| F1.5 | c59422b | 2026-04-29 | docs/STAGE_F_NOTES.md — F10 (Solidity optimizer hoists block.number out of vm.roll-driven loops) |
+| F2.1 | f739520 | 2026-04-29 | src/ccb/CCBScore.sol — F-5 CCB score library (FixedPoint.mulDown) |
+| F2.2 | dd1baf2 | 2026-04-29 | test/unit/CCBScore.t.sol — F-5 library unit tests (identity, zero inputs, mulDown rounding, fuzz) |

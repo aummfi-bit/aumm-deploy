@@ -83,3 +83,21 @@ for (uint256 i = 0; i < 60; i++) {
 - **`test/unit/EMASampler.t.sol` L150-168** (`test_updateEMA_convergesTowardSpot_overManyDays`) — affected test; tracked-counter pattern applied at F1.4b.
 - **Solidity `via_ir` + Yul IR optimizer** — IR compilation exposes `block.number` reads as pure SSA values with no declared side-effects; loop-invariant code motion hoists the computation before Foundry's `vm.roll` `CALL` executes.
 - **F1.4b** (commit `7e47283`) — corrective commit that introduced the tracked-counter fix.
+
+---
+
+### F11 — Paste-rendering auto-links `FixedPoint.ONE` in chat (E-D26 recurrence at F2.2 audit)
+
+**Caught 2026-04-29 at F2.2 save-audit.** The `cat test/unit/CCBScore.t.sol` output pasted into chat displayed `FixedPoint.ONE` as `[FixedPoint.ONE](http://FixedPoint.ONE)` throughout — in comments and in code-position `assertEq` arguments. This triggered a false ❌ Fix verdict and an unnecessary F2.2-fix Cursor sub-step (which Cursor correctly declined, reporting no artifacts on disk). Cursor's read-back also showed the hyperlink form — not a real artifact in the file, but the chat renderer converting it again.
+
+**Root cause.** `.one` is a registered top-level domain. Markdown auto-linkers (Claude chat, Cursor's response pane) treat `FixedPoint.ONE` as `<identifier>.<tld>` and convert it to a hyperlink on render. Same pattern as **E-D26** (Stage E docs sweep).
+
+**Bypass-grep verdict.** `grep -c "\["` on the saved file returned `0` (no `[` characters on disk), and `grep -c "(http"` returned `0`. Combined with `grep -c "FixedPoint\.ONE"` = 4 (expected count), the file was confirmed clean without relying on chat rendering.
+
+**Procedural rule (additive to E-D26).** For any file containing tokens matching `<identifier>.<tld>` — including `FixedPoint.ONE`, method names ending in `.fi` / `.io` / `.com` — the default audit primitive is `grep -c "\["` (count opening square brackets), not `cat`. A result of `0` proves no markdown link artifacts exist on disk regardless of how chat renders the content.
+
+**Cross-references:**
+
+- **E-D26** (`docs/STAGE_E_NOTES.md`) — first occurrence; reclassified as paste-rendering at E5 docs sweep.
+- **`test/unit/CCBScore.t.sol` L15, L19, L24** — three `FixedPoint.ONE` code positions that triggered auto-link at F2.2 audit.
+- **F2.2** (`dd1baf2`) — commit whose `cat` output triggered the false ❌.
