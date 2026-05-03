@@ -107,7 +107,7 @@
 - `activateBoost(pool)` from non-approved caller reverts the gauge-registry access-control error (final shape per F3.2).
 - `activateBoost(nonMiliariumPool)` from approved gauge reverts the Miliarium check error per F-D16.
 - `activateBoost(pool)` at block `t + 648_001` (post-expiry) succeeds; new `boostExpiryBlock = t + 648_001 + 648_000`.
-- During boost: `updateMultiplier(pool)` ticks `lastMultiplierUpdateBlock` but leaves `M_i[pool]` unchanged (per OQ-23 (v.d)).
+- During boost: `updateMultiplier(pool)` is a full no-op per F-D21 — does not tick `lastMultiplierUpdateBlock`, does not write `M_i[pool]`, does not update `lastProtocolAggregateEMA`.
 - `getMultiplier(pool)` returns `BOOST_FACTOR` for `block.number < boostExpiryBlock[pool]`; returns `M_i[pool]` thereafter.
 
 ---
@@ -195,6 +195,121 @@
 - Combined alignment (aggregate growing AND pool above mean): total Δ `= −2 × STEP_SIZE`; channels reinforce.
 - Combined opposition (aggregate growing BUT pool below mean): total Δ `= 0`; channels cancel.
 - Boundary-exact combinations: dead-zone strict-inequality boundary applied per channel independently, so global-fires + intra-neutral and global-neutral + intra-fires both reachable in adjacent test cases.
+
+---
+
+### F-D20 — `IMiliariumRegistry` one-shot setter: sealed-after-first-write owner-once setter
+
+**Resolved 2026-05-02 at F3.2.7.** `CCBMultiplier`'s constructor takes a placeholder `IMiliariumRegistry` address and stores `msg.sender` as `registrySetter` in a mutable storage slot. A function `setMiliariumRegistry(IMiliariumRegistry newRegistry)` checks `msg.sender == registrySetter` (revert `OnlyRegistrySetter()` otherwise), checks `address(newRegistry) != address(0)` (revert `InvalidRegistry()` otherwise), writes `miliariumRegistry = newRegistry`, then writes `registrySetter = address(0)` to seal the setter permanently. Subsequent `setMiliariumRegistry` calls fail at the `OnlyRegistrySetter()` check because no caller can hold `address(0)`. Custom error names are illustrative and may be refined at the implementation sub-step.
+
+**The gap.** F-D9 pins the operational shape — "deployment uses a placeholder registry address that Stage J's `MiliariumRegistry.sol` deployment script replaces via a one-shot setter (same pattern as Stage G's gauge-registry → governance dependency)" — but does not enumerate the access-control mechanism for the setter call itself. Three implementations satisfy F-D9 with different permanent governance surfaces.
+
+**Why option (a) — sealed-after-first-write owner-once setter:**
+
+- **(b) Authorizer-gated multi-shot setter (`AureumAuthorizer`-checked).** The Authorizer is the governance Safe multisig per CLAUDE.md §2; (b) hands it the permanent power to swap the Miliarium registry indefinitely throughout protocol life. This contradicts the operational reality that registry replacement is a *one-time* deployment-handoff event from Stage F (placeholder) to Stage J (concrete). Permanent authority over a registry-swap surface is over-broad: any future Authorizer compromise (key loss, signer turnover bug, social engineering of the multisig) could swap in a malicious registry that re-classifies pools and corrupts F-8 multiplier scoring across the entire 28-pool Miliarium constellation. The sealed-after-first-write design eliminates this attack surface by construction.
+- **(c) Immutable address known at constructor time.** Operationally infeasible: `CCBMultiplier` deploys at Stage F, before Stage J ships the concrete `MiliariumRegistry`, so the registry address does not exist at constructor time. Even if deployment order were reversed, tying the registry address to `CCBMultiplier`'s bytecode prevents any future protocol upgrade that re-deploys the registry against the same multiplier (e.g. registry bugfix that doesn't require multiplier redeployment).
+
+**Setter-self-disable mechanic.** `registrySetter` is `address public` (mutable), not `immutable`. Successful `setMiliariumRegistry` execution overwrites the slot to `address(0)` in the same transaction. Any subsequent caller (including the original deployer) fails the `msg.sender == registrySetter` check because `address(0)` cannot transact. Single SSTORE on activation, single SLOAD on subsequent calls; the `OnlyRegistrySetter()` revert path is the same for "called by wrong address" and "called after sealing" — both are unauthorized, the user-facing distinction is recoverable from `registrySetter()` view (returns `address(0)` post-seal). A separate `bool sealed` flag with a distinct `RegistryAlreadyPinned()` error is rejected as redundant storage; the post-seal `registrySetter == address(0)` state is itself the seal.
+
+**Pre-Stage-J behavior.** Until `setMiliariumRegistry` is called, the placeholder registry returns `false` for every `isMiliarium(pool)` query (per F-D9). This causes every `updateMultiplier(pool)` call to revert `NotMiliariumPool(pool)` per F-D16. Acceptable: pre-Stage-J the gauge-emission machinery is not running (Stage G ships gauge approval; Stage H ships emissions; both gate on Stage J's registry being live). The `CCBMultiplier` contract is deployed for fork-test integration and forward wiring; production activation requires the Stage J handoff regardless.
+
+**Cross-references:**
+
+- **F-D9** (`STAGE_F_PLAN.md` L63) — operational shape pinned (placeholder + Stage J one-shot replacement); F-D20 specifies the access-control mechanic.
+- **C-D2 lineage** — AuMM minter-once setter pattern (Stage C); F-D20 inherits the same sealed-after-first-write shape at the registry-replacement layer. Stage G's gauge-registry → governance handoff per F-D9's parallel reference is the next consumer of the same pattern.
+- **CLAUDE.md §2** — `AureumAuthorizer` is the governance Safe multisig during Stages A–K; F-D20's rejection of (b) protects the Miliarium classification surface from the Authorizer's permanent reach.
+- **F-D16** (`STAGE_F_NOTES.md` L54) — pre-Stage-J `updateMultiplier` revert path; F-D20's seal mechanism does not change this — pre-seal calls still revert at the F-D16 Miliarium check because the placeholder returns `false`.
+
+**Test surface flagged for F3.4:**
+
+- Constructor stores `msg.sender` in `registrySetter`; `miliariumRegistry` initialized to placeholder.
+- `setMiliariumRegistry(addr)` from `registrySetter` succeeds, writes `miliariumRegistry = addr`, zeros `registrySetter`.
+- `setMiliariumRegistry(addr)` from non-deployer reverts `OnlyRegistrySetter()` before any state change.
+- `setMiliariumRegistry(addr2)` after a prior successful seal reverts `OnlyRegistrySetter()` regardless of caller.
+- `setMiliariumRegistry(address(0))` from `registrySetter` reverts `InvalidRegistry()` (protects against an accidental zero-address pin that would brick the contract permanently).
+- Post-seal `registrySetter()` view returns `address(0)`; post-seal `miliariumRegistry()` view returns the pinned address.
+
+---
+
+### F-D21 — `updateMultiplier(pool)` during active boost: full silent no-op (no cadence tick, no `M_i` write, no aggregate-baseline update); supersedes F-D17 L110
+
+**Resolved 2026-05-02 at F3.2.7.** When `updateMultiplier(pool)` is called for a pool with `block.number < boostExpiryBlock[pool]`, the function returns silently after the cadence and Miliarium gates without modifying any state — no `M_i[pool]` write, no `lastMultiplierUpdateBlock[pool]` advance, no `lastProtocolAggregateEMA` update. Order of checks inside `updateMultiplier`: (1) Miliarium check per F-D16 (revert `NotMiliariumPool(pool)` if false); (2) cadence guard per F-D6 (revert `TooEarly(...)` if `block.number < lastMultiplierUpdateBlock[pool] + BLOCKS_PER_EPOCH`); (3) boost-skip branch (return silently if `block.number < boostExpiryBlock[pool]`); (4) F-8 evolution per F-D18 + F-D19. Boost-skip is downstream of cadence — a too-early call during boost still reverts `TooEarly` rather than silently returning. Supersedes F-D17 L110's test-surface bullet (which read "ticks `lastMultiplierUpdateBlock` but leaves `M_i[pool]` unchanged"); L110 is rewritten at this sub-step to align with F-D21.
+
+**The gap.** OQ-23 (v.d) (FINDINGS L1212-L1230) pins "F-8 paused during window" — boost gates effective output to `BOOST_FACTOR` AND pauses F-8 state evolution during the 90-day window. Two implementation readings of "paused":
+
+- **(i) Tick the cadence, skip the `M_i` write.** `updateMultiplier(pool)` advances `lastMultiplierUpdateBlock[pool]` by `BLOCKS_PER_EPOCH` but does not change `M_i[pool]`. The visible per-epoch cadence machine continues; only the `M_i` side effect is suppressed. F-D17 L110's original framing.
+- **(ii) Full no-op.** `updateMultiplier(pool)` makes no state changes — neither cadence advance, nor `M_i` write, nor protocol-aggregate baseline update. The boost makes the per-pool epoch machine completely invisible to external callers.
+
+**Why option (ii) — full no-op:**
+
+- **Phantom epoch alignment.** `GAUGE_BOOST_DURATION_BLOCKS = 648,000 ≈ 6.43 × BLOCKS_PER_EPOCH (100,800)`. Under (i), six phantom cadence ticks would land mid-boost, advancing `lastMultiplierUpdateBlock` to a position with no semantic meaning — the epoch boundary is the moment when `M_i` would have been written, but no `M_i` write happens. At boost expiry, the next eligible epoch fires from whatever phantom-ticked position is most recent — typically a multi-week drift away from the cadence the pool would have had absent boost. Under (ii), `lastMultiplierUpdateBlock` is whatever it was at boost activation; the next eligible epoch fires `BLOCKS_PER_EPOCH` after that, with no phantom advance to clean up. The post-boost cadence is exactly the pre-boost cadence shifted forward by the boost's call-time elapsed.
+- **Pause-means-pause semantics.** OQ-23 (v.d)'s "F-8 paused" reads as "the F-8 state machine is suspended" — pausing a state machine means no transitions, including the cadence-advance transition that (i) preserves. Under (i), part of the state machine continues running, which is incongruent with the "paused" framing across all of F-8's surface (M_i, cadence, aggregate baseline). (ii) makes "paused" mean one thing everywhere.
+- **Knock-on: protocol aggregate baseline.** F-D18 pins `lastProtocolAggregateEMA` updated as part of `updateMultiplier`'s aggregate-computation path. Under (i)'s "tick but skip M_i" reading, whether the aggregate-baseline update fires is a separate decision (both readings are F-D18-compatible). Under (ii)'s full no-op, the aggregate baseline is not touched for the boosted-pool call; pause-means-pause applies uniformly. (ii) makes the F-D18 question moot for boosted pools — the next non-boosted pool's `updateMultiplier` call drives the aggregate baseline update.
+- **Stage H caller simplicity.** Stage H's emission distributor calls `updateMultiplier` on all eligible pools per epoch (per F-D6 / F-D10). Under (ii), Stage H does not need to know which pools are boosted — the call returns silently for boosted pools and updates state for non-boosted pools. Under (i), the cadence-tick-but-no-M_i-write behavior is visible to any orchestrator that reads `lastMultiplierUpdateBlock` between epochs (e.g. a stale-state checker or emergency-recovery script), creating a misleading "epoch ran but multiplier didn't update" inference path.
+
+**Why silent no-op rather than revert.** A revert (e.g. `BoostActive(pool)`) would force Stage H's distributor to either pre-filter boosted pools or wrap calls in try/catch, coupling the distributor to `CCBMultiplier`'s boost machinery. Silent no-op is the natural "I'm busy, skip me" signal at the abstraction boundary. Contrast: F-D17's `activateBoost` reverts on double-call because the alternative (silently extending the window) is *wrong semantics*, not just a wasted call. F-D16's `updateMultiplier(nonMiliariumPool)` reverts because the call is a *caller-side wiring bug*. During boost, `updateMultiplier(pool)` is the correct call from a correct caller at the correct time — just suppressed by the pause window — so silent return is the right primitive. The cost is a wasted gas allotment per boosted pool per epoch (the cadence and Miliarium gates each fire, then the boost-skip branch returns; on the order of a few thousand gas per skipped call).
+
+**Boundary behavior at boost expiry.** The boost-skip branch uses strict inequality `block.number < boostExpiryBlock[pool]`, matching F-D17 L111's `getMultiplier` boundary convention. At exactly `block.number == boostExpiryBlock[pool]`, the boost branch does NOT fire and `updateMultiplier` proceeds to F-8 evolution: `M_i[pool]` is written per F-D19 polarity rules, `lastMultiplierUpdateBlock[pool] = block.number`, `lastProtocolAggregateEMA` updated. Per OQ-23 (v.d), F-8 evolution resumes from `M_i = INITIAL_MULTIPLIER = 1e18` baseline — the implementation MUST reset `M_i[pool]` to `1e18` at boost-end if it was written to during pre-boost protocol life; the natural way is to leave `M_i[pool]` at its `1e18` initialization throughout boost (since (ii) suppresses M_i writes during boost) and let F-8 evolution take over from there. No special "first post-boost call" branch needed — `M_i[pool]` is already at `1e18` because nothing wrote to it during boost.
+
+**Cross-references:**
+
+- **OQ-23 (v.d)** (FINDINGS L1212-L1230) — "F-8 paused" framing; F-D21 specifies that pause covers the cadence tick AND aggregate baseline update, not just `M_i` writes.
+- **F-D17** (`STAGE_F_NOTES.md` L84) — boost activation + double-call revert; F-D17 L110 test-surface bullet superseded at this sub-step to align with full no-op (rewritten in-place).
+- **F-D18** (`STAGE_F_NOTES.md` L115) — protocol aggregate baseline; F-D21 pause includes the baseline update for boosted-pool calls. The aggregate baseline still updates on non-boosted pools' `updateMultiplier` calls within the same epoch.
+- **F-D19** (`STAGE_F_NOTES.md` L149) — anti-cyclical polarity rules; apply at the post-boost-expiry `updateMultiplier` call from a clean `M_i[pool] = 1e18` baseline.
+- **F-D6** (`STAGE_F_PLAN.md` L60) — cadence guard; the cadence check fires before the boost-skip branch, so a too-early call during boost reverts `TooEarly` rather than silently returning.
+- **F-D16** (`STAGE_F_NOTES.md` L54) — `NotMiliariumPool` revert; the Miliarium check fires before both the cadence and the boost-skip branch (a non-Miliarium boosted pool is unreachable per F-D17's Miliarium gate on `activateBoost`, but the layered check defends in depth).
+
+**Test surface flagged for F3.4:**
+
+- `updateMultiplier(pool)` during boost (`block.number < boostExpiryBlock[pool]`, cadence satisfied) returns without state change: `M_i[pool]`, `lastMultiplierUpdateBlock[pool]`, `lastProtocolAggregateEMA` all unchanged.
+- `updateMultiplier(pool)` during boost called too early (cadence not yet satisfied) reverts `TooEarly(...)` per F-D6 — boost-skip is downstream of cadence.
+- `updateMultiplier(nonMiliariumBoostedPool)` reverts `NotMiliariumPool(pool)` per F-D16 (theoretical — F-D17's `activateBoost` gate prevents the precondition, but the layered defense fires).
+- `updateMultiplier(pool)` at exactly `block.number == boostExpiryBlock[pool]` updates state per F-D19 (boost expired, F-8 cadence resumes from `M_i = 1e18`).
+- Multi-pool scenario: `updateMultiplier(boostedPool)` silent + `updateMultiplier(unboostedPool)` real-update in the same epoch — verifies aggregate-baseline update fires only on the unboosted call's path.
+- Post-expiry first call: `M_i[pool]` is `1e18` going in (never written during boost); F-8 evolution writes per F-D19 polarity from this baseline.
+
+---
+
+### F-D22 — `IEMASampler` read-only interface; `CCBMultiplier` reads via interface, never calls `updateEMA`
+
+**Resolved 2026-05-02 at F3.2.7.** `CCBMultiplier` reads per-pool EMA values through an injected `IEMASampler` view interface — `tvlEMA(address pool) external view returns (uint256)` and `lastEMAUpdateBlock(address pool) external view returns (uint256)`. The interface does not expose `updateEMA(pool)`; `CCBMultiplier` never refreshes the EMA itself. Stage H's emission distributor is the natural ordering layer: refresh EMA via `EMASampler.updateEMA` first, then call `updateMultiplier`. The concrete `EMASampler` (per F1.3 commit `b01bdcc`) satisfies the interface via Solidity's auto-generated getters on its `public` mappings; no implementation change to `EMASampler.sol` is required. The interface file `src/ccb/IEMASampler.sol` lands as a separate sub-step (F3.2b) after this NOTES amendment.
+
+**The gap.** F-D5 pins permissionless `updateEMA` (anyone can call once per `BLOCKS_PER_DAY`); F-D6 pins permissionless `updateMultiplier` (anyone can call once per `BLOCKS_PER_EPOCH`). Both cadences are independent. The unspecified question is whether `CCBMultiplier`'s consumption of EMA values reads through a concrete-type binding, a write+read interface, or a read-only interface — three designs with different mock surfaces, gas profiles, and side-effect coupling.
+
+**Why option (α) — read-only interface:**
+
+- **(β) Read + write interface (`updateEMA` exposed; CCBMultiplier opportunistically refreshes).** Couples per-day EMA cadence with per-epoch multiplier cadence inside `CCBMultiplier`'s call path. `BLOCKS_PER_DAY = 7,200`; `BLOCKS_PER_EPOCH = 100,800` (= 14 × `BLOCKS_PER_DAY`). One epoch spans 14 EMA-refresh windows; (β) would force `CCBMultiplier` to either (β.1) call `updateEMA` once per `updateMultiplier` (refreshing only the most recent EMA window despite 13 other unsampled days during the epoch — semantically wrong, the EMA reads stale data 13 days deep), (β.2) call `updateEMA` 14 times in a loop (gas-prohibitive and shifts cadence-skip detection into `CCBMultiplier`), or (β.3) skip the refresh and accept potentially-stale EMA reads (defeating the purpose of (β)). All three are worse than separating concerns at the interface boundary.
+- **(γ) Concrete-type binding (no interface).** Requires `CCBMultiplier.t.sol` to deploy a real `EMASampler` plus its `ITVLOracle` mock, then drive synthetic spot-TVL signals through the EMASampler cadence to set up multiplier-test fixtures. Inflates test setup by 100+ LOC per test path and entangles `CCBMultiplier`'s tests with `EMASampler`'s cadence-guard semantics. (α)'s thin interface lets `MockEMASampler` be a single-mapping setter — `setTVLEMA(pool, value)` — keeping `CCBMultiplier` tests focused on F-8 multiplier semantics.
+- **Stage H ordering responsibility.** Stage H's distributor explicitly orders state refreshes per epoch: refresh all eligible pools' EMA via `EMASampler.updateEMA`, then call `CCBMultiplier.updateMultiplier`, then read `EMASampler.tvlEMA` + `CCBMultiplier.getMultiplier` for scoring. This ordering is Stage H's responsibility, not `CCBMultiplier`'s. (α) reflects the responsibility boundary: `CCBMultiplier` consumes EMA reads as inputs; Stage H ensures the inputs are fresh.
+
+**Interface shape — what's exposed and what's not.** `IEMASampler` exposes only the two view getters that `CCBMultiplier`'s F-8 computation requires:
+
+- `tvlEMA(address pool) external view returns (uint256)` — per-pool EMA value, used in `delta_intra_i` and `protocolTVLEMA` summation.
+- `lastEMAUpdateBlock(address pool) external view returns (uint256)` — sampling-recency check; not required for F-8 itself but included now to avoid a Stage H amendment when stale-EMA guard logic ships.
+
+Not exposed: `updateEMA(address pool)`, `oracle()`, intra-day TWAP accumulator state. These are concrete-`EMASampler` implementation details with no consumer outside Stage F internals and Stage H's update-orchestration layer (which calls `EMASampler` directly via concrete type, not through the interface).
+
+**File location and shape.** `src/ccb/IEMASampler.sol`, `pragma solidity ^0.8.26`, `SPDX-License-Identifier: GPL-3.0-or-later`. Mirrors `IGaugeRegistry.sol` (F3.2 commit `f30e720`) and `IMiliariumRegistry.sol` (F3.1 commit `d967141`) — single interface declaration, NatSpec `@notice` per method, no inheritance. Approximately 14 LOC.
+
+**No `EMASampler.sol` change required.** The concrete `EMASampler.sol` (F1.3) declares `mapping(address => uint256) public tvlEMA` and `mapping(address => uint256) public lastEMAUpdateBlock` — Solidity auto-generates `external view` accessor functions whose signatures match the `IEMASampler` interface exactly. `EMASampler` satisfies `IEMASampler` implicitly without an explicit `is IEMASampler` declaration. F-D22 does not require touching the concrete contract; the interface lands as a new file at F3.2b and `CCBMultiplier` (F3.3+) reads through it.
+
+**Cross-references:**
+
+- **F-D5** (`STAGE_F_PLAN.md` L59) — permissionless `updateEMA`; F-D22 lifts the `updateEMA` call out of `CCBMultiplier`'s path entirely, keeping the read/write-cadence separation clean.
+- **F-D6** (`STAGE_F_PLAN.md` L60) — permissionless `updateMultiplier`; cadence independence from F-D5 motivates the interface separation rather than collapsing both cadences into one contract.
+- **F-D11** (`STAGE_F_PLAN.md` L65) — test layout; mock-`EMASampler` pattern matches the F1 mock-`ITVLOracle` and F3 mock-`IMiliariumRegistry` (per F-D16) shapes.
+- **`src/ccb/EMASampler.sol`** (F1.3 commit `b01bdcc`) — concrete contract; `public tvlEMA` and `public lastEMAUpdateBlock` mappings satisfy the interface via Solidity's auto-generated getters.
+- **`src/ccb/IGaugeRegistry.sol`** (F3.2 commit `f30e720`) — peer interface shape; F3.2b `IEMASampler.sol` mirrors NatSpec + structure.
+- **`src/ccb/IMiliariumRegistry.sol`** (F3.1 commit `d967141`) — peer interface shape; same.
+
+**Test surface flagged for F3.4:**
+
+- `MockEMASampler.setTVLEMA(pool, value)` setter populates the mock's per-pool EMA without requiring oracle wiring or cadence-guard advances.
+- `MockEMASampler.setLastEMAUpdateBlock(pool, value)` setter populates the recency slot for any future stale-EMA guard tests.
+- `CCBMultiplier` reads `tvlEMA(pool)` through the `IEMASampler` interface; mock returns the configured value; no `updateEMA` call originates from `CCBMultiplier`.
+- `MockEMASampler` defaults to zero for unconfigured pools; F-D15-style cold-start behavior is upstream of the interface boundary and tested in `EMASampler.t.sol`, not at the `CCBMultiplier` layer.
+- Type check: a `CCBMultiplier` constructor argument typed as `IEMASampler` accepts a deployed concrete `EMASampler` instance without explicit cast (verifies the implicit interface satisfaction).
 
 ---
 
