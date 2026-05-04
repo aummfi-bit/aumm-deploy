@@ -348,6 +348,42 @@ Not exposed: `updateEMA(address pool)`, `oracle()`, intra-day TWAP accumulator s
 
 ---
 
+### F-D24 — `activateBoost` resets `M_i[pool] = INITIAL_MULTIPLIER` on activation; closes F-D17 L92 + F-D21 L252 boost-entry baseline gap
+
+**Resolved 2026-05-04 at F3.2.9.** `activateBoost(pool)`'s state-write list extends F-D17 L86's single write to two writes: `boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS;` and `M_i[pool] = INITIAL_MULTIPLIER;`. The reset fires on every successful activation — initial cold-start activation, post-expiry re-activation after F-8 evolution in the gap between boosts. F-D17 L92's "fresh `M_i = 1.0` baseline" promise becomes a local invariant of `activateBoost` rather than an implicit cross-stage operational ordering assumption. F-D21 L252's "MUST reset to `1e18` at boost-end if it was written to during pre-boost protocol life" is satisfied by pinning `M_i` at activation rather than at expiry — the reset upstream of the boost window achieves the same post-boost-evolution behavior without a "first post-boost call" branch in `updateMultiplier`.
+
+**The gap.** F-D17 L92 reads "`M_i` remains at `INITIAL_MULTIPLIER = 1e18` across the prior boost ... so a post-expiry re-activation effectively gives another 90-day boost from a fresh `M_i = 1.0` baseline." This claim only holds if `M_i[pool]` was at `INITIAL_MULTIPLIER` when boost started. F-D21's pause-during-boost keeps `M_i` constant within the window but does not pin its entry value. F-D21 L252 acknowledges the case where pre-boost F-8 evolution wrote `M_i[pool]` to a non-1e18 value ("MUST reset ... at boost-end") but contradicts itself in the next clause ("No special 'first post-boost call' branch needed — `M_i[pool]` is already at `1e18` because nothing wrote to it during boost"). The "natural way" framing presupposes the cold-start case (no pre-boost evolution); the "MUST reset" clause acknowledges the F-8-evolved case but specifies no mechanism. F3.3c's `activateBoost` implementation cannot land without a pinned mechanism for the F-8-evolved entry case.
+
+**Why option (α) — `activateBoost` resets `M_i[pool] = INITIAL_MULTIPLIER` on every activation:**
+
+- **(β) Pin operational invariant: boost-eligible pools never have pre-boost F-8 evolution.** Requires Stage G's gauge-approval flow to gate the first `activateBoost(pool)` ahead of any `updateMultiplier(pool)` for that pool, *and* to maintain the invariant across post-expiry windows where the pool may evolve via F-8 in the gap between boosts. The post-expiry case alone defeats (β): a pool boosted at block `t`, expired at `t + 648_000`, F-8 evolved at `t + 700_000`, re-boosted at `t + 800_000` enters the second boost with `M_i ≠ 1e18`. The cross-stage timing guarantee cannot be enforced inside Stage F.
+- **(γ) `updateMultiplier` detects "first post-boost call" and resets `M_i[pool]` there.** Requires either a new tracking slot (e.g., `lastBoostExpiryProcessed[pool]`) or boundary-detection logic comparing `block.number`, `boostExpiryBlock[pool]`, and `lastMultiplierUpdateBlock[pool]`. Adds storage or conditional complexity to the hot path. Contradicts F-D21 L252's framing of "No special 'first post-boost call' branch needed" — that framing only holds if the upstream invariant (`M_i` at `1e18` entering boost) is locally enforceable, which is exactly what (α) provides.
+
+**Cold-start interaction.** Default `M_i[pool] = 0` for never-evolved pools. F-D24's reset writes `1e18` over the `0` — equivalent in observable behavior to the cold-start "natural way" path in F-D21 L252 (the F3.3a scaffold's `M_i` NatSpec already documents that `getMultiplier` reads `0` as `INITIAL_MULTIPLIER`). The reset costs one extra SSTORE on activation in the cold-start case for no semantic gain, but the implementation cannot distinguish cold-start from post-evolution at activation-time without an extra sentinel — and the unconditional reset is simpler than per-pool sentinel tracking.
+
+**Cost.** One additional SSTORE per `activateBoost` call. Cold-start activation is `0 → INITIAL_MULTIPLIER` (~22,100 gas); subsequent re-activations after intervening F-8 evolution are non-zero → non-zero (~5,000 gas). `activateBoost` fires at most once per 90 days per pool (per F-D17's no-renewal rule), and the 28-pool Miliarium constellation bounds total activations to ~28 per quarter. Aggregate annual gas overhead is negligible at protocol scale.
+
+**State-write order in `activateBoost`.** F-D24 pins the order as `boostExpiryBlock[pool]` first, then `M_i[pool]`. Rationale: F-D17 L86 frames `boostExpiryBlock` as the function's primary effect ("Otherwise sets `boostExpiryBlock[pool] = ...`"); the `M_i` reset is the consistency-maintaining secondary write. Order is functionally interchangeable (no read-after-write dependency between the two slots), so the convention is documentation-first rather than gas-driven.
+
+**Cross-references:**
+
+- **F-D17** (`STAGE_F_NOTES.md` L84) — `activateBoost` entry-point semantics; F-D24 extends F-D17 L86's state-write list and closes F-D17 L92's "fresh `M_i = 1.0` baseline" promise locally rather than via cross-stage operational ordering.
+- **F-D21** (`STAGE_F_NOTES.md` L234) — `updateMultiplier` full no-op during boost; F-D24 satisfies F-D21 L252's "MUST reset at boost-end" requirement upstream at activation, preserving F-D21 L252's "no special 'first post-boost call' branch needed" framing for `updateMultiplier`.
+- **F-D7** (`STAGE_F_PLAN.md` L61) — `INITIAL_MULTIPLIER = 1e18` constant; the reset target.
+- **F-D9 / F-D16** (`STAGE_F_PLAN.md` L63 / `STAGE_F_NOTES.md` L54) — Miliarium-only scope; `activateBoost`'s Miliarium gate fires before the `M_i` reset, so non-Miliarium pools never see the reset write.
+- **OQ-23 (v.d)** (FINDINGS L1212-L1230) — boost composition spec; F-D24's reset implementation closes the "expiry hands off to `M_i[pool] = INITIAL_MULTIPLIER`" cross-reference (F-D17 L98) by ensuring boost entry pins `M_i` and the F-D21 pause preserves it through the window.
+
+**Test surface flagged for F3.4 (extends F-D17 L105-L109 surface):**
+
+- Cold-start `activateBoost(pool)`: `M_i[pool] == 0` pre-call, `M_i[pool] == INITIAL_MULTIPLIER` post-call. Boost expiry block set per F-D17 L86.
+- Pre-evolved `activateBoost(pool)`: pool's `M_i[pool]` set to non-1e18 value pre-call (e.g., `0.85e18` simulating prior F-8 evolution); post-call `M_i[pool] == INITIAL_MULTIPLIER`. Boost expiry block set per F-D17.
+- Post-expiry re-activation with mid-gap F-8 evolution: activate, advance past expiry, drive F-8 evolution to `M_i ≈ 0.90e18`, re-activate; `M_i` back to `INITIAL_MULTIPLIER`. Verifies F-D24 reset fires on every activation, not only the first.
+- Boost-active double-call still reverts `BoostAlreadyActive(pool)` per F-D17 — no `M_i` write occurs (revert before any state change).
+- Non-Miliarium / non-approved-gauge revert paths still revert per F-D17 — no `M_i` write occurs.
+- Post-boost-expiry first `updateMultiplier(pool)` reads `M_i[pool] == INITIAL_MULTIPLIER` (the activation-time reset value, preserved across F-D21's pause window) and applies F-8 step from the `1e18` baseline per F-D19 polarity.
+
+---
+
 ## Findings
 
 > `F10` onward populates as implementation incidents emerge.
