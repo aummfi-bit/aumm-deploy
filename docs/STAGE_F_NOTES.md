@@ -313,6 +313,41 @@ Not exposed: `updateEMA(address pool)`, `oracle()`, intra-day TWAP accumulator s
 
 ---
 
+### F-D23 — `IGaugeRegistry` one-shot setter: parallel sealed-after-first-write setter (mirrors F-D20)
+
+**Resolved 2026-05-04 at F3.2.8.** `CCBMultiplier`'s constructor takes a placeholder `IGaugeRegistry` address and stores `msg.sender` as `gaugeRegistrySetter` in a mutable storage slot. A function `setGaugeRegistry(IGaugeRegistry newRegistry)` checks `msg.sender == gaugeRegistrySetter` (revert `OnlyGaugeRegistrySetter()` otherwise), checks `address(newRegistry) != address(0)` (revert `InvalidRegistry()` otherwise), writes `gaugeRegistry = newRegistry`, then writes `gaugeRegistrySetter = address(0)` to seal the setter permanently. Subsequent `setGaugeRegistry` calls fail at the `OnlyGaugeRegistrySetter()` check because no caller can hold `address(0)`. Custom error names are illustrative and may be refined at the implementation sub-step.
+
+**The gap.** F-D9 pins the operational shape for both registries — Stage F deployment binds placeholder addresses; Stage G replaces the gauge registry and Stage J replaces the Miliarium registry via one-shot setters — and F-D20 authors the Miliarium-side access-control mechanic in full. F-D20 L219 references Stage G's gauge handoff as the "next consumer of the same pattern" without specifying whether setter authority is a **second slot** parallel to `registrySetter` or a **shared** slot gating both `setMiliariumRegistry` and `setGaugeRegistry`. F3.3a's storage layout requires an explicit choice; transitivity-only NatSpec risks ambiguity for downstream reviewers.
+
+**Why option (a) — parallel `gaugeRegistrySetter` slot, independent seal:**
+
+- **(b) Shared `registrySetter` gating both setters.** One successful handoff zeros the sole authority slot; whichever registry ships second cannot complete its setter call without an upgrade path the constitution avoids. Stage J's `MiliariumRegistry` and Stage G's gauge registry land on independent timelines; coupling the two handoffs is an operational footgun.
+
+**Why not immutable constructor binding.** Same rejection class as F-D20's (c): `CCBMultiplier` deploys at Stage F before Stage G's concrete `GaugeRegistry` exists, so the production gauge address is not knowable at constructor time.
+
+**Setter-self-disable mechanic.** Same structural shape as F-D20: `gaugeRegistrySetter` is `address public` (mutable), not `immutable`. Successful `setGaugeRegistry` execution overwrites the slot to `address(0)` in the same transaction. Post-seal `gaugeRegistrySetter()` returns `address(0)`; a separate `bool sealed` flag is redundant.
+
+**Pre-Stage-G behavior.** Until `setGaugeRegistry` is called, tests deploy against the placeholder `IGaugeRegistry` wired at construction — matching whatever mock or stub satisfies `isGaugeApproved` for `activateBoost` harnesses per F-D17 and F3.4. Production Stage G handoff pins the real registry regardless.
+
+**Cross-references:**
+
+- **F-D9** (`STAGE_F_PLAN.md` L63) — gauge-registry replacement uses the same pattern as Miliarium; F-D23 specifies the parallel setter mechanic.
+- **F-D20** (`STAGE_F_NOTES.md` L201) — Miliarium one-shot setter authority; F-D23 is the gauge-side twin — independent slots, independent seals, identical self-disable shape.
+- **F-D17** (`STAGE_F_NOTES.md` L84) — `activateBoost` gates on `IGaugeRegistry.isGaugeApproved(msg.sender)`; consumes `gaugeRegistry` after Stage G wiring.
+- **CLAUDE.md §2** — rejection of permanent Authorizer-gated multi-shot registry swap for Miliarium (F-D20 (b)) applies symmetrically to gauge; parallel sealed-after-first-write preserves that posture without coupling Stage G and Stage J ordering.
+
+**Test surface flagged for F3.4:**
+
+- Constructor stores `msg.sender` in `gaugeRegistrySetter`; `gaugeRegistry` initialized to placeholder.
+- `setGaugeRegistry(addr)` from `gaugeRegistrySetter` succeeds, writes `gaugeRegistry = addr`, zeros `gaugeRegistrySetter`.
+- `setGaugeRegistry(addr)` from non-deployer reverts `OnlyGaugeRegistrySetter()` before any state change.
+- `setGaugeRegistry(addr2)` after a prior successful seal reverts `OnlyGaugeRegistrySetter()` regardless of caller.
+- `setGaugeRegistry(address(0))` from `gaugeRegistrySetter` reverts `InvalidRegistry()` (blocks accidental zero-address pin).
+- Post-seal `gaugeRegistrySetter()` view returns `address(0)`; post-seal `gaugeRegistry()` view returns the pinned address.
+- Independence: successful `setMiliariumRegistry` does not zero `gaugeRegistrySetter`, and vice versa — ordering of the two handoffs is unconstrained.
+
+---
+
 ## Findings
 
 > `F10` onward populates as implementation incidents emerge.
