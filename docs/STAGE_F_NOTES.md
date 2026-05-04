@@ -384,6 +384,37 @@ Not exposed: `updateEMA(address pool)`, `oracle()`, intra-day TWAP accumulator s
 
 ---
 
+### F-D25 — `updateMultiplier` arithmetic-base sentinel: `M_i[pool] == 0 → INITIAL_MULTIPLIER` for F-8 evolution (closes pre-`activateBoost` permissionless `updateMultiplier` path)
+
+**Resolved 2026-05-04 at F3.3.d.0.** When `updateMultiplier(pool)` reaches the F-8 evolution step (past Miliarium, cadence, and boost-skip gates), the prior multiplier is read as `M_i[pool] == 0 ? INITIAL_MULTIPLIER : M_i[pool]` — same `0 → INITIAL_MULTIPLIER` sentinel as `getMultiplier`. The F-8 step `M_i[pool] = clamp(prior + delta_global + delta_intra)` operates on the sentinel-resolved prior; subsequent calls read the written non-zero value directly. The sentinel branch fires at most once per pool over its lifetime.
+
+**The gap.** Three artifacts touch the cold-start surface — (1) L84 NatSpec for `getMultiplier`, (2) F-D24's `activateBoost` reset, (3) F-D17 / F-D21 boost-entry framing — and none of them pin `updateMultiplier`'s arithmetic base when `M_i[pool] == 0` and `activateBoost` has never fired (reachable because `updateMultiplier` is permissionless per F-D6 while `activateBoost` is gauge-gated per F-D17). Naive `M_i[pool] + delta` reads literal `0`, applies delta, clamps to `CLAMP_FLOOR = 75e16` — silently locks the pool at `0.75×`.
+
+**Why option (α) — read-time sentinel matching `getMultiplier`:**
+
+- **(β) Revert when `M_i[pool] == 0`.** — couples `updateMultiplier`'s success path to `activateBoost` having been called; brittle across pre-Stage-G test fixtures and Stage J / Stage G handoff transitionals; cadence independence between F-D6 and F-D17 makes the coupling unenforceable inside Stage F.
+- **(γ) Initialize `M_i[pool] = INITIAL_MULTIPLIER` at Miliarium-pool registration.** — requires registry → multiplier callback or event subscription; adds Stage J ↔ Stage F write-direction dependency; heavier than read-side sentinel.
+- **(α)'s symmetry with `getMultiplier`.** — L84 NatSpec already pins read-side sentinel; (α) extends the same sentinel into `updateMultiplier`'s read path; no new convention, no new storage slot.
+
+**Sentinel reliability.** `M_i[pool] == 0` is unambiguously "never written" because (i) only `updateMultiplier`'s F-8 path and `activateBoost`'s F-D24 reset write the slot; (ii) both write-paths produce values in `{INITIAL_MULTIPLIER}` ∪ `[CLAMP_FLOOR, CLAMP_CEILING] = [75e16, 125e16]` — all non-zero; (iii) no constructor pre-seed.
+
+**Boost-window invariant preserved.** F-D21 silent no-op makes the F-8 evolution path unreachable during boost, so the sentinel never fires inside a boost window. F-D24's activation-time reset writes `M_i[pool] = INITIAL_MULTIPLIER` upstream of any boost, so post-expiry first `updateMultiplier` reads `1e18` directly from storage, not via sentinel. The sentinel's per-pool firing is genuinely once-per-lifetime: the first-ever F-8 evolution call on a never-boosted, never-evolved Miliarium pool.
+
+**Cross-references:**
+
+- **L84** (`src/ccb/CCBMultiplier.sol`) — read-side `M_i[pool] == 0 → INITIAL_MULTIPLIER` sentinel in `getMultiplier`; F-D25 extends the same convention into `updateMultiplier`'s F-8 arithmetic base.
+- **F-D24** (`STAGE_F_NOTES.md` L351) — `activateBoost` writes `M_i[pool] = INITIAL_MULTIPLIER` on activation; cold-start and post-evolution paths upstream of permissionless evolution.
+- **F-D17** (`STAGE_F_NOTES.md` L84) — `activateBoost` gauge gate vs permissionless `updateMultiplier` per F-D6; F-D25 closes the pre-boost arithmetic-base gap without coupling cadences.
+- **F-D19** (`STAGE_F_NOTES.md` L149) — F-8 evolution polarity and clamp semantics; arithmetic applies after sentinel resolution of `prior`.
+- **F-D21** (`STAGE_F_NOTES.md` L234) — boost-window no-op for evolution; sentinel inactive during boost.
+- **F-D6** (`STAGE_F_PLAN.md` L60) — permissionless `updateMultiplier` surface motivating reachable `M_i[pool] == 0` before any `activateBoost`.
+
+**Test surface flagged for F3.4:**
+
+- Cold-start `updateMultiplier(MiliariumPool)` with storage `M_i[pool] == 0` writes a value in `{INITIAL_MULTIPLIER, INITIAL_MULTIPLIER ± STEP_SIZE, INITIAL_MULTIPLIER ± 2×STEP_SIZE} ∩ [CLAMP_FLOOR, CLAMP_CEILING]` (never relative to `0`); subsequent `updateMultiplier` calls on the same pool read the written non-zero value (sentinel does not re-fire); evolution post-`activateBoost` writes a value relative to `INITIAL_MULTIPLIER` (F-D24 path, sentinel unreached).
+
+---
+
 ## Findings
 
 > `F10` onward populates as implementation incidents emerge.
