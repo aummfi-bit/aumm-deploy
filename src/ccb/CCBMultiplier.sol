@@ -121,4 +121,67 @@ contract CCBMultiplier {
 
     /// @notice `activateBoost(pool)` reverts when `IGaugeRegistry.isGaugeApproved(msg.sender)` returns false. Per F-D17 caller gate. Pre-Stage-G the placeholder gauge registry returns `false` for every caller, so every call reverts here until the Stage G handoff completes.
     error OnlyApprovedGauge(address caller);
+
+    // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Wires `CCBMultiplier` to its three external dependencies and pins both setter authorities to the deployer.
+     * @dev Per F-D20 / F-D22 / F-D23: zero-address rejection on all three bindings (`InvalidRegistry`) protects
+     *      against deployment-side wiring bugs that would brick the contract before Stage G / Stage J handoffs land.
+     *      `registrySetter` and `gaugeRegistrySetter` are independent slots — their seals fire on independent
+     *      timelines (Stage G ships the gauge registry; Stage J ships the Miliarium registry) per F-D23.
+     * @param _miliariumRegistry Stage F placeholder; replaced via `setMiliariumRegistry` at Stage J handoff (F-D20).
+     * @param _gaugeRegistry Stage F placeholder; replaced via `setGaugeRegistry` at Stage G handoff (F-D23).
+     * @param _emaSampler Concrete `EMASampler` from F1.3; bound at construction and never replaced (F-D22).
+     */
+    constructor(
+        IMiliariumRegistry _miliariumRegistry,
+        IGaugeRegistry _gaugeRegistry,
+        IEMASampler _emaSampler
+    ) {
+        if (address(_miliariumRegistry) == address(0)) revert InvalidRegistry();
+        if (address(_gaugeRegistry) == address(0)) revert InvalidRegistry();
+        if (address(_emaSampler) == address(0)) revert InvalidRegistry();
+        miliariumRegistry = _miliariumRegistry;
+        gaugeRegistry = _gaugeRegistry;
+        emaSampler = _emaSampler;
+        registrySetter = msg.sender;
+        gaugeRegistrySetter = msg.sender;
+    }
+
+    // -------------------------------------------------------------------------
+    // Setters — registry binding (F-D20 / F-D23 one-shot self-seal)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Pin the Miliarium registry to its concrete Stage J deployment and seal the setter authority.
+     * @dev Per F-D20: callable exactly once, by the address recorded as `registrySetter` at construction.
+     *      Authority check fires before the zero-address guard — caller-side errors are reported as
+     *      `OnlyRegistrySetter()` regardless of the supplied `newRegistry`. State write order: registry binding
+     *      first, then `registrySetter = address(0)` to seal. Subsequent calls revert `OnlyRegistrySetter()`
+     *      because no caller can hold `address(0)`.
+     * @param newRegistry Concrete `IMiliariumRegistry` deployed at Stage J. Must be non-zero (`InvalidRegistry()` otherwise).
+     */
+    function setMiliariumRegistry(IMiliariumRegistry newRegistry) external {
+        if (msg.sender != registrySetter) revert OnlyRegistrySetter();
+        if (address(newRegistry) == address(0)) revert InvalidRegistry();
+        miliariumRegistry = newRegistry;
+        registrySetter = address(0);
+    }
+
+    /**
+     * @notice Pin the gauge registry to its concrete Stage G deployment and seal the setter authority.
+     * @dev Per F-D23: parallel-seal twin of `setMiliariumRegistry`. Callable exactly once, by the address recorded
+     *      as `gaugeRegistrySetter` at construction. Independent of the Miliarium-side seal — Stage G and Stage J
+     *      handoffs land on independent timelines. Same authority-then-zero-address check ordering as F-D20.
+     * @param newRegistry Concrete `IGaugeRegistry` deployed at Stage G. Must be non-zero (`InvalidRegistry()` otherwise).
+     */
+    function setGaugeRegistry(IGaugeRegistry newRegistry) external {
+        if (msg.sender != gaugeRegistrySetter) revert OnlyGaugeRegistrySetter();
+        if (address(newRegistry) == address(0)) revert InvalidRegistry();
+        gaugeRegistry = newRegistry;
+        gaugeRegistrySetter = address(0);
+    }
 }
