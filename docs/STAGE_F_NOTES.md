@@ -463,3 +463,39 @@ for (uint256 i = 0; i < 60; i++) {
 - **E-D26** (`docs/STAGE_E_NOTES.md`) — first occurrence; reclassified as paste-rendering at E5 docs sweep.
 - **`test/unit/CCBScore.t.sol` L15, L19, L24** — three `FixedPoint.ONE` code positions that triggered auto-link at F2.2 audit.
 - **F2.2** (`dd1baf2`) — commit whose `cat` output triggered the false ❌.
+
+---
+
+### F12 — Unsafe-cast `disable-next-line` suppression rejected; type discipline + `SafeCast` adopted as project standard (F3.3d-fix corrective)
+
+**Caught 2026-05-04 at F3.3e forge-lint verify (commit `4412b2c`, F3.3d-fix combined with F3.3e per single-paste commit ergonomics).** `forge lint src/ccb/CCBMultiplier.sol` returned eight `unsafe-typecast` warnings, all on F3.3d's committed `updateMultiplier` body — four `int256(STEP_SIZE)` casts in the global / intra-pool ± step-delta arithmetic (L255, L256, L264, L265) and four `int256(CLAMP_FLOOR)` / `int256(CLAMP_CEILING)` casts in the post-step clamp (L271 ×2, L272 ×2). Two adjacent casts — `int256(prior)` (L270) and `uint256(newM)` (L276) — already carried `// forge-lint: disable-next-line(unsafe-typecast)` annotations from F3.3d, paired with multi-line numerical-bounds-justification comments. The eight uncovered casts shipped in commit `d8959de` and were not flagged at F3.3d audit because that sub-step's verify block did not include `forge lint`.
+
+**Wrong fix initially proposed.** Six additional `// forge-lint: disable-next-line(unsafe-typecast)` annotations to cover the eight uncovered casts, matching the existing F3.3d L268-L270 / L274-L276 pattern. **Rejected.** Suppression annotations are not a fix. A `disable-next-line` paired with a numerical-bounds comment is a vow to remember the cast invariant forever — the kind of vow that survives the comment but does not survive the diff. The most consequential typecast / rounding incidents in this protocol's substrate (Balancer V2 era) reduced to assumptions of exactly this class.
+
+**Right fix applied at F3.3d-fix (`4412b2c`).** Two-layer type discipline:
+
+1. **Typed constants where consumed in a single signed domain.** `STEP_SIZE`, `CLAMP_FLOOR`, `CLAMP_CEILING` were declared `uint256` at F3.3a but are referenced *only* in `int256` arithmetic (the `delta_global` / `delta_intra` ± step assignments and the post-step clamp). Retyped to `int256`. Eight cast sites collapsed to bare constant references with zero runtime overhead. `DEAD_ZONE`, `INITIAL_MULTIPLIER`, `BOOST_FACTOR`, `GAUGE_BOOST_DURATION_BLOCKS`, `MILIARIUM_POOL_COUNT` stay `uint256` — each is consumed only in unsigned arithmetic.
+2. **`SafeCast` for cross-domain dynamic values.** `prior` (uint256, L267) and `newM` (int256, L276) cross integer-sign domains and carry runtime values. `int256(prior)` → `prior.toInt256()` reverts `SafeCastOverflowedUintToInt` if `prior > type(int256).max`. `uint256(newM)` → `newM.toUint256()` reverts `SafeCastOverflowedIntToUint` if `newM < 0`. Both reverts are provably unreachable under the `M_i[pool]` clamp invariant — but the runtime check survives any future code path that violates the invariant, which a comment never can.
+
+The four lines of suppression-justification comments at L268-L269 and L274-L275 were deleted. `SafeCast` makes the safety mechanical, not commentary. The file post-fix carries zero `// forge-lint: disable-next-line` directives. `forge lint src/ccb/CCBMultiplier.sol` returns zero warnings.
+
+**Process lesson — `forge lint` is mandatory in verify blocks for files containing arithmetic.** F3.3d's verify ran `wc`, `shasum`, `cat`, `grep`, and `forge build`, but not `forge lint`. The eight unsafe casts shipped in `d8959de` and would have continued shipping had F3.3e's verify not included `forge lint` for unrelated reasons. The §8e.1 USER VERIFY default for any file under `src/` containing `int256(...)` / `uint256(...)` casts, fixed-point arithmetic, EMA / clamp / step computations, or signed-unsigned domain crossings *must* include `forge lint <path> 2>&1`. Non-arithmetic files (interfaces, pure-storage scaffolds, NatSpec-only docs commits) need not. The cost of including `forge lint` is one second of compute and zero risk; the cost of omitting it is debt accumulating under audit cover.
+
+**Engineering lesson — declare each constant in the integer domain in which it is consumed.** The F3.3a constants block typed `STEP_SIZE` / `CLAMP_FLOOR` / `CLAMP_CEILING` as `uint256` likely because every other constant in the same block was `uint256` (block-counts, durations, pool-count). The signed-arithmetic consumption was not observed at constant-declaration time. Going forward: when consumption is single-domain, the declaration carries no cast; when consumption is cross-domain, the constant gets one declared form and `SafeCast` mediates at use sites — no anonymous typecasts.
+
+**Anti-pattern catalog — reject on sight in this codebase:**
+
+- `int256(uint256_value)` / `uint256(int256_value)` without a `SafeCast` substitute, except for compile-time literals demonstrably within range.
+- `// forge-lint: disable-next-line(unsafe-typecast)` paired with a comment proving safety. The comment is a justification, not a check. If the safety is provable, the cast is a `SafeCast` call; if it is not provable, the cast is a bug.
+- The `// casting to <type> is safe because <reason>` boilerplate lifted from forge-lint's own template. The template is a nudge to suppress; we treat it as a nudge to fix.
+
+**Out-of-scope deferred — `erc20-unchecked-transfer` warnings in fork test harnesses.** The `forge build` run that surfaced the F3.3d casts also flagged two pre-existing `erc20-unchecked-transfer` warnings: `test/fork/PilotPools.t.sol:348` (Stage E pilot-pool `_performSwap`, `tokenIn.transfer(address(vault), inUsed);`) and `test/fork/AureumFeeRoutingHook.t.sol:382` (Stage D hook fork-test setup, `svZchf.transfer(address(vault), amountIn);`). Same class of issue: ERC20 `transfer` return-value unchecked. Both must be replaced with `SafeERC20.safeTransfer` (OZ canonical pattern); added to the Stage F deferred queue, addressable as a `stage-d/e-fix` sub-step at any natural break in F3 implementation.
+
+**Cross-references:**
+
+- **`src/ccb/CCBMultiplier.sol` L9, L36-L37, L44, L50, L53, L255-L276 region** — F3.3d-fix's edit surface: `SafeCast` import, `using` directives, three constant retypes, six cast simplifications, two `SafeCast`-method casts, four deleted suppression-comment lines.
+- **F3.3d-fix** (commit `4412b2c`) — corrective combined with F3.3e per single-paste commit ergonomics; lands the type-discipline pattern.
+- **F3.3d** (commit `d8959de`) — original `updateMultiplier` commit that shipped the unsafe casts under suppression-annotation cover. Verify block omitted `forge lint`.
+- **D34** (`docs/STAGE_D_NOTES.md`) — parallel "verification surface narrower than audit surface" pattern. D34's verify ran behavioral tests but not cross-side selector assertions; F12's verify ran `forge build` but not `forge lint`. Both gaps shipped under audit cover until a later sub-step's wider verify exposed them.
+- **`test/fork/PilotPools.t.sol:348`**, **`test/fork/AureumFeeRoutingHook.t.sol:382`** — deferred `erc20-unchecked-transfer` warnings; `SafeERC20.safeTransfer` replacement pending.
+- **OpenZeppelin `SafeCast`** (`lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol`) — canonical bounds-checked cast library; remap `@openzeppelin/contracts/utils/math/SafeCast.sol`.
