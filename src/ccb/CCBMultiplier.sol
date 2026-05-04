@@ -6,6 +6,7 @@ import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedP
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title CCBMultiplier — Aureum F-8 anti-cyclical multiplier engine for the 28-Miliarium constellation
@@ -32,21 +33,24 @@ import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
  *      F-D23 (`STAGE_F_NOTES.md` L316) — `IGaugeRegistry` one-shot setter, parallel-seal pattern mirroring F-D20.
  */
 contract CCBMultiplier {
+    using SafeCast for uint256;
+    using SafeCast for int256;
+
     // -------------------------------------------------------------------------
     // Constants — F-8 numerical surface (F-D7)
     // -------------------------------------------------------------------------
 
     /// @notice Per-channel multiplier step — 0.05 in 1e18 fixed-point. `delta_global` and `delta_intra_i` each apply ±`STEP_SIZE` per epoch outside the dead zone (F-D19).
-    uint256 public constant STEP_SIZE = 5e16;
+    int256 public constant STEP_SIZE = 5e16;
 
     /// @notice Relative dead-zone threshold — 0.1% in 1e18 fixed-point. Applies to both `delta_global` and `delta_intra_i` channels per OQ-23 (ii.c).
     uint256 public constant DEAD_ZONE = 1e15;
 
     /// @notice Multiplier clamp floor — 0.75 in 1e18 fixed-point. F-8 post-step clamp lower bound.
-    uint256 public constant CLAMP_FLOOR = 75e16;
+    int256 public constant CLAMP_FLOOR = 75e16;
 
     /// @notice Multiplier clamp ceiling — 1.25 in 1e18 fixed-point. F-8 post-step clamp upper bound.
-    uint256 public constant CLAMP_CEILING = 125e16;
+    int256 public constant CLAMP_CEILING = 125e16;
 
     /// @notice Multiplier baseline — 1.0 in 1e18 fixed-point. F-8 per-pool initial value; referenced by `getMultiplier` for unwritten pools and by post-boost-expiry semantics (F-D17 / F-D21).
     uint256 public constant INITIAL_MULTIPLIER = 1e18;
@@ -252,8 +256,8 @@ contract CCBMultiplier {
         if (lastAgg != 0) {
             uint256 upperBoundGlobal = lastAgg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
             uint256 lowerBoundGlobal = lastAgg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
-            if (currentAgg > upperBoundGlobal) deltaGlobal = -int256(STEP_SIZE);
-            else if (currentAgg < lowerBoundGlobal) deltaGlobal = int256(STEP_SIZE);
+            if (currentAgg > upperBoundGlobal) deltaGlobal = -STEP_SIZE;
+            else if (currentAgg < lowerBoundGlobal) deltaGlobal = STEP_SIZE;
         }
 
         uint256 miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT;
@@ -261,20 +265,38 @@ contract CCBMultiplier {
         int256 deltaIntra;
         uint256 upperBoundIntra = miliariumAvg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
         uint256 lowerBoundIntra = miliariumAvg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
-        if (poolEMA > upperBoundIntra) deltaIntra = -int256(STEP_SIZE);
-        else if (poolEMA < lowerBoundIntra) deltaIntra = int256(STEP_SIZE);
+        if (poolEMA > upperBoundIntra) deltaIntra = -STEP_SIZE;
+        else if (poolEMA < lowerBoundIntra) deltaIntra = STEP_SIZE;
 
         uint256 prior = M_i[pool] == 0 ? INITIAL_MULTIPLIER : M_i[pool];
-        // int256(prior): prior is either INITIAL_MULTIPLIER (1e18) or in [CLAMP_FLOOR, CLAMP_CEILING] = [75e16, 125e16]; max value 1.25e18, well below int256 max.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 newM = int256(prior) + deltaGlobal + deltaIntra;
-        if (newM < int256(CLAMP_FLOOR)) newM = int256(CLAMP_FLOOR);
-        else if (newM > int256(CLAMP_CEILING)) newM = int256(CLAMP_CEILING);
+        int256 newM = prior.toInt256() + deltaGlobal + deltaIntra;
+        if (newM < CLAMP_FLOOR) newM = CLAMP_FLOOR;
+        else if (newM > CLAMP_CEILING) newM = CLAMP_CEILING;
 
-        // uint256(newM): newM was clamped to [CLAMP_FLOOR, CLAMP_CEILING] = [75e16, 125e16] in the lines above; always positive, safe to narrow.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        M_i[pool] = uint256(newM);
+        M_i[pool] = newM.toUint256();
         lastMultiplierUpdateBlock[pool] = block.number;
         lastProtocolAggregateEMA = currentAgg;
+    }
+
+    // -------------------------------------------------------------------------
+    // Multiplier read — getMultiplier (F-D16 / F-D17 / F-D25)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Hot-path read returning the effective F-8 multiplier per Stage H scoring.
+     * @dev Per F-D16, F-D17, F-D25. Return taxonomy — (1) non-Miliarium → `INITIAL_MULTIPLIER`,
+     *      (2) active boost → `BOOST_FACTOR`, (3) unwritten `M_i[pool]` → `INITIAL_MULTIPLIER`,
+     *      (4) otherwise → `M_i[pool]`. `getMultiplier` does NOT revert — uniform read for Stage H per
+     *      F-D16 L62 ("hot-path read for Stage H's emission distributor, which scores all gauged pools
+     *      (Miliarium and non-Miliarium together) every block per F-D9"). Strict-inequality boundary convention
+     *      `block.number < boostExpiryBlock[pool]` matching F-D17 L111 / F-D21 L252.
+     * @param pool Pool address whose effective multiplier to return.
+     * @return Effective F-8 multiplier in 1e18 fixed-point.
+     */
+    function getMultiplier(address pool) external view returns (uint256) {
+        if (!miliariumRegistry.isMiliarium(pool)) return INITIAL_MULTIPLIER;
+        if (block.number < boostExpiryBlock[pool]) return BOOST_FACTOR;
+        uint256 m = M_i[pool];
+        return m == 0 ? INITIAL_MULTIPLIER : m;
     }
 }
