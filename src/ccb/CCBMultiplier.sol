@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.26;
 
-import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
-import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {AureumTime} from "src/lib/AureumTime.sol";
+import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 
 /**
  * @title CCBMultiplier — Aureum F-8 anti-cyclical multiplier engine for the 28-Miliarium constellation
@@ -215,5 +217,64 @@ contract CCBMultiplier {
         if (block.number < boostExpiryBlock[pool]) revert BoostAlreadyActive(pool);
         boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS;
         M_i[pool] = INITIAL_MULTIPLIER;
+    }
+
+    // -------------------------------------------------------------------------
+    // F-8 evolution — updateMultiplier (F-D6 / F-D18 / F-D19 / F-D21 / F-D25)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Evolve pool `M_i` by epoch-gated anti-cyclical F-8 steps when outside aggregate and intra dead zones.
+     * @dev Per F-D6, F-D16, F-D18, F-D19, F-D21, F-D25, OQ-23 (iii.b), OQ-23 (iv.a). Gate-order convention —
+     *      (1) Miliarium → (2) cadence → (3) boost-skip — so non-member and too-early calls revert before silent
+     *      no-ops inside active strict-inequality boost windows per F-D21 L236. Cold-start: `lastProtocolAggregateEMA`
+     *      sentinel `lastProtocolAggregateEMA == 0` yields `delta_global = 0` for that epoch (F-D18). Prior-value sentinel:
+     *      `M_i[pool] == 0 → INITIAL_MULTIPLIER` ahead of summed steps and clamps (F-D25). Strict-inequality dead-zone
+     *      comparisons (`>` / `<`): boundary equality stays neutral across both channels per F-D19. OQ-23 (iii.b):
+     *      protocol aggregate TVL baseline is sum of enumerated EMA samples; anti-cyclical `delta_global` polarity per
+     *      F-D19. OQ-23 (iv.a): intra baseline applies simple mean `currentAgg / MILIARIUM_POOL_COUNT` against `pool`'s TVL EMA.
+     * @param pool The Miliarium pool whose `M_i` and cadence anchors to update — must satisfy `isMiliarium(pool)` post-Stage-J.
+     */
+    function updateMultiplier(address pool) external {
+        if (!miliariumRegistry.isMiliarium(pool)) revert NotMiliariumPool(pool);
+        uint256 nextEligibleBlock = lastMultiplierUpdateBlock[pool] + AureumTime.BLOCKS_PER_EPOCH;
+        if (block.number < nextEligibleBlock) revert TooEarly(block.number, nextEligibleBlock);
+        if (block.number < boostExpiryBlock[pool]) return;
+
+        uint256 currentAgg;
+        uint256 poolCount = miliariumRegistry.miliariumPoolsCount();
+        for (uint256 i = 0; i < poolCount; ++i) {
+            currentAgg += emaSampler.tvlEMA(miliariumRegistry.miliariumPoolAt(i));
+        }
+
+        int256 deltaGlobal;
+        uint256 lastAgg = lastProtocolAggregateEMA;
+        if (lastAgg != 0) {
+            uint256 upperBoundGlobal = lastAgg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
+            uint256 lowerBoundGlobal = lastAgg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
+            if (currentAgg > upperBoundGlobal) deltaGlobal = -int256(STEP_SIZE);
+            else if (currentAgg < lowerBoundGlobal) deltaGlobal = int256(STEP_SIZE);
+        }
+
+        uint256 miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT;
+        uint256 poolEMA = emaSampler.tvlEMA(pool);
+        int256 deltaIntra;
+        uint256 upperBoundIntra = miliariumAvg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
+        uint256 lowerBoundIntra = miliariumAvg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
+        if (poolEMA > upperBoundIntra) deltaIntra = -int256(STEP_SIZE);
+        else if (poolEMA < lowerBoundIntra) deltaIntra = int256(STEP_SIZE);
+
+        uint256 prior = M_i[pool] == 0 ? INITIAL_MULTIPLIER : M_i[pool];
+        // int256(prior): prior is either INITIAL_MULTIPLIER (1e18) or in [CLAMP_FLOOR, CLAMP_CEILING] = [75e16, 125e16]; max value 1.25e18, well below int256 max.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 newM = int256(prior) + deltaGlobal + deltaIntra;
+        if (newM < int256(CLAMP_FLOOR)) newM = int256(CLAMP_FLOOR);
+        else if (newM > int256(CLAMP_CEILING)) newM = int256(CLAMP_CEILING);
+
+        // uint256(newM): newM was clamped to [CLAMP_FLOOR, CLAMP_CEILING] = [75e16, 125e16] in the lines above; always positive, safe to narrow.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        M_i[pool] = uint256(newM);
+        lastMultiplierUpdateBlock[pool] = block.number;
+        lastProtocolAggregateEMA = currentAgg;
     }
 }
