@@ -184,4 +184,36 @@ contract CCBMultiplier {
         gaugeRegistry = newRegistry;
         gaugeRegistrySetter = address(0);
     }
+
+    // -------------------------------------------------------------------------
+    // Boost — activation (F-D17 / F-D24)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Activate a 90-day, 1.2× CCB boost window on a Miliarium pool.
+     * @dev Per F-D17 / F-D24. Three guards fire in this order: caller-side gauge approval
+     *      (`OnlyApprovedGauge`), pool-side Miliarium membership (`NotMiliariumPool`), and a
+     *      strict-inequality active-boost double-call guard (`BoostAlreadyActive`). At exactly
+     *      `block.number == boostExpiryBlock[pool]` the strict `<` check does not fire and
+     *      re-activation succeeds — boundary convention shared with F-D17 / F-D21.
+     *      State writes per F-D24: `boostExpiryBlock[pool]` is the primary effect (F-D17 L86);
+     *      `M_i[pool] = INITIAL_MULTIPLIER` closes F-D17 L92's "fresh `M_i = 1.0` baseline"
+     *      promise locally and satisfies F-D21 L252's "MUST reset" requirement upstream of the
+     *      window. The `M_i` reset fires on every successful activation — cold-start AND
+     *      post-expiry re-activation after F-8 evolution in the gap between boosts. F-D21's
+     *      pause-during-boost preserves the reset through the 90-day window; F-D19 polarity
+     *      steps F-8 from `INITIAL_MULTIPLIER` on the first post-boost-expiry `updateMultiplier`
+     *      call. Boost duration: `GAUGE_BOOST_DURATION_BLOCKS = 648_000` blocks (~90 days at 12s).
+     *      Per `08_bootstrap.md` §xxi: "activates when the gauge passes, expires on its own —
+     *      no vote, no renewal". The active-boost guard is the no-renewal enforcement.
+     * @param pool Miliarium constellation member to receive the boost. Must satisfy
+     *             `miliariumRegistry.isMiliarium(pool) == true` post-Stage-J handoff.
+     */
+    function activateBoost(address pool) external {
+        if (!gaugeRegistry.isGaugeApproved(msg.sender)) revert OnlyApprovedGauge(msg.sender);
+        if (!miliariumRegistry.isMiliarium(pool)) revert NotMiliariumPool(pool);
+        if (block.number < boostExpiryBlock[pool]) revert BoostAlreadyActive(pool);
+        boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS;
+        M_i[pool] = INITIAL_MULTIPLIER;
+    }
 }
