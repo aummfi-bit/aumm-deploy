@@ -73,6 +73,26 @@ event GaugeEfficiencyRising(
 
 ---
 
+## G-D7 — Three activation paths and per-path boost policy (RT-01 + RT-04)
+
+Three distinct entry points produce a registered gauge; **boost policy differs per path** and must be unambiguous at contract-lock time. Boost asymmetry is enforced structurally — the boost-application code path is **unreachable** from `activateGauge`.
+
+- **(i) Permissionless — `activateGauge(pool)`.** Per **G-D1**, callable by any address once `GaugeEligibility` reports all immutable criteria satisfied and the **OQ-G3** anti-spam fee has been credited via swap-and-deposit to der Bodensee. **No boost.** The pool enters tournament accounting at base `M_i = 1.0` per **F-8** and competes for emission share through the **F-10** efficiency tournament from the next epoch boundary onward.
+- **(ii) Composition — `registerGaugeFromComposition(pool)`.** Per **G-D1**, restricted to `onlyGovernanceContract`, invoked as the execution leg of an approved composition challenge. **Applies the 90-day boost atomically** with gauge registration: per `aumm-site` `08_bootstrap.md` §xxi, `M_i` is held at 1.0 across the boost window with effective `CCB_mult = 1.2`; at day 91 the boost expires and `M_i` resumes per-epoch F-8 evolution.
+- **(iii) Founding-pool seeding — `seedFoundingPool(pool, seedAmount)`.** Restricted to `onlyGovernanceContract` (Authorizer Safe through Stage K, on-chain governance thereafter per CLAUDE.md §1). Necessary because founding pools are deployed at zero TVL and would fail the **OQ-G2** `$10K` 7-day-SMA floor at any first eligibility check; the permissionless `activateGauge` path is therefore structurally unreachable for founding pools at deploy time. **Applies the 90-day boost** per the founding-pool privilege established in `aumm-site` `08_bootstrap`. This entry point is the contract-spec realisation of test invariant **T-R1** — "governance-free via deploy shim" in T-R1 is shorthand for "no public-vote / proposal cycle"; the seeding call itself is governance-restricted (Authorizer Safe), **not** access-free.
+
+| Path | Caller | Eligibility-gate path | Anti-spam fee | Boost applied |
+| --- | --- | --- | --- | --- |
+| `activateGauge(pool)` | any address | full `GaugeEligibility` (all immutable criteria) | yes — OQ-G3 (100 svZCHF/sUSDS) | **no** |
+| `registerGaugeFromComposition(pool)` | governance contract | composition-criteria subset (full enumeration at RT-03 sub-step) | no | **yes — 90-day** |
+| `seedFoundingPool(pool, seedAmount)` | governance contract | bypassed (zero-TVL deploy shim) | no | **yes — 90-day** |
+
+**Boost asymmetry rationale.** The 90-day boost is a competitive cold-start accommodation, not an entitlement of any gauge entry. Permissionless activation by construction occurs only after a pool has cleared all eligibility gates including the **OQ-G2** TVL floor — by that point the pool already holds external capital and does not require a launch window. Composition and founding-seeding both produce gauges for pools that have **not** demonstrated independent market traction (composition replaces an underperformer governance has decided to retire; seeding starts a founding pool from zero), so the 90-day window provides the cold-start interval during which the **F-10** tournament cannot meaningfully rank them.
+
+**`seedFoundingPool` shape — Stage G reservation only.** The `seedAmount` parameter is denominated to match the pool's initial-deposit shape (token-weighted basket per founding-pool profile in `miliarium_profiles/`). The exact tuple — single-token seed vs. full basket vs. reference to an external initial-liquidity contract — locks at **G1.x** when staged against the founding-pool deploy scripts. Stage G's design freeze reserves only the **entry-point name** and the **access-control gate**; the parameter shape is a downstream sub-step decision.
+
+---
+
 ## Test matrix — must pass before Stage G closure
 
 ### Invariants (unit / fuzz)
