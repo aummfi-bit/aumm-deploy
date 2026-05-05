@@ -34,8 +34,8 @@ The full document below has 12 findings (F1–F12, plus F8a–F8d) and **19 base
 
 **Deferred (not blockers):** OQ-17 (audit firm — candidate list captured: Trail of Bits, OpenZeppelin, Spearbit, Sigma Prime, Zellic for tier-1; Cantina/Code4rena/Sherlock for contests; Firepan for continuous AI-augmented monitoring) · OQ-19 (founding team roles — stays TBD; cross-dep with OQ-18 for frontend timing).
 
-**Stage G addendum (2026-05-05):** **OQ-G1, OQ-G2, OQ-G3** below lock gauge-admission pivot semantics for `aumm-deploy` Stage G (`docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`). They do **not** reopen Stage B–F decisions. Spec-side edits in `aumm-site` (`04_tokenomics.md`, `10_constitution.md` §xxvii vote-type table, glossary, bootstrap §xxi fast-track) remain user-owned follow-up.
-**FINDINGS is complete** for baseline OQ resolution. Stage G semantic locks are appended as **OQ-G1–G3** below.
+**Stage G addendum (2026-05-05):** **OQ-G1, OQ-G2, OQ-G3, OQ-G4** below lock gauge-admission pivot semantics for `aumm-deploy` Stage G (`docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`). They do **not** reopen Stage B–F decisions. Spec-side edits in `aumm-site` (`04_tokenomics.md`, `10_constitution.md` §xxvii vote-type table, glossary, bootstrap §xxi fast-track) remain user-owned follow-up.
+**FINDINGS is complete** for baseline OQ resolution. Stage G semantic locks are appended as **OQ-G1–G4** below.
 
 ---
 
