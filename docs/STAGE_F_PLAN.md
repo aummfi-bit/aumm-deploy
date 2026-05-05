@@ -131,7 +131,7 @@ All three implement the corresponding Stage F interfaces verbatim. `pragma solid
 
 #### F4.2 — `CCBEngineFixture` base + `setUp` (`test/fork/CCBEngine.t.sol`)
 
-Abstract `CCBEngineFixture is Test` performs three sequential pilot-pool deploys via `DeployIxHelvetia`, `DeployIxEdelweiss`, and `DeployIxAurebit` scripts (per **E-D24** in-process pattern, replicated locally — does not extend `MiliariumPilotPoolBase` per F-D26 (a)), instantiates `MockTVLOracle`, `MockMiliariumRegistry(addrs)`, `MockGaugeRegistry`, `EMASampler(mockOracle)`, `CCBMultiplier(mockMiliarium, sampler)`, calls `setGaugeRegistry(mockGauge)`, and marks the test contract gauge-approved via `setApproved(address(this), true)`. No test methods at this sub-step.
+Abstract `CCBEngineFixture is Test` performs three sequential pilot-pool deploys via `DeployIxHelvetia`, `DeployIxEdelweiss`, and `DeployIxAurebit` scripts (per **E-D24** in-process pattern, replicated locally — does not extend `MiliariumPilotPoolBase` per F-D26 (a)), instantiates `MockTVLOracle mockOracle`, `MockMiliariumRegistry mockMiliarium(addrs)`, two `MockGaugeRegistry` instances `gaugePlaceholder` and `mockGauge`, `EMASampler sampler(mockOracle)`, and `CCBMultiplier multiplier(mockMiliarium, gaugePlaceholder, sampler)` against the three-arg constructor at `src/ccb/CCBMultiplier.sol` L145–L158, then exercises the F-D23 one-shot seal via `multiplier.setGaugeRegistry(mockGauge)` to swap the placeholder for the real mock and clear `gaugeRegistrySetter`, and marks the test contract gauge-approved via `mockGauge.setApproved(address(this), true)`. No test methods at this sub-step.
 
 #### F4.3 — Test methods (`test/fork/CCBEngine.t.sol`)
 
