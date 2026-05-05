@@ -1287,7 +1287,7 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 
 ---
 
-### Stage G addendum — OQ-G1 through OQ-G3 (gauge admission pivot)
+### Stage G addendum — OQ-G1 through OQ-G4 (gauge admission pivot)
 
 ### OQ-G1 (RESOLVED): Efficiency metric for F-10 tournament cutoff
 
@@ -1316,9 +1316,70 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 
 ---
 
+### OQ-G4 (RESOLVED): Vault-Class Registry — class-admission governance for ERC-4626 numerator eligibility
+
+**Decision (2026-05-05):** The protocol's discretion surface is narrowed to one question — **which ERC-4626 token classes count toward the 52% quality-gate numerator**. Permissionless deployment, permissionless gauge activation (per **OQ-G1–G3** + STAGE_G_NOTES `G-D1`), and permissionless pool composition are preserved. Pools may include any tokens; pools earn AuMM emissions only if ≥52% of their weight is assigned to ERC-4626 tokens whose class is admitted in a new **Vault-Class Registry** (`src/gauge/VaultClassRegistry.sol`, Stage G).
+
+**Canonical numerator definition (load-bearing — propagates verbatim into `STAGE_G_NOTES.md` G-D8 and `STAGES_OVERVIEW.md` Stage G builds):**
+
+> The 52% quality-gate numerator equals the sum of pool weights assigned to ERC-4626 tokens whose class is admitted in the Vault-Class Registry. All other token weights — including ERC-4626 tokens whose class is not admitted — count toward the ≤48% complement.
+
+> Eligibility is re-evaluated at each tournament epoch boundary against the current registry state; class admissions and revocations take effect at the next boundary.
+
+**Class-admission governance — Frankencoin-inspired veto model:**
+
+- **Proposal.** Any address calls `proposeVaultClass(admissionType, admissionValue, constraintsHash)` paying a non-refundable bond in svZCHF. The bond routes to der Bodensee via the **OQ-G3** swap-and-one-sided-deposit primitive — no burn, no treasury accumulation.
+- **Veto window.** Bounded block range during which qualified AuMT holders may invoke `vetoProposal(id)` if cumulative AuMT meets the veto threshold.
+- **Auto-finalize.** Window expires without a successful veto → proposal auto-executes in a single transaction; class enters the registry. No explicit two-stage `finalize` then `execute` — single-tx state transition on window expiry, minimizing stuck-state surface.
+- **Revocation.** Governance may invoke `revokeVaultClass(id)` to denounce a previously-admitted class. **Revocable-with-grandfather is the locked policy.** Revocation blocks new numerator credit at the next epoch boundary (per the canonical definition above); existing gauges are not force-revoked but face the standard graduated grace period from `08_bootstrap.md` §xxiii if they fall below 52% as a result.
+
+**Admission fingerprints — three types, proposer-stated:**
+
+A `VaultClassProposal` declares `admissionType` from:
+
+- **`ImplementationAddress`** — admits a specific implementation behind a proxy. Trust delegated to the proxy admin's upgrade discipline.
+- **`FactoryAddress`** — admits all current and future vaults from the factory. Trust delegated to the factory's deployment policy.
+- **`BytecodeHash`** — admits exact bytecode match. Future-proof against impl rotation, but blocks legitimate upgrades.
+
+Each fingerprint carries a different threat model. Proposal text must declare which type was selected and why it fits the class being admitted; the veto mechanism is the protocol's check on proposers' fingerprint judgement.
+
+**ERC-4626 detection method:**
+
+`GaugeEligibility` determines whether a pool token is an ERC-4626 candidate by calling `IERC4626(token).asset()` in a try/catch. A non-reverting return treats the token as 4626-claiming and triggers a class-admission lookup — admitted → counts toward numerator; not admitted → contributes 0 to numerator, weight falls into ≤48% complement. A revert treats the token as plain ERC-20, contributing to the complement directly. A token implementing `asset()` for any reason (legitimate or scam) is therefore detected as 4626-claiming and gated by registry admission — there is no escape via interface omission.
+
+**Locked vs deferred parameters:**
+
+Mechanism is locked at this resolution. Numerical tunables defer to Stage G **`G1.x`** against AuMT distribution data, with explicit constraints that prevent regression:
+
+- `proposalBond ≥ antiSpamFee` (anti-spam fee is 100 svZCHF/sUSDS per **OQ-G3**; class-admission bond is higher-stakes governance and must not undercut the simpler permissionless-activation fee).
+- `vetoThreshold ≤ governanceQuorumThreshold` (vetoes must be reachable at lower thresholds than full proposal quorum, so a vigilant minority can block a captured-quorum bad proposal).
+- Veto window bounded in blocks — non-zero minimum `≥ BLOCKS_PER_EPOCH` (governance reaction window) and bounded maximum `≤ 3 × BLOCKS_PER_EPOCH` (avoids stalling legitimate admissions).
+
+Concrete bond, threshold, and window values lock at **`G1.x`**.
+
+**Genesis seeding — constructor-hardcoded classes (Option a):**
+
+The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via **constructor-hardcoded constants** in `VaultClassRegistry.sol`. No one-shot seeding admin entrypoint, no Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is bytecode-immutable; future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`.
+
+**Scope boundary — what this resolves and what it does not:**
+
+OQ-G4 resolves the architectural mechanism for ERC-4626 class admission. It does **not**:
+
+- Establish concrete bond / veto-threshold / window values (deferred to **`G1.x`** with constraints above).
+- Introduce a parallel registry for non-ERC-4626 base tokens (svZCHF, sUSDS, WBTC, raw stables). Genesis pools' base tokens are implicitly trusted by inclusion in the genesis pool set; admission of new base tokens to the constellation occurs via composition challenge per the existing **OQ-7** path. **No `BaseTokenRegistry` is introduced.**
+- Replace the `STAGES_OVERVIEW.md` Stage G "per-token vault floors ($5M / 30 BTC / 4M svZCHF)" prose. That language is downgraded from runtime check to non-load-bearing aspirational text and is to be removed in **Bundle-A.2c** (`STAGES_OVERVIEW.md` propagation).
+
+**Spec edits required (`aumm-site`, user-side — not a repo edit):**
+
+- `08_bootstrap.md` §xxi amendment: add Vault-Class Registry as a third governance flow alongside composition challenge and gauge challenge; include the canonical numerator definition.
+- `10_constitution.md` new § (or amend §xxvii): Frankencoin-style veto model for class admission, with the locked-mechanism / deferred-tunables constraint set.
+- `04_tokenomics.md` §ix: align the numerator definition with formal tokenomics prose (the 52% gate is now class-gated, not raw-4626-gated).
+
+---
+
 ## What this document does NOT decide
 
-**FINDINGS has closed on all architectural / design / protocol-ambiguity questions from the original Stage B planning pass, plus the Stage G addendum (OQ-G1–G3, 2026-05-05).** What remains for subsequent conversations:
+**FINDINGS has closed on all architectural / design / protocol-ambiguity questions from the original Stage B planning pass, plus the Stage G addendum (OQ-G1–G4, 2026-05-05).** What remains for subsequent conversations:
 
 - **The stage sequence.** Stage C and beyond — letter assignments, ordering of the tokenomics / CCB / gauge / governance / fee-router / registry / pool-deployment stages. This is the next conversation, taking this document as input.
 - **The folder layout for new code.** Proposed in the intro (`src/token/`, `src/emission/`, `src/ccb/`, `src/gauge/`, `src/governance/`, `src/registry/`, `src/pools/`, `src/incendiary/`, `src/fee_router/`) but not finalized. The stage-sequence conversation should formalize this.
