@@ -93,6 +93,83 @@ Three distinct entry points produce a registered gauge; **boost policy differs p
 
 ---
 
+## G-D8 — Canonical 52% numerator definition (OQ-G4 propagation)
+
+The 52% Quality Gate numerator is class-gated against the **Vault-Class Registry** (`src/gauge/VaultClassRegistry.sol`, G1) per FINDINGS **OQ-G4** (resolved 2026-05-05). The canonical definition propagates verbatim from FINDINGS:
+
+> The 52% quality-gate numerator equals the sum of pool weights assigned to ERC-4626 tokens whose class is admitted in the Vault-Class Registry. All other token weights — including ERC-4626 tokens whose class is not admitted — count toward the ≤48% complement.
+>
+> Eligibility is re-evaluated at each tournament epoch boundary against the current registry state; class admissions and revocations take effect at the next boundary.
+
+This wording is **load-bearing** across `GaugeEligibility.sol` (G2 runtime check) and `STAGES_OVERVIEW.md` Stage G builds (overview prose). Any divergence from this two-paragraph block is a Stage G blocker.
+
+**Implication for `GaugeEligibility`.** The 52% check reads each pool's normalized weights via `IBasePool.getNormalizedWeights()`, classifies each weighted token via the ERC-4626 detection method (**G-D10**), looks up admitted classes in `VaultClassRegistry`, and sums the weights of admitted-class 4626 tokens. If sum ≥ `0.52e18` (FixedPoint), the gate passes; otherwise the pool is ineligible.
+
+**Boundary semantics.** Pool weights are immutable in Balancer V3 weighted pools — re-evaluation is **not** about weight drift. Re-evaluation is boundary-based because **qualification state can change** via class admissions and revocations in `VaultClassRegistry`, tournament metrics (TVL 7-day SMA per **OQ-G2**, `efficiency_ratio` rank cohort per **OQ-G1**, disqualification streak counter), and governance challenge outcomes — even when pool weights themselves are immutable. Eligibility is therefore **latched per epoch** and **recomputed at boundaries only**, not on every block.
+
+**Frankencoin analogy.** A Frankencoin borrowing position can be **challenged** mid-life by a qualified holder, forcing a re-evaluation of its collateral basis. The Aureum analogue: an ERC-4626 token class admission can be **revoked** via `revokeVaultClass` (per **G-D9**); pools holding the now-revoked class lose numerator credit at the next boundary even though their pool composition has not changed. The challenge surface — who may revoke, under whatever governance policy `revokeVaultClass` encodes — is the governance scope of `revokeVaultClass` itself; OQ-G4 locks this as `onlyGovernanceContract`. (Permissionless-challenge variants — anyone may revoke with bond, mirroring Frankencoin's open-challenge model — are a post-Stage-G design question, not in current scope.)
+
+---
+
+## G-D9 — Vault-Class Registry: Frankencoin-inspired veto mechanism (OQ-G4)
+
+`VaultClassRegistry.sol` (G1) implements class admission via a Frankencoin-inspired proposal-and-veto pattern. Mechanism is **locked** at this design freeze; numerical tunables (bond, veto threshold, window) defer to **G1.x**.
+
+**Mechanism (locked):**
+
+- **Proposal.** Any address calls `proposeVaultClass(admissionType, admissionValue, constraintsHash)` paying a non-refundable bond in svZCHF. The bond routes one-sided to der Bodensee via the **OQ-G3** swap-and-one-sided-deposit primitive (shared with anti-spam fee + governance proposal deposit). No burn, no treasury accumulation.
+- **Veto window.** Bounded block range during which qualified AuMT holders may invoke `vetoProposal(id)` if cumulative AuMT-weighted veto support meets the veto threshold.
+- **Auto-finalize.** Window expires without a successful veto → proposal auto-executes in a single transaction; class enters the registry. **No** explicit two-stage `finalize`-then-`execute` — single-tx state transition on window expiry, minimizing stuck-state surface.
+- **Revocation.** Governance may invoke `revokeVaultClass(id)` to denounce a previously-admitted class. **Revocable-with-grandfather** is the locked policy. Revocation blocks new numerator credit at the next epoch boundary (per **G-D8** canonical definition); existing gauges are not force-revoked but face the standard graduated grace period from `08_bootstrap.md` §xxiii if they fall below 52% as a result.
+
+**Admission fingerprints — three types, proposer-stated:**
+
+A `VaultClassProposal` declares `admissionType` from:
+
+- **`ImplementationAddress`** — admits a specific implementation behind a proxy. Trust delegated to the proxy admin's upgrade discipline.
+- **`FactoryAddress`** — admits all current and future vaults from the factory. Trust delegated to the factory's deployment policy.
+- **`BytecodeHash`** — admits exact bytecode match. Future-proof against impl rotation, but blocks legitimate upgrades.
+
+Each fingerprint carries a different threat model. Proposal text must declare which type was selected and why it fits the class being admitted; the veto mechanism is the protocol's check on proposers' fingerprint judgement.
+
+**Genesis seeding (Option a — constructor-hardcoded constants):**
+
+The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via constructor-hardcoded constants in `VaultClassRegistry.sol`. **No** one-shot seeding admin entrypoint, **no** Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is bytecode-immutable; future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`.
+
+**Tunables — deferred to G1.x with non-regressable constraints:**
+
+- `proposalBond ≥ antiSpamFee` (anti-spam fee is **100 svZCHF/sUSDS** per **OQ-G3**; class-admission bond is higher-stakes governance and must not undercut the simpler permissionless-activation fee).
+- `vetoThreshold ≤ governanceQuorumThreshold` (vetoes must be reachable at lower thresholds than full proposal quorum, so a vigilant minority can block a captured-quorum bad proposal).
+- Veto window in blocks: minimum `≥ BLOCKS_PER_EPOCH` (governance reaction window); maximum `≤ 3 × BLOCKS_PER_EPOCH` (avoids stalling legitimate admissions).
+
+Concrete bond, threshold, and window values lock at **G1.x**.
+
+**Forward dependencies — placeholder + one-shot setter pattern (mirrors Stage F F-D20–F-D23):**
+
+- `IAuMT` for veto vote weight — concrete contract ships at Stage I; Stage G uses placeholder address + one-shot setter.
+- `governanceContract` for `revokeVaultClass` — concrete contract ships at Stage K; same placeholder + one-shot setter pattern.
+
+Pre-Stage-I + pre-Stage-K, the veto path is **structurally unreachable** (placeholder `IAuMT` returns zero vote weight; placeholder governance address rejects all calls). Pools relying solely on genesis-seeded classes can still be gauged permissionlessly via `activateGauge`.
+
+---
+
+## G-D10 — ERC-4626 detection method (try/catch `IERC4626.asset()`)
+
+`GaugeEligibility.sol` (G2) determines whether a pool token is an ERC-4626 candidate by calling `IERC4626(token).asset()` in a try/catch block:
+
+- **Non-reverting return** → token is treated as **4626-claiming**. `GaugeEligibility` triggers a class-admission lookup against `VaultClassRegistry` (per **G-D8**):
+  - **Admitted class** → token weight counts toward the 52% numerator.
+  - **Not admitted** → token weight contributes 0 to numerator; weight falls into the ≤48% complement.
+- **Revert** → token is treated as **plain ERC-20**. Token weight contributes to the ≤48% complement directly.
+
+A token implementing `asset()` for any reason (legitimate or scam) is therefore detected as 4626-claiming and gated by registry admission. **There is no escape via interface omission** — a malicious token cannot avoid the gate by simply not implementing the ERC-4626 interface, because the only effect of implementing `asset()` is to subject the token to the (more restrictive) class-admission gate.
+
+**Detection is interface-introspection, not registry preregistration.** The detection path is stateless on the registry side — `VaultClassRegistry` only stores class admissions; per-token classification is computed on-the-fly at each eligibility evaluation. This keeps the registry's state surface minimal.
+
+**Test invariant tie-in.** **T-I3** (forbidden tokens AuMM, AuMT) is **independent** of this detection — AuMM and AuMT are blocked by direct address comparison regardless of their `asset()` interface, since they cannot appear as weighted pool tokens for activation by construction. The G-D10 detection method runs only after the T-I3 forbidden-token check passes.
+
+---
+
 ## Test matrix — must pass before Stage G closure
 
 ### Invariants (unit / fuzz)
