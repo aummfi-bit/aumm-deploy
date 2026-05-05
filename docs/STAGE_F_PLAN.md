@@ -1,6 +1,6 @@
 # Stage F — CCB engine
 
-> **Status:** Stage F open at the `stage-f` branch from `main` (commit `26178db` on 2026-04-29). Companion to `docs/STAGE_F_NOTES.md`.
+> **Status:** Complete at `stage-f-complete` (commit `9751378`, 2026-05-04). 263/263 tests green on mainnet fork (247 unit + 16 fork) per the D35 split-form invocation. Companion to `docs/STAGE_F_NOTES.md`.
 >
 > **Audience:** Sagix plus any future Claude session that needs to know what Stage F is and what it produces.
 >
@@ -197,3 +197,4 @@ Run via D35 split-form (`forge test --match-path "test/fork/**" --fork-url $MAIN
 | F4.3a | be0e8c2 | 2026-05-04 | test/fork/CCBEngine.t.sol — CCBEngineEMAPathTest (F-D15 cold-start sentinel + F-4 smoothing) |
 | F4.3c | cf8f7b4 | 2026-05-04 | test/fork/CCBEngine.t.sol — CCBEngineCompositionTest (F-6 shares identity + F-D26 (f) deltaIntra direction) |
 | F3.4-fix2 | 7eea202 | 2026-05-04 | test/unit/CCBMultiplier.t.sol — 28-pool divisor fix for globalFalling/intraBelow tests + F-D27 (STAGE_F_NOTES.md) |
+| F5.1 | 9751378 | 2026-05-04 | docs/STAGE_F_PLAN.md — Completion Log catch-up (F2.3 → F3.4-fix2, 29 rows; F4.4 verification closure) |
