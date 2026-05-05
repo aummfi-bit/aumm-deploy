@@ -60,7 +60,9 @@ aumm-deploy/
 ├── foundry.lock                  — pinned dep versions for reproducibility
 ├── docs/
 │   ├── STAGES_OVERVIEW.md        — master C-through-R stage sequence
-│   ├── FINDINGS.md               — resolved + deferred open questions, OQ-1 through OQ-19
+│   ├── FINDINGS.md               — resolved + deferred open questions, OQ-1 through OQ-19 + Stage G OQ-G1–G4
+│   ├── STAGE_G_PRECHECK_AUTO_GAUGE.md — Stage G pivot decision record (auto-gauge)
+│   ├── STAGE_G_NOTES.md          — Stage G design freeze + test matrix (pre-`STAGE_G_PLAN.md`)
 │   ├── STAGE_A_PLAN.md           — complete, tagged stage-a-complete
 │   ├── STAGE_B_PLAN.md / _NOTES.md — complete, tagged stage-b-complete
 │   ├── STAGE_C_PLAN.md / _NOTES.md — complete, tagged stage-c-complete
@@ -95,7 +97,9 @@ A stage that doesn't yet exist has no directory under `src/` until its first fil
 | File | Purpose |
 | --- | --- |
 | `docs/STAGES_OVERVIEW.md` | Master stage sequence, stage summaries, dependency graph, testing strategy per stage, tags |
-| `docs/FINDINGS.md` | All 19 resolved Open Questions (OQ-1 through OQ-19) plus deferred items. Cross-referenced constantly from stage plans |
+| `docs/FINDINGS.md` | All resolved Open Questions (OQ-1 through OQ-19, OQ-G1–G4 Stage G addendum) plus deferred items. Cross-referenced constantly from stage plans |
+| `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md` | Stage G auto-gauge pivot — accepted propositions, side-by-side delta, conflicts |
+| `docs/STAGE_G_NOTES.md` | Stage G design freeze (G-D*) + efficiency event schema + test matrix |
 | `docs/STAGE_X_PLAN.md` | Per-stage detailed plan: numbered sub-steps, time estimates, commands, tests, completion log |
 | `docs/STAGE_X_NOTES.md` | Per-stage living design-decision log + findings log |
 | `docs/balancer_v3_reference.md` | Balancer V3 substrate working notes |
@@ -120,9 +124,10 @@ When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constit
 
 The plan and notes files use short reference codes. Know them on sight.
 
-* **`OQ-N`** — Open Question N from `docs/FINDINGS.md`. Example: `per OQ-5` means "see OQ-5 in FINDINGS.md" — typically a resolved canonical constant or a settled architectural choice.
+* **`OQ-N`** — Open Question N from `docs/FINDINGS.md`. Example: `per OQ-5` means "see OQ-5 in FINDINGS.md" — typically a resolved canonical constant or a settled architectural choice. **`OQ-G1`–`OQ-G4`** — Stage G addendum (gauge pivot), resolved 2026-05-05.
 * **`C-Dn`** — Planning-stage design decision n from `docs/STAGE_C_PLAN.md` (similarly `B-Dn` for Stage B, `D-Dn` for Stage D, etc.). These are the *choices* made while writing the plan, before implementation. Example: `per C-D12` means "see decision C-D12 in STAGE_C_PLAN.md."
 * **`Cn`** (two-digit, like `C10`, `C11`, `C14`) — Implementation-stage finding n from `docs/STAGE_C_NOTES.md`. Numbered from 10 to avoid collision with the `C-D*` planning codes. Example: `C14` is the Cursor autonomous execution incident (section 9).
+* **`G-Dn`** — Design freeze decision n from `docs/STAGE_G_NOTES.md` (Stage G pivot; pre-`STAGE_G_PLAN.md`).
 * **`F-n`** — Formula n from `11_formulas.md` in `aummfi-bit/aumm-site` (see §4). Example: `F-0 piecewise bootstrap emission decay`.
 * **`§xxix`** — Section xxix in an `aummfi-bit/aumm-site` numbered spec (see §4).
 * **Block-number constants** — canonical, defined in FINDINGS OQ-3/OQ-4/OQ-5. `BLOCKS_PER_DAY = 7_200`, `BLOCKS_PER_EPOCH = 100_800`, `BLOCKS_PER_MONTH = 219_000`, `BLOCKS_PER_QUARTER = 657_000`, `BLOCKS_PER_YEAR = 2_628_000`, `BLOCKS_PER_ERA = 10_512_000`. **Block numbers are canonical time units everywhere in the protocol.** Calendar terms ("month," "year," "14 days") are aliases.
@@ -433,7 +438,7 @@ Earlier Stage F commits (F0 scaffold + OQ-22 / OQ-5a-bis / OQ-23 resolutions, F1
 - **D36 permanent fix.** Env-key namespacing in `test/fork/DeployAureumVault.t.sol` (or eliminating `vm.setEnv` from fork tests entirely); Stage E + Stage F pilot tests are race-safe via E-D24 in-process pattern + same-value env-write convention; `--threads 1` cross-suite belt remains for legacy Stage D fork tests writing `FEE_ROUTING_HOOK` to conflicting addresses.
 - **aumm-site spec edits (user-side).** `04_tokenomics.md` §ix prose amendments per OQ-20 + OQ-21; not a repo edit.
 
-**Next stage: Stage G — gauge state machine.** Plan not yet authored. Stage G entry mode per §13 Stage-level defaults: **Opus high**.
+**Next stage: Stage G — gauge registry + eligibility.** **Auto-gauge pivot** locked in `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md` + `docs/STAGE_G_NOTES.md`; OQ-G1–G4 in `docs/FINDINGS.md`. Stage G plan not yet authored — entry per §13 Stage-level defaults: **Opus high**.
 
 Loop grep-and-confirm per §6 / §8e Audit cycle; all git mutations run in user's terminal; Cursor is executor-only per §7 + §8e.
 
