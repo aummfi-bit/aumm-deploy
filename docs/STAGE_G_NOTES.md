@@ -170,6 +170,43 @@ A token implementing `asset()` for any reason (legitimate or scam) is therefore 
 
 ---
 
+## G-D11 — OQ-G3 swap-and-deposit primitive — Option A helper + α-via-DONATION (G-DP10 resolution)
+
+`src/gauge/SwapAndDepositToBodensee.sol` (G1) implements the OQ-G3 anti-spam fee + `VaultClassRegistry` proposal-bond shared rail per **G-DP10 → Option A**. Stage D `AureumFeeRoutingHook` bytecode is **untouched** — the audit-inheritance anchor at `stage-d-complete` (commit `951c338`) is preserved. The helper's add-liquidity primitive is V3's **`AddLiquidityKind.DONATION`** (`Vault.sol` L623), which mints **zero BPT** — donated tokens enter Bodensee's reserves with no holder ever realizing an LP claim. Aligned with Aureum's no-team-treasury principle (CLAUDE.md §1: "no creator fees, ever").
+
+**Effect on the pool.** Bodensee weights (40 / 30 / 30 AuMM / sUSDS / svZCHF) are immutable per V3 weighted-pool semantics. DONATION grows the donated-token reserve at constant weight, so the pool's invariant absorbs the new reserves at the next swap — the swap curve shifts, AuMM's spot price within Bodensee moves, and existing BPT now represents proportionally more total backing. No new holder, no protocol wallet, no LP-claim accumulation.
+
+**Mechanism (locked):**
+
+- **Helper contract.** Holds immutable references to `IVault`, `DER_BODENSEE`, `SV_ZCHF`, `S_USDS`. Single external entry point `swapAndDeposit(IERC20 payToken, uint256 amount)` — exact signature shape locks at G1.x.
+- **DONATION path.** Inside `IVault.unlock` callback: pull `payToken` from caller via `safeTransferFrom`; transfer to Vault + `settle`; then `IVault.addLiquidity` with `AddLiquidityKind.DONATION` and a `maxAmountsIn` array sized to Bodensee's token count, the `payToken` slot set to the equivalence-derived amount and other slots zero. `bptAmountOut == 0` per V3 DONATION semantics — discarded. No `bptRecipient` parameter; no `to` field consumed.
+
+**Pre-requisite — Bodensee config amendment (sub-step G1.1, ahead of `VaultClassRegistry.sol` Solidity):**
+
+`script/DeployDerBodensee.s.sol` line 81 flips `enableDonation` from `false` to `true`. This is a **deploy-script change**, not a contract-bytecode change — Stage D's `stage-d-complete` tag covers `AureumFeeRoutingHook` + controller bytecode; Bodensee deploy is a script artifact regenerated at fork-test setUp + Stage R mainnet deploy. Bodensee is not on mainnet (Stage R is mainnet). The flag flip lands in the `stage-g` branch with matching test-fixture updates so Stage D's UNBALANCED fee-routing path and Stage G's DONATION anti-spam path coexist on a single Bodensee instance — V3 supports both add-liquidity kinds on a pool registered with `enableDonation = true` AND `disableUnbalancedLiquidity = false` (current setting at line 82, kept).
+
+**Pay tokens — two-numéraire (svZCHF, sUSDS):**
+
+Both stable-class tokens are already Bodensee pool tokens (30 / 30 weights), so DONATION accepts either directly with **no swap leg required**. AuMM is ineligible as pay token (OQ-G3 enumerates the stable pair only).
+
+**Equivalence — Rate-Provider-derived, svZCHF-anchored (G-D11.eq):**
+
+Canonical fee is **100 svZCHF** per OQ-22's svZCHF numéraire framing. The sUSDS-equivalent amount is derived via Bodensee's existing Rate Providers (registered at pool construction per Stage D D11), reading `IRateProvider.getRate()` for the svZCHF / sUSDS pair at fee-payment block. **No new oracle dependency** — the helper reuses Bodensee's pool-internal rate infrastructure already consumed for swap math. Single block-snapshot read, no TWAP. Round direction is **user-pays-more** (round up the equivalent sUSDS amount) to prevent fractional underpayment via Rate-Provider rounding. MEV exposure documented as a Stage Q audit item alongside `limitRaw == 0` and `minBptAmountOut == 0` per `STAGE_D_PLAN.md` L703.
+
+**Caller surface — placeholder + one-shot setter pattern (mirrors F-D20–F-D23):**
+
+`swapAndDeposit` is gated to two known Aureum callers: **`VaultClassRegistry`** (consumed by `proposeVaultClass` for the proposal bond) and **`GaugeRegistry`** (consumed by `activateGauge` for the anti-spam fee). Both ship as placeholder `address(0)` immutables → constructor `moduleAdmin` → one-shot setters that zero the admin slot atomically with the caller-set slot, per the C-D11 / D-D2 / F-D20 family. Pre-`setVaultClassRegistry` + pre-`setGaugeRegistry`, the helper is **structurally unreachable** — permissionless callers cannot invoke it. The setter-gated variant is preferred over a permissionless one to keep the helper's audit scope tight (only Aureum-internal callers); G1.x implementation may revisit if gating adds disproportionate complexity without commensurate safety gain.
+
+**Tunables / sub-decisions deferred to G1.x:**
+
+- `swapAndDeposit` exact signature shape (single `(payToken, amount)` vs richer form with optional caller-side deposit-credit verification).
+- The 100-svZCHF canonical fee magnitude — held against OQ-G3's 100 svZCHF/sUSDS spec; revisits at G1.x in concert with **G-D9** tunables (proposal bond `≥` anti-spam fee).
+- `ITVLOracle` precedent (Stage F F0.2) versus per-pair Rate-Provider lookup — both are pool-internal reads; G1.x picks based on call-site ergonomics.
+
+**Forward references.** Consumed by `VaultClassRegistry.sol` (G1.2+) and `GaugeRegistry.sol` (G3.1+). Stage D `AureumFeeRoutingHook` + `AureumProtocolFeeController` are **not** modified.
+
+---
+
 ## Test matrix — must pass before Stage G closure
 
 ### Invariants (unit / fuzz)

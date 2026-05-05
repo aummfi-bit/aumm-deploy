@@ -82,7 +82,7 @@ Planning-mechanics decisions specific to PLAN authoring (sub-step layout, branch
 
 > Decisions resolved during Stage G that revise values or framing locked in by the entry-time decisions above. Each entry preserves the canonical record location in `docs/STAGE_G_NOTES.md` (full reasoning) and `docs/FINDINGS.md` (OQ marker, when applicable). The lock table is left intact as historical context — read these supersessions alongside it.
 
-> *(empty until Stage G mid-stage resolutions land)*
+- **G-DP10 → G-D11 (RESOLVED at G1.0, `STAGE_G_NOTES.md` G-D11):** OQ-G3 swap-and-deposit primitive sourcing — Option A confirmed (fresh helper at `src/gauge/SwapAndDepositToBodensee.sol`); Stage D `AureumFeeRoutingHook` bytecode untouched. α-via-DONATION (`AddLiquidityKind.DONATION`, zero BPT minted) supersedes the BPT-to-recipient framing implicit in G-DP10's option list. Pre-requisite: Bodensee deploy-script `enableDonation` flag flip at `script/DeployDerBodensee.s.sol` line 81 lands as discrete sub-step **G1.1** ahead of `VaultClassRegistry.sol` Solidity; coexists with Stage D's UNBALANCED fee-routing path on a single Bodensee instance. Two-numéraire support (svZCHF + sUSDS) via Bodensee's existing Rate Providers, svZCHF-anchored (**G-D11.eq**). Caller surface gated via placeholder + one-shot setter pattern (F-D20–F-D23 family).
 
 ---
 
