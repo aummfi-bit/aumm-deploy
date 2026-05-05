@@ -27,6 +27,8 @@ import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
 import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
 import { EMASampler } from "../../src/ccb/EMASampler.sol";
+import { CCBScore } from "../../src/ccb/CCBScore.sol";
+import { CCBShare } from "../../src/ccb/CCBShare.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
 import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
@@ -371,5 +373,71 @@ contract CCBEngineEMAPathTest is CCBEngineFixture {
             sampler.updateEMA(pilotPools[i]);
             assertEq(sampler.tvlEMA(pilotPools[i]), expectedEMA, "F-4 smoothing");
         }
+    }
+}
+
+contract CCBEngineBoostLifecycleTest is CCBEngineFixture {
+    uint256 constant INITIAL_MULTIPLIER = 1e18;
+    uint256 constant BOOST_FACTOR = 12e17;
+    uint256 constant GAUGE_BOOST_DURATION_BLOCKS = 648_000;
+
+    function test_Fork_CCBEngine_BoostLifecycle_ActivateAndExpire() external {
+        address pool = pilotPools[0];
+        multiplier.activateBoost(pool);
+        assertEq(multiplier.getMultiplier(pool), BOOST_FACTOR, "active boost returns BOOST_FACTOR");
+        vm.roll(block.number + GAUGE_BOOST_DURATION_BLOCKS);
+        assertEq(multiplier.getMultiplier(pool), INITIAL_MULTIPLIER, "post-expiry returns M_i baseline");
+    }
+}
+
+contract CCBEngineCompositionTest is CCBEngineFixture {
+    uint256 internal constant UNIFORM_TVL = 1_000e18;
+    uint256 internal constant INITIAL_MULTIPLIER = 1e18;
+    uint256 internal constant EXPECTED_POST_STEP_M = 95e16;
+    uint256 internal constant SHARE_SUM_TOLERANCE = 3;
+
+    function test_Fork_CCBEngine_Composition_SharesSumToOne() external {
+        for (uint256 i = 0; i < 3; ++i) {
+            mockOracle.set(pilotPools[i], UNIFORM_TVL);
+            sampler.updateEMA(pilotPools[i]);
+        }
+
+        uint256[] memory scores = new uint256[](3);
+        for (uint256 i = 0; i < 3; ++i) {
+            scores[i] = CCBScore.score(
+                sampler.tvlEMA(pilotPools[i]),
+                multiplier.getMultiplier(pilotPools[i])
+            );
+        }
+
+        uint256[] memory shareArr = CCBShare.shares(scores);
+
+        uint256 sumShares = 0;
+        for (uint256 i = 0; i < 3; ++i) {
+            sumShares += shareArr[i];
+        }
+
+        assertApproxEqAbs(
+            sumShares,
+            1e18,
+            SHARE_SUM_TOLERANCE,
+            "F-6 shares sum to FixedPoint identity within divDown floor"
+        );
+    }
+
+    function test_Fork_CCBEngine_Composition_DeltaIntraNegStepUnderNearEqualTVL() external {
+        for (uint256 i = 0; i < 3; ++i) {
+            mockOracle.set(pilotPools[i], UNIFORM_TVL);
+            sampler.updateEMA(pilotPools[i]);
+        }
+
+        address pool = pilotPools[0];
+        multiplier.updateMultiplier(pool);
+
+        assertEq(
+            multiplier.M_i(pool),
+            EXPECTED_POST_STEP_M,
+            "F-D26 (f) deltaIntra = -STEP_SIZE under near-equal TVL"
+        );
     }
 }
