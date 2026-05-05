@@ -1,6 +1,6 @@
 # Aureum — Stage Sequence Overview (C through R)
 
-> **Status:** Stage-sequence proposal, derived from `FINDINGS.md` (all 19 open questions resolved or deferred, 2026-04-15) and a stage-sequencing conversation on 2026-04-16. This file is the master sequence; detailed per-stage plans (`STAGE_C_PLAN.md`, `STAGE_D_PLAN.md`, etc.) land in separate files following the Stage A / Stage B template.
+> **Status:** Stage-sequence proposal, derived from `FINDINGS.md` (all 19 baseline open questions resolved or deferred, 2026-04-15; **Stage G addendum OQ-G1–G4**, 2026-05-05) and a stage-sequencing conversation on 2026-04-16. This file is the master sequence; detailed per-stage plans (`STAGE_C_PLAN.md`, `STAGE_D_PLAN.md`, etc.) land in separate files following the Stage A / Stage B template.
 >
 > **Audience:** Sagix, working solo, picking up this sequence in a fresh Claude chat after the planning conversation ends. Future stage-planning conversations start by reading this file plus the relevant prior stage plans.
 >
@@ -155,18 +155,21 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ---
 
-## Stage G — Gauge registry + eligibility
+## Stage G — Gauge registry + eligibility (auto-gauge pivot)
 
-**Goal:** build the gauge state machine.
+**Goal:** build the gauge state machine with **permissionless gauge activation** — no governance vote for admission.
+
+**Design freeze:** [STAGE_G_NOTES.md](STAGE_G_NOTES.md) · decision record: [STAGE_G_PRECHECK_AUTO_GAUGE.md](STAGE_G_PRECHECK_AUTO_GAUGE.md). Open questions **OQ-G1–OQ-G4** resolved in [FINDINGS.md](FINDINGS.md).
 
 **Builds:**
-- `src/gauge/GaugeRegistry.sol` — approval/revocation/90-day boost tracking per pool. `approveGauge(pool)` and `revokeGauge(pool)` gated by `onlyGovernanceContract` (governance contract doesn't exist yet — use a placeholder address that Stage K's deployment script will replace via a one-shot setter).
-- `src/gauge/GaugeEligibility.sol` — eligibility checker: 4626 Quality Gate (≥52% ERC-4626 by weight, per-token vault floor of $5M / 30 BTC / 4M svZCHF), minimum TVL floor ($10K 7-day SMA), volume percentile floor (5%/10%/15% at Months 3/6/13), efficiency tournament F-10 (top 15/10/5 percentiles → 1%/0.5%/0.1% caps), no self-referential tokens check, Sandbox fast-track (top 10% efficiency for 3 consecutive epochs), graduated grace period per `08_bootstrap.md` §xxiii.
+- `src/gauge/GaugeRegistry.sol` — per-pool gauged state, 90-day boost tracking, `revokeGauge(pool)` (governance + automatic revocation paths), **`activateGauge(pool)`** (permissionless when eligibility + anti-spam fee succeed), **`onlyGovernanceContract`** entry for **composition replacement** execution (boosted registration of replacement pool — Stage O). Governance contract placeholder until Stage K one-shot setter.
+- `src/gauge/GaugeEligibility.sol` — immutable criteria: 4626 Quality Gate (≥52% ERC-4626 by weight), per-token vault floors ($5M / 30 BTC / 4M svZCHF), **$10K 7-day SMA** TVL floor (snapshot cadence **OQ-G2**), volume percentile floors (5%/10%/15% at Months 3/6/13), **F-10** efficiency tournament (percentile tiers / caps; metric **OQ-G1**), no self-referential tokens (AuMM, AuMT), **pool-type allowlist** (Aequilibrium / Balancer factory classes), **anti-spam fee** 100 svZCHF/sUSDS equivalent (**OQ-G3** → Bodensee), graduated grace period per `08_bootstrap.md` §xxiii; **Sandbox fast-track removed** (dead-code ban).
 - Hysteresis buffer state + 4-consecutive-disqualified-epoch revocation counter.
+- **Events:** `GaugeEfficiencyDropped` / `GaugeEfficiencyRising` at top-tier cutoff transitions — schema in `STAGE_G_NOTES.md` G-D5.
 
-**Dependencies:** time library (C), pilot pools (E), CCB engine (F, for efficiency tournament ranks).
+**Dependencies:** time library (C), pilot pools (E), CCB engine (F, for efficiency tournament ranks and revenue/emission accounting inputs).
 
-**Testing strategy:** test-harness calls to `approveGauge` / `revokeGauge` without real governance. Verify eligibility-check state transitions: Active → Warning → Disqualified ⇄ Composition Challenge. Feed synthetic percentile-rank inputs to validate the Quality Gate / floor-check / efficiency-tier math.
+**Testing strategy:** permissionless activation path with mock fee + oracle inputs; governance test-harness for `revokeGauge` / composition-only registration only. Verify eligibility-check state transitions: Active → Warning → Disqualified ⇄ Composition Challenge. Feed synthetic percentile-rank inputs for F-10. Verify **no** fast-track entry points. See `STAGE_G_NOTES.md` test matrix.
 
 **Testing without emissions:** the gauge registry is a state machine over pool eligibility. Its correctness is verifiable without AuMM actually flowing — the eligibility decisions, not the emission consequences, are the test subject.
 
@@ -239,20 +242,20 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 **Goal:** ship on-chain governance and migrate the Vault's authorizer.
 
 **Builds:**
-- `src/governance/AureumGovernance.sol` — the four proposal types:
-  1. **Gauge proposal** — approve a new gauge. 20% quorum, simple majority. Deposit: 100 svZCHF/sUSDS equivalent.
-  2. **Gauge challenge** — revoke an existing gauge. F-12 elite-tail-progressive deposit: max(10-BTC-equivalent-in-CHF, `1M CHF × √((1 − p_tvl)(1 − p_eff))`). BTC price = average spot rate across all gauged pools holding any registered BTC wrapper (per OQ-8). 20% quorum, simple majority.
-  3. **Composition challenge** — replace a Miliarium slot. 1,000 svZCHF/sUSDS deposit. **2/3 supermajority.**
-  4. **Fee proposal** — adjust per-pool swap fee within the pool-class band (Miliarium 0.01%-0.30%, Bodensee 0.10%-1.00%). 1,000 svZCHF/sUSDS deposit. 20% quorum, simple majority. Cooldown: `BLOCKS_PER_EPOCH`.
+- `src/governance/AureumGovernance.sol` — the **three** proposal types:
+  1. **Gauge challenge** — revoke an existing **non-Miliarium** gauge. F-12 elite-tail-progressive deposit: max(10-BTC-equivalent-in-CHF, `1M CHF × √((1 − p_tvl)(1 − p_eff))`). BTC price = average spot rate across all gauged pools holding any registered BTC wrapper (per OQ-8). 20% quorum, simple majority.
+  2. **Composition challenge** — replace a Miliarium slot. 1,000 svZCHF/sUSDS deposit. **2/3 supermajority.**
+  3. **Fee proposal** — adjust per-pool swap fee within the pool-class band (Miliarium 0.01%-0.30%, Bodensee 0.10%-1.00%). 1,000 svZCHF/sUSDS deposit. 20% quorum, simple majority. Cooldown: `BLOCKS_PER_EPOCH`.
+  - **Gauge activation** for new non-Miliarium pools — **permissionless** (Stage G `activateGauge`); **not** a governance proposal.
   - F-9 governance dampening: Era 0 fourth root, Era 1+ cube root (per `11_formulas.md`).
   - Vote-weight lookup via AuMT (I).
   - Timelock between vote-pass and execution.
 - `src/governance/AureumGovernanceAuthorizer.sol` — B-strict authorizer with 12-month multisig time-bomb per OQ-10. `EMERGENCY_WINDOW_BLOCKS = 2_628_000` (12 months / `BLOCKS_PER_YEAR`). After that block, multisig clause permanently dead. Emergency actions set: `pauseVault`, `enableRecoveryMode`, possibly `disableQuery` (finalized at design-doc time).
 - **Authorizer migration** (part of this stage's deployment script, not a separate stage): multisig signs one-shot `Vault.setAuthorizer(newAuthorizerAddress)`. Also sets the Miliarium registry's and gauge registry's governance-contract addresses via their one-shot setters.
 
-**Dependencies:** AuMT (I, for vote weight), Miliarium registry (J, for composition challenges), gauge registry (G, for gauge proposals/challenges), fee-routing hook (D, for the deposit-into-Bodensee mechanism on proposal submission), time library (C, for the emergency-window end block and governance timelock).
+**Dependencies:** AuMT (I, for vote weight), Miliarium registry (J, for composition challenges), gauge registry (G, for gauge challenges + composition **execution** callbacks), fee-routing hook (D, for the deposit-into-Bodensee mechanism on proposal submission), time library (C, for the emergency-window end block and governance timelock).
 
-**Testing strategy:** mainnet fork. Submit each of the four proposal types, run votes with test-harness AuMT balances, verify F-9 dampening, verify 20% quorum floor, verify 2/3 supermajority on composition challenges, verify F-12 deposit math with live BTC-price reads from pilot pools. Test the authorizer migration transaction against the Stage B `AureumAuthorizer` and verify the new authorizer's `canPerform` routes correctly post-migration.
+**Testing strategy:** mainnet fork. Submit each **proposal** type, run votes with test-harness AuMT balances, verify F-9 dampening, verify 20% quorum floor, verify 2/3 supermajority on composition challenges, verify F-12 deposit math with live BTC-price reads from pilot pools. **Separately** verify permissionless **gauge activation** on a deploy-when-ready pool (Stage G). Test the authorizer migration transaction against the Stage B `AureumAuthorizer` and verify the new authorizer's `canPerform` routes correctly post-migration.
 
 **Largest stage.** Probably the full 2 weeks, possibly slightly more.
 
@@ -281,7 +284,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 **Builds:** per-pool parameter files and per-pool deployment runs via the Stage E framework. Expected pools (subject to `07_miliarium_sectors.md` final sectoring): **ixAurum, ixSilva, ixBellator, ixLibertas, ixViatica, ixAetheron**, and the other yield-anchored majors.
 
-**Dependencies:** pool-deployment framework (E), full governance stack (K) live — so that any gauge approvals needed for these pools route through the real proposal mechanism rather than test-harness calls. In practice all 10 are seeded with gauge-approved status at deployment time (they're founding Miliarium pools per `08_bootstrap.md` §xxi), but the governance stack being live means deployment scripts can verify the end-to-end flow.
+**Dependencies:** pool-deployment framework (E), full governance stack (K) live — deployment scripts assume **gauge-active** founding pools (**seeded at deploy**, not subjected to gauge vote). The governance stack being live verifies **fee / challenge / composition** flows end-to-end.
 
 **Testing strategy:** mainnet fork. Deploy each pool, verify Quality Gate check passes (per F8b, ixAetheron/ixEdelweiss/ixLibertas sit 2-5% above floor — tight validation), verify Rate Providers wire correctly, verify the hook attaches, verify initial emission distribution reaches each pool.
 
@@ -316,7 +319,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
   - 2/3-supermajority vote from governance (K) has passed.
 - Atomic execution in one governance-execute transaction:
   - Call `gaugeRegistry.revokeGauge(oldPool)` — AuMT on the deprecated pool loses governance weight at this block.
-  - Call `gaugeRegistry.approveGauge(newPool)` with 90-day boost activated.
+  - Call `gaugeRegistry.registerGaugeFromComposition(newPool)` (or equivalent **governance-only** entry — exact name at Stage G lock) with 90-day boost activated.
   - Call `miliariumRegistry.replaceSlot(slotN, newPoolAddress)`.
   - The deprecated pool's hook stays attached per Q1.5 — it continues routing fees to Bodensee for as long as anyone trades on it.
 
@@ -342,8 +345,8 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 **Dependencies:** all prior stages (C through O) complete and tagged. Frontend MVP ready (OQ-18/OQ-19 — external dependency, not part of this contract sequence).
 
 **Testing strategy:** end-to-end validation of the full system:
-- Governance flows: submit and pass each of the four proposal types.
-- Gauge approval workflow: propose a non-Miliarium gauge, run vote, verify emission flows to it.
+- Governance flows: submit and pass each of the **three** proposal types (gauge challenge, composition challenge, fee).
+- **Gauge activation workflow:** satisfy Stage G eligibility on a deployed non-Miliarium pool (`activateGauge`), verify AuMM emission path opens without a vote.
 - Fee routing through hook: real trades on Holesky-deployed Miliarium pools, verify svZCHF reaches Bodensee.
 - CCB scoring: advance Holesky blocks to simulate a protocol-month, verify multiplier updates and EMA decay.
 - Composition challenge dry-run: deploy a replacement candidate, submit proposal, pass supermajority, verify replacement.
