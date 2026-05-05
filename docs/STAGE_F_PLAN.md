@@ -168,3 +168,32 @@ Run via D35 split-form (`forge test --match-path "test/fork/**" --fork-url $MAIN
 | F1.5 | c59422b | 2026-04-29 | docs/STAGE_F_NOTES.md — F10 (Solidity optimizer hoists block.number out of vm.roll-driven loops) |
 | F2.1 | f739520 | 2026-04-29 | src/ccb/CCBScore.sol — F-5 CCB score library (FixedPoint.mulDown) |
 | F2.2 | dd1baf2 | 2026-04-29 | test/unit/CCBScore.t.sol — F-5 library unit tests (identity, zero inputs, mulDown rounding, fuzz) |
+| docs (log fill F0–F2.2) | bb8a9ea | 2026-04-29 | docs/STAGE_F_PLAN.md Completion Log fill (F0–F2.2) + docs/STAGE_F_NOTES.md F11 (paste-rendering recurrence) |
+| F2.3 | 72a54be | 2026-04-30 | src/ccb/CCBShare.sol — F-6 CCB share library (FixedPoint.divDown, EmptyScores/AllScoresZero reverts) |
+| docs (CLAUDE §11 F11) | adfdc7f | 2026-04-30 | docs/CLAUDE.md §11 — F11 paste-rendering non-issue rule (shasum + null-grep authoritative) |
+| F2.4 | 0ee116b | 2026-04-30 | test/unit/CCBShare.t.sol — F-6 library unit tests (reverts, identity, proportionality, divDown-residual fuzz) |
+| docs (F-D16–F-D18) | d72d01e | 2026-04-30 | docs/STAGE_F_NOTES.md F-D16/F-D17/F-D18 — F3 entry-time design decisions (non-Miliarium revert, boost re-entry, aggregate-EMA cold-start) |
+| F3.1 | d967141 | 2026-04-30 | src/ccb/IMiliariumRegistry.sol — Miliarium registry interface (isMiliarium, miliariumPoolsCount, miliariumPoolAt; F-D9 / OQ-23 (iii.b)) |
+| docs (CLAUDE §8e) | 2f57534 | 2026-04-30 | docs/CLAUDE.md §8e — commit-block delivery rule (full terminal fence, not bare message string) |
+| F3.2 | f30e720 | 2026-04-30 | src/ccb/IGaugeRegistry.sol — gauge-approved caller gate interface (isGaugeApproved; F-D17) |
+| F3.2.6 | e2f97fb | 2026-04-30 | docs/STAGE_F_NOTES.md — reconcile F-D18 L131 direction with F-D19 anti-cyclical polarity (downward, not upward) |
+| F3.2.7 | 3e12520 | 2026-05-03 | docs/STAGE_F_NOTES.md — F-D20/F-D21/F-D22 + F-D17 L110 amendment (one-shot setter, boost no-op, IEMASampler interface) |
+| F3.2b | 1b2ab87 | 2026-05-03 | src/ccb/IEMASampler.sol — read-only EMA view interface (tvlEMA, lastEMAUpdateBlock; F-D22) |
+| F3.2.8 | 280d845 | 2026-05-04 | docs/STAGE_F_NOTES.md — F-D23 (IGaugeRegistry one-shot setter, parallel-seal pattern; F-D9 + F-D20 extension) |
+| F3.3a | a80d297 | 2026-05-04 | src/ccb/CCBMultiplier.sol — CCBMultiplier scaffold (storage, constants, errors; F-D7/F-D17–F-D23) |
+| F3.3b | 1b36c97 | 2026-05-04 | src/ccb/CCBMultiplier.sol — constructor + registry setters (F-D20/F-D22/F-D23 one-shot self-seal) |
+| F3.2.9 | ae3c4de | 2026-05-04 | docs/STAGE_F_NOTES.md — F-D24 (activateBoost M_i reset on activation; closes F-D17 L92 + F-D21 L252) |
+| F3.3c | 806493d | 2026-05-04 | src/ccb/CCBMultiplier.sol — activateBoost (F-D17 / F-D24) |
+| F3.3.d.0 | dad06ce | 2026-05-04 | docs/STAGE_F_NOTES.md — F-D25 (updateMultiplier M_i==0 arithmetic-base sentinel; closes pre-activateBoost permissionless path) |
+| F3.3d | d8959de | 2026-05-04 | src/ccb/CCBMultiplier.sol — updateMultiplier (F-D6 / F-D18 / F-D19 / F-D21 / F-D25) |
+| F3.3e | 4412b2c | 2026-05-04 | src/ccb/CCBMultiplier.sol — getMultiplier + F3.3d type-discipline cleanup (F-D16 / F-D17 / F-D25) |
+| docs (F12) | 51e5fab | 2026-05-04 | docs/STAGE_F_NOTES.md — F12 (type-discipline standard from F3.3d-fix corrective; closes F3.3e verify-gap thread) |
+| F3.4-fix | 8e9532b | 2026-05-04 | test/unit/CCBMultiplier.t.sol — clamp-ceiling branch proof, reverse seal-independence, lower dead-zone boundary (55 tests) |
+| F4.0 | b152ab2 | 2026-05-04 | docs/STAGE_F_NOTES.md + docs/STAGE_F_PLAN.md — F-D26 (F4 harness scope / divisor artifact) + F4.1–F4.4 sub-step bodies |
+| F4.1 | 58a378c | 2026-05-04 | test/fork/mocks/CCBMocks.sol — MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry |
+| F4.2-pre-fix | c828daf | 2026-05-04 | docs/STAGE_F_PLAN.md — three-arg CCBMultiplier constructor, placeholder + F-D23 seal wiring |
+| F4.2a | fb70676 | 2026-05-04 | test/fork/CCBEngine.t.sol — CCBEngineFixture abstract base (constants, state, imports; per F-D11 / F-D26 (a)) |
+| F4.2b | 9bc712a | 2026-05-04 | test/fork/CCBEngine.t.sol — setUp + Bodensee/pilot helpers + CCB engine wiring (F-D23 seal, per F-D26 (a)) |
+| F4.3a | be0e8c2 | 2026-05-04 | test/fork/CCBEngine.t.sol — CCBEngineEMAPathTest (F-D15 cold-start sentinel + F-4 smoothing) |
+| F4.3c | cf8f7b4 | 2026-05-04 | test/fork/CCBEngine.t.sol — CCBEngineCompositionTest (F-6 shares identity + F-D26 (f) deltaIntra direction) |
+| F3.4-fix2 | 7eea202 | 2026-05-04 | test/unit/CCBMultiplier.t.sol — 28-pool divisor fix for globalFalling/intraBelow tests + F-D27 (STAGE_F_NOTES.md) |
