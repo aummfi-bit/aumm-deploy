@@ -117,6 +117,34 @@ These are the answers to the planning-stage questions resolved before this file 
 
 ### F4 — Integration fork test
 
+F4 delivers `test/fork/CCBEngine.t.sol`, a test-only mocks file `test/fork/mocks/CCBMocks.sol`, and three test methods that exercise `EMASampler`, `CCBScore`, `CCBShare`, and `CCBMultiplier` end-to-end against mainnet-fork–deployed Stage E pilot pools. Layout and invocation discipline follow **F-D11** (`STAGE_F_PLAN.md` L65); harness scope, fixed divisor `28`, and accepted intra-channel fork artifacts are locked under **F-D26** (`STAGE_F_NOTES.md`).
+
+#### F4.1 — Test-only mocks (`test/fork/mocks/CCBMocks.sol`)
+
+Three contracts in one file:
+
+- **`MockTVLOracle`** — per-pool `set(address pool, uint256 tvl)` plus `tvl(pool)` reader implementing `ITVLOracle`.
+- **`MockMiliariumRegistry`** — constructor takes `address[3] pools`; exposes `isMiliarium`, `miliariumPoolsCount = 3`, and `miliariumPoolAt(idx)` per Stage F `IMiliariumRegistry`.
+- **`MockGaugeRegistry`** — per-address mapping with `setApproved(address, bool)` and `isGaugeApproved(addr)` implementing `IGaugeRegistry`.
+
+All three implement the corresponding Stage F interfaces verbatim. `pragma solidity ^0.8.26`; `SPDX-License-Identifier: GPL-3.0-or-later`.
+
+#### F4.2 — `CCBEngineFixture` base + `setUp` (`test/fork/CCBEngine.t.sol`)
+
+Abstract `CCBEngineFixture is Test` performs three sequential pilot-pool deploys via `DeployIxHelvetia`, `DeployIxEdelweiss`, and `DeployIxAurebit` scripts (per **E-D24** in-process pattern, replicated locally — does not extend `MiliariumPilotPoolBase` per F-D26 (a)), instantiates `MockTVLOracle`, `MockMiliariumRegistry(addrs)`, `MockGaugeRegistry`, `EMASampler(mockOracle)`, `CCBMultiplier(mockMiliarium, sampler)`, calls `setGaugeRegistry(mockGauge)`, and marks the test contract gauge-approved via `setApproved(address(this), true)`. No test methods at this sub-step.
+
+#### F4.3 — Test methods (`test/fork/CCBEngine.t.sol`)
+
+Three concrete test contracts deriving `CCBEngineFixture`:
+
+1. **EMA path** — seed mock TVL, advance `BLOCKS_PER_DAY`, call `updateEMA` per pool, assert non-zero EMAs consistent with F-4 smoothing.
+2. **Boost lifecycle** — `activateBoost(pilotPool)` succeeds; `getMultiplier` returns `BOOST_FACTOR`; advance `GAUGE_BOOST_DURATION_BLOCKS`; `getMultiplier` returns `INITIAL_MULTIPLIER` (per **F-D24** / **F-D17** / **F-D21** composition).
+3. **Composition** — build per-pool scores via `CCBScore.score(EMA, multiplier)`, normalize via `CCBShare.shares(scores)`, assert shares sum to `1e18` (FixedPoint identity); plus directional `deltaIntra = -STEP_SIZE` assertion per F-D26 (f) under near-equal-TVL configuration.
+
+#### F4.4 — Suite verification + Completion Log entry
+
+Run via D35 split-form (`forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL --threads 1 -vv` per **F-D11** / **D36**), confirm green, append F4.0 / F4.1 / F4.2 / F4.3 / F4.4 lines to the Completion Log table.
+
 ### F5 — Docs
 
 ### F9 — Close

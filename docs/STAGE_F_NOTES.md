@@ -499,3 +499,31 @@ The four lines of suppression-justification comments at L268-L269 and L274-L275 
 - **D34** (`docs/STAGE_D_NOTES.md`) — parallel "verification surface narrower than audit surface" pattern. D34's verify ran behavioral tests but not cross-side selector assertions; F12's verify ran `forge build` but not `forge lint`. Both gaps shipped under audit cover until a later sub-step's wider verify exposed them.
 - **`test/fork/PilotPools.t.sol:348`**, **`test/fork/AureumFeeRoutingHook.t.sol:382`** — deferred `erc20-unchecked-transfer` warnings; `SafeERC20.safeTransfer` replacement pending.
 - **OpenZeppelin `SafeCast`** (`lib/openzeppelin-contracts/contracts/utils/math/SafeCast.sol`) — canonical bounds-checked cast library; remap `@openzeppelin/contracts/utils/math/SafeCast.sol`.
+
+---
+
+### F-D26 — F4 fork-harness scope: 3 pilot pools, fixed divisor 28, intra-channel always −STEP_SIZE accepted as fork-test artifact (not implementation defect)
+
+**Resolved 2026-05-04 at F4.0.** F4 (`docs/STAGE_F_PLAN.md` Scope L35) wires Stage E's three pilot pools — ixHelvetia (slot 01), ixEdelweiss (slot 05), ixAurebit (slot 14) — through a mock `ITVLOracle` and mock `IMiliariumRegistry` / `IGaugeRegistry`, exercising the four CCB contracts end-to-end.
+
+**Divisor mechanics.** `MILIARIUM_POOL_COUNT = 28` is a hardcoded `uint256` constant at `src/ccb/CCBMultiplier.sol` L65, consumed at L263 as `currentAgg / MILIARIUM_POOL_COUNT` to derive `miliariumAvg` for the intra-channel baseline (OQ-23 (iv.a) simple-mean Miliarium-average EMA).
+
+**Partial constellation in fork.** With only 3 pilot pools registered in the mock `IMiliariumRegistry`, the F-D18 enumeration loop sums three EMAs into `currentAgg`; division by 28 yields `miliariumAvg ≈ currentAgg / 28`, on the order of 3/28 ≈ 10.7% of any per-pool EMA when EMAs are roughly equal across the three pilots.
+
+**Intra-channel consequence.** Result: `poolEMA > upperBoundIntra` is true for every pilot under near-equal-TVL conditions; per F-8 evolution at L268-L269, `deltaIntra = -STEP_SIZE` for every pool every epoch. This is mechanical-divisor arithmetic, not an implementation defect.
+
+**Rejected option (b)** — padding mock registry to count = 28 with 25 zero-address slots: `tvlEMA(0) = 0` by mapping default, so `currentAgg` is unchanged; divisor stays 28; same skew. Padding with 25 nonzero meaningful EMAs simulating production constellation dynamics is heavier than F4's lean-integration scope and still does not match mainnet truth.
+
+**F4 assertion scope under (2a).** EMA path correctness (per-day cadence, oracle reads, F-4 smoothing); boost lifecycle (`activateBoost` → `getMultiplier == BOOST_FACTOR` → expiry → `INITIAL_MULTIPLIER`); `getMultiplier` taxonomy (non-Miliarium → `1e18`; active boost → `1.2e18`; unwritten `M_i` → `1e18`; evolved → clamped value); `CCBScore` × `CCBShare` composition (scores → normalized shares summing to `1e18`); directional intra-channel behavior (`deltaIntra = -STEP_SIZE` always under near-equal-TVL pilot configuration — assert direction, not symmetry).
+
+**Precedent.** F-D18 (`docs/STAGE_F_NOTES.md` L115) already records partial-constellation dynamics for the cold-start single-pool case — `delta_global = 0` for the seeding epoch. F-D26 extends the same "partial constellation in test contexts produces predictable arithmetic artifacts" framing to F4's 3-pool fork case, with intra-channel direction pinned rather than aggregate-baseline seeding.
+
+**Cross-references:**
+
+- **F-D11** (`STAGE_F_PLAN.md` L65) — F4 test layout: `test/fork/CCBEngine.t.sol` integration test against 3 pilot pools with mock TVL oracle.
+- **F-D18** (`STAGE_F_NOTES.md` L115) — partial-constellation precedent (cold-start single-pool aggregate seed).
+- **OQ-23 (iii.b) / OQ-23 (iv.a)** (`docs/FINDINGS.md`) — sum-of-EMAs / simple-mean baseline definitions.
+- **`04_tokenomics.md` §vii** — fixed 28-pool Miliarium constellation (canonical divisor source).
+- **`src/ccb/CCBMultiplier.sol` L65** — `MILIARIUM_POOL_COUNT = 28` constant declaration.
+- **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
+- **`src/ccb/CCBMultiplier.sol` L268-L269** — `deltaIntra` ± step assignments under intra-channel inequality.
