@@ -33,6 +33,7 @@ import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { ITVLOracle } from "../../src/ccb/ITVLOracle.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 /**
  * @title CCBEngineFixture
@@ -340,6 +341,35 @@ abstract contract CCBEngineFixture is Test {
         for (uint256 i = 0; i < tokens.length; ++i) {
             tokens[i].transfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+}
+
+contract CCBEngineEMAPathTest is CCBEngineFixture {
+    function test_Fork_CCBEngine_EMASampler_SeedThenSmooth() external {
+        uint256 seed = 1_000e18;
+        uint256 newSpot = 2_000e18;
+
+        for (uint256 i = 0; i < 3; ++i) {
+            mockOracle.set(pilotPools[i], seed);
+        }
+
+        for (uint256 i = 0; i < 3; ++i) {
+            sampler.updateEMA(pilotPools[i]);
+            assertEq(sampler.tvlEMA(pilotPools[i]), seed, "F-D15 cold-start seed");
+        }
+
+        for (uint256 i = 0; i < 3; ++i) {
+            mockOracle.set(pilotPools[i], newSpot);
+        }
+
+        vm.roll(block.number + AureumTime.BLOCKS_PER_DAY);
+
+        uint256 expectedEMA = (2 * newSpot + 59 * seed) / 61;
+
+        for (uint256 i = 0; i < 3; ++i) {
+            sampler.updateEMA(pilotPools[i]);
+            assertEq(sampler.tvlEMA(pilotPools[i]), expectedEMA, "F-4 smoothing");
         }
     }
 }
