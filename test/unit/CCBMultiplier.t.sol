@@ -364,12 +364,12 @@ contract CCBMultiplierTest is Test {
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
-        uint256 miBefore = multiplier.M_i(POOL_A);
         uint256 lbBefore = multiplier.lastMultiplierUpdateBlock(POOL_A);
         uint256 aggBefore = multiplier.lastProtocolAggregateEMA();
         gaugeReg.setApproved(GAUGE_CALLER, true);
         vm.prank(GAUGE_CALLER);
         multiplier.activateBoost(POOL_A);
+        uint256 miBefore = multiplier.M_i(POOL_A);
         uint256 cadenceBlock = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(cadenceBlock);
         multiplier.updateMultiplier(POOL_A);
@@ -434,30 +434,29 @@ contract CCBMultiplierTest is Test {
     }
 
     function test_updateMultiplier_globalFalling_increment() public {
-        address[] memory pl = new address[](3);
+        address[] memory pl = new address[](28);
         pl[0] = POOL_A;
-        pl[1] = POOL_B;
-        pl[2] = POOL_C;
+        for (uint256 i = 1; i < 28; ++i) {
+            pl[i] = address(uint160(0xC0FE0000 + i));
+        }
         registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        registry.setMiliarium(POOL_B, true);
-        registry.setMiliarium(POOL_C, true);
         uint256 unit = 28_000e18;
-        ema.setTVLEMA(POOL_A, unit);
-        ema.setTVLEMA(POOL_B, unit);
-        ema.setTVLEMA(POOL_C, unit);
+        for (uint256 i = 0; i < 28; ++i) {
+            registry.setMiliarium(pl[i], true);
+            ema.setTVLEMA(pl[i], unit);
+        }
         uint256 firstEpochEnd = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(firstEpochEnd);
         multiplier.updateMultiplier(POOL_A);
         uint256 miAfterFirst = multiplier.M_i(POOL_A);
         uint256 dec = (unit * 90) / 100;
-        ema.setTVLEMA(POOL_A, dec);
-        ema.setTVLEMA(POOL_B, dec);
-        ema.setTVLEMA(POOL_C, dec);
+        for (uint256 i = 0; i < 28; ++i) {
+            ema.setTVLEMA(pl[i], dec);
+        }
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(secondEpochEnd);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst + 2 * uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst + uint256(STEP_SIZE));
     }
 
     function test_updateMultiplier_globalDeadZoneBoundary_neutral() public {
@@ -606,14 +605,17 @@ contract CCBMultiplierTest is Test {
     }
 
     function test_updateMultiplier_intraBelow_increment() public {
-        address[] memory pl = new address[](2);
+        address[] memory pl = new address[](28);
         pl[0] = POOL_A;
         pl[1] = POOL_B;
+        for (uint256 i = 2; i < 28; ++i) {
+            pl[i] = address(uint160(0xC0FE0000 + i));
+        }
         registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        registry.setMiliarium(POOL_B, true);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        ema.setTVLEMA(POOL_B, 1000e18);
+        for (uint256 i = 0; i < 28; ++i) {
+            registry.setMiliarium(pl[i], true);
+            ema.setTVLEMA(pl[i], 1000e18);
+        }
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);

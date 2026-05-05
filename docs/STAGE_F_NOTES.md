@@ -527,3 +527,22 @@ The four lines of suppression-justification comments at L268-L269 and L274-L275 
 - **`src/ccb/CCBMultiplier.sol` L65** — `MILIARIUM_POOL_COUNT = 28` constant declaration.
 - **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
 - **`src/ccb/CCBMultiplier.sol` L268-L269** — `deltaIntra` ± step assignments under intra-channel inequality.
+
+### F-D27 — Unit-test mocks must align with `MILIARIUM_POOL_COUNT == 28` divisor semantics
+
+**Resolved 2026-05-04 at F3.4-fix2.** `CCBMultiplier.sol` L263 derives `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` using the hardcoded canonical divisor 28 (per OQ-23 (iv.a) — `04_tokenomics.md` §vii). Unit tests using `MockMiliariumRegistry` with sub-28-pool lists produce the same partial-constellation artifact F-D26 (f) flags for fork tests: per-pool `tvlEMA` values stay above `miliariumAvg` under any reasonable uniform-TVL setup, forcing `deltaIntra = -STEP_SIZE` independent of the pool's actual intra-band relationship.
+
+**Rule.** Unit tests asserting specific `M_i` deltas under controlled global/intra-channel direction populate the mock registry with **28 pool entries** — one focal pool (e.g. `POOL_A`) at index 0, optionally a secondary perturbed pool (e.g. `POOL_B`) at index 1, and 26-or-27 filler addresses generated via `address(uint160(0xC0FE0000 + i))` at the remaining indices. All 28 are Miliarium-flagged and seeded at uniform-baseline TVL EMA; the focal pool's EMA (and optionally the secondary's) is then perturbed for intra-channel tests, or all 28 EMAs proportionally for global-channel tests. Filler addresses participate in `currentAgg` and `miliariumAvg` arithmetic but are otherwise transparent to the assertion target.
+
+**F-D24 separability.** Tests asserting `M_i` preservation across boost activation (e.g. `test_updateMultiplier_boostNoOp_noStateChange`) capture the snapshot AFTER `activateBoost`, not before — F-D24's reset writes `INITIAL_MULTIPLIER` at activation, invalidating any pre-activation `M_i` capture. This is orthogonal to the 28-pool divisor rule above; tests in this category remain single-pool (or sub-28-pool) when they do not assert delta-channel direction.
+
+**Sibling tests passing under 3-pool setups.** `test_updateMultiplier_globalRising_decrement`, `test_updateMultiplier_intraAbove_decrement`, `test_updateMultiplier_channelsReinforce`, and `test_updateMultiplier_channelsCancel` retain their pre-F3.4-fix2 sub-28-pool registry setups. They pass because the partial-constellation artifact (`deltaIntra = -STEP_SIZE` always) aligns with the direction their assertions expect — a coincidence rather than a correctness property. Future test additions or refactors should follow the F-D27 rule above; these legacy tests are tolerable in current form but should not be used as a pattern.
+
+**Cross-references:**
+
+- **F-D26 (f)** (`STAGE_F_NOTES.md` L513) — fork-harness analog (3 pilot pools, artifact accepted via direction-only assertions); F-D27 is the unit-test counterpart (pad to 28, artifact eliminated).
+- **F-D24** (`STAGE_F_NOTES.md` L351) — `activateBoost` resets `M_i[pool] = INITIAL_MULTIPLIER`; informs the boost-snapshot rule above.
+- **OQ-23 (iv.a)** (`docs/FINDINGS.md`) — divisor-28 spec source.
+- **`src/ccb/CCBMultiplier.sol` L65** — `MILIARIUM_POOL_COUNT = 28` constant declaration.
+- **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
+- **`test/unit/CCBMultiplier.t.sol`** — `test_updateMultiplier_globalFalling_increment`, `test_updateMultiplier_intraBelow_increment`, `test_updateMultiplier_boostNoOp_noStateChange` corrected at F3.4-fix2 per this rule.
