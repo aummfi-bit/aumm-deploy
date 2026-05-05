@@ -26,15 +26,16 @@ If you read nothing else in this document, read these:
 
 5. **Several "obvious" numeric constants aren't actually pinned anywhere.** Specifically: how many blocks is a "protocol month"? How many blocks is a "bi-weekly epoch"? How does der Bodensee's price get derived in a way that's "oracle-free"? Each of these has a probable answer, but the spec doesn't say. Each needs to be decided before code gets written. *(OQ-3, OQ-4, OQ-6, OQ-8)*
 
-The full document below has 12 findings (F1–F12, plus F8a–F8d) and 19 open questions (OQ-1 through OQ-19, plus OQ-12a). Findings are things I'm confident about. Open questions need your call.
+The full document below has 12 findings (F1–F12, plus F8a–F8d) and **19 baseline** open questions (OQ-1 through OQ-19, plus OQ-12a), **plus Stage G addendum OQ-G1–OQ-G3** (resolved 2026-05-05 — see § Open questions appendix). Findings are things I'm confident about. Open questions need your call.
 
-**All 19 open questions resolved or deferred (2026-04-15):**
+**All 19 baseline open questions resolved or deferred (2026-04-15):**
 
 **Resolved:** OQ-1 + OQ-1a (fee router via Balancer V3 hook on `onAfterSwap`, 100% to Bodensee, no LP residual) · OQ-2 (fee-routing target = svZCHF; der Bodensee itself excluded from yield-fee collection — its own yield compounds in-pool via Rate Providers; full mechanism documented as proposed `04_tokenomics.md` §x-a addition) · OQ-3 (protocol month = 219,000 blocks) · OQ-4 (bi-weekly epoch = 100,800 blocks) · OQ-5 (halving = 10,512,000 blocks; **block numbers are canonical time units across the protocol — calendar terms are aliases**) · OQ-5a (EMA = per-day sample with 1-hour intra-day TWAP, alpha = 2/61) · OQ-6 (der Bodensee "hidden Months 0–6" = frontend-only + no router-sharing policy; pool self-hides via lopsided F-0 composition) · OQ-7 + OQ-13 (composition challenge = gauge-revoked-only deprecation, hook stays attached for life, specified-pool model for replacements, no LP migration assistance; AuMT governance weight requires gauged status) · OQ-8 (F-12 BTC = unit of account; price = spot average across all gauged pools holding any registered BTC wrapper; deposit paid in svZCHF/sUSDS one-sided to Bodensee) · OQ-9 (F-12 N includes all gauged pools including target) · OQ-10 (governance↔authorizer = B-strict with 12-month multisig time-bomb) · OQ-11 (per-pool swap fees governable within bands — Miliarium & non-Miliarium 0.01–0.30% with genesis 0.03%, Bodensee 0.10–1.00% with genesis 0.75%, cooldown = `BLOCKS_PER_EPOCH`) · OQ-12 (ixCambio Partner Stable = JPYC; s-tGBP → plain tGBP) · OQ-12a (ixCambio reweighted to svZCHF 19% / st-EURA 18% / aEURS 18% / ixEDEL 15% / tGBP 15% / JPYC 15% = 55% ERC-4626) · OQ-14 (use upstream Balancer V3 pool factories as-is; no fork) · OQ-15 (testnet = hybrid: Holesky stubs + mainnet fork) · OQ-16 (Holesky now) · OQ-18 (frontend = separate repo `aumm-app`, separate plan, MVP required for testnet and mainnet launch; post-MVP roadmap rolled out over subsequent protocol-months).
 
 **Deferred (not blockers):** OQ-17 (audit firm — candidate list captured: Trail of Bits, OpenZeppelin, Spearbit, Sigma Prime, Zellic for tier-1; Cantina/Code4rena/Sherlock for contests; Firepan for continuous AI-augmented monitoring) · OQ-19 (founding team roles — stays TBD; cross-dep with OQ-18 for frontend timing).
 
-**FINDINGS is complete.** All architectural, design, and protocol-ambiguity questions have been resolved. The two deferred items are operational/organizational, not gating for stage-sequence planning.
+**Stage G addendum (2026-05-05):** **OQ-G1, OQ-G2, OQ-G3** below lock gauge-admission pivot semantics for `aumm-deploy` Stage G (`docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`). They do **not** reopen Stage B–F decisions. Spec-side edits in `aumm-site` (`04_tokenomics.md`, `10_constitution.md` §xxvii vote-type table, glossary, bootstrap §xxi fast-track) remain user-owned follow-up.
+**FINDINGS is complete** for baseline OQ resolution. Stage G semantic locks are appended as **OQ-G1–G3** below.
 
 ---
 
@@ -119,12 +120,12 @@ This was already noted in `STAGE_B_NOTES.md` housekeeping queue item #4 as needi
 |---|---|
 | Bi-weekly epoch length (14 days, in blocks) | Bootstrap §xxii line 1442 ("All parameters immutable from block 0: 1-epoch (14-day) duration"); referenced everywhere |
 | 20% governance quorum floor | Constitution §xxvii line 237; tokenomics §ix Low-Turnout Safeguard line 519 |
-| Gauge proposal deposit: 100 svZCHF/sUSDS equivalent | Constitution §xxvii table line 230; bootstrap §xxiv line 1543 |
+| Gauge activation anti-spam fee: 100 svZCHF/sUSDS equivalent | Constitution §xxvii table line 230; bootstrap §xxiv line 1543 |
 | Fee proposal / composition challenge deposit: 1,000 svZCHF/sUSDS equivalent | Constitution §xxvii table lines 232–233 |
 | Composition challenge 2/3 supermajority threshold | Constitution §xxvii line 233 |
 | 90-day gauge boost duration and 1.2× multiplier value | Bootstrap §xxi line 1421; §xxiii line 1457 |
 | der Bodensee swap fee 0.75% | Asserted in §xxix narrative at line 287 but not in the canonical bullet list |
-| Sandbox fast-track threshold (top 10% efficiency for 3 epochs) | Bootstrap §xxi line 1404 |
+| Sandbox fast-track (top 10% efficiency × 3 epochs) | **DEPRECATED per Stage G pivot (2026-05-05)** — see `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`. Original cite: Bootstrap §xxi line 1404 (`aumm-site` amend pending) |
 | ERC-4626 Quality Gate threshold (≥52% by weight; per-token vault floor of $5M / 30 BTC / 4M svZCHF) | Bootstrap §xxiii line 1451 |
 | Volume percentile floor schedule (5% / 10% / 15% by month 3 / 6 / 13) | Bootstrap §xxiii line 1452, §xxiii grace-period table line 1471 |
 | Efficiency tournament tier breakpoints (15/10/5 percentiles → 1%/0.5%/0.1% caps) | Bootstrap §xxiii line 1502 |
@@ -260,8 +261,8 @@ The spec implies the following major Aureum-owned contract groups, none of which
 | **Token** | AuMM ERC-20 with 21M cap, halving math; AuMT tessera with time-weighting and withdrawal-reset | 2 contracts |
 | **Emission distributor** | Per-block streaming, halving block boundary, F-0 piecewise bootstrap, F-1 equal split, F-3 linear blend, F-7 full sequence | 1-2 contracts plus epoch/month time math library |
 | **CCB** | TVL EMA(60) per-pool (F-4), CCB score (F-5), CCB share normalization (F-6), CCB multiplier update (F-8) with clamp/dead-zone/step | 2-3 contracts |
-| **Gauge system** | Gauge registry, eligibility checker (4626 Quality Gate, min TVL, volume percentile floor, efficiency tournament F-10, no self-referential tokens), graduated grace period, hysteresis buffer, Sandbox fast-track, 90-day gauge boost, gauge revocation | 4-5 contracts |
-| **Governance** | AuMT-weighted voting, F-9 dampening (Era 0 fourth root → Era 1 cube root), 14-day qualification, 6-month on-ramp, withdrawal reset, 20% quorum floor, four proposal types, F-12 deposit math, on-chain-data-only proposal validation | 3-4 contracts |
+| **Gauge system** | Gauge registry, eligibility checker (4626 Quality Gate, min TVL, volume percentile floor, efficiency tournament F-10, no self-referential tokens), graduated grace period, hysteresis buffer, **permissionless gauge activation + anti-spam fee**, **no Sandbox fast-track**, 90-day gauge boost, automatic + governance revocation paths | 4–5 contracts |
+| **Governance** | AuMT-weighted voting, F-9 dampening (Era 0 fourth root → Era 1 cube root), 14-day qualification, 6-month on-ramp, withdrawal reset, 20% quorum floor, **three** proposal types (gauge challenge, composition challenge, fee), F-12 deposit math, on-chain-data-only proposal validation | 3–4 contracts |
 | **Fee router** | Swap fee tokens to sUSDS/svZCHF; one-sided deposit into der Bodensee. Either inside the existing fee controller or as a separate contract (F1 / OQ-1) | 0-1 new contracts depending on F1 resolution |
 | **Pool deployment** | der Bodensee Pool (three-token weighted, fixed 40/30/30, 0.75% fee); 28 Miliarium pools (mostly 52/16/32 with non-standard shapes in slots 01, 02, 05, 06, 07, 11) | Deployment scripts + per-pool config; the pools themselves are unmodified Balancer V3 weighted pools |
 | **Registry** | Miliarium Aureum registry of 28 slots with status (Active / Warning / Disqualified / Composition-Challenge) | 1 contract |
@@ -276,7 +277,7 @@ Appendix xxxvi's estimate of ~4,500 lines of new Solidity for audit scope is con
 
 ### F10 — `AureumAuthorizer` is the chokepoint for all governance enforcement, but the *governance system itself* doesn't exist yet
 
-The spec's four governance proposal types (gauge proposal, gauge challenge, fee proposal, composition challenge) all assume a governance contract that submits proposals, runs the vote (with F-9 dampening, 20% quorum, AuMT-weighted), enforces the timelock, and — for fee proposals only — calls into the Vault via `vault.setStaticSwapFeePercentage(...)` after a successful vote, which routes through `AureumAuthorizer.canPerform()`. The other three proposal types (gauge proposal, gauge challenge, composition challenge) manipulate Aureum-owned registries directly and don't touch the Vault or the authorizer.
+The spec's **three** governance proposal types (gauge challenge, composition challenge, fee) assume a governance contract that submits proposals, runs the vote (with F-9 dampening, 20% quorum, AuMT-weighted), enforces the timelock, and — for fee proposals only — calls into the Vault via `vault.setStaticSwapFeePercentage(...)` after a successful vote, which routes through `AureumAuthorizer.canPerform()`. **Non-Miliarium gauge activation** is **permissionless** (Stage G eligibility + fee), not a governance proposal.
 
 The Stage B `AureumAuthorizer` returns true only for `GOVERNANCE_MULTISIG`. The governance contract, when built, needs an authorizer path.
 
@@ -384,7 +385,7 @@ ERC-4626 yield fees can't ride a swap hook — they accrue continuously through 
 **Concrete contract changes:**
 - **New:** `AureumFeeRoutingHook.sol` (`src/fee_router/`) — implements `IHooks.onAfterSwap` plus the shared swap-and-one-sided-deposit primitive used by all three layers.
 - **Modified:** `AureumProtocolFeeController.sol` — (a) B10 enforcement target renamed from `DER_BODENSEE_POOL` to the hook/router address (one immutable rename, one error-message update); (b) no public setter for `protocolSwapFeePercentage` — the value is fixed at 50e16 on every gauged pool at registration time and has no runtime adjustment surface (Stage K governance does not touch this split; it only tunes the per-pool swap-fee *rate* within OQ-11's band); (c) Stage D edits for the OQ-11 Bodensee fee band and the OQ-2 Bodensee yield-leg guard (D4). Everything else preserved.
-- **Modified:** the 28 Miliarium pool deployment scripts — each pool's registration must point at `AureumFeeRoutingHook` and set `protocolSwapFeePercentage = 50e16`. der Bodensee Pool itself does **NOT** use this hook (it has its own 0.75% in-pool fee) and registers with `protocolSwapFeePercentage = 0` per OQ-2. External non-Miliarium pools opt in to the hook to be eligible for emissions — the hook is a soft requirement for gauge approval.
+- **Modified:** the 28 Miliarium pool deployment scripts — each pool's registration must point at `AureumFeeRoutingHook` and set `protocolSwapFeePercentage = 50e16`. der Bodensee Pool itself does **NOT** use this hook (it has its own 0.75% in-pool fee) and registers with `protocolSwapFeePercentage = 0` per OQ-2. External non-Miliarium pools opt in to the hook to be eligible for emissions — the hook remains **required infra** once the pool clears **permissionless gauge activation** (Stage G).
 
 **Stage A decision #3 stands.** The "50% to Bodensee, 50% stays with LPs" framing in Stage A was correct in outcome; the OQ-1 hook provides the mechanism by (i) registering every gauged pool with `protocolSwapFeePercentage = 50e16` (saturating the Vault cap) and (ii) atomically settling that protocol share to Bodensee via `onAfterSwap`. The LP residual is the Vault's own design constant, not an Aureum allocation. No "supersedes" relationship; OQ-1 is the mechanical realization of Stage A decision #3.
 
@@ -499,7 +500,7 @@ Epoch and month cadences are deliberately independent rhythms: 26.07 epochs per 
 - `CCB_MULTIPLIER_UPDATE_CADENCE_BLOCKS = BLOCKS_PER_EPOCH` (F-8)
 - `EFFICIENCY_TOURNAMENT_SMOOTHING_EPOCHS = 3` (F-10, gives a 6-week / ~302,400-block moving average)
 - `GAUGE_REVOCATION_THRESHOLD_EPOCHS = 4` (consecutive disqualified epochs → permanent gauge revocation per `08_bootstrap.md` §xxiii)
-- `SANDBOX_FAST_TRACK_EPOCHS = 3` (top 10% efficiency for 3 consecutive epochs → automatic gauge approval per `08_bootstrap.md` §xxi)
+- `SANDBOX_FAST_TRACK_EPOCHS` — **removed / not used** (`aumm-deploy` Stage G pivot, 2026-05-05). ~~Was: 3 epochs top-10% → fast-track gauge approval (`08_bootstrap.md` §xxi)~~ superseded by auto-gauge; see `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`.
 
 **Spec edits required in `aumm-site`:**
 - `10_constitution.md` §xxix — add `BLOCKS_PER_EPOCH = 100,800` to the canonical immutable parameters list (per F3).
@@ -764,18 +765,19 @@ contract AureumGovernanceAuthorizer is IAuthorizer {
 - If we keyed it off vault-deploy, the multisig might be alive for ~6 months before governance even ships, leaving a few months of post-governance coverage. Better to give a clean 12 months of post-governance coverage.
 - Stage B's authorizer keeps its current shape until migration. Migration happens when the governance contract is deployed and tested.
 
-**What this means for governance vote types — all four work cleanly under this design:**
+**What this means for governance vote types — three work cleanly under this design:**
 
 | Proposal type | Mechanism after vote passes | Authorizer involved? |
 |---|---|---|
-| Gauge proposal (approve new gauge) | `governanceContract.executeApproveGauge(...)` calls `gaugeRegistry.approveGauge(pool)` — Aureum-internal, gauge registry has its own `onlyGovernanceContract` modifier | No |
 | Gauge challenge (revoke gauge) | `governanceContract.executeRevokeGauge(...)` calls `gaugeRegistry.revokeGauge(pool)` — Aureum-internal | No |
 | Composition challenge (replace Miliarium slot) | `governanceContract.executeCompositionChallenge(...)` calls `miliariumRegistry.replaceSlot(slotN, newPool)` — Aureum-internal | No |
 | Fee parameter change | `governanceContract.executeFeeChange(...)` calls `Vault.setStaticSwapFeePercentage(pool, newFee)` — Vault asks authorizer "can `GOVERNANCE_CONTRACT` perform this?" → yes | **Yes** |
 
-Three of the four proposal types never touch the Vault at all — they manipulate Aureum-owned registries, which gate themselves on `onlyGovernanceContract` directly. Only fee changes go through the authorizer, and the new authorizer recognizes the governance contract.
+**Gauge activation (non-Miliarium):** **not a vote** — permissionless `activateGauge(pool)` when `GaugeEligibility` passes + anti-spam fee (OQ-G3). **Composition replacement:** governance execution may call a **governance-only** registry entry to register the replacement pool as gauged with 90-day boost (Stage O wire-up); that is executional, not a separate proposal class.
 
-**Sandbox fast-track and gauge revocation after 4 disqualified epochs are also Aureum-internal** — they don't need any vote. The gauge registry watches the efficiency tournament results and triggers automatically. No authorizer, no governance contract.
+Two of the three proposal types never touch the Vault at all — they manipulate Aureum-owned registries, which gate themselves on `onlyGovernanceContract` directly. Only fee changes go through the authorizer, and the new authorizer recognizes the governance contract.
+
+**Automatic gauge revocation after 4 disqualified epochs is Aureum-internal** — it doesn't need any vote. The gauge registry / eligibility module applies tournament + grace rules deterministically. No authorizer, no governance contract. (**Sandbox fast-track removed** — see `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`.)
 
 **Spec/code edits required:**
 - **New contract:** `AureumGovernanceAuthorizer.sol` (`src/governance/`).
@@ -802,7 +804,7 @@ Three of the four proposal types never touch the Vault at all — they manipulat
 | Pool class | Band (min–max) | Genesis default | Set how |
 |---|---|---|---|
 | Miliarium pools (the 28) | **0.01% – 0.30%** | **0.03%** | Hardcoded default at deployment for all 28; adjustable via governance vote |
-| Non-Miliarium gauged pools | **0.01% – 0.30%** | Set by the gauge-proposal vote at creation | Initial fee set by the same vote that approves the gauge; adjustable later via separate fee-change proposal |
+| Non-Miliarium gauged pools | **0.01% – 0.30%** | **Protocol default at first gauge activation** (within band) | Initial fee is the static fee registered on the pool at activation time; adjustable later via fee-change proposal |
 | Der Bodensee | **0.10% – 1.00%** | **0.75%** | Hardcoded default at deployment; adjustable via governance vote within the band |
 
 **The 0.01%–0.30% band** (Miliarium + non-Miliarium gauged) replaces my earlier recommendation of 0.01–0.05%. 0.30% is a meaningful upper bound — higher than stable-pair tiers like Curve's 0.04%, low enough that Miliarium pools remain competitive routing infrastructure. The wider band gives governance room to tune pools that are underperforming in the efficiency tournament (F-10) — a pool with heavy volume might cut its fee to boost routing share; a pool with low volume but deep TVL might raise its fee to capture more per-swap revenue.
@@ -817,7 +819,7 @@ Three of the four proposal types never touch the Vault at all — they manipulat
 
 Standard governance proposal: 20% quorum, 50%+1 majority, per `08_bootstrap.md` §xxiii. Proposer identifies the target pool and the new fee (must fall within the pool's class band). Vote passes → the AureumGovernanceAuthorizer calls `Vault.setStaticSwapFeePercentage(pool, newFee)` once the cooldown check confirms the last change was ≥ `BLOCKS_PER_EPOCH` ago.
 
-Non-Miliarium gauged pools' initial fee is set by the gauge-approval vote itself — the proposal specifies the fee as part of the gauge parameters (alongside composition, template role, etc.). No separate fee-change proposal is needed at creation; the gauge approval *is* the fee approval. Subsequent adjustments follow the standard fee-change proposal path.
+Non-Miliarium gauged pools' initial fee is whatever **`Vault.getStaticSwapFeePercentage(pool)`** reads at **first successful permissionless gauge activation** (typically the deployer's chosen genesis fee within band). Subsequent adjustments follow the standard fee-change proposal path.
 
 **Concrete immutable parameters for §xxix:**
 
@@ -1211,7 +1213,7 @@ The accumulator's defensive value is asymmetric to the attack surface in the lay
 
 **(v) 90-day boost composition: NEW option (v.d) — boost gates effective output AND pauses F-8 state during boost window.** This option supersedes stub options (v.a) / (v.b) / (v.c) of the F0.1 OQ-23 stub. Mechanism:
 
-1. At gauge approval (Stage G integration point — not Stage F): `CCBMultiplier.activateBoost(pool)` sets `boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS` (= 648,000 blocks per `10_constitution.md` §xxix). Entry-point access-control restricted to the injected gauge-registry interface (placeholder until Stage G ships); same one-shot-setter pattern as `IMiliariumRegistry` per F-D9.
+1. At **gauge activation** (Stage G integration point — not Stage F): `CCBMultiplier.activateBoost(pool)` sets `boostExpiryBlock[pool] = block.number + GAUGE_BOOST_DURATION_BLOCKS` (= 648,000 blocks per `10_constitution.md` §xxix). Entry-point access-control restricted to the injected gauge-registry interface (placeholder until Stage G ships); same one-shot-setter pattern as `IMiliariumRegistry` per F-D9.
 2. `M_i[pool]` initialized to `INITIAL_MULTIPLIER = 1e18` (cold-start neutral, per F-8 spec text "initialized at 1.00").
 3. `CCBMultiplier.getMultiplier(pool)` (view) returns:
    - `1e18` if `pool` is non-Miliarium (per F-D9).
@@ -1253,7 +1255,7 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 - **OQ-22**: TVL denomination = svZCHF; `ITVLOracle.tvl(pool)` returns 18-decimal svZCHF-denominated TVL. Unchanged.
 - **OQ-5a-bis**: `EMASampler` reads `ITVLOracle.tvl(pool)` once per `BLOCKS_PER_DAY` at the sample boundary; no cumulative-balance accumulator; protection model relies on F-10 layered defense. Unchanged.
 - **F-D7** (`10_constitution.md` §xxix constants): `STEP_SIZE = 0.05`, `CLAMP = [0.75, 1.25]`, `DEAD_ZONE = 0.1%`. The numerical constants are unchanged; the interpretive ambiguities flagged for OQ-23 are now pinned.
-- **Stage G** gauge state machine, **Stage J** `MiliariumRegistry`, **Stage H** emission distributor — all unchanged. `CCBMultiplier.activateBoost(pool)` is a Stage F integration point that Stage G's gauge-approval flow will call; the access-control interface (`IGaugeRegistry`) is injected at deployment with a placeholder, replaced via one-shot setter when Stage G ships (same pattern as `IMiliariumRegistry` per F-D9).
+- **Stage G** gauge state machine, **Stage J** `MiliariumRegistry`, **Stage H** emission distributor — all unchanged. `CCBMultiplier.activateBoost(pool)` is a Stage F integration point that Stage G's **gauge activation / composition-registration** flows will call; the access-control interface (`IGaugeRegistry`) is injected at deployment with a placeholder, replaced via one-shot setter when Stage G ships (same pattern as `IMiliariumRegistry` per F-D9).
 
 **Constants this pins:**
 
@@ -1285,13 +1287,42 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 
 ---
 
+### Stage G addendum — OQ-G1 through OQ-G3 (gauge admission pivot)
+
+### OQ-G1 (RESOLVED): Efficiency metric for F-10 tournament cutoff
+
+**Decision (2026-05-05):** The efficiency metric is **`efficiency_ratio`** exactly as defined in **`11_formulas.md` F-10**:
+
+`efficiency_ratio(pool_i) = (swap_fee_revenue_i + yield_fee_revenue_i) / emissions_received_i`
+
+…with the **3-epoch** moving average called out in F-10 (`EFFICIENCY_TOURNAMENT_SMOOTHING_EPOCHS = 3` per OQ-4 constant table). Pools are **ranked by this ratio** (highest = rank 1) for percentile/tier assignment. **Note:** An informal pre-check referenced "F-11" for efficiency — **F-11 in `11_formulas.md` is der Bodensee composition**, not efficiency; F-10 is canonical.
+
+**On-chain encoding (Stage G contract lock):** Implementations maintain per-pool per-epoch numerators/denominators consistent with F-10; **ratio values exposed for events** use **1e18 fixed-point** unless a later sub-step amends this file.
+
+---
+
+### OQ-G2 (RESOLVED): $10K TVL floor timing for tournament eligibility
+
+**Decision (2026-05-05):** The **$10K minimum TVL** (7-day SMA per bootstrap / Stage G overview) is evaluated on an **epoch-boundary snapshot cadence** aligned with F-10's epoch-smoothed efficiency:
+
+- **Eligibility for the tournament pass that finalizes at the transition from epoch *e* to *e+1*** uses TVL SMA (and other gates) read at the **canonical boundary block** (implementation: **first block of epoch *e+1*** after applying `block.number` roll, or equivalent `block.number == epochStart(e+1)` predicate).
+- A **mid-epoch spot** dip **below** $10K does **not** change eligibility for epoch *e*'s close; if the **snapshot SMA** at the boundary is below floor, the pool is **excluded from the eligible set starting the next tournament accounting pass** (i.e. from epoch *e+1* onward for ranking that closes at *e+2*, exact wire-up at Stage G sub-step — the rule is **no retroactive mid-epoch ejection**).
+
+---
+
+### OQ-G3 (RESOLVED): Anti-spam gauge activation fee destination
+
+**Decision (2026-05-05):** The **100 svZCHF/sUSDS equivalent** paid on non-Miliarium gauge activation is an **anti-spam fee**, non-refundable on success or on any failed criteria check. It **routes one-sided into der Bodensee** using the **same shared swap-and-one-sided-deposit primitive** as governance proposal deposits (OQ-1, OQ-2 target asset **svZCHF**). **No burn** — economically identical to other governance/Bodensee inflows.
+
+---
+
 ## What this document does NOT decide
 
-**FINDINGS has closed on all architectural / design / protocol-ambiguity questions.** What remains for subsequent conversations:
+**FINDINGS has closed on all architectural / design / protocol-ambiguity questions from the original Stage B planning pass, plus the Stage G addendum (OQ-G1–G3, 2026-05-05).** What remains for subsequent conversations:
 
 - **The stage sequence.** Stage C and beyond — letter assignments, ordering of the tokenomics / CCB / gauge / governance / fee-router / registry / pool-deployment stages. This is the next conversation, taking this document as input.
 - **The folder layout for new code.** Proposed in the intro (`src/token/`, `src/emission/`, `src/ccb/`, `src/gauge/`, `src/governance/`, `src/registry/`, `src/pools/`, `src/incendiary/`, `src/fee_router/`) but not finalized. The stage-sequence conversation should formalize this.
-- **The application of FINDINGS resolutions to the spec files.** Each resolved OQ has a "Spec edits required" subsection listing concrete edits to `aumm-site`. Applying them by hand in Cursor is the user's responsibility and happens outside this repo.
+- **The application of FINDINGS resolutions to the spec files.** Each resolved OQ has a "Spec edits required" subsection listing concrete edits to `aumm-site`. Applying them by hand in Cursor is the user's responsibility and happens outside this repo. **Gauge-admission pivot** (`docs/STAGE_G_PRECHECK_AUTO_GAUGE.md`) additionally requires **`aumm-site`** updates (§xxvii vote-type table remove gauge proposal; glossary "vote bond" → anti-spam fee; bootstrap §xxi retire fast-track; cross-links).
 - **The application of FINDINGS resolutions to the Stage A / Stage B docs.** OQ-10 and OQ-11 in particular surface changes to `STAGE_A_PLAN.md` decision #3 and #4 / #7, and to the Stage B `AureumProtocolFeeController`'s current Bodensee-fee-immutability treatment. These update the historical stage plans in place.
 - **Audit firm (OQ-17, deferred with candidate list).** Revisit when the audit stage is being planned.
 - **Staffing (OQ-19, deferred).** Stays TBD in `16_team.md` until roles fill; cross-dep with OQ-18 for frontend timing.
