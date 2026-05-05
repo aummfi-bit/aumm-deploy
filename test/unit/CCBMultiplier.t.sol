@@ -1,0 +1,838 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
+import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {IEMASampler} from "src/ccb/IEMASampler.sol";
+import {AureumTime} from "src/lib/AureumTime.sol";
+
+contract MockMiliariumRegistry is IMiliariumRegistry {
+    mapping(address => bool) private _isMiliarium;
+    address[] private _pools;
+
+    function setMiliarium(address pool, bool flag) external {
+        _isMiliarium[pool] = flag;
+    }
+
+    function setPoolList(address[] memory pools) external {
+        delete _pools;
+        for (uint256 i = 0; i < pools.length; ++i) {
+            _pools.push(pools[i]);
+        }
+    }
+
+    function isMiliarium(address pool) external view returns (bool) {
+        return _isMiliarium[pool];
+    }
+
+    function miliariumPoolsCount() external view returns (uint256) {
+        return _pools.length;
+    }
+
+    function miliariumPoolAt(uint256 i) external view returns (address) {
+        return _pools[i];
+    }
+}
+
+contract MockGaugeRegistry is IGaugeRegistry {
+    mapping(address => bool) private _approved;
+
+    function setApproved(address gauge, bool flag) external {
+        _approved[gauge] = flag;
+    }
+
+    function isGaugeApproved(address gauge) external view returns (bool) {
+        return _approved[gauge];
+    }
+}
+
+contract MockEMASampler is IEMASampler {
+    mapping(address => uint256) private _tvl;
+    mapping(address => uint256) private _lastBlock;
+
+    function setTVLEMA(address pool, uint256 v) external {
+        _tvl[pool] = v;
+    }
+
+    function setLastEMAUpdateBlock(address pool, uint256 b) external {
+        _lastBlock[pool] = b;
+    }
+
+    function tvlEMA(address pool) external view returns (uint256) {
+        return _tvl[pool];
+    }
+
+    function lastEMAUpdateBlock(address pool) external view returns (uint256) {
+        return _lastBlock[pool];
+    }
+}
+
+contract CCBMultiplierTest is Test {
+    CCBMultiplier internal multiplier;
+    MockMiliariumRegistry internal registry;
+    MockGaugeRegistry internal gaugeReg;
+    MockEMASampler internal ema;
+
+    uint256 internal constant START_BLOCK = 200_000;
+    address internal constant POOL_A = address(0xA1);
+    address internal constant POOL_B = address(0xB2);
+    address internal constant POOL_C = address(0xC3);
+    address internal constant GAUGE_CALLER = address(0xCA11);
+
+    int256 constant STEP_SIZE = 5e16;
+    int256 constant CLAMP_FLOOR = 75e16;
+    int256 constant CLAMP_CEILING = 125e16;
+    uint256 constant INITIAL_MULTIPLIER = 1e18;
+    uint256 constant BOOST_FACTOR = 12e17;
+    uint256 constant BOOST_DURATION = 648_000;
+    uint256 constant DEAD_ZONE = 1e15;
+    uint256 constant ONE = 1e18;
+
+    function setUp() public {
+        registry = new MockMiliariumRegistry();
+        gaugeReg = new MockGaugeRegistry();
+        ema = new MockEMASampler();
+        multiplier = new CCBMultiplier(registry, gaugeReg, ema);
+        vm.roll(START_BLOCK);
+    }
+
+    // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    function test_constructor_wiresEmaSampler() public view {
+        assertEq(address(multiplier.emaSampler()), address(ema));
+    }
+
+    function test_constructor_wiresMiliariumRegistry() public view {
+        assertEq(address(multiplier.miliariumRegistry()), address(registry));
+    }
+
+    function test_constructor_wiresGaugeRegistry() public view {
+        assertEq(address(multiplier.gaugeRegistry()), address(gaugeReg));
+    }
+
+    function test_constructor_setsRegistrySetter() public view {
+        assertEq(multiplier.registrySetter(), address(this));
+    }
+
+    function test_constructor_setsGaugeRegistrySetter() public view {
+        assertEq(multiplier.gaugeRegistrySetter(), address(this));
+    }
+
+    function test_constructor_revertsZeroMiliariumRegistry() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        new CCBMultiplier(
+            IMiliariumRegistry(address(0)), IGaugeRegistry(address(gaugeReg)), IEMASampler(address(ema))
+        );
+    }
+
+    function test_constructor_revertsZeroGaugeRegistry() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        new CCBMultiplier(
+            IMiliariumRegistry(address(registry)), IGaugeRegistry(address(0)), IEMASampler(address(ema))
+        );
+    }
+
+    function test_constructor_revertsZeroEmaSampler() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        new CCBMultiplier(
+            IMiliariumRegistry(address(registry)), IGaugeRegistry(address(gaugeReg)), IEMASampler(address(0))
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // setMiliariumRegistry
+    // -------------------------------------------------------------------------
+
+    function test_setMiliariumRegistry_success() public {
+        MockMiliariumRegistry nextReg = new MockMiliariumRegistry();
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextReg)));
+        assertEq(address(multiplier.miliariumRegistry()), address(nextReg));
+    }
+
+    function test_setMiliariumRegistry_zerosRegistrySetter() public {
+        MockMiliariumRegistry nextReg = new MockMiliariumRegistry();
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextReg)));
+        assertEq(multiplier.registrySetter(), address(0));
+    }
+
+    function test_setMiliariumRegistry_revertsNonSetter() public {
+        MockMiliariumRegistry nextReg = new MockMiliariumRegistry();
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(CCBMultiplier.OnlyRegistrySetter.selector);
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextReg)));
+    }
+
+    function test_setMiliariumRegistry_revertsZeroAddress() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(0)));
+    }
+
+    function test_setMiliariumRegistry_revertsAfterSeal() public {
+        MockMiliariumRegistry nextReg = new MockMiliariumRegistry();
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextReg)));
+        MockMiliariumRegistry third = new MockMiliariumRegistry();
+        vm.expectRevert(CCBMultiplier.OnlyRegistrySetter.selector);
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(third)));
+    }
+
+    // -------------------------------------------------------------------------
+    // setGaugeRegistry
+    // -------------------------------------------------------------------------
+
+    function test_setGaugeRegistry_success() public {
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+        assertEq(address(multiplier.gaugeRegistry()), address(nextG));
+    }
+
+    function test_setGaugeRegistry_zerosGaugeRegistrySetter() public {
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+        assertEq(multiplier.gaugeRegistrySetter(), address(0));
+    }
+
+    function test_setGaugeRegistry_revertsNonSetter() public {
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+    }
+
+    function test_setGaugeRegistry_revertsZeroAddress() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(0)));
+    }
+
+    function test_setGaugeRegistry_revertsAfterSeal() public {
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+        MockGaugeRegistry third = new MockGaugeRegistry();
+        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(third)));
+    }
+
+    function test_setRegistry_sealIndependence() public {
+        MockMiliariumRegistry nextM = new MockMiliariumRegistry();
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextM)));
+        assertTrue(multiplier.gaugeRegistrySetter() != address(0));
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+        assertEq(multiplier.registrySetter(), address(0));
+    }
+
+    function test_setRegistry_sealIndependence_gaugeFirst() public {
+        MockGaugeRegistry nextG = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
+        assertTrue(multiplier.registrySetter() != address(0));
+        MockMiliariumRegistry nextM = new MockMiliariumRegistry();
+        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextM)));
+        assertEq(multiplier.gaugeRegistrySetter(), address(0));
+    }
+
+    // -------------------------------------------------------------------------
+    // activateBoost
+    // -------------------------------------------------------------------------
+
+    function test_activateBoost_setsBoostExpiry() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.boostExpiryBlock(POOL_A), START_BLOCK + BOOST_DURATION);
+    }
+
+    function test_activateBoost_resetsMi_coldStart() public {
+        assertEq(multiplier.M_i(POOL_A), 0);
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    function test_activateBoost_resetsMi_preEvolved() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertTrue(multiplier.M_i(POOL_A) != INITIAL_MULTIPLIER);
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    function test_activateBoost_revertsNonApprovedGauge() public {
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.OnlyApprovedGauge.selector, address(this)));
+        multiplier.activateBoost(POOL_A);
+    }
+
+    function test_activateBoost_revertsNonMiliarium() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.NotMiliariumPool.selector, POOL_A));
+        multiplier.activateBoost(POOL_A);
+    }
+
+    function test_activateBoost_revertsActiveBoost() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 nextBlock = START_BLOCK + 1;
+        vm.roll(nextBlock);
+        vm.prank(GAUGE_CALLER);
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.BoostAlreadyActive.selector, POOL_A));
+        multiplier.activateBoost(POOL_A);
+    }
+
+    function test_activateBoost_successAtExpiryBoundary() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 boundary = START_BLOCK + BOOST_DURATION;
+        vm.roll(boundary);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.boostExpiryBlock(POOL_A), boundary + BOOST_DURATION);
+    }
+
+    function test_activateBoost_successAfterExpiry() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 afterExpiry = START_BLOCK + BOOST_DURATION + 1;
+        vm.roll(afterExpiry);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.boostExpiryBlock(POOL_A), afterExpiry + BOOST_DURATION);
+    }
+
+    function test_activateBoost_reactivation_resetsEvolvedMi() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 targetBlock = START_BLOCK + BOOST_DURATION + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(targetBlock);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertTrue(multiplier.M_i(POOL_A) != INITIAL_MULTIPLIER);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    // -------------------------------------------------------------------------
+    // updateMultiplier
+    // -------------------------------------------------------------------------
+
+    function test_updateMultiplier_revertsNonMiliarium() public {
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.NotMiliariumPool.selector, POOL_A));
+        multiplier.updateMultiplier(POOL_A);
+    }
+
+    function test_updateMultiplier_revertsTooEarly() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 b = block.number + 1;
+        vm.roll(b);
+        uint256 nextEl = multiplier.lastMultiplierUpdateBlock(POOL_A) + AureumTime.BLOCKS_PER_EPOCH;
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, b, nextEl));
+        multiplier.updateMultiplier(POOL_A);
+    }
+
+    function test_updateMultiplier_boostNoOp_noStateChange() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 miBefore = multiplier.M_i(POOL_A);
+        uint256 lbBefore = multiplier.lastMultiplierUpdateBlock(POOL_A);
+        uint256 aggBefore = multiplier.lastProtocolAggregateEMA();
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 cadenceBlock = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(cadenceBlock);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miBefore);
+        assertEq(multiplier.lastMultiplierUpdateBlock(POOL_A), lbBefore);
+        assertEq(multiplier.lastProtocolAggregateEMA(), aggBefore);
+    }
+
+    function test_updateMultiplier_tooEarlyDuringBoost_reverts() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 almostNext = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH - 1;
+        vm.roll(almostNext);
+        uint256 nextEl = multiplier.lastMultiplierUpdateBlock(POOL_A) + AureumTime.BLOCKS_PER_EPOCH;
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, almostNext, nextEl));
+        multiplier.updateMultiplier(POOL_A);
+    }
+
+    function test_updateMultiplier_coldStart_deltaGlobalZero() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 1000e18);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_globalRising_decrement() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 unit = 28_000e18;
+        ema.setTVLEMA(POOL_A, unit);
+        ema.setTVLEMA(POOL_B, unit);
+        ema.setTVLEMA(POOL_C, unit);
+        uint256 firstEpochEnd = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(firstEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 miAfterFirst = multiplier.M_i(POOL_A);
+        uint256 inc = (unit * 110) / 100;
+        ema.setTVLEMA(POOL_A, inc);
+        ema.setTVLEMA(POOL_B, inc);
+        ema.setTVLEMA(POOL_C, inc);
+        uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(secondEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_globalFalling_increment() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 unit = 28_000e18;
+        ema.setTVLEMA(POOL_A, unit);
+        ema.setTVLEMA(POOL_B, unit);
+        ema.setTVLEMA(POOL_C, unit);
+        uint256 firstEpochEnd = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(firstEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 miAfterFirst = multiplier.M_i(POOL_A);
+        uint256 dec = (unit * 90) / 100;
+        ema.setTVLEMA(POOL_A, dec);
+        ema.setTVLEMA(POOL_B, dec);
+        ema.setTVLEMA(POOL_C, dec);
+        uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(secondEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst + 2 * uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_globalDeadZoneBoundary_neutral() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 targetSum = lastAgg * (ONE + DEAD_ZONE) / ONE;
+        uint256 u1 = targetSum / 3;
+        uint256 r1 = targetSum % 3;
+        ema.setTVLEMA(POOL_A, u1 + r1);
+        ema.setTVLEMA(POOL_B, u1);
+        ema.setTVLEMA(POOL_C, u1);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miBeforeSecond = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        int256 deltaIntraOnly = -int256(STEP_SIZE);
+        uint256 expected = uint256(int256(uint256(miBeforeSecond)) + deltaIntraOnly);
+        assertEq(multiplier.M_i(POOL_A), expected);
+    }
+
+    function test_updateMultiplier_globalOneWeiAboveBoundary_decrement() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 baseSum = lastAgg * (ONE + DEAD_ZONE) / ONE + 1;
+        uint256 t = baseSum / 3;
+        uint256 r = baseSum % 3;
+        ema.setTVLEMA(POOL_A, t + r);
+        ema.setTVLEMA(POOL_B, t);
+        ema.setTVLEMA(POOL_C, t);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miAfterFirst = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_globalLowerBoundary_neutral() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 targetSum = lastAgg * (ONE - DEAD_ZONE) / ONE;
+        uint256 u1 = targetSum / 3;
+        uint256 r1 = targetSum % 3;
+        ema.setTVLEMA(POOL_A, u1 + r1);
+        ema.setTVLEMA(POOL_B, u1);
+        ema.setTVLEMA(POOL_C, u1);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miBeforeSecond = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        int256 deltaIntraOnly = -int256(STEP_SIZE);
+        uint256 expected = uint256(int256(uint256(miBeforeSecond)) + deltaIntraOnly);
+        assertEq(multiplier.M_i(POOL_A), expected);
+    }
+
+    function test_updateMultiplier_globalOneWeiBelowBoundary_increment() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 baseSum = lastAgg * (ONE - DEAD_ZONE) / ONE - 1;
+        uint256 tiny = 100e18;
+        uint256 half = (baseSum - tiny) / 2;
+        ema.setTVLEMA(POOL_A, tiny);
+        ema.setTVLEMA(POOL_B, half);
+        ema.setTVLEMA(POOL_C, half);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miAfterFirst = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst + 2 * uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_intraAbove_decrement() public {
+        address[] memory pl = new address[](2);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        ema.setTVLEMA(POOL_B, 1000e18);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        ema.setTVLEMA(POOL_A, 1500e18);
+        ema.setTVLEMA(POOL_B, 500e18);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miBefore = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miBefore - uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_intraBelow_increment() public {
+        address[] memory pl = new address[](2);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        ema.setTVLEMA(POOL_B, 1000e18);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        ema.setTVLEMA(POOL_A, 500e18);
+        ema.setTVLEMA(POOL_B, 1500e18);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miBefore = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miBefore + uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_channelsReinforce() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 unit = 28_000e18;
+        ema.setTVLEMA(POOL_A, unit);
+        ema.setTVLEMA(POOL_B, unit);
+        ema.setTVLEMA(POOL_C, unit);
+        uint256 firstEpochEnd = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(firstEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 miAfterFirst = multiplier.M_i(POOL_A);
+        uint256 inc = (unit * 110) / 100;
+        ema.setTVLEMA(POOL_A, inc);
+        ema.setTVLEMA(POOL_B, inc);
+        ema.setTVLEMA(POOL_C, inc);
+        uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(secondEpochEnd);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+    }
+
+    function test_updateMultiplier_channelsCancel() public {
+        address[] memory pl = new address[](2);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        ema.setTVLEMA(POOL_B, 1000e18);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 targetSum = lastAgg * (ONE + DEAD_ZONE) / ONE + 1000e18;
+        ema.setTVLEMA(POOL_A, 50e18);
+        ema.setTVLEMA(POOL_B, targetSum - 50e18);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        uint256 miBefore = multiplier.M_i(POOL_A);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), miBefore);
+    }
+
+    function test_updateMultiplier_clampFloor() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 unit = 28_000e18;
+        ema.setTVLEMA(POOL_A, unit);
+        ema.setTVLEMA(POOL_B, unit);
+        ema.setTVLEMA(POOL_C, unit);
+        uint256 b = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(b);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 inc = (unit * 110) / 100;
+        for (uint256 k = 0; k < 3; ++k) {
+            ema.setTVLEMA(POOL_A, inc);
+            ema.setTVLEMA(POOL_B, inc);
+            ema.setTVLEMA(POOL_C, inc);
+            b = b + AureumTime.BLOCKS_PER_EPOCH;
+            vm.roll(b);
+            multiplier.updateMultiplier(POOL_A);
+        }
+        assertEq(multiplier.M_i(POOL_A), uint256(CLAMP_FLOOR));
+    }
+
+    function test_updateMultiplier_clampCeiling() public {
+        address[] memory pl = new address[](3);
+        pl[0] = POOL_A;
+        pl[1] = POOL_B;
+        pl[2] = POOL_C;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        registry.setMiliarium(POOL_C, true);
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
+        uint256 b = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(b);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 sum = 29_000e18;
+        for (uint256 k = 0; k < 4; ++k) {
+            uint256 rest = sum - 100e18;
+            ema.setTVLEMA(POOL_A, 100e18);
+            ema.setTVLEMA(POOL_B, rest / 2);
+            ema.setTVLEMA(POOL_C, rest / 2);
+            b = b + AureumTime.BLOCKS_PER_EPOCH;
+            vm.roll(b);
+            multiplier.updateMultiplier(POOL_A);
+            sum -= 1000e18;
+        }
+        assertEq(multiplier.M_i(POOL_A), uint256(CLAMP_CEILING));
+    }
+
+    function test_updateMultiplier_priorSentinel_Mi0() public {
+        assertEq(multiplier.M_i(POOL_A), 0);
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 m = multiplier.M_i(POOL_A);
+        assertGe(m, uint256(CLAMP_FLOOR));
+        assertLe(m, uint256(CLAMP_CEILING));
+        assertTrue(m != 0);
+    }
+
+    function test_updateMultiplier_writesLastBlock() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        uint256 currentBlock = block.number;
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastMultiplierUpdateBlock(POOL_A), currentBlock);
+    }
+
+    function test_updateMultiplier_updatesLastAgg() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 777e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 777e18);
+    }
+
+    function test_updateMultiplier_atBoostExpiry_resumesState() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        uint256 aggBeforeBoost = multiplier.lastProtocolAggregateEMA();
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 midBoost = block.number + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(midBoost);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), aggBeforeBoost);
+        uint256 expiryBlock = multiplier.boostExpiryBlock(POOL_A);
+        vm.roll(expiryBlock);
+        uint256 lbBeforeExpiry = multiplier.lastMultiplierUpdateBlock(POOL_A);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 1000e18);
+        assertGt(multiplier.lastMultiplierUpdateBlock(POOL_A), lbBeforeExpiry);
+    }
+
+    // -------------------------------------------------------------------------
+    // getMultiplier
+    // -------------------------------------------------------------------------
+
+    function test_getMultiplier_nonMiliarium_returnsInitial() public view {
+        assertEq(multiplier.getMultiplier(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    function test_getMultiplier_activeboost_returnsBoostFactor() public {
+        registry.setMiliarium(POOL_A, true);
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        assertEq(multiplier.getMultiplier(POOL_A), BOOST_FACTOR);
+    }
+
+    function test_getMultiplier_atBoostExpiryBoundary_notBoostFactor() public {
+        gaugeReg.setApproved(GAUGE_CALLER, true);
+        registry.setMiliarium(POOL_A, true);
+        vm.prank(GAUGE_CALLER);
+        multiplier.activateBoost(POOL_A);
+        uint256 boundary = START_BLOCK + BOOST_DURATION;
+        vm.roll(boundary);
+        assertTrue(multiplier.getMultiplier(POOL_A) != BOOST_FACTOR);
+        assertEq(multiplier.getMultiplier(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    function test_getMultiplier_unwrittenMi_returnsInitial() public {
+        registry.setMiliarium(POOL_A, true);
+        assertEq(multiplier.M_i(POOL_A), 0);
+        assertEq(multiplier.getMultiplier(POOL_A), INITIAL_MULTIPLIER);
+    }
+
+    function test_getMultiplier_writtenMi_returnsMi() public {
+        address[] memory pl = new address[](1);
+        pl[0] = POOL_A;
+        registry.setPoolList(pl);
+        registry.setMiliarium(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.getMultiplier(POOL_A), multiplier.M_i(POOL_A));
+    }
+}
