@@ -78,7 +78,7 @@ contract DeployDerBodensee is Script {
             roleAccounts,
             0.0075e18,
             address(0),
-            false,
+            true,
             false,
             bodenseeSalt
         );

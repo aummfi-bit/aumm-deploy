@@ -146,7 +146,7 @@ contract AureumFeeRoutingHookForkTest is Test {
             }),
             0.0075e18,
             address(0),
-            false,
+            true,
             false,
             BODENSEE_SALT
         );

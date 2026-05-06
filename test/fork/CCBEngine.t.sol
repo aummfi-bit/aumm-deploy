@@ -143,7 +143,7 @@ abstract contract CCBEngineFixture is Test {
         aumm = new AuMM(block.number, address(this));
         assert(address(aumm) == auMmAddr);
 
-        bodenseePool = wpf.create("der-Bodensee", "BODENSEE", _bodenseeTokenConfigs(), _bodenseeWeights(), PoolRoleAccounts({pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: address(0), poolCreator: address(0)}), 0.0075e18, address(0), false, false, BODENSEE_SALT);
+        bodenseePool = wpf.create("der-Bodensee", "BODENSEE", _bodenseeTokenConfigs(), _bodenseeWeights(), PoolRoleAccounts({pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: address(0), poolCreator: address(0)}), 0.0075e18, address(0), true, false, BODENSEE_SALT);
         assert(bodenseePool == predictedBodensee);
 
         hook = new AureumFeeRoutingHook(address(vault), predictedBodensee, svZchf, IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG);
