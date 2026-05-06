@@ -138,7 +138,7 @@ The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliar
 
 **Tunables — deferred to G1.x with non-regressable constraints:**
 
-- `proposalBond ≥ antiSpamFee` (anti-spam fee is **100 svZCHF/sUSDS** per **OQ-G3**; class-admission bond is higher-stakes governance and must not undercut the simpler permissionless-activation fee).
+- `proposalBond ≥ antiSpamFee` (anti-spam fee is **100 svZCHF or 125 sUSDS** per **G-D12** spec lock — strict per-token constants; `proposalBond` is svZCHF-denominated per the G-D9 mechanism above, so the binding constraint is `proposalBond ≥ FEE_SVZCHF` (100e18); class-admission bond is higher-stakes governance and must not undercut the simpler permissionless-activation fee).
 - `vetoThreshold ≤ governanceQuorumThreshold` (vetoes must be reachable at lower thresholds than full proposal quorum, so a vigilant minority can block a captured-quorum bad proposal).
 - Veto window in blocks: minimum `≥ BLOCKS_PER_EPOCH` (governance reaction window); maximum `≤ 3 × BLOCKS_PER_EPOCH` (avoids stalling legitimate admissions).
 
@@ -200,7 +200,7 @@ Fee magnitudes and equality rules are locked at G-D12 as strict per-token consta
 **Tunables / sub-decisions deferred to G1.x:**
 
 - `swapAndDeposit` exact signature shape (single `(payToken, amount)` vs richer form with optional caller-side deposit-credit verification).
-- The 100-svZCHF canonical fee magnitude — held against OQ-G3's 100 svZCHF/sUSDS spec; revisits at G1.x in concert with **G-D9** tunables (proposal bond `≥` anti-spam fee).
+- The fee magnitude — held against OQ-G3's symmetric framing at G-D11 time; **resolved at G-D12** as strict per-token constants (`FEE_SVZCHF = 100e18`, `FEE_SUSDS = 125e18`); **G-D9** tunables (proposal bond `≥` anti-spam fee) reframe accordingly per the G-D9 amendment in this commit.
 - `ITVLOracle` precedent (Stage F F0.2) versus per-pair Rate-Provider lookup — both are pool-internal reads; G1.x picks based on call-site ergonomics.
 
 **Forward references.** Consumed by `VaultClassRegistry.sol` (G1.2+) and `GaugeRegistry.sol` (G3.1+). Stage D `AureumFeeRoutingHook` + `AureumProtocolFeeController` are **not** modified.
