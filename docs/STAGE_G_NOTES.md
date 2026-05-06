@@ -189,9 +189,9 @@ A token implementing `asset()` for any reason (legitimate or scam) is therefore 
 
 Both stable-class tokens are already Bodensee pool tokens (30 / 30 weights), so DONATION accepts either directly with **no swap leg required**. AuMM is ineligible as pay token (OQ-G3 enumerates the stable pair only).
 
-**Equivalence — Rate-Provider-derived, svZCHF-anchored (G-D11.eq):**
+**Equivalence — superseded by G-D12 (G1.2 spec lock):**
 
-Canonical fee is **100 svZCHF** per OQ-22's svZCHF numéraire framing. The sUSDS-equivalent amount is derived via Bodensee's existing Rate Providers (registered at pool construction per Stage D D11), reading `IRateProvider.getRate()` for the svZCHF / sUSDS pair at fee-payment block. **No new oracle dependency** — the helper reuses Bodensee's pool-internal rate infrastructure already consumed for swap math. Single block-snapshot read, no TWAP. Round direction is **user-pays-more** (round up the equivalent sUSDS amount) to prevent fractional underpayment via Rate-Provider rounding. MEV exposure documented as a Stage Q audit item alongside `limitRaw == 0` and `minBptAmountOut == 0` per `STAGE_D_PLAN.md` L703.
+Fee magnitudes and equality rules are locked at G-D12 as strict per-token constants (`FEE_SVZCHF = 100e18`, `FEE_SUSDS = 125e18`) with no Rate-Provider read. The earlier RP-derived equivalence framing is withdrawn; rationale for the asymmetric ~25% magnitude is at G-D12's "Rationale" subsection.
 
 **Caller surface — placeholder + one-shot setter pattern (mirrors F-D20–F-D23):**
 
@@ -204,6 +204,136 @@ Canonical fee is **100 svZCHF** per OQ-22's svZCHF numéraire framing. The sUSDS
 - `ITVLOracle` precedent (Stage F F0.2) versus per-pair Rate-Provider lookup — both are pool-internal reads; G1.x picks based on call-site ergonomics.
 
 **Forward references.** Consumed by `VaultClassRegistry.sol` (G1.2+) and `GaugeRegistry.sol` (G3.1+). Stage D `AureumFeeRoutingHook` + `AureumProtocolFeeController` are **not** modified.
+
+---
+
+## G-D12 — `SwapAndDepositToBodensee` helper: full spec lock (G1.2)
+
+Resolves the G-D11 "Tunables / sub-decisions deferred to G1.x" residual. Locks the helper's complete contract spec — signature, pay-token allowlist, fee policy, caller-gate model, callback discipline, token index resolution, CEI discipline, custom errors. Audit surface fully enumerated for G1.5 (unit) + G1.6 (fork) + Stage Q (formal).
+
+**Signature (locked).**
+
+```solidity
+function swapAndDeposit(IERC20 payToken, uint256 amount) external;
+function requiredAmount(IERC20 payToken) external view returns (uint256);
+```
+
+Single external entry. No `to` field, no `bptRecipient`, no caller-supplied `maxAmountsIn` array — DONATION's recipient is implicit (Bodensee), it mints zero BPT regardless, and the helper builds the amounts array internally from the token-index lock below. Companion view `requiredAmount` returns the canonical fee constant for the given pay token; callers SHOULD read this in the same call path / same execution context where feasible (contract-to-contract call paths read-and-pay atomically; EOA-driven calls require a wrapper contract to read-and-pay in a single call).
+
+**Payment pattern (locked).** Caller pre-pushes `payToken` to the helper before invoking `swapAndDeposit`:
+
+1. proposer's prior `payToken.approve(registry, amount)`;
+2. registry's `payToken.safeTransferFrom(proposer, address(registry), amount)`;
+3. registry's `payToken.safeTransfer(address(helper), amount)`;
+4. registry's `helper.swapAndDeposit(payToken, amount)`;
+5. helper's callback transfers OWN balance (`payToken.safeTransfer(address(_vault), amount)`) + `_vault.settle` + `_vault.addLiquidity({kind: DONATION, ...})`;
+6. helper post-callback assertion: `payToken.balanceOf(address(this)) == 0`.
+
+This refines G-D11's "pull `payToken` from caller via `safeTransferFrom`" wording — the helper does not pull via approval; the caller pre-pushes. Removes the registry→helper approval chain entirely; tightens the audit surface to a single transient-balance window inside one atomic transaction.
+
+**Pay-token allowlist (locked).** Hard allowlist enforced at entry:
+
+| `payToken`    | Status   | Required amount               |
+| ------------- | -------- | ----------------------------- |
+| `SV_ZCHF`     | accepted | `FEE_SVZCHF` (= 100e18)       |
+| `S_USDS`      | accepted | `FEE_SUSDS`  (= 125e18)       |
+| anything else | revert `InvalidPayToken(payToken)` | —                |
+
+Both stables are 30%-weight Bodensee tokens, so DONATION accepts them with no swap leg. AuMM is the third pool token but is ineligible per OQ-G3 (stable pair only). All other ERC-20s are rejected — closes the fee-on-transfer / rebasing-token / malicious-token surface to zero.
+
+**Fee policy (locked).** Both pay tokens accept a single canonical constant fee, with strict equality:
+
+- `payToken == SV_ZCHF` → `amount == FEE_SVZCHF` (100e18); revert `IncorrectAmount(amount, FEE_SVZCHF)` on miss.
+- `payToken == S_USDS`  → `amount == FEE_SUSDS`  (125e18); revert `IncorrectAmount(amount, FEE_SUSDS)` on miss.
+
+Strict equality both directions, both tokens. No surplus tolerance, no underpay window, no Rate Provider read.
+
+**Rationale.** The fee is an anti-spam gate, not a precise economic toll. Both stables appreciate over time at slightly different yield rates (svZCHF inherits Frankencoin's CHF-anchored yield; sUSDS inherits Sky's USDS-anchored yield); the cheaper pay-token in any given block floats with that differential, and proposers self-select. The protocol receives ~$100–$135 USD-equivalent in either case at any reasonable horizon. Locking two constants instead of an RP-derived equivalence eliminates an entire class of attack surface (RP malfunction, RP drift, RP-skew MEV, RP zero / out-of-bound returns) and removes the corresponding guard code from the helper's audit surface. The 125 sUSDS magnitude reflects the ~25% nominal premium of svZCHF over sUSDS at deploy (CHF/USD parity × yield-wrapper appreciation differential). If at deploy the differential is materially different, G1.x revisits the magnitude — but only the magnitude, not the strict-equality structure.
+
+**Caller-gate model (locked) — one-shot setters with irreversible admin burn.**
+
+```solidity
+address public moduleAdmin;            // set in constructor; cleared at second setter call
+address public vaultClassRegistry;     // address(0) at deploy; settable once
+address public gaugeRegistry;          // address(0) at deploy; settable once
+
+modifier onlyAuthorizedCaller() {
+    if (msg.sender != vaultClassRegistry && msg.sender != gaugeRegistry) {
+        revert OnlyAuthorizedCaller(msg.sender);
+    }
+    _;
+}
+// setVaultClassRegistry / setGaugeRegistry: gated to moduleAdmin, one-shot,
+// burns moduleAdmin atomically when whichever is the SECOND set fires.
+```
+
+**Partial activation is intentional.** Each caller becomes authorized the moment its setter fires; the helper does NOT require both setters to be set before allowing any call. Rationale: `VaultClassRegistry` deploys at G1.9 and `GaugeRegistry` at G3.x — between those points, the registry needs the helper for proposal bonds; gating helper-callability on both being set creates a deploy-ordering coupling without security gain. The address(0) slot for the not-yet-set caller never matches any real `msg.sender`, so partial-activation is structurally equivalent to "only the set caller is authorized." Locking explicitly to remove ambiguity.
+
+`moduleAdmin` is cleared atomically at whichever setter is called second. Once cleared, no further setter call is possible (admin == address(0) ≠ msg.sender for any real EOA or contract). This eliminates lingering admin privilege after setup completes.
+
+**Callback discipline (locked).** Outer `swapAndDeposit`:
+
+1. `onlyAuthorizedCaller` modifier.
+2. `if (payToken != SV_ZCHF && payToken != S_USDS) revert InvalidPayToken(payToken);`.
+3. `if (amount == 0) revert ZeroAmount();`.
+4. Compute `required = _requiredAmount(payToken)`; `if (amount != required) revert IncorrectAmount(amount, required);`.
+5. Reentrancy: `if (_executing) revert ReentrancyGuard(); _executing = true;`.
+6. Callback payload binding: cache `_pendingPayToken = payToken; _pendingAmount = amount; _originalCaller = msg.sender;` (transient storage in unlock scope).
+7. `_vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));`.
+8. Clear `_executing`, `_pendingPayToken`, `_pendingAmount`, `_originalCaller` (transient teardown).
+9. Post-assert: `if (payToken.balanceOf(address(this)) != 0) revert HelperBalanceNonZero(...);`.
+
+Callback `_swapAndDepositCallback(IERC20 payToken, uint256 amount) external`:
+
+1. `if (msg.sender != address(_vault)) revert OnlyVault(msg.sender);` — strict; this function MUST NOT be callable by anyone except the Vault re-entering after `unlock`.
+2. Payload cross-check: `if (payToken != _pendingPayToken || amount != _pendingAmount) revert CallbackPayloadMismatch();`. Defends against any state-confusion where the Vault's callback args drift from the outer-cached values.
+3. Snapshot `preReserve` using the canonical V3 reserve / balance read for the (Bodensee, payToken) pair — exact selector locked at G1.4 against `lib/balancer-v3-monorepo` source (candidates include `Vault.getReservesOf`, `IVault.getPoolTokenInfo`, `IVault.getCurrentLiveBalances`; verified at implementation against submodule HEAD). The same selector MUST be used for the `postReserve` read in step 8 — no mixed-source drift between pre and post.
+4. `payToken.safeTransfer(address(_vault), amount); _vault.settle(payToken, amount);`.
+5. Build `maxAmountsIn[3]` using the token-index lock (next paragraph) — `payToken` slot = `amount`; other slots = 0.
+6. `(, uint256 bptOut, ) = _vault.addLiquidity(AddLiquidityParams({pool: BODENSEE, kind: AddLiquidityKind.DONATION, maxAmountsIn: maxAmountsIn, minBptAmountOut: 0, userData: ""}));`.
+7. `if (bptOut != 0) revert BptMintedOnDonation(bptOut);` — defensive; V3 spec guarantees zero, this catches future regression.
+8. `postReserve` via the same canonical V3 read used in step 3; `if (postReserve != preReserve + amount) revert ReserveDeltaMismatch(preReserve + amount, postReserve);` — catches any fee-on-transfer / rebasing token that slips past the allowlist.
+9. `emit FeeRoutedToBodensee(_originalCaller, payToken, amount);` — caller identity sourced from cached outer caller, never from callback `msg.sender` (which is the Vault and is informationally useless to event consumers).
+
+V3's `Vault.unlock` enforces a single-unlock invariant globally; the helper's own `_executing` flag is defense-in-depth at the helper level. Negligible gas, eliminates a class of state-confusion bugs.
+
+**Token index resolution (locked).** Constructor reads Bodensee's canonical token list via `_vault.getPoolTokens(_bodensee)`, locates `_svZchf` and `_sUsds` indices, and stores them as `uint8 _svZchfIndex` / `uint8 _sUsdsIndex` immutables. Reverts `TokenNotInPool(token)` at deploy if either is absent. Index resolution is one-shot at deploy; the runtime callback uses cached indices only. No runtime re-derivation, no re-reading of pool tokens at call time. The `maxAmountsIn` array is built as length-3 with the `payToken` slot set to `amount` and other slots defaulting to zero — the third pool token (AuMM) is implicitly zero, so no separate `_aummIndex` is needed.
+
+**CEI discipline (locked).** After `_executing = true`, the only permitted external calls inside the callback are:
+
+- `_vault.*` (settle, addLiquidity, the canonical reserve read).
+- `payToken.safeTransfer(address(_vault), amount)` — the pre-settle push.
+
+No external calls to Rate Providers (those are not used in rev2; should this lock be amended in a future revision to re-introduce RP reads, those reads MUST happen in `requiredAmount` view, BEFORE `_executing`). No external calls to any contract other than the Vault and the already-validated `payToken`. CEI is documented policy at G-D12 and asserted by code-review at G1.4.
+
+**Custom errors (locked — every guard typed; no `require(string)`, no plain `revert()`):**
+
+`OnlyAuthorizedCaller`, `OnlyVault`, `OnlyModuleAdmin`, `SetterAlreadyCalled`, `ZeroAddress`, `InvalidPayToken`, `ZeroAmount`, `IncorrectAmount`, `BptMintedOnDonation`, `ReserveDeltaMismatch`, `HelperBalanceNonZero`, `ReentrancyGuard`, `TokenNotInPool`, `CallbackPayloadMismatch`.
+
+**Immutables (locked — constructor parameters):**
+
+`IVault _vault`, `address _bodensee`, `IERC20 _svZchf`, `IERC20 _sUsds`, `address _moduleAdmin`, `uint8 _svZchfIndex`, `uint8 _sUsdsIndex`. All stored `immutable`. Zero-address checks revert `ZeroAddress`. `_moduleAdmin == address(0)` may be rejected unconditionally or accepted only in test-harness mode — TBD at G1.4 against deploy-script ergonomics.
+
+**Constants (locked):**
+
+```
+uint256 internal constant FEE_SVZCHF = 100e18;
+uint256 internal constant FEE_SUSDS  = 125e18;
+```
+
+**Test invariants targeted (G1.5 unit + G1.6 fork).**
+
+Unit (G1.5): unauthorized caller reverts `OnlyAuthorizedCaller`; pre-setter helper unreachable from any caller; partial-activation correctness (only-registry-set call path; only-gauge-set call path); post-both-set both callers allowed; second-set reverts `SetterAlreadyCalled`; admin burn after second set verified; invalid pay token reverts `InvalidPayToken`; zero amount reverts `ZeroAmount`; svZCHF underpay/overpay reverts `IncorrectAmount`; sUSDS underpay/overpay reverts `IncorrectAmount`; reentrancy guard fires on nested call attempt; callback sender = non-Vault reverts `OnlyVault`; callback payload mismatch reverts `CallbackPayloadMismatch`; constructor reverts `TokenNotInPool` when given a Bodensee that does not contain svZCHF or sUSDS.
+
+Fork (G1.6): real Bodensee on mainnet fork with `enableDonation = true`; svZCHF and sUSDS happy paths each at exactly the canonical fee; verify `bptOut == 0`; verify `postReserve - preReserve == amount` for the pay token; verify helper post-balance == 0; verify `FeeRoutedToBodensee(originalCaller, payToken, amount)` emit binds the correct cached caller identity (not the Vault); counterfactual: synthetic fee-on-transfer behaviour injected via `vm.mockCall` on `payToken.transfer` reverts `ReserveDeltaMismatch`.
+
+**Out of scope at G1.2 (deferred to G1.4 implementation):**
+
+OZ-`ReentrancyGuard`-vs-inline choice (style only); storage slot ordering (gas optimization); function visibility internal-vs-private (style); transient-storage-vs-storage for `_pendingPayToken` / `_pendingAmount` / `_originalCaller` (Solidity 0.8.26 supports the `transient` keyword — pick at G1.4 against gas benchmark and against the `_executing` reentrancy flag's own storage choice).
+
+**Forward references.**
+
+`vaultClassRegistry` setter wired at G1.9 (deploy of `VaultClassRegistry.sol`). `gaugeRegistry` setter wired at G3.x (deploy of `GaugeRegistry.sol`). Until both setters are called, only the set caller can reach the helper; before either is called, the helper is structurally unreachable.
 
 ---
 
