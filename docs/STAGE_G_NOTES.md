@@ -308,7 +308,26 @@ No external calls to Rate Providers (those are not used in rev2; should this loc
 
 **Custom errors (locked — every guard typed; no `require(string)`, no plain `revert()`):**
 
-`OnlyAuthorizedCaller`, `OnlyVault`, `OnlyModuleAdmin`, `SetterAlreadyCalled`, `ZeroAddress`, `InvalidPayToken`, `ZeroAmount`, `IncorrectAmount`, `BptMintedOnDonation`, `ReserveDeltaMismatch`, `HelperBalanceNonZero`, `ReentrancyGuard`, `TokenNotInPool`, `CallbackPayloadMismatch`.
+Fourteen errors with full parameter signatures locked at G1.4-pre-A:
+
+| Error | Signature | Diagnostic role |
+| --- | --- | --- |
+| `OnlyAuthorizedCaller` | `error OnlyAuthorizedCaller(address caller);` | outer entry caller-gate miss |
+| `OnlyVault` | `error OnlyVault(address caller);` | callback entry sender-strict miss |
+| `OnlyModuleAdmin` | `error OnlyModuleAdmin(address caller);` | one-shot setter caller-gate miss |
+| `SetterAlreadyCalled` | `error SetterAlreadyCalled();` | second call to `setVaultClassRegistry` or `setGaugeRegistry` |
+| `ZeroAddress` | `error ZeroAddress();` | constructor input or setter arg is `address(0)` |
+| `InvalidPayToken` | `error InvalidPayToken(IERC20 payToken);` | pay-token allowlist miss |
+| `ZeroAmount` | `error ZeroAmount();` | `swapAndDeposit(_, 0)` |
+| `IncorrectAmount` | `error IncorrectAmount(uint256 provided, uint256 required);` | strict-equality fee miss |
+| `BptMintedOnDonation` | `error BptMintedOnDonation(uint256 bptOut);` | defensive — V3 spec guarantees zero |
+| `ReserveDeltaMismatch` | `error ReserveDeltaMismatch(uint256 expected, uint256 actual);` | `postReserve != preReserve + amount` |
+| `HelperBalanceNonZero` | `error HelperBalanceNonZero(uint256 residual);` | helper balance != 0 after callback (resolves the `HelperBalanceNonZero(...)` ellipsis above) |
+| `ReentrancyGuard` | `error ReentrancyGuard();` | nested re-entry attempt |
+| `TokenNotInPool` | `error TokenNotInPool(IERC20 token);` | constructor-time `getPoolTokens` miss |
+| `CallbackPayloadMismatch` | `error CallbackPayloadMismatch();` | callback args drift from cached payload |
+
+Mirrored in the **§8e.1 Must match** when G1.4 lands the source file; mirrored again as revert assertions in G1.7 unit tests.
 
 **Immutables (locked — constructor parameters):**
 
