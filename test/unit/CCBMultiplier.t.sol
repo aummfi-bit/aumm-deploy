@@ -7,6 +7,7 @@ import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 contract MockMiliariumRegistry is IMiliariumRegistry {
     mapping(address => bool) private _isMiliarium;
@@ -70,6 +71,9 @@ contract MockEMASampler is IEMASampler {
 }
 
 contract CCBMultiplierTest is Test {
+    using SafeCast for uint256;
+    using SafeCast for int256;
+
     CCBMultiplier internal multiplier;
     MockMiliariumRegistry internal registry;
     MockGaugeRegistry internal gaugeReg;
@@ -81,9 +85,10 @@ contract CCBMultiplierTest is Test {
     address internal constant POOL_C = address(0xC3);
     address internal constant GAUGE_CALLER = address(0xCA11);
 
-    int256 constant STEP_SIZE = 5e16;
-    int256 constant CLAMP_FLOOR = 75e16;
-    int256 constant CLAMP_CEILING = 125e16;
+    uint256 constant STEP_SIZE = 5e16;
+    int256 constant STEP_DELTA_I256 = 5e16;
+    uint256 constant CLAMP_FLOOR = 0.75e18;
+    uint256 constant CLAMP_CEILING = 1.25e18;
     uint256 constant INITIAL_MULTIPLIER = 1e18;
     uint256 constant BOOST_FACTOR = 12e17;
     uint256 constant BOOST_DURATION = 648_000;
@@ -96,6 +101,10 @@ contract CCBMultiplierTest is Test {
         ema = new MockEMASampler();
         multiplier = new CCBMultiplier(registry, gaugeReg, ema);
         vm.roll(START_BLOCK);
+    }
+
+    function _applySignedDelta(uint256 base, int256 delta) internal pure returns (uint256) {
+        return (base.toInt256() + delta).toUint256();
     }
 
     // -------------------------------------------------------------------------
@@ -403,7 +412,7 @@ contract CCBMultiplierTest is Test {
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.lastProtocolAggregateEMA(), 1000e18);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
     }
 
     function test_updateMultiplier_globalRising_decrement() public {
@@ -430,7 +439,7 @@ contract CCBMultiplierTest is Test {
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(secondEpochEnd);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * STEP_SIZE);
     }
 
     function test_updateMultiplier_globalFalling_increment() public {
@@ -456,7 +465,7 @@ contract CCBMultiplierTest is Test {
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(secondEpochEnd);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst + uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst + STEP_SIZE);
     }
 
     function test_updateMultiplier_globalDeadZoneBoundary_neutral() public {
@@ -486,8 +495,8 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBeforeSecond = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        int256 deltaIntraOnly = -int256(STEP_SIZE);
-        uint256 expected = uint256(int256(uint256(miBeforeSecond)) + deltaIntraOnly);
+        int256 deltaIntraOnly = -STEP_DELTA_I256;
+        uint256 expected = _applySignedDelta(miBeforeSecond, deltaIntraOnly);
         assertEq(multiplier.M_i(POOL_A), expected);
     }
 
@@ -518,7 +527,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miAfterFirst = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * STEP_SIZE);
     }
 
     function test_updateMultiplier_globalLowerBoundary_neutral() public {
@@ -548,8 +557,8 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBeforeSecond = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        int256 deltaIntraOnly = -int256(STEP_SIZE);
-        uint256 expected = uint256(int256(uint256(miBeforeSecond)) + deltaIntraOnly);
+        int256 deltaIntraOnly = -STEP_DELTA_I256;
+        uint256 expected = _applySignedDelta(miBeforeSecond, deltaIntraOnly);
         assertEq(multiplier.M_i(POOL_A), expected);
     }
 
@@ -580,7 +589,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miAfterFirst = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst + 2 * uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst + 2 * STEP_SIZE);
     }
 
     function test_updateMultiplier_intraAbove_decrement() public {
@@ -601,7 +610,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBefore = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miBefore - uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miBefore - STEP_SIZE);
     }
 
     function test_updateMultiplier_intraBelow_increment() public {
@@ -625,7 +634,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBefore = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miBefore + uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miBefore + STEP_SIZE);
     }
 
     function test_updateMultiplier_channelsReinforce() public {
@@ -652,7 +661,7 @@ contract CCBMultiplierTest is Test {
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(secondEpochEnd);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * uint256(STEP_SIZE));
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * STEP_SIZE);
     }
 
     function test_updateMultiplier_channelsCancel() public {
@@ -703,7 +712,7 @@ contract CCBMultiplierTest is Test {
             vm.roll(b);
             multiplier.updateMultiplier(POOL_A);
         }
-        assertEq(multiplier.M_i(POOL_A), uint256(CLAMP_FLOOR));
+        assertEq(multiplier.M_i(POOL_A), CLAMP_FLOOR);
     }
 
     function test_updateMultiplier_clampCeiling() public {
@@ -733,7 +742,7 @@ contract CCBMultiplierTest is Test {
             multiplier.updateMultiplier(POOL_A);
             sum -= 1000e18;
         }
-        assertEq(multiplier.M_i(POOL_A), uint256(CLAMP_CEILING));
+        assertEq(multiplier.M_i(POOL_A), CLAMP_CEILING);
     }
 
     function test_updateMultiplier_priorSentinel_Mi0() public {
@@ -745,8 +754,8 @@ contract CCBMultiplierTest is Test {
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
         uint256 m = multiplier.M_i(POOL_A);
-        assertGe(m, uint256(CLAMP_FLOOR));
-        assertLe(m, uint256(CLAMP_CEILING));
+        assertGe(m, CLAMP_FLOOR);
+        assertLe(m, CLAMP_CEILING);
         assertTrue(m != 0);
     }
 
