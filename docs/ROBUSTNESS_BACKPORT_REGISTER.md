@@ -11,6 +11,8 @@
 | ID | Stage | Surface | Class | Description | Exploitability | Cost | Priority | Status | Resolution |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | RB-001 | F | `test/fork/mocks/CCBMocks.sol::MockGaugeRegistry` | Cross-stage interface | Stage F mock must mirror `IGaugeRegistry` methods added at G3.1 (extend-in-place per G-D16a Option B); silent drift surfaces as ABI mismatch on mock recompile. Already flagged in `docs/STAGE_G_PLAN.md` G4.4 body. | Medium | Low | Mid | Scoped | — |
+| RB-002 | F | `src/ccb/CCBMultiplier.sol::emaSampler` | Storage-class hardening | `IEMASampler public emaSampler` assigned in constructor (L155), never reassigned; promote to `public immutable`. Eliminates storage-write attack surface and saves one SLOAD per `getMultiplier` / `updateMultiplier` call. Single-line diff; Stage F unit + fork suites are the regression. | Low | Low | High | Scoped | — |
+| RB-003 | E | `src/factory/AureumWeightedPoolFactory.sol::_poolVersion` | Storage-class hardening | `string private _poolVersion` assigned in constructor (L46); Solidity 0.8.21+ supports `string immutable`, so eligible at our `^0.8.26` pragma. Tradeoff: code-size growth vs SLOAD elimination + write-surface removal. Alternative `bytes32 immutable` migration changes the `getPoolVersion()` return type (ABI break). Defer pending design-check on string-immutable code-size impact and call-site read frequency. | Low | Medium | Low | Open | — |
 
 ## Hardening classes
 
@@ -18,6 +20,7 @@
 - **Allowlist hardening** — explicit accepted-token / accepted-type domains; fail closed, never best-effort.
 - **Strict-equality vs tolerance audit** — enforce exactness where exact is safer (anti-spam fees, fee splits, immutable invariants); reject "epsilon" tolerance unless physically required.
 - **Admin-path hardening** — one-shot setters, burn-after-init, no lingering privileged slots; admin slot zeroed atomically with module-set.
+- **Storage-class hardening** — promote storage variables to `immutable` / `constant` when never reassigned after construction; locks slot type at deploy, removes storage-write attack surface, eliminates one SLOAD per read. Eligible for value types and (since Solidity 0.8.21) reference types like `string` / `bytes`.
 - **Epoch / boundary determinism** — no mid-interval state surprises; epoch transitions read-once, written-once.
 - **Error taxonomy** — custom errors mapped 1:1 to guard classes; no `require(string)`, no plain `revert()`.
 - **Invariant tests** — unauthorized caller, invalid type / token, under / overpay, reentrancy, stale callbacks, malformed payloads — every guard has at least one failing-path test.
