@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import { Test } from "forge-std/Test.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import {
@@ -39,6 +40,8 @@ import { IxAurebitConfig } from "../../script/pools/configs/14_ixAurebit.s.sol";
  *         callbacks—no Router, no Permit2. No test methods or derived contracts in this file — both at E1.6b.
  */
 abstract contract MiliariumPilotPoolBase is Test {
+    using SafeERC20 for IERC20;
+
     // Constants — D-D21 / E-D24 parity
     bytes32 internal constant VAULT_SALT = bytes32(uint256(1));
     bytes32 internal constant BODENSEE_SALT = bytes32(uint256(2));
@@ -290,7 +293,7 @@ abstract contract MiliariumPilotPoolBase is Test {
 
         bptOut = vault.initialize(bodenseePool, address(this), tokens, amountsIn, 0, "");
         for (uint256 i = 0; i <= 2; ++i) {
-            tokens[i].transfer(address(vault), amountsIn[i]);
+            tokens[i].safeTransfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
@@ -314,7 +317,7 @@ abstract contract MiliariumPilotPoolBase is Test {
         require(msg.sender == address(vault), "onlyVault");
         bptOut = vault.initialize(pool, address(this), tokens, amountsIn, 0, "");
         for (uint256 i = 0; i < tokens.length; ++i) {
-            tokens[i].transfer(address(vault), amountsIn[i]);
+            tokens[i].safeTransfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
@@ -345,7 +348,7 @@ abstract contract MiliariumPilotPoolBase is Test {
                 userData: ""
             })
         );
-        tokenIn.transfer(address(vault), inUsed);
+        tokenIn.safeTransfer(address(vault), inUsed);
         vault.settle(tokenIn, inUsed);
         vault.sendTo(tokenOut, address(this), outRcvd);
         amountOut = outRcvd;

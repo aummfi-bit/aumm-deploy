@@ -5,6 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { Vm } from "forge-std/Vm.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { TokenConfig, TokenType, PoolRoleAccounts, AfterSwapParams, SwapKind, VaultSwapParams } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
@@ -37,6 +38,8 @@ import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
  *      (same pattern as the Stage B fork test).
  */
 contract AureumFeeRoutingHookForkTest is Test {
+    using SafeERC20 for IERC20;
+
     // -------------------------------------------------------------------------
     // Constants — D-D21 / deploy script inline parity
     // -------------------------------------------------------------------------
@@ -325,7 +328,7 @@ contract AureumFeeRoutingHookForkTest is Test {
 
         bptOut = vault.initialize(bodenseePool, address(this), tokens, amountsIn, 0, "");
         for (uint256 i = 0; i <= 2; ++i) {
-            tokens[i].transfer(address(vault), amountsIn[i]);
+            tokens[i].safeTransfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
@@ -359,7 +362,7 @@ contract AureumFeeRoutingHookForkTest is Test {
 
         bptOut = vault.initialize(tradingPool, address(this), tokens, amountsIn, 0, "");
         for (uint256 i = 0; i <= 1; ++i) {
-            tokens[i].transfer(address(vault), amountsIn[i]);
+            tokens[i].safeTransfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
@@ -379,7 +382,7 @@ contract AureumFeeRoutingHookForkTest is Test {
                 userData: ""
             })
         );
-        svZchf.transfer(address(vault), amountIn);
+        svZchf.safeTransfer(address(vault), amountIn);
         vault.settle(svZchf, amountIn);
         vault.sendTo(IERC20(address(aumm)), address(this), amountOut);
     }
