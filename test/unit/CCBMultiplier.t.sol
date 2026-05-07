@@ -446,7 +446,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](28);
         pl[0] = POOL_A;
         for (uint256 i = 1; i < 28; ++i) {
-            pl[i] = address(uint160(0xC0FE0000 + i));
+            pl[i] = makeAddr(string.concat("pool", vm.toString(i)));
         }
         registry.setPoolList(pl);
         uint256 unit = 28_000e18;
@@ -618,7 +618,7 @@ contract CCBMultiplierTest is Test {
         pl[0] = POOL_A;
         pl[1] = POOL_B;
         for (uint256 i = 2; i < 28; ++i) {
-            pl[i] = address(uint160(0xC0FE0000 + i));
+            pl[i] = makeAddr(string.concat("pool", vm.toString(i)));
         }
         registry.setPoolList(pl);
         for (uint256 i = 0; i < 28; ++i) {
