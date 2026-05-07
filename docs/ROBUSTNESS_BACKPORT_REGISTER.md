@@ -1,0 +1,44 @@
+# Robustness Backport Register
+
+> **Scope.** Tracks candidate hardening items for completed Stage B–F surfaces (and Stage G surfaces that have already landed at file scope). Each row is a focused, self-contained robustness improvement — no architecture re-litigation, no behavior changes beyond closing an attack / error class. Items are ranked by `Exploitability × inverse(Cost)` and worked in small "robustness packets" (interface / type locks → state / admin slot cleanup → revert-surface + negative tests → cross-stage docs reconciliation) so completed stages stay shippable while safety compounds.
+>
+> **Process.** Items enter at status `Open` via audit (planned or opportunistic); move to `Scoped` once the §8e.1-shape change is sized; `In-flight` once a sub-step is authored; `Closed` once the commit lands. Closure rows record the commit hash + a one-line delta describing what attack / error class was removed.
+>
+> **Out of scope.** Architecture decisions (fee split, factory pattern, authorizer model, vault isolation), spec-level token / pool selections, and emission-curve constants. These are sealed at their respective stage decisions and only reopen via explicit chat-level discussion.
+
+## Register
+
+| ID | Stage | Surface | Class | Description | Exploitability | Cost | Priority | Status | Resolution |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| RB-001 | F | `test/fork/mocks/CCBMocks.sol::MockGaugeRegistry` | Cross-stage interface | Stage F mock must mirror `IGaugeRegistry` methods added at G3.1 (extend-in-place per G-D16a Option B); silent drift surfaces as ABI mismatch on mock recompile. Already flagged in `docs/STAGE_G_PLAN.md` G4.4 body. | Medium | Low | Mid | Scoped | — |
+
+## Hardening classes
+
+- **Input-domain hardening** — replace loose params with enums / value objects; restrict accepted shapes at the public surface.
+- **Allowlist hardening** — explicit accepted-token / accepted-type domains; fail closed, never best-effort.
+- **Strict-equality vs tolerance audit** — enforce exactness where exact is safer (anti-spam fees, fee splits, immutable invariants); reject "epsilon" tolerance unless physically required.
+- **Admin-path hardening** — one-shot setters, burn-after-init, no lingering privileged slots; admin slot zeroed atomically with module-set.
+- **Epoch / boundary determinism** — no mid-interval state surprises; epoch transitions read-once, written-once.
+- **Error taxonomy** — custom errors mapped 1:1 to guard classes; no `require(string)`, no plain `revert()`.
+- **Invariant tests** — unauthorized caller, invalid type / token, under / overpay, reentrancy, stale callbacks, malformed payloads — every guard has at least one failing-path test.
+- **Cross-stage interface** — when an interface is extended in-place across stages, dependent mocks / tests must mirror the change in the same commit; never silent drift.
+
+## Delivery packets
+
+- **Packet A** — interface / type locks (entry-time hardening; cheap, sets the scaffold for everything else).
+- **Packet B** — state / admin slot cleanup (single-slot burn patterns, removed redundant mirrors, transient-vs-storage decisions).
+- **Packet C** — revert-surface + negative tests (one failing-path test per guard; revert-coverage ≥ 1.0 over guard count).
+- **Packet D** — cross-stage docs reconciliation (NOTES wording fixes that block the next §8e.1 per CLAUDE.md §12 ambiguity-gate).
+
+## KPI dashboard (per stage rollup)
+
+- Ambiguities found pre-implementation.
+- Guard-condition tests added.
+- Revert-surface coverage count.
+- Dead / redundant state avoided.
+- Cross-stage interface breaks avoided.
+
+## Cross-references
+
+- **CLAUDE.md §12 — Ambiguity-gate for typed domain and state semantics** (commit `27bc91d`). This register is downstream of that gate; rows entered here are the artifacts left by ambiguities the gate caught + opportunistic hardening items surfaced during stage audits.
+- **Stage `_NOTES.md` files** (per stage). Register cites stage notes for design context; stage notes do not duplicate register rows. Closure deltas in the `Resolution` column reference the originating stage NOTES finding when applicable (e.g. `F12 → RB-NNN closed at <hash>`).
