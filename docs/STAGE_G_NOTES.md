@@ -312,7 +312,7 @@ No external calls to Rate Providers (those are not used in rev2; should this loc
 
 **Immutables (locked — constructor parameters):**
 
-`IVault _vault`, `address _bodensee`, `IERC20 _svZchf`, `IERC20 _sUsds`, `address _moduleAdmin`, `uint8 _svZchfIndex`, `uint8 _sUsdsIndex`. All stored `immutable`. Zero-address checks revert `ZeroAddress`. `_moduleAdmin == address(0)` may be rejected unconditionally or accepted only in test-harness mode — TBD at G1.4 against deploy-script ergonomics.
+`IVault _vault`, `address _bodensee`, `IERC20 _svZchf`, `IERC20 _sUsds`, `address _moduleAdmin`, `uint8 _svZchfIndex`, `uint8 _sUsdsIndex`. Six are stored as `immutable` (`_vault`, `_bodensee`, `_svZchf`, `_sUsds`, `_svZchfIndex`, `_sUsdsIndex`); `_moduleAdmin` is **not** an immutable — it is the constructor input that initializes the public storage slot `moduleAdmin` (declared in the storage block at line 256), the single burnable operational slot zeroed at the second setter call per the C-D11 / D-D2 / F-D20 family. No immutable mirror; one-slot burn pattern matches Stage D's `_governanceAdmin` / `_incendiaryAdmin` analog at `src/fee_router/AureumFeeRoutingHook.sol` L114-L118. Zero-address checks revert `ZeroAddress`. `_moduleAdmin == address(0)` may be rejected unconditionally or accepted only in test-harness mode — TBD at G1.4 against deploy-script ergonomics.
 
 **Constants (locked):**
 
