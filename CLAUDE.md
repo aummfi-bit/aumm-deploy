@@ -480,6 +480,14 @@ This is the fallback rule that subsumes everything else. If any of the following
 
 The cost of asking is a round-trip. The cost of guessing wrong is a rollback plus the time to figure out what was guessed wrong. The grep-and-confirm loop is built on the same principle at the micro-scale; this rule is the same principle at the macro-scale.
 
+### Ambiguity-gate for typed domain and state semantics
+
+Any ambiguity in **typed domain** (accepted token set, enum, immutable-vs-storage slot layout, error parameter shape, pool-class enum, fee-token whitelist) or **state semantics** (one-shot vs idempotent setter, burn-vs-keep admin slot, transient vs persistent storage, single-slot vs dual-slot mirror) is a hard blocker on the next §8e.1 execution prompt. Resolve in notes — amend the offending wording, lock the decision in a `G-D` / `D-D` / `E-D` / `F-D` entry, or update the relevant FINDINGS row — before Cursor materializes the slot layout in code.
+
+"Fix it later" after a scaffold lands carries (a) re-reading already-saved code to spot the divergence, (b) editing it, (c) updating tests that now assume the wrong shape — strictly more cost than fixing the wording first. The grep-and-confirm loop catches misexecution; the ambiguity-gate catches misdirection. Both are required.
+
+The ambiguity-gate fires whether the ambiguity is in the canonical spec (`aummfi-bit/aumm-site`), in a stage `_NOTES.md` decision, in a stage `_PLAN.md` body, or in `FINDINGS.md`. The cure is always the same: notes first, code after.
+
 ## 13. Model governance
 
 ### Core principle
