@@ -546,3 +546,52 @@ The four lines of suppression-justification comments at L268-L269 and L274-L275 
 - **`src/ccb/CCBMultiplier.sol` L65** — `MILIARIUM_POOL_COUNT = 28` constant declaration.
 - **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
 - **`test/unit/CCBMultiplier.t.sol`** — `test_updateMultiplier_globalFalling_increment`, `test_updateMultiplier_intraBelow_increment`, `test_updateMultiplier_boostNoOp_noStateChange` corrected at F3.4-fix2 per this rule.
+
+---
+
+### F13 — F12 type-discipline pattern extended to test-side signed-delta arithmetic (RB-004.0b corrective)
+
+**Caught 2026-05-07 at RB-004.0b verify.** `forge lint test/unit/CCBMultiplier.t.sol` returned 19 `unsafe-typecast` warnings at RB-004.open, mirroring the F12-class pattern that `src/ccb/CCBMultiplier.sol` had already cleaned up at F3.3d-fix. The test file's clamp-band assertions and signed-delta accumulator constructions used `int256(uint256_const)` / `uint256(int256(uint256(prior)) + delta)` chains identical to the original production source before F12, plus duplicated bare typecasts at every `STEP_SIZE` / `CLAMP_FLOOR` / `CLAMP_CEILING` consumption point. The F12 fix had stopped at the `src/` boundary; the test file was the next surface to bring under the same discipline.
+
+**Wrong fix initially proposed.** A branch-on-sign helper that selects between `base + uint256(delta)` and `base - uint256(-delta)` based on the sign of `delta`. **Rejected** — `uint256(delta)` and `uint256(-delta)` are the same unsafe-typecast pattern F12 ruled out; relocating the casts inside a helper does not eliminate them, `forge lint` would re-emit two warnings on the helper's body lines (net warning count unchanged), and `-delta` overflows when `delta == type(int256).min`. A new defect inside a helper that was supposed to remove defects.
+
+**Right fix applied at RB-004.0b (`67ce558`).** Mirror F12's production-side pattern at file scope, in two layers:
+
+1. **Dual-typed constants where consumption crosses domains.** `STEP_SIZE` retained as `uint256` (used in unsigned assertion arithmetic — e.g., `assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER + STEP_SIZE)`); a sibling `STEP_DELTA_I256` declared as `int256` (used in signed accumulator passes). `CLAMP_FLOOR` and `CLAMP_CEILING` stay `uint256` only — they are never accumulator inputs, only assertion bounds. Eliminates 14 of 16 cast sites at constant-reference points.
+2. **`SafeCast` member-function helper.** A single-line `_applySignedDelta(uint256 base, int256 delta) internal pure returns (uint256)` that computes `(base.toInt256() + delta).toUint256()`, paired with `using SafeCast for uint256;` and `using SafeCast for int256;`. `base.toInt256()` reverts `SafeCastOverflowedUintToInt` if `base > type(int256).max`; the trailing `.toUint256()` reverts `SafeCastOverflowedIntToUint` if the post-add result is negative. Both reverts are unreachable under the production `M_i[pool]` clamp invariant — same proof as the F12 production helper — but the runtime check survives any future code path that violates the invariant, which a comment never can.
+
+**Project-wide rule — F12 covers production AND tests; zero typecast suppressions in either.** Any test exercising a stateful FixedPoint accumulator with signed deltas — or asserting against signed-arithmetic results from production — uses the same SafeCast-backed pattern as production: dual-typed constants when consumption is single-domain on both sides, and a thin SafeCast-member helper at cross-domain crossings. Branch-on-sign helpers are rejected on the same grounds as `// forge-lint: disable-next-line` directives. `forge lint` is mandatory in `### USER VERIFY` blocks for any test file that imports from a contract under `src/ccb/`, `src/fee_router/`, or any future stage with FixedPoint or signed-delta arithmetic. The F12 anti-pattern catalog applies identically in `test/`.
+
+**Cross-references:**
+
+- **F12** (`STAGE_F_NOTES.md` L469) — original production-side adoption; F13 extends F12's scope from `src/` to `test/`.
+- **`src/ccb/CCBMultiplier.sol` L9, L36-L37, L255-L276** — production reference: SafeCast import, `using` directives, signed-delta call sites in `updateMultiplier`. Canonical implementation of the SafeCast helper pattern referenced above.
+- **`test/unit/CCBMultiplier.t.sol` L10, L74-L75, L88-L91, L106** — test-side mirror: SafeCast import, `using` directives, dual-typed constants block, `_applySignedDelta` helper as adopted at RB-004.0b.
+- **RB-004.0b** (`docs/ROBUSTNESS_BACKPORT_REGISTER.md`, commit `67ce558`) — corrective sub-step that landed the test-side pattern.
+
+---
+
+### F14 — `forge test --list` silently omits a discoverable test contract from cached artifacts; `forge clean` is the deterministic recovery (RB-004.1 verify)
+
+**Caught 2026-05-07 at RB-004.1 verify.** The unit-test invocation `forge test --no-match-path "test/fork/**" --summary` reported `192 tests passed, 0 failed (10 test suites)` — 55 tests short of the 247 unit baseline anchored in `CLAUDE.md` §11 at `stage-f-complete`. The 55-test delta matched exactly the count of `function test_*` declarations in `test/unit/CCBMultiplier.t.sol`, and forge omitted `CCBMultiplierTest` from the suite list entirely while every other unit suite enumerated normally. Direct invocation `forge test --match-test "test_getMultiplier_writtenMi_returnsMi"` returned `No tests found in project!`. Brace-balance grep on the source confirmed structure intact (4 contract opens, 4 matching closes, `contract CCBMultiplierTest is Test {` at L73, last `}` at L849). Every `forge build` invocation reported `No files changed, compilation skipped` — forge's cache index treated the file as up-to-date but the cached test-discovery list lacked the contract.
+
+**Symptom signature.** Pattern-match on these three observations together:
+
+1. `forge test --summary` total **drops by exactly the test-count of one or more contracts** versus a known baseline (here: 247 → 192, a 55-test delta).
+2. Compilation reports **`Compiler run successful!` or `compilation skipped`** with no error output — the file builds, lint runs against it, source is valid Solidity.
+3. `forge test --list` **does not contain the missing contract anywhere** in its output — neither under its file path nor under `--match-contract` filter; `forge test --match-test <known_test_name>` returns `No tests found in project!`.
+
+When all three present together, the cache index is the cause, not a code regression.
+
+**Deterministic recovery.** Run `forge clean && forge build` from the repo root. The clean removes `out/` and `cache/`; the rebuild repopulates with a fresh test-discovery index. After clean + rebuild, the missing contract reappears in `forge test --list` and the suite total returns to baseline. RB-004.1 verify after `forge clean && forge build`: 247 unit + 16 fork = 263/263 green, exactly matching the `stage-f-complete` anchor.
+
+**When this triggers.** The defect surfaces after structural rewrites of an existing test file — non-additive edits like `using` directive insertions, constant-block retypes, helper introduction, and in-place cast removals across many call sites in a single commit (RB-004.0b touched 16 cast sites and added a SafeCast helper plus two `using` directives). Forge's incremental cache appears to update artifact contents but occasionally fails to refresh the test-discovery index entry for the rewritten contract. Adding a new file is fine; deleting and re-adding is fine; the silent-skip mode is specifically structural-rewrite-of-existing-file with the file path unchanged.
+
+**Project-wide rule — `forge clean` before trusting `forge test --summary` totals after structural rewrites.** Any §8e.1 verify block that follows a structural rewrite of an existing test file — `using` directive insertions, constant-block retypes, helper introduction, multi-site cast removals — runs `forge clean && forge build` ahead of the `forge test --summary` invocation. Single-line edits, comment-only changes, and additive sub-step append patterns do not need the clean. When unit / fork totals do not match the §11 baseline at any verify checkpoint, **suspect cache before suspecting a regression**; `forge clean` is a one-time ~100-second tax that rules out the cache-index hypothesis cleanly.
+
+**Cross-references:**
+
+- **`CLAUDE.md` §11 anchor** — `stage-f-complete` baseline 263/263 (247 unit + 16 fork) via D35 split-form invocation.
+- **D35** (`STAGE_D_NOTES.md`) — split-form invocation pattern: `--no-match-path "test/fork/**"` for unit + `--match-path "test/fork/**" --fork-url $MAINNET_RPC_URL --threads 1` for fork. F14's symptom signature applies to either half.
+- **F11** (`STAGE_F_NOTES.md` L451) — sibling tooling-discipline finding; same class of "rendering / caching layer falsifies what looks like a real defect" pattern (F11 is paste-rendering; F14 is build-cache).
+- **RB-004.1** (`docs/ROBUSTNESS_BACKPORT_REGISTER.md`, verify after commit `7bdfbcc`) — where the symptom surfaced; recovery via `forge clean && forge build` confirmed 247 + 16 totals.
