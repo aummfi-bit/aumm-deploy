@@ -75,7 +75,7 @@ contract CCBMultiplier {
     IGaugeRegistry public gaugeRegistry;
 
     /// @notice EMA sampler binding. Bound at construction; no setter, never replaced — F-D22 read-only-interface contract. `CCBMultiplier` calls `tvlEMA(pool)` and `lastEMAUpdateBlock(pool)`; never `updateEMA(pool)`.
-    IEMASampler public emaSampler;
+    IEMASampler public immutable emaSampler;
 
     /// @notice Authority for `setMiliariumRegistry` per F-D20. Initialized to the deployer at construction; self-zeros on first successful `setMiliariumRegistry` call. Subsequent calls fail at the `OnlyRegistrySetter()` check because `address(0)` cannot transact.
     address public registrySetter;
