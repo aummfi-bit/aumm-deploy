@@ -425,6 +425,24 @@ Concrete slot-string identifiers (the second `varName` argument to `calculateSlo
 
 ---
 
+## G-D15 — Revoked is terminal at Stage G; no permissionless reactivation
+
+Locks the anti-backdoor invariant whose tactical guards already exist at G3.3 / G3.4 / G3.5 per `STAGE_G_PLAN.md` L337 / L343 / L355, and whose negative tests are enumerated at G3.6 + G4.4.
+
+**Invariant.** Once `GaugeRegistry._gaugeStatus[pool] == GaugeStatus.Revoked`, the pool cannot return to `GaugeStatus.Active` through any Stage G entrypoint. The three activation paths in **G-D7** — permissionless `activateGauge(pool)`, governance `registerGaugeFromComposition(pool)`, governance `seedFoundingPool(pool)` — each revert `AlreadyRevoked(pool)` against a Revoked status. `revokeGauge(address) onlyGovernance` is the only state-mutating operation that writes `Revoked`, and Stage G ships **no entrypoint** that writes `Revoked → Active`. Silent reactivation is therefore structurally impossible — not a runtime guard but a missing-selector property of the contract surface.
+
+**Recovery policy at Stage G.** No recovery entrypoint exists. `Revoked` is terminal at the contract layer for Stage G scope. The G3.5 rationale that "re-seeding a revoked founding pool is a governance amendment out of scope for Stage G — silent overwrite must not occur" is hereby elevated from a sub-step note to a Stage-G-level decision binding all three activation entrypoints, not just `seedFoundingPool`.
+
+**Forward rule for any future stage.** If a future stage introduces a recovery entrypoint that performs `Revoked → Active`, it MUST be (i) gated to `onlyGovernanceContract`, never permissionless; (ii) on a **different selector** from `activateGauge`, `registerGaugeFromComposition`, or `seedFoundingPool` — extending any of those three to accept a Revoked status is a back-door variant and is forbidden; (iii) accompanied by a parallel update to the test matrix that retires the `Revoked → revert` expectation only for the new entrypoint and preserves it for the three existing ones. This forward rule binds future-stage authors; it does not commit the protocol to ever shipping such an entrypoint.
+
+**Recovery shape (if ever added).** A future-stage recovery entrypoint requires a governance proposal under AuMT-weighted voting plus timelock execution — i.e. the Stage K+ on-chain governance posture per CLAUDE.md §1, not pre-Stage-K Authorizer Safe fiat. `activateGauge(pool)` remains permanently non-recovery: the back-door rule is selector-bound to the existing three activation entrypoints under any era.
+
+**Out of scope for G-D15.** The class-layer revocation surface in **G-D9** — `revokeVaultClass(token) onlyGovernance` flipping `admittedClasses[token] = false` in `VaultClassRegistry` — is **not** terminal-at-contract: re-admission via the standard `proposeVaultClass(...)` → veto-window-skip → `finalizeProposal(id)` cycle is documented G-D9 behaviour and is the intended governance recovery path for class admission. G-D15 binds the **gauge-state** machine in `GaugeRegistry` only; the class-state machine in `VaultClassRegistry` retains its G-D9 propose/finalize re-admission semantics by design. The two surfaces compose correctly: a pool whose class is re-admitted under G-D9 still cannot itself re-enter `GaugeStatus.Active` if it was revoked under G-D15 — class-layer re-admission does not cascade to gauge-layer reactivation.
+
+**Test binding.** Test-matrix row **T-I6** (added below) names this invariant; G3.6 unit + G4.4 fork tests at `STAGE_G_PLAN.md` L363 and L399 already enumerate the three negative-revert cases. Stage G closure requires T-I6 green.
+
+---
+
 ## Test matrix — must pass before Stage G closure
 
 ### Invariants (unit / fuzz)
@@ -436,6 +454,7 @@ Concrete slot-string identifiers (the second `varName` argument to `calculateSlo
 | T-I3 | **Forbidden tokens** — AuMM, AuMT cannot appear as weighted pool tokens for activation |
 | T-I4 | **Fast-track selector** absent — bytecode / interface has no Sandbox fast-track entry |
 | T-I5 | **Epoch snapshot** determinism — two calls at same block see same eligibility set |
+| T-I6 | **Revoked is terminal** — `activateGauge(pool)`, `registerGaugeFromComposition(pool)`, `seedFoundingPool(pool)` each revert `AlreadyRevoked` against a Revoked status; no Stage G entrypoint writes `Revoked → Active` (per **G-D15**) |
 
 ### Transition tests
 
