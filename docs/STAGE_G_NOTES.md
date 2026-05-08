@@ -329,6 +329,22 @@ Fourteen errors with full parameter signatures locked at G1.4-pre-A:
 
 Mirrored in the **§8e.1 Must match** when G1.4 lands the source file; mirrored again as revert assertions in G1.7 unit tests.
 
+**Events (locked):**
+
+Three events, signatures locked at G1.5-pre-B:
+
+| Event | Signature | Emit point |
+| --- | --- | --- |
+| `FeeRoutedToBodensee` | `event FeeRoutedToBodensee(address indexed originalCaller, IERC20 indexed payToken, uint256 amount);` | last step of `_swapAndDepositCallback` (G-D12 callback step 9), after the `ReserveDeltaMismatch` check; `originalCaller` sourced from cached outer `msg.sender`, never from callback `msg.sender` |
+| `VaultClassRegistrySet` | `event VaultClassRegistrySet(address indexed registry);` | inside `setVaultClassRegistry`, after the slot is written and any atomic admin-burn |
+| `GaugeRegistrySet` | `event GaugeRegistrySet(address indexed registry);` | inside `setGaugeRegistry`, after the slot is written and any atomic admin-burn |
+
+Setter events follow the Stage D one-shot setter precedent (`AureumFeeRoutingHook.GovernanceModuleSet` / `IncendiaryModuleSet` at `src/fee_router/AureumFeeRoutingHook.sol` L151+L156, emitted at L221+L237) — single `address indexed registry` field for off-chain monitoring of registry deployment and the atomic-burn milestone (the second emit's transaction is the one in which `moduleAdmin` transitions to `address(0)`; both emits taken together pin the module's activation window without requiring storage reads).
+
+G1.4 source-file scaffold (commit `2e100cb`) declared only `FeeRoutedToBodensee` — that is correct for G1.4's scope (no setters present). The two setter events land at G1.5 alongside the setters that emit them: the events block in `src/gauge/SwapAndDepositToBodensee.sol` grows from 1 to 3 declarations at G1.5 §8e.1.
+
+Mirrored in the **§8e.1 Must match** when G1.4 (`FeeRoutedToBodensee` surface) and G1.5 (setter event declarations + emits) land the source file; mirrored as `vm.expectEmit` assertions in G1.7 unit tests (one assertion per event per relevant invariant).
+
 **Immutables (locked — constructor parameters):**
 
 `IVault _vault`, `address _bodensee`, `IERC20 _svZchf`, `IERC20 _sUsds`, `address _moduleAdmin`, `uint8 _svZchfIndex`, `uint8 _sUsdsIndex`. Six are stored as `immutable` (`_vault`, `_bodensee`, `_svZchf`, `_sUsds`, `_svZchfIndex`, `_sUsdsIndex`); `_moduleAdmin` is **not** an immutable — it is the constructor input that initializes the public storage slot `moduleAdmin` (declared in the storage block at line 256), the single burnable operational slot zeroed at the second setter call per the C-D11 / D-D2 / F-D20 family. No immutable mirror; one-slot burn pattern matches Stage D's `_governanceAdmin` / `_incendiaryAdmin` analog at `src/fee_router/AureumFeeRoutingHook.sol` L114-L118. Zero-address checks revert `ZeroAddress`. `_moduleAdmin == address(0)` may be rejected unconditionally or accepted only in test-harness mode — TBD at G1.4 against deploy-script ergonomics.
