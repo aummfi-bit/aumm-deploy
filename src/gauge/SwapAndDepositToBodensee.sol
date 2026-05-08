@@ -9,10 +9,10 @@ import {TransientStorageHelpers} from "@balancer-labs/v3-solidity-utils/contract
 /**
  * @title SwapAndDepositToBodensee
  * @notice Anti-spam fee helper — single-call svZCHF or sUSDS DONATION into der-Bodensee,
- *         gated by `vaultClassRegistry` and `gaugeRegistry` callers (set post-deploy via
- *         one-shot setters at G1.5). Constructor is the G1.4 minimal form (G1.5 refactors it).
+ * @notice gated by `vaultClassRegistry` and `gaugeRegistry` callers (set post-deploy via
+ * @notice one-shot setters with atomic `moduleAdmin` burn at the second-set call).
  * @dev Entry point and `IVault.unlock` callback land at G1.6. Full behavioural spec: G-D12 (full spec)
- *      in `docs/STAGE_G_NOTES.md`; transient-storage pattern: G-D14 in `docs/STAGE_G_NOTES.md`.
+ *      in `docs/STAGE_G_NOTES.md` ; transient-storage pattern: G-D14 in `docs/STAGE_G_NOTES.md` .
  */
 contract SwapAndDepositToBodensee {
     using SafeERC20 for IERC20;
@@ -33,17 +33,17 @@ contract SwapAndDepositToBodensee {
     /// @notice sUSDS — Bodensee pay-token candidate (fee path).
     IERC20 internal immutable _sUsds;
 
-    /// @notice Cached Bodensee token-index for `_svZchf` (G1.5 derives via `getPoolTokens`).
+    /// @notice Cached Bodensee token-index for `_svZchf` — derived at construction via `getPoolTokens`.
     uint8 internal immutable _svZchfIndex;
 
-    /// @notice Cached Bodensee token-index for `_sUsds` (G1.5 derives via `getPoolTokens`).
+    /// @notice Cached Bodensee token-index for `_sUsds` — derived at construction via `getPoolTokens`.
     uint8 internal immutable _sUsdsIndex;
 
     // -------------------------------------------------------------------------
     // Storage
     // -------------------------------------------------------------------------
 
-    /// @notice Burnable; cleared atomically at the second one-shot setter call per G-D12 (the burn behavior lands at G1.5; the slot exists at G1.4).
+    /// @notice Burnable admin slot; cleared atomically at the second one-shot setter call per G-D12.
     address public moduleAdmin;
 
     /// @notice Vault-class registry — set post-deploy via one-shot setter (G1.5); zero before set ⇒ corresponding caller path unreachable per partial-activation invariant.
@@ -128,28 +128,98 @@ contract SwapAndDepositToBodensee {
      */
     event FeeRoutedToBodensee(address indexed originalCaller, IERC20 indexed payToken, uint256 amount);
 
+    /// @notice Emitted by `setVaultClassRegistry` after the slot is written and any atomic admin-burn (per G-D12 event surface).
+    event VaultClassRegistrySet(address indexed registry);
+
+    /// @notice Emitted by `setGaugeRegistry` after the slot is written and any atomic admin-burn (per G-D12 event surface).
+    event GaugeRegistrySet(address indexed registry);
+
+    // -------------------------------------------------------------------------
+    // Modifiers
+    // -------------------------------------------------------------------------
+
+    /// @notice Outer entry caller-gate — partial-activation correctness per G-D12.
+    modifier onlyAuthorizedCaller() {
+        if (msg.sender != vaultClassRegistry && msg.sender != gaugeRegistry) {
+            revert OnlyAuthorizedCaller(msg.sender);
+        }
+        _;
+    }
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Minimal G1.4 form — G1.5 refactors to drop the two `Index` params and derive indices via `_vault.getPoolTokens(_bodensee)`; G1.5 also adds `ZeroAddress` and `TokenNotInPool` guards. G1.4 lands the type surface and storage layout; runtime behaviour lands at G1.5 / G1.6.
+     * @notice Derives Bodensee pay-token indices via `IVault.getPoolTokens` at construction per G-D12 token-index resolution lock.
      */
     constructor(
         IVault vault_,
         address bodensee_,
         IERC20 svZchf_,
         IERC20 sUsds_,
-        address moduleAdmin_,
-        uint8 svZchfIndex_,
-        uint8 sUsdsIndex_
+        address moduleAdmin_
     ) {
+        if (address(vault_) == address(0)) revert ZeroAddress();
+        if (bodensee_ == address(0)) revert ZeroAddress();
+        if (address(svZchf_) == address(0)) revert ZeroAddress();
+        if (address(sUsds_) == address(0)) revert ZeroAddress();
+        if (moduleAdmin_ == address(0)) revert ZeroAddress();
+
         _vault = vault_;
         _bodensee = bodensee_;
         _svZchf = svZchf_;
         _sUsds = sUsds_;
+        moduleAdmin = moduleAdmin_;
+
+        IERC20[] memory tokens = vault_.getPoolTokens(bodensee_);
+        uint256 len = tokens.length;
+        uint8 svZchfIndex_ = type(uint8).max;
+        uint8 sUsdsIndex_ = type(uint8).max;
+        for (uint256 i = 0; i < len; ++i) {
+            if (address(tokens[i]) == address(svZchf_)) {
+                svZchfIndex_ = uint8(i);
+            }
+            if (address(tokens[i]) == address(sUsds_)) {
+                sUsdsIndex_ = uint8(i);
+            }
+        }
+        if (svZchfIndex_ == type(uint8).max) revert TokenNotInPool(svZchf_);
+        if (sUsdsIndex_ == type(uint8).max) revert TokenNotInPool(sUsds_);
+
         _svZchfIndex = svZchfIndex_;
         _sUsdsIndex = sUsdsIndex_;
-        moduleAdmin = moduleAdmin_;
+    }
+
+    // -------------------------------------------------------------------------
+    // One-shot caller-gate setters
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice One-shot `vaultClassRegistry` wiring and optional atomic `moduleAdmin` burn — G-D12.
+     */
+    function setVaultClassRegistry(address registry_) external {
+        if (msg.sender != moduleAdmin) revert OnlyModuleAdmin(msg.sender);
+        if (registry_ == address(0)) revert ZeroAddress();
+        if (vaultClassRegistry != address(0)) revert SetterAlreadyCalled();
+        vaultClassRegistry = registry_;
+        if (gaugeRegistry != address(0)) {
+            moduleAdmin = address(0);
+        }
+        emit VaultClassRegistrySet(registry_);
+    }
+
+    /**
+     * @notice One-shot `gaugeRegistry` wiring and optional atomic `moduleAdmin` burn — G-D12.
+     */
+    function setGaugeRegistry(address registry_) external {
+        if (msg.sender != moduleAdmin) revert OnlyModuleAdmin(msg.sender);
+        if (registry_ == address(0)) revert ZeroAddress();
+        if (gaugeRegistry != address(0)) revert SetterAlreadyCalled();
+        gaugeRegistry = registry_;
+        if (vaultClassRegistry != address(0)) {
+            moduleAdmin = address(0);
+        }
+        emit GaugeRegistrySet(registry_);
     }
 }
