@@ -348,7 +348,7 @@ Fork (G1.6): real Bodensee on mainnet fork with `enableDonation = true`; svZCHF 
 
 **Out of scope at G1.2 (deferred to G1.4 implementation):**
 
-OZ-`ReentrancyGuard`-vs-inline choice (style only); storage slot ordering (gas optimization); function visibility internal-vs-private (style); transient-storage-vs-storage for `_pendingPayToken` / `_pendingAmount` / `_originalCaller` (Solidity 0.8.26 supports the `transient` keyword — pick at G1.4 against gas benchmark and against the `_executing` reentrancy flag's own storage choice).
+OZ-`ReentrancyGuard`-vs-inline choice (style only); storage slot ordering (gas optimization); function visibility internal-vs-private (style). The transient-storage-vs-storage choice for `_executing` / `_pendingPayToken` / `_pendingAmount` / `_originalCaller` is **resolved at G-D14** (all four locked as `transient` per Solidity 0.8.26 + EVM Cancun).
 
 **Forward references.**
 
@@ -373,6 +373,28 @@ Supersedes the per-path 90-day boost policy locked at **G-D7**: the 90-day boost
 3. **Reduces audit surface at registration.** **MUST NOT:** `registerGaugeFromComposition(pool)` and `seedFoundingPool(pool, seedAmount)` SHALL NOT call `activateBoost` (or any boost-window-opening function) as part of registration. Verified via ABI assertion + unit tests on those entry points. `CCBMultiplier.sol` boost machinery (OQ-23 `activateBoost`, M_i clamp, F-D24 reset) is **unaffected** — Incendiary Boost (Stage L) reuses it. The simplification is at the registration paths, not in the multiplier.
 
 **Cross-references.** G-D7 inline amendment (boost columns flipped to **no**, "Boost asymmetry rationale" rewritten as "Per-path symmetry"). G-D1 inline amendment (composition-path bullet drops boost language). T-T4 inline amendment (test-matrix scenario drops "boost clock starts"). Companion spec sweep landed at `aumm-site` `08_bootstrap.md`, `09_transitions.md`, `04_tokenomics.md`, `05_miliarium_aureum.md`, `06_miliarium_manifest.md`, `12_aureum_glossary.md`, `14_ux_ui.md`, `17_faq.md` (receipt commit `055d89f`, "SG.AMEND-1").
+
+---
+
+## G-D14 — Transient-storage lock for unlock-callback ephemera (G1.4 resolution of G-D12 deferral)
+
+Resolves the "transient-storage-vs-storage" deferral at G-D12 line 351. The four slots used by the `IVault.unlock` + `_swapAndDepositCallback` flow — the reentrancy flag `_executing` and the cached payload triple `_pendingPayToken` / `_pendingAmount` / `_originalCaller` — are all locked as **`transient`** under Solidity 0.8.26 + EVM Cancun (EIP-1153 `TSTORE` / `TLOAD`). Declarations are `bool transient _executing`, `IERC20 transient _pendingPayToken`, `uint256 transient _pendingAmount`, `address transient _originalCaller`.
+
+**Rationale.**
+
+1. **Lifecycle fit.** All four slots are pure unlock-scope ephemera: set at the outer `swapAndDeposit` entry (G-D12 callback step 6), read in `_swapAndDepositCallback` (steps 1–2 sender / payload checks and step 9 emit), cleared at the outer exit (step 8 — "transient teardown"). Nothing in the helper, the Vault, or any caller reads them across transactions. EIP-1153's clear-at-tx-end semantic is exactly this lifecycle and provides defense-in-depth on the explicit step-8 clears: even if a future refactor accidentally drops a clear, the next tx starts with zero slots structurally.
+
+2. **Audit-surface reduction.** Persistent storage for these slots would create a state-residue surface — a revert mid-callback (after step 6 set, before step 8 clear) could leave non-zero slots until the next successful invocation clears them; static-analysis tools and reviewers must then reason about whether residue is observable through any future code path. Under `transient`, the residue surface is structurally absent: the next tx never observes them at all, regardless of what reverted in the previous tx.
+
+3. **Gas.** `TSTORE` / `TLOAD` are materially cheaper than `SSTORE` / `SLOAD` per the Cancun gas schedule, especially for cold and zero-to-non-zero transitions. The four slots see one write + one read + one clear per `swapAndDeposit` invocation; persistent storage would charge persistent-storage gas for slots the caller can never read across txs anyway. Direction is clear; specific magnitudes are scenario-dependent (warm vs cold, slot-zero state) — no per-helper benchmark is pinned at this lock, and none is needed since the choice is correctness-driven first.
+
+4. **No downside.** No cross-tx invariant binds these slots; nothing reads them after `swapAndDeposit` returns. Persistent storage would carry observability the caller cannot use, gas the caller cannot save, and a residue surface the auditor must reason about — three costs against zero benefit.
+
+**Effect on G-D12.** G-D12's callback narrative at lines 281–283 already describes these slots as "transient" prose-level; G-D14 lifts that from prose to a load-bearing `transient` keyword commitment. G-D12's "Out of scope at G1.2 (deferred to G1.4 implementation)" paragraph at line 351 is amended in the same edit to drop the transient-vs-storage bullet (now resolved here) — the OZ-`ReentrancyGuard`-vs-inline / storage-slot-ordering / function-visibility deferrals remain open at G1.4.
+
+**Effect on G1.4 §8e.1.** The Must match for the G1.4 scaffold declares all four slots with the `transient` keyword explicitly. Cursor MUST NOT write `bool _executing;` (etc.) without `transient` — the keyword is load-bearing and verified at G1.5 / G1.6 unit + fork tests via reentrancy and callback assertions.
+
+**Forward references.** G1.5 (constructor refactor + one-shot setters + `onlyAuthorizedCaller` modifier) — no transient-storage interaction. G1.6 (`swapAndDeposit` entry point + `_swapAndDepositCallback`) — uses all four transient slots per G-D12 callback steps 1–9; G-D14 closes the prior open question before that source-file work begins.
 
 ---
 
