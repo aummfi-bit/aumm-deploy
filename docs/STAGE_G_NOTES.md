@@ -287,7 +287,7 @@ Callback `_swapAndDepositCallback(IERC20 payToken, uint256 amount) external`:
 
 1. `if (msg.sender != address(_vault)) revert OnlyVault(msg.sender);` — strict; this function MUST NOT be callable by anyone except the Vault re-entering after `unlock`.
 2. Payload cross-check: `if (payToken != _pendingPayToken || amount != _pendingAmount) revert CallbackPayloadMismatch();`. Defends against any state-confusion where the Vault's callback args drift from the outer-cached values.
-3. Snapshot `preReserve` using the canonical V3 reserve / balance read for the (Bodensee, payToken) pair — exact selector locked at G1.4 against `lib/balancer-v3-monorepo` source (candidates include `Vault.getReservesOf`, `IVault.getPoolTokenInfo`, `IVault.getCurrentLiveBalances`; verified at implementation against submodule HEAD). The same selector MUST be used for the `postReserve` read in step 8 — no mixed-source drift between pre and post.
+3. Snapshot `preReserve` using the canonical V3 reserve / balance read for the (Bodensee, payToken) pair — exact selector locked at G1.6 against `lib/balancer-v3-monorepo` source (candidates include `Vault.getReservesOf`, `IVault.getPoolTokenInfo`, `IVault.getCurrentLiveBalances`; verified at implementation against submodule HEAD). The same selector MUST be used for the `postReserve` read in step 8 — no mixed-source drift between pre and post.
 4. `payToken.safeTransfer(address(_vault), amount); _vault.settle(payToken, amount);`.
 5. Build `maxAmountsIn[3]` using the token-index lock (next paragraph) — `payToken` slot = `amount`; other slots = 0.
 6. `(, uint256 bptOut, ) = _vault.addLiquidity(AddLiquidityParams({pool: BODENSEE, kind: AddLiquidityKind.DONATION, maxAmountsIn: maxAmountsIn, minBptAmountOut: 0, userData: ""}));`.
@@ -304,7 +304,7 @@ V3's `Vault.unlock` enforces a single-unlock invariant globally; the helper's ow
 - `_vault.*` (settle, addLiquidity, the canonical reserve read).
 - `payToken.safeTransfer(address(_vault), amount)` — the pre-settle push.
 
-No external calls to Rate Providers (those are not used in rev2; should this lock be amended in a future revision to re-introduce RP reads, those reads MUST happen in `requiredAmount` view, BEFORE `_executing`). No external calls to any contract other than the Vault and the already-validated `payToken`. CEI is documented policy at G-D12 and asserted by code-review at G1.4.
+No external calls to Rate Providers (those are not used in rev2; should this lock be amended in a future revision to re-introduce RP reads, those reads MUST happen in `requiredAmount` view, BEFORE `_executing`). No external calls to any contract other than the Vault and the already-validated `payToken`. CEI is documented policy at G-D12 and asserted by code-review at G1.6 (CEI applies to the callback body, which lands at G1.6 — the G1.4 scaffold has no external-call surface).
 
 **Custom errors (locked — every guard typed; no `require(string)`, no plain `revert()`):**
 
