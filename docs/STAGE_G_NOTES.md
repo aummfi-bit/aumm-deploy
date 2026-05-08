@@ -290,7 +290,7 @@ Callback `_swapAndDepositCallback(IERC20 payToken, uint256 amount) external`:
 3. Snapshot `preReserve` using the canonical V3 reserve / balance read for the (Bodensee, payToken) pair — exact selector locked at G1.6 against `lib/balancer-v3-monorepo` source (candidates include `Vault.getReservesOf`, `IVault.getPoolTokenInfo`, `IVault.getCurrentLiveBalances`; verified at implementation against submodule HEAD). The same selector MUST be used for the `postReserve` read in step 8 — no mixed-source drift between pre and post.
 4. `payToken.safeTransfer(address(_vault), amount); _vault.settle(payToken, amount);`.
 5. Build `maxAmountsIn[3]` using the token-index lock (next paragraph) — `payToken` slot = `amount`; other slots = 0.
-6. `(, uint256 bptOut, ) = _vault.addLiquidity(AddLiquidityParams({pool: BODENSEE, kind: AddLiquidityKind.DONATION, maxAmountsIn: maxAmountsIn, minBptAmountOut: 0, userData: ""}));`.
+6. `(, uint256 bptOut, ) = _vault.addLiquidity(AddLiquidityParams({pool: BODENSEE, to: address(this), kind: AddLiquidityKind.DONATION, maxAmountsIn: maxAmountsIn, minBptAmountOut: 0, userData: ""}));`.
 7. `if (bptOut != 0) revert BptMintedOnDonation(bptOut);` — defensive; V3 spec guarantees zero, this catches future regression.
 8. `postReserve` via the same canonical V3 read used in step 3; `if (postReserve != preReserve + amount) revert ReserveDeltaMismatch(preReserve + amount, postReserve);` — catches any fee-on-transfer / rebasing token that slips past the allowlist.
 9. `emit FeeRoutedToBodensee(_originalCaller, payToken, amount);` — caller identity sourced from cached outer caller, never from callback `msg.sender` (which is the Vault and is informationally useless to event consumers).
