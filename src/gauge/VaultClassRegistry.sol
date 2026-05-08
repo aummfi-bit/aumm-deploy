@@ -40,6 +40,9 @@ contract VaultClassRegistry {
     /// @notice Length of the veto window in blocks, measured from `createdBlock` (G-D9 / G-D19).
     uint256 public constant VETO_WINDOW_BLOCKS = 201_600;
 
+    /// @notice Maximum number of genesis classes accepted at construction per G-D20.
+    uint256 public constant MAX_GENESIS_CLASSES = 32;
+
     // -------------------------------------------------------------------------
     // Struct
     // -------------------------------------------------------------------------
@@ -113,6 +116,9 @@ contract VaultClassRegistry {
 
     event VaultClassRevoked(address indexed admissionValue);
 
+    /// @notice Emitted once per genesis token admitted in the constructor per G-D20; no proposalId (genesis classes bypass the proposal flow).
+    event GenesisClassAdmitted(address indexed token, IVaultClassRegistry.AdmissionType admissionType);
+
     // -------------------------------------------------------------------------
     // Custom errors
     // -------------------------------------------------------------------------
@@ -136,4 +142,10 @@ contract VaultClassRegistry {
     error ClassNotAdmitted(address class);
 
     error SetterAlreadyCalled();
+
+    error GenesisLengthMismatch(uint256 tokensLen, uint256 typesLen);
+
+    error GenesisOverflow(uint256 provided, uint256 cap);
+
+    error DuplicateGenesisToken(address token);
 }
