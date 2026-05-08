@@ -4,7 +4,9 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import {AddLiquidityKind, AddLiquidityParams} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {TransientStorageHelpers} from "@balancer-labs/v3-solidity-utils/contracts/helpers/TransientStorageHelpers.sol";
+import {StorageSlotExtension} from "@balancer-labs/v3-solidity-utils/contracts/openzeppelin/StorageSlotExtension.sol";
 
 /**
  * @title SwapAndDepositToBodensee
@@ -16,6 +18,7 @@ import {TransientStorageHelpers} from "@balancer-labs/v3-solidity-utils/contract
  */
 contract SwapAndDepositToBodensee {
     using SafeERC20 for IERC20;
+    using StorageSlotExtension for *;
 
     // -------------------------------------------------------------------------
     // Immutables
@@ -221,5 +224,115 @@ contract SwapAndDepositToBodensee {
             moduleAdmin = address(0);
         }
         emit GaugeRegistrySet(registry_);
+    }
+
+    // -------------------------------------------------------------------------
+    // External entry points
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Returns the canonical fixed anti-spam fee for `payToken` (svZCHF or sUSDS).
+     */
+    function requiredAmount(IERC20 payToken) external view returns (uint256) {
+        return _requiredAmount(payToken);
+    }
+
+    /**
+     * @notice Executes the G-D12 nine-step outer unlock flow: caller-gated fee donation into der Bodensee.
+     * @param payToken svZCHF or sUSDS.
+     * @param amount Exact fee amount; MUST equal `_requiredAmount(payToken)`.
+     */
+    function swapAndDeposit(IERC20 payToken, uint256 amount) external onlyAuthorizedCaller {
+        if (payToken != _svZchf && payToken != _sUsds) {
+            revert InvalidPayToken(payToken);
+        }
+        if (amount == 0) {
+            revert ZeroAmount();
+        }
+        uint256 required = _requiredAmount(payToken);
+        if (amount != required) {
+            revert IncorrectAmount(amount, required);
+        }
+        if (_EXECUTING_SLOT.asBoolean().tload()) {
+            revert ReentrancyGuard();
+        }
+        _EXECUTING_SLOT.asBoolean().tstore(true);
+        _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(payToken));
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(amount);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(msg.sender);
+        _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
+        _EXECUTING_SLOT.asBoolean().tstore(false);
+        _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
+        uint256 residual = payToken.balanceOf(address(this));
+        if (residual != 0) {
+            revert HelperBalanceNonZero(residual);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Vault callback
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice G-D12 nine-step `_vault.unlock` callback: settle, DONATION add-liquidity, reserve delta, event.
+     * @dev `external` for `abi.encodeCall` from the Vault; `OnlyVault` restricts `msg.sender` to `_vault`.
+     */
+    function _swapAndDepositCallback(IERC20 payToken, uint256 amount) external {
+        if (msg.sender != address(_vault)) {
+            revert OnlyVault(msg.sender);
+        }
+        if (
+            address(payToken) != _PENDING_PAY_TOKEN_SLOT.asAddress().tload() ||
+            amount != _PENDING_AMOUNT_SLOT.asUint256().tload()
+        ) {
+            revert CallbackPayloadMismatch();
+        }
+        uint8 idx = payToken == _svZchf ? _svZchfIndex : _sUsdsIndex;
+        uint256 preReserve = _currentReserve(idx);
+        payToken.safeTransfer(address(_vault), amount);
+        _vault.settle(payToken, amount);
+        uint256[] memory maxAmountsIn = new uint256[](3);
+        maxAmountsIn[idx] = amount;
+        (, uint256 bptOut, ) = _vault.addLiquidity(
+            AddLiquidityParams({
+                pool: _bodensee,
+                to: address(this),
+                maxAmountsIn: maxAmountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.DONATION,
+                userData: ""
+            })
+        );
+        if (bptOut != 0) {
+            revert BptMintedOnDonation(bptOut);
+        }
+        uint256 postReserve = _currentReserve(idx);
+        if (postReserve != preReserve + amount) {
+            revert ReserveDeltaMismatch(preReserve + amount, postReserve);
+        }
+        emit FeeRoutedToBodensee(_ORIGINAL_CALLER_SLOT.asAddress().tload(), payToken, amount);
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    /// @dev Shared switch for `requiredAmount` and `swapAndDeposit` step 4 strict-equality fee.
+    function _requiredAmount(IERC20 payToken) internal view returns (uint256) {
+        if (payToken == _svZchf) {
+            return FEE_SVZCHF;
+        }
+        if (payToken == _sUsds) {
+            return FEE_SUSDS;
+        }
+        revert InvalidPayToken(payToken);
+    }
+
+    /// @dev G-D18: `IVault.getPoolTokenInfo` + `balancesRaw[idx]` only.
+    function _currentReserve(uint8 idx) internal view returns (uint256) {
+        (, , uint256[] memory balancesRaw, ) = _vault.getPoolTokenInfo(_bodensee);
+        return balancesRaw[idx];
     }
 }
