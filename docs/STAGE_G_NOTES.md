@@ -132,9 +132,9 @@ A `VaultClassProposal` declares `admissionType` from:
 
 Each fingerprint carries a different threat model. Proposal text must declare which type was selected and why it fits the class being admitted; the veto mechanism is the protocol's check on proposers' fingerprint judgement.
 
-**Genesis seeding (Option a — constructor-hardcoded constants):**
+**Genesis seeding (Option a-prime — constructor-injected calldata arrays):**
 
-The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via constructor-hardcoded constants in `VaultClassRegistry.sol`. **No** one-shot seeding admin entrypoint, **no** Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is bytecode-immutable; future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`.
+The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via constructor-injected `calldata` arrays — `address[] calldata genesisTokens, AdmissionType[] calldata genesisTypes` — passed by the deploy script. **No** one-shot seeding admin entrypoint, **no** Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is **deploy-time-immutable** (bound at the moment of construction; no post-deploy admission entrypoint exists at Stage G scope); future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`. Concrete genesis set, validation discipline (length cap, zero-address rejection, deduplication), and per-class event surface lock at **G-D20** below.
 
 **Tunables — deferred to G1.x with non-regressable constraints:**
 
@@ -478,6 +478,88 @@ Locks the three economic + governance tunables consumed by the `VaultClassRegist
 Three literal constants; not configurable post-deploy in Stage G scope. Stage K governance handoff per G-D9 may add a `setTunables(uint256 bond, uint256 thresholdBps, uint256 windowBlocks) external onlyGovernanceContract` surface for future revisions; that's an out-of-scope amendment for G1.9 + G1.11 + G1.12 — Stage G ships the constants form, not the configurable form. The Stage K extension is recorded as a deferred item in CLAUDE.md §11 at Stage G closure (G5.x).
 
 **Cross-references.** G-D9 (`VaultClassRegistry` design including the "tunables deferred to G1.x" residual closed here). G-D12 (anti-spam fee anchor at `FEE_SVZCHF = 100e18`, lower bound for `proposalBond`). PLAN G1.11 (`src/gauge/VaultClassRegistry.sol` storage / constants scaffold) consumes the three constants verbatim. PLAN G1.12 (`propose` / `veto` / `finalize` / `revoke` function bodies) reads the values per G-D9 flow logic. CLAUDE.md §5 (`BLOCKS_PER_EPOCH = 100_800` canonical block-number constant). `aumm-site` `10_constitution.md` §xxix (Stage K governance quorum upper-bound that frames the veto threshold ceiling).
+
+---
+
+## G-D20 — Genesis class set lock: constructor-injected calldata arrays (G-D9 Option a-prime resolution)
+
+Resolves the **G-D9** "Option a-prime" genesis-seeding pattern by pinning the constructor signature, validation discipline, length cap, and event surface for the deploy-time class admission flow. Closes the gap between G-D9's abstract "no post-deploy admin entrypoint" stance and `VaultClassRegistry.sol`'s concrete constructor at G1.12.
+
+**Pattern (locked) — constructor-injected calldata arrays.**
+
+```solidity
+constructor(
+    IERC20 svZCHF_,
+    SwapAndDepositToBodensee helper_,
+    address auMTSetter_,
+    address governanceSetter_,
+    address[] calldata genesisTokens,
+    AdmissionType[] calldata genesisTypes
+) { ... }
+```
+
+The deploy script passes the genesis class set verbatim from the canonical Miliarium-pool profile manifest (`aummfi-bit/aumm-site/miliarium_profiles/`). Calldata location is binding — `memory` would impose extra ABI-decode work without any benefit; the constructor reads each entry once.
+
+**Rationale — three angles, each load-bearing.**
+
+1. **Deploy-time flexibility without post-deploy mutability.** Hardcoded constants couple the registry's bytecode to the exact deploy-time class set. If the Stage M / N pilot set changes between contract authoring and deploy — a routine occurrence as the Miliarium profile manifest evolves at `aumm-site` — the contract must be re-authored, re-audited, re-deployed. Calldata arrays decouple bytecode from values: the contract source is invariant; the deploy script reads the latest manifest and passes the resulting arrays. The end-state security property is identical (deploy-time-immutable; no post-deploy admin entrypoint), so the flexibility is gained without any weakening of the trust model.
+
+2. **Audit-equivalent to hardcoded constants.** From a security-review standpoint, both forms produce the same end-state at construction return: a populated `admittedClasses` mapping with no later-stage entrypoint to mutate it (modulo `proposeVaultClass + veto` once `auMT` and `governanceContract` setters fire — but those flows go through the standard G-D9 mechanism, not a "genesis admin" backdoor). The deploy-script artifact pins the set as authoritatively as the contract source would.
+
+3. **Re-deploy ergonomics for fork tests + production.** Stage G fork tests need a smaller pilot-class genesis set (Stage E waEthUSDC + ixEDEL); Stage R mainnet deploy needs the full Stage M / N production set. Calldata arrays let a single `VaultClassRegistry.sol` bytecode serve both cases. Hardcoded constants would force either two contract variants (audit / maintenance burden) or a Stage-R-only contract that's untested in fork.
+
+**Validation discipline (constructor-time; all reverts fire before any state mutation).**
+
+1. **Array-length agreement.** `if (genesisTokens.length != genesisTypes.length) revert GenesisLengthMismatch(genesisTokens.length, genesisTypes.length);` — catches the most common deploy-script bug.
+2. **Length cap.** `if (genesisTokens.length > MAX_GENESIS_CLASSES) revert GenesisOverflow(genesisTokens.length, MAX_GENESIS_CLASSES);` where `MAX_GENESIS_CLASSES = 32`. Rationale: 32 is well above the projected Miliarium-pool class count (~10–15 distinct ERC-4626 wrappers across the 28 pools per `miliarium_profiles/`), leaving headroom for protocol evolution; an upper bound prevents pathological deploy gas / loop-bound surprises and pins the constructor's worst-case gas at audit time.
+3. **Per-token zero-address rejection.** Per-iteration `if (genesisTokens[i] == address(0)) revert ZeroAddress();` — uses the existing `ZeroAddress` error already declared in the G1.11 scaffold; no new error needed.
+4. **Per-token deduplication.** Per-iteration `if (admittedClasses[genesisTokens[i]]) revert DuplicateGenesisToken(genesisTokens[i]);` — checked BEFORE the `admittedClasses[token] = true` assignment, so within-array duplication or any ordering anomaly fires the revert at the second occurrence. Cheaper than a separate dedup pre-pass.
+5. **`AdmissionType` enum bound.** Solidity enforces enum-validity at calldata decode (entries outside the three-variant range revert before the constructor body runs); no explicit guard needed in source. Documented for completeness.
+
+**Event surface — `GenesisClassAdmitted` (separate from `VaultClassFinalized`).**
+
+```solidity
+event GenesisClassAdmitted(address indexed token, AdmissionType admissionType);
+```
+
+Emitted once per genesis class inside the constructor loop, after the `admittedClasses[token] = true; admissionTypes[token] = admissionType;` writes. Why a separate event from `VaultClassFinalized(uint256 indexed proposalId, address indexed admissionValue)`: the standard finalization event carries `proposalId` indexing into the `proposals` mapping; genesis classes have no proposal record (they bypass the propose-veto flow by design). Reusing `VaultClassFinalized` would force a sentinel `proposalId` (zero, max, or `keccak("genesis")`) that off-chain indexers must specifically interpret. The separate `GenesisClassAdmitted` event removes that ambiguity: indexers consuming `VaultClassFinalized` learn about post-deploy admissions via the standard governance flow; indexers consuming `GenesisClassAdmitted` learn about the deploy-time set. Both are unambiguous; neither requires a synthetic proposalId.
+
+**New surface added to `VaultClassRegistry.sol` (lands at G1.12-pre-C scaffold supplement).**
+
+The G1.11 scaffold (commit `061d967`) declared four events (`VaultClassProposed`, `VaultClassVetoed`, `VaultClassFinalized`, `VaultClassRevoked`) and ten errors (`OnlyGovernance` … `SetterAlreadyCalled`). G-D20 lock requires the scaffold to be supplemented at G1.12-pre-C with:
+
+- One additional event: `GenesisClassAdmitted(address indexed token, AdmissionType admissionType)`.
+- Three additional errors: `GenesisLengthMismatch(uint256 tokensLen, uint256 typesLen)`, `GenesisOverflow(uint256 provided, uint256 cap)`, `DuplicateGenesisToken(address token)`.
+- One additional constant: `uint256 public constant MAX_GENESIS_CLASSES = 32;`.
+
+These five items land as a Sonnet-tier mechanical scaffold supplement at G1.12-pre-C, ahead of G1.12's constructor body landing.
+
+**Constructor body shape (G1.12 scope).**
+
+After zero-address checks on the four scalar parameters (`svZCHF_`, `helper_`, `auMTSetter_`, `governanceSetter_`) and assignment to the immutables / setter slots, the constructor runs the genesis loop:
+
+1. Validate array-length agreement (revert `GenesisLengthMismatch` on miss).
+2. Validate length cap (revert `GenesisOverflow` on miss).
+3. Loop `i = 0 .. genesisTokens.length - 1`:
+   a. Revert `ZeroAddress` if `genesisTokens[i] == address(0)`.
+   b. Revert `DuplicateGenesisToken(genesisTokens[i])` if `admittedClasses[genesisTokens[i]]` already true.
+   c. Set `admittedClasses[genesisTokens[i]] = true`.
+   d. Set `admissionTypes[genesisTokens[i]] = genesisTypes[i]`.
+   e. Emit `GenesisClassAdmitted(genesisTokens[i], genesisTypes[i])`.
+
+Each step's revert before any state mutation means a partial-genesis-loop failure leaves the registry empty (constructor reverts; deployment fails; no state pollution).
+
+**Test invariants (G1.16 unit scope).**
+
+- Constructor with valid arrays: each genesis token reads `isAdmittedClass(token) == true`; each reads `admissionType(token) == expectedType`; each emit captured in order.
+- Constructor with `genesisTokens.length != genesisTypes.length`: reverts `GenesisLengthMismatch` with the exact lengths.
+- Constructor with `genesisTokens.length == 33`: reverts `GenesisOverflow(33, 32)`.
+- Constructor with `genesisTokens.length == 32`: succeeds (cap is inclusive on the equals side; revert is `>` not `>=`).
+- Constructor with `address(0)` at any position: reverts `ZeroAddress` at that iteration; prior assignments not observable (constructor fully reverts).
+- Constructor with two identical tokens: reverts `DuplicateGenesisToken` at the second occurrence; prior assignment not observable.
+- Constructor with empty arrays: succeeds; `admittedClasses` mapping empty; no `GenesisClassAdmitted` emits.
+
+**Cross-references.** G-D9 (genesis-seeding Option a-prime amendment, this commit). G1.11 (storage scaffold at `061d967` — supplemented at G1.12-pre-C with the five items above). G1.12 (constructor body consumes the calldata arrays per the locked discipline). G1.12-pre-C (mechanical scaffold supplement landing the five items). G1.16 (unit-test invariants targeting each constructor revert path).
 
 ---
 
