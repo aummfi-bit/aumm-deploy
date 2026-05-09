@@ -128,9 +128,13 @@ A `VaultClassProposal` declares `admissionType` from:
 
 - **`ImplementationAddress`** — admits a specific implementation behind a proxy. Trust delegated to the proxy admin's upgrade discipline.
 - **`FactoryAddress`** — admits all current and future vaults from the factory. Trust delegated to the factory's deployment policy.
-- **`BytecodeHash`** — admits exact bytecode match. Future-proof against impl rotation, but blocks legitimate upgrades.
+- **`BytecodeHash`** — admits exact bytecode match. Future-proof against impl rotation, but blocks legitimate upgrades. **On-chain admission semantics deferred at G1.13-pre-B (Option A)** — see "Bytecode-hash deferral lock" below.
 
 Each fingerprint carries a different threat model. Proposal text must declare which type was selected and why it fits the class being admitted; the veto mechanism is the protocol's check on proposers' fingerprint judgement.
+
+**Bytecode-hash deferral lock (Option A — Stage G scope).** On-chain admission semantics for `AdmissionType.BytecodeHash` are **deferred** at G1.13-pre-B. The `admittedClasses` mapping is address-keyed (`mapping(address => bool)`), so a fingerprint comparison against `keccak256(token.code)` has no storage path under the G1.11 / G1.12 scaffold. Two enforcement sites close every admission route until bytes32-keyed storage and `isAdmittedClass(token)` resolution discipline lock together (likely the G2.x `GaugeEligibility` integration beat): (1) `proposeVaultClass` runtime guard — reverts `BytecodeHashAdmissionDeferred()` when `admissionType == BytecodeHash`; lands at G1.13. (2) Constructor genesis guard (deferral with teeth) — the genesis loop reverts `BytecodeHashAdmissionDeferred()` if any `genesisTypes[i] == BytecodeHash`; prevents a deploy-time end-run around the runtime guard; lands as G-D20 validation step 6 (this commit) and G1.13 source change. The enum variant remains in `IVaultClassRegistry.AdmissionType` to avoid ABI / docs churn for integrators who already enumerate three types — `BytecodeHash` is **reserved enum territory** until on-chain storage shape lands. Rejected alternatives: (a) bytes32 parallel storage at G1.13 — bigger blast radius without `isAdmittedClass` resolution discipline; (b) derived non-zero address sentinel from `constraintsHash` — 96-bit truncation collision surface unsuitable for a permissioned admission gate; (c) struct/storage rework to fingerprint-keyed mapping — cleaner if designed day-one but expensive against shipped G1.11 / G1.12 surface. Deferral with teeth — reject at every entrypoint until the storage story lands — preserves all four options for the eventual implementation beat.
+
+**Cross-references.** G-D20 step 6 (constructor genesis guard, this commit). G-D20 "Subsequent surface added at G1.13" paragraph (this commit). PLAN G1.12 + G1.13 (paragraph amendments at G1.13-pre-C). G2.x / `GaugeEligibility` (`isAdmittedClass(token)` discipline + bytecode-hash storage rework, deferred). G5.x (`BytecodeHashAdmissionDeferred` cleanup if `BytecodeHash` admission gets implemented before then; otherwise stays declared and reachable).
 
 **Genesis seeding (Option a-prime — constructor-injected genesis arrays):**
 
@@ -521,6 +525,7 @@ The deploy script passes the genesis class set verbatim from the canonical Milia
 3. **Per-token zero-address rejection.** Per-iteration `if (genesisTokens[i] == address(0)) revert ZeroAddress();` — uses the existing `ZeroAddress` error already declared in the G1.11 scaffold; no new error needed.
 4. **Per-token deduplication.** Per-iteration `if (admittedClasses[genesisTokens[i]]) revert DuplicateGenesisToken(genesisTokens[i]);` — checked BEFORE the `admittedClasses[token] = true` assignment, so within-array duplication or any ordering anomaly fires the revert at the second occurrence. Cheaper than a separate dedup pre-pass.
 5. **`AdmissionType` enum bound.** Solidity enforces enum-validity at calldata decode (entries outside the three-variant range revert before the constructor body runs); no explicit guard needed in source. Documented for completeness.
+6. **`AdmissionType.BytecodeHash` rejection (deferral with teeth).** Per-iteration `if (genesisTypes[i] == AdmissionType.BytecodeHash) revert BytecodeHashAdmissionDeferred();` — closes the deploy-time end-run around the G1.13 runtime `proposeVaultClass` guard. See "Bytecode-hash deferral lock" in G-D9 above.
 
 **Event surface — `GenesisClassAdmitted` (separate from `VaultClassFinalized`).**
 
@@ -540,6 +545,8 @@ The G1.11 scaffold (commit `061d967`) declared four events (`VaultClassProposed`
 
 These five items land as a Sonnet-tier mechanical scaffold supplement at G1.12-pre-C, ahead of G1.12's constructor body landing.
 
+**Subsequent surface added at G1.13 (per G-D9 Bytecode-hash deferral lock, this commit's amendment).** One additional error: `BytecodeHashAdmissionDeferred()` (parameterless; reused at the constructor genesis-loop step 6 guard and the runtime `proposeVaultClass` guard). Constructor genesis-loop step 6 (the per-iteration `BytecodeHash` rejection above; lands inside the existing loop, between the zero-address check and the deduplication check). L57 struct Natspec correction: drop the "sentinel/zero for BytecodeHash (constraints-only path)" claim that misrepresents implementation under deferral; replace with a "reserved for future use under BytecodeHash (deferred at G1.13-pre-B)" form. All three land at G1.13 source change together with the new `proposeVaultClass` function. Forge-build green is the joint audit checkpoint. The new error joins `SetterAlreadyCalled` and `InvalidAdmissionType` as declared-but-(currently)-unused **only if** `BytecodeHash` admission gets implemented before the G5.x cleanup pass; otherwise it stays declared and reachable.
+
 **Constructor body shape (G1.12 scope).**
 
 After zero-address checks on the four scalar parameters (`svZCHF_`, `helper_`, `auMTSetter_`, `governanceSetter_`) and assignment to the immutables / setter slots, the constructor runs the genesis loop:
@@ -548,10 +555,11 @@ After zero-address checks on the four scalar parameters (`svZCHF_`, `helper_`, `
 2. Validate length cap (revert `GenesisOverflow` on miss).
 3. Loop `i = 0 .. genesisTokens.length - 1`:
    a. Revert `ZeroAddress` if `genesisTokens[i] == address(0)`.
-   b. Revert `DuplicateGenesisToken(genesisTokens[i])` if `admittedClasses[genesisTokens[i]]` already true.
-   c. Set `admittedClasses[genesisTokens[i]] = true`.
-   d. Set `admissionTypes[genesisTokens[i]] = genesisTypes[i]`.
-   e. Emit `GenesisClassAdmitted(genesisTokens[i], genesisTypes[i])`.
+   b. Revert `BytecodeHashAdmissionDeferred()` if `genesisTypes[i] == AdmissionType.BytecodeHash` (per G-D20 step 6 / G-D9 Bytecode-hash deferral lock).
+   c. Revert `DuplicateGenesisToken(genesisTokens[i])` if `admittedClasses[genesisTokens[i]]` already true.
+   d. Set `admittedClasses[genesisTokens[i]] = true`.
+   e. Set `admissionTypes[genesisTokens[i]] = genesisTypes[i]`.
+   f. Emit `GenesisClassAdmitted(genesisTokens[i], genesisTypes[i])`.
 
 Each step's revert before any state mutation means a partial-genesis-loop failure leaves the registry empty (constructor reverts; deployment fails; no state pollution).
 
@@ -564,8 +572,9 @@ Each step's revert before any state mutation means a partial-genesis-loop failur
 - Constructor with `address(0)` at any position: reverts `ZeroAddress` at that iteration; prior assignments not observable (constructor fully reverts).
 - Constructor with two identical tokens: reverts `DuplicateGenesisToken` at the second occurrence; prior assignment not observable.
 - Constructor with empty arrays: succeeds; `admittedClasses` mapping empty; no `GenesisClassAdmitted` emits.
+- Constructor with `genesisTypes[i] == AdmissionType.BytecodeHash` at any position: reverts `BytecodeHashAdmissionDeferred()`; prior assignments not observable (per G-D20 step 6 / G-D9 Bytecode-hash deferral lock).
 
-**Cross-references.** G-D9 (genesis-seeding Option a-prime amendment, this commit). G1.11 (storage scaffold at `061d967` — supplemented at G1.12-pre-C with the five items above). G1.12 (constructor body consumes the genesis arrays per the locked discipline). G1.12-pre-C (mechanical scaffold supplement landing the five items). G1.16 (unit-test invariants targeting each constructor revert path).
+**Cross-references.** G-D9 (genesis-seeding Option a-prime amendment, original commit; G1.13-pre-B Bytecode-hash deferral lock paragraph cross-references this section's step 6 and "Subsequent surface added at G1.13"). G1.11 (storage scaffold at `061d967` — supplemented at G1.12-pre-C with the five items above). G1.12 (constructor body consumes the genesis arrays per the locked discipline). G1.12-pre-C (mechanical scaffold supplement landing the five items). G1.13 (constructor genesis-loop step 6 guard + new `BytecodeHashAdmissionDeferred()` error declaration + L57 struct Natspec correction land here per G-D9 Bytecode-hash deferral lock). G1.16 (unit-test invariants targeting each constructor revert path, including the BytecodeHash genesis rejection invariant added at G1.13-pre-B).
 
 ---
 
