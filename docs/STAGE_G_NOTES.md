@@ -132,9 +132,9 @@ A `VaultClassProposal` declares `admissionType` from:
 
 Each fingerprint carries a different threat model. Proposal text must declare which type was selected and why it fits the class being admitted; the veto mechanism is the protocol's check on proposers' fingerprint judgement.
 
-**Genesis seeding (Option a-prime — constructor-injected calldata arrays):**
+**Genesis seeding (Option a-prime — constructor-injected genesis arrays):**
 
-The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via constructor-injected `calldata` arrays — `address[] calldata genesisTokens, AdmissionType[] calldata genesisTypes` — passed by the deploy script. **No** one-shot seeding admin entrypoint, **no** Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is **deploy-time-immutable** (bound at the moment of construction; no post-deploy admission entrypoint exists at Stage G scope); future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`. Concrete genesis set, validation discipline (length cap, zero-address rejection, deduplication), and per-class event surface lock at **G-D20** below.
+The Miliarium-pool ERC-4626 vault classes (the exact set per the deployed Miliarium pools at Stages M / N — waEthUSDC, ixEDEL, sUSDS-class wrappers, and the remainder per per-pool profiles in `aummfi-bit/aumm-site/miliarium_profiles/`) are admitted at deploy via constructor-injected `memory` arrays — `address[] memory genesisTokens, AdmissionType[] memory genesisTypes` — passed by the deploy script. **No** one-shot seeding admin entrypoint, **no** Authorizer-Safe self-call on `proposeVaultClass`. The genesis class set is **deploy-time-immutable** (bound at the moment of construction; no post-deploy admission entrypoint exists at Stage G scope); future classes enter via the `proposeVaultClass` + veto flow once on-chain governance is live (Stage K). Pre-Stage-K, the registry is frozen at its constructor-seeded set; pools using only genesis-admitted classes can be gauged permissionlessly through `activateGauge`. Concrete genesis set, validation discipline (length cap, zero-address rejection, deduplication), and per-class event surface lock at **G-D20** below.
 
 **Tunables — deferred to G1.x with non-regressable constraints:**
 
@@ -483,11 +483,11 @@ Three literal constants; not configurable post-deploy in Stage G scope. Stage K 
 
 ---
 
-## G-D20 — Genesis class set lock: constructor-injected calldata arrays (G-D9 Option a-prime resolution)
+## G-D20 — Genesis class set lock: constructor-injected genesis arrays (G-D9 Option a-prime resolution)
 
 Resolves the **G-D9** "Option a-prime" genesis-seeding pattern by pinning the constructor signature, validation discipline, length cap, and event surface for the deploy-time class admission flow. Closes the gap between G-D9's abstract "no post-deploy admin entrypoint" stance and `VaultClassRegistry.sol`'s concrete constructor at G1.12.
 
-**Pattern (locked) — constructor-injected calldata arrays.**
+**Pattern (locked) — constructor-injected genesis arrays.**
 
 ```solidity
 constructor(
@@ -495,20 +495,20 @@ constructor(
     SwapAndDepositToBodensee helper_,
     address auMTSetter_,
     address governanceSetter_,
-    address[] calldata genesisTokens,
-    AdmissionType[] calldata genesisTypes
+    address[] memory genesisTokens,
+    AdmissionType[] memory genesisTypes
 ) { ... }
 ```
 
-The deploy script passes the genesis class set verbatim from the canonical Miliarium-pool profile manifest (`aummfi-bit/aumm-site/miliarium_profiles/`). Calldata location is binding — `memory` would impose extra ABI-decode work without any benefit; the constructor reads each entry once.
+The deploy script passes the genesis class set verbatim from the canonical Miliarium-pool profile manifest (`aummfi-bit/aumm-site/miliarium_profiles/`). Data location is `memory`: solc 0.8.26 rejects `calldata` for constructor parameters with `Error (6651)` regardless of `via_ir` — constructor parameter data flows from deployment init-code into runtime, with no `CALLDATA` region in the EVM's deployment-init calling convention. The memory-copy overhead is bounded by `MAX_GENESIS_CLASSES = 32` and the constructor reads each entry once.
 
 **Rationale — three angles, each load-bearing.**
 
-1. **Deploy-time flexibility without post-deploy mutability.** Hardcoded constants couple the registry's bytecode to the exact deploy-time class set. If the Stage M / N pilot set changes between contract authoring and deploy — a routine occurrence as the Miliarium profile manifest evolves at `aumm-site` — the contract must be re-authored, re-audited, re-deployed. Calldata arrays decouple bytecode from values: the contract source is invariant; the deploy script reads the latest manifest and passes the resulting arrays. The end-state security property is identical (deploy-time-immutable; no post-deploy admin entrypoint), so the flexibility is gained without any weakening of the trust model.
+1. **Deploy-time flexibility without post-deploy mutability.** Hardcoded constants couple the registry's bytecode to the exact deploy-time class set. If the Stage M / N pilot set changes between contract authoring and deploy — a routine occurrence as the Miliarium profile manifest evolves at `aumm-site` — the contract must be re-authored, re-audited, re-deployed. Genesis arrays decouple bytecode from values: the contract source is invariant; the deploy script reads the latest manifest and passes the resulting arrays. The end-state security property is identical (deploy-time-immutable; no post-deploy admin entrypoint), so the flexibility is gained without any weakening of the trust model.
 
 2. **Audit-equivalent to hardcoded constants.** From a security-review standpoint, both forms produce the same end-state at construction return: a populated `admittedClasses` mapping with no later-stage entrypoint to mutate it (modulo `proposeVaultClass + veto` once `auMT` and `governanceContract` setters fire — but those flows go through the standard G-D9 mechanism, not a "genesis admin" backdoor). The deploy-script artifact pins the set as authoritatively as the contract source would.
 
-3. **Re-deploy ergonomics for fork tests + production.** Stage G fork tests need a smaller pilot-class genesis set (Stage E waEthUSDC + ixEDEL); Stage R mainnet deploy needs the full Stage M / N production set. Calldata arrays let a single `VaultClassRegistry.sol` bytecode serve both cases. Hardcoded constants would force either two contract variants (audit / maintenance burden) or a Stage-R-only contract that's untested in fork.
+3. **Re-deploy ergonomics for fork tests + production.** Stage G fork tests need a smaller pilot-class genesis set (Stage E waEthUSDC + ixEDEL); Stage R mainnet deploy needs the full Stage M / N production set. Genesis arrays let a single `VaultClassRegistry.sol` bytecode serve both cases. Hardcoded constants would force either two contract variants (audit / maintenance burden) or a Stage-R-only contract that's untested in fork.
 
 **Validation discipline (constructor-time; all reverts fire before any state mutation).**
 
@@ -561,7 +561,7 @@ Each step's revert before any state mutation means a partial-genesis-loop failur
 - Constructor with two identical tokens: reverts `DuplicateGenesisToken` at the second occurrence; prior assignment not observable.
 - Constructor with empty arrays: succeeds; `admittedClasses` mapping empty; no `GenesisClassAdmitted` emits.
 
-**Cross-references.** G-D9 (genesis-seeding Option a-prime amendment, this commit). G1.11 (storage scaffold at `061d967` — supplemented at G1.12-pre-C with the five items above). G1.12 (constructor body consumes the calldata arrays per the locked discipline). G1.12-pre-C (mechanical scaffold supplement landing the five items). G1.16 (unit-test invariants targeting each constructor revert path).
+**Cross-references.** G-D9 (genesis-seeding Option a-prime amendment, this commit). G1.11 (storage scaffold at `061d967` — supplemented at G1.12-pre-C with the five items above). G1.12 (constructor body consumes the genesis arrays per the locked discipline). G1.12-pre-C (mechanical scaffold supplement landing the five items). G1.16 (unit-test invariants targeting each constructor revert path).
 
 ---
 
@@ -642,3 +642,15 @@ Each step's revert before any state mutation means a partial-genesis-loop failur
 **Default rule.** In-fork tests of helper-side defensive invariants ("post-state must equal pre-state plus delta") are best exercised by mocking the read the helper uses to verify the invariant — NOT by mocking a downstream side-effect the helper does not directly observe. The frozen-pre-state mock pattern (mock the read to return frozen pre-state; let actual on-chain state move forward; the helper's view diverges from reality; the helper's defensive check fires) is the canonical fork-test approach for any "X equals Y plus delta" invariant. Apply to future helper-defensive fork tests.
 
 **Repair.** PLAN L185 wording and NOTES L363 wording amended at G1.8-post-A (this sub-step) to align with the implemented pattern. Both lessons are local to Stage G NOTES; no CLAUDE.md §11 housekeeping bullet at this commit — cross-stage escalation only if either class repeats at a later stage.
+
+### G14 — solc 0.8.26 rejects `calldata` for constructor parameters; `memory` is the binding location (G1.12 fix-loop)
+
+**Surfaced 2026-05-09 at G1.12 fix-loop.** G-D20 (locked at G1.12-pre-B, commit `1f570fa`) and PLAN G1.12 (rewritten at the same commit) specified `address[] calldata genesisTokens, AdmissionType[] calldata genesisTypes` for the constructor parameter data location, with the L501 rationale ("Calldata location is binding — `memory` would impose extra ABI-decode work without any benefit; the constructor reads each entry once."). The first G1.12 Cursor save (commit `dc5fec2`) used `memory` — Cursor's correct keyword choice diverging from the Must match (same audit-time signal pattern as G11). The G1.12-fix prompt forced `calldata` per the Must-match spec; `forge build` failed with `Error (6651): Data location must be "storage" or "memory" for constructor parameter, but "calldata" was given.` G1.12-fix2 reverted both parameters to `memory` and the build went green. Final file state at `dc5fec2` is identical to what Cursor originally saved.
+
+**Root cause.** Solidity 0.8.x permits `calldata` as a parameter data location ONLY for `external` (and certain `internal` / `public`) function parameters — NOT for constructor parameters. The restriction holds across the supported version range; `via_ir = true` does not unlock it. Constructor parameter data flows from the deployment init-code into the running contract's runtime — there is no `CALLDATA` region in the EVM's deployment-init calling convention. The compiler enforces this with Error 6651.
+
+**Default rule (extends G10 + G11).** The G10 compile-probe rule covered language-feature claims (`transient` keyword in G10, `constant` initializers with function-call expressions in G11). G14 extends the rule to **parameter data location** for constructor signatures: any §12 NOTES closure that asserts `calldata`, `memory`, or `storage` on a constructor parameter must compile-probe the exact signature at the project's pinned solc / `via_ir` / optimizer-runs / `evm_version` config before the amendment closes. For constructor parameters specifically, the answer is fixed across all supported configs: **always `memory`** (never `calldata`).
+
+**Audit-time corollary (extends G11).** When Cursor's keyword choice diverges from the §8e.1 Must match AND `forge build` succeeds with Cursor's choice, the divergence is a soft signal that the Must match was wrong, not the file. G11 captured the `constant` → `immutable` divergence at G1.5-pre-A; G14 captures the `calldata` → `memory` divergence at G1.12-fix-loop. Pattern: **the keyword Cursor chose is often the only one that compiles** — verify against `forge build` before issuing a fix prompt.
+
+**Repair landed at G1.12-post-A (this sub-step).** G-D9 L135 + L137, G-D20 L488 + L490-L499 + L501 + L505 + L509, and PLAN L221 amended to use `memory` everywhere a constructor parameter data location is asserted; rationale paragraph at NOTES L501 rewritten to acknowledge the solc constraint; prose mentions of "calldata arrays" updated to "genesis arrays" for consistency. CLAUDE.md §11 housekeeping bullet G14 lands at G1.12-post-B (a Sonnet-tier follow-up sub-step) so the bullet can reference G1.12-post-A's commit hash.
