@@ -148,4 +148,63 @@ contract VaultClassRegistry {
     error GenesisOverflow(uint256 provided, uint256 cap);
 
     error DuplicateGenesisToken(address token);
+
+    error OnlyAuMTSetter();
+
+    error OnlyGovernanceSetter();
+
+    // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    /// @notice Initializes bond token, Bodensee helper, one-shot setter authorities, and optional genesis admits.
+    constructor(
+        IERC20 svZCHF_,
+        SwapAndDepositToBodensee helper_,
+        address auMTSetter_,
+        address governanceSetter_,
+        address[] memory genesisTokens,
+        IVaultClassRegistry.AdmissionType[] memory genesisTypes
+    ) {
+        if (address(svZCHF_) == address(0)) revert ZeroAddress();
+        if (address(helper_) == address(0)) revert ZeroAddress();
+        if (auMTSetter_ == address(0)) revert ZeroAddress();
+        if (governanceSetter_ == address(0)) revert ZeroAddress();
+
+        svZCHF = svZCHF_;
+        helper = helper_;
+        auMTSetter = auMTSetter_;
+        governanceSetter = governanceSetter_;
+
+        if (genesisTokens.length != genesisTypes.length) revert GenesisLengthMismatch(genesisTokens.length, genesisTypes.length);
+        if (genesisTokens.length > MAX_GENESIS_CLASSES) revert GenesisOverflow(genesisTokens.length, MAX_GENESIS_CLASSES);
+
+        for (uint256 i = 0; i < genesisTokens.length; ++i) {
+            if (genesisTokens[i] == address(0)) revert ZeroAddress();
+            if (admittedClasses[genesisTokens[i]]) revert DuplicateGenesisToken(genesisTokens[i]);
+            admittedClasses[genesisTokens[i]] = true;
+            admissionTypes[genesisTokens[i]] = genesisTypes[i];
+            emit GenesisClassAdmitted(genesisTokens[i], genesisTypes[i]);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // One-shot setters (F-D23 pattern)
+    // -------------------------------------------------------------------------
+
+    /// @notice Wires AuMT from the designated setter and seals the auMTSetter slot.
+    function setAuMT(address auMT_) external {
+        if (msg.sender != auMTSetter) revert OnlyAuMTSetter();
+        if (auMT_ == address(0)) revert ZeroAddress();
+        auMT = IAuMT(auMT_);
+        auMTSetter = address(0);
+    }
+
+    /// @notice Wires governance from the designated setter and seals the governanceSetter slot.
+    function setGovernanceContract(address governanceContract_) external {
+        if (msg.sender != governanceSetter) revert OnlyGovernanceSetter();
+        if (governanceContract_ == address(0)) revert ZeroAddress();
+        governanceContract = governanceContract_;
+        governanceSetter = address(0);
+    }
 }
