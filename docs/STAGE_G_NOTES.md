@@ -437,6 +437,24 @@ Concrete slot-string identifiers (the second `varName` argument to `calculateSlo
 
 ---
 
+## G-D15 — GaugeEligibility tunables lock (G2.0 resolution)
+
+Locks the three Stage-G-scope tunables for `GaugeEligibility` before G2.3+ source implementation. Resolution at G2.0 entry in Opus; sub-decisions G-D15a–G-D15c.
+
+**G-D15a — `approvedFactory` immutable, no setter.** The Balancer pool factory address accepted for `getPool(pool)` validation SHALL be exposed as `address public immutable approvedFactory` set once in the constructor. Invariant: no setter for `approvedFactory` exists or will exist in this deployment of `GaugeEligibility` — migration to a different factory is a redeploy concern, not an admin knob.
+
+**G-D15b — F-10 emission-share caps deferred to Stage H.** Per-pool emission share caps implied by formula F-10 (constitution / distributor layer) are **not** enforced inside `GaugeEligibility` in Stage G. Eligibility answers factory + class + TVL floor + pilot/bypass gates only; emission-weight capping is **deferred to Stage H emission distributor** where F-10 arithmetic belongs. `STAGE_G_PLAN.md` G2.5 L311 currently says any planner text that bound F-10 caps to `GaugeEligibility` — that plan language is **superseded by this entry**; G2.0-post plan alignment edits are out of scope for the G2.0 NOTES landing.
+
+**G-D15c — `TVL_FLOOR_SVZCHF` encoding.** The TVL floor gate uses a named constant in native oracle units (svZCHF, 18 decimals):
+
+- `uint256 public constant TVL_FLOOR_SVZCHF = 10_000e18;`
+
+Eligibility rejects (or treats as ineligible per the G2.x revert / branch contract) when `tvl(pool) < TVL_FLOOR_SVZCHF`, where `tvl(pool)` is the svZCHF-denominated TVL read the eligibility module uses for the floor check. Natspec on the constant SHALL describe intent as a **Coarse anti-spam gate, not oracle-precise USD** — the floor is a deployment-tunable order-of-magnitude screen, not a claim of mark-to-market accuracy.
+
+**Cross-references.** PLAN G2.0 (pre–G2.3 lock); G2.5 / G2.4 plan lines pending G2.0-post supersession for F-10 / TVL wording consistency. Stage H distributor consumes eligibility outputs and owns F-10 caps per this deferral.
+
+---
+
 ## G-D17 — Revoked is terminal at Stage G; no permissionless reactivation
 
 Locks the anti-backdoor invariant whose tactical guards already exist at G3.3 / G3.4 / G3.5 per `STAGE_G_PLAN.md` L337 / L343 / L355, and whose negative tests are enumerated at G3.6 + G4.4.
