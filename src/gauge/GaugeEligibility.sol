@@ -5,7 +5,8 @@ pragma solidity ^0.8.26;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import {IBasePool} from "@balancer-labs/v3-interfaces/contracts/vault/IBasePool.sol";
+import {IWeightedPool} from "@balancer-labs/v3-interfaces/contracts/pool-weighted/IWeightedPool.sol";
+import {IBasePoolFactory} from "@balancer-labs/v3-interfaces/contracts/vault/IBasePoolFactory.sol";
 import {IGaugeEligibility} from "./IGaugeEligibility.sol";
 import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
@@ -167,5 +168,20 @@ contract GaugeEligibility {
                 // Plain ERC-20 — no numerator contribution (G-D10 empty catch).
             }
         }
+    }
+
+    /**
+     * @notice Aggregate binary eligibility gate for `pool` per **OQ-G2** + **G-D6** + **G-D15a** + **G-D8** — reverts on first failed criterion.
+     * @dev Body order locked at **G2.4**: numerator path (forbidden tokens + **G-D10** + admitted class weights) then factory provenance, TVL floor, then **0.52e18** quality bar. Caller must pass a weighted pool implementing `IWeightedPool`.
+     * @param pool Balancer pool address under evaluation.
+     */
+    function _checkEligibilityCriteria(address pool) internal view {
+        IERC20[] memory tokens = IVault(vault).getPoolTokens(pool);
+        uint256[] memory weights = IWeightedPool(pool).getNormalizedWeights();
+        uint256 numerator = _compute52PctNumerator(tokens, weights);
+        if (!IBasePoolFactory(approvedFactory).isPoolFromFactory(pool)) revert PoolTypeNotWhitelisted(approvedFactory);
+        uint256 tvl = ITVLOracle(tvlOracle).tvl(pool);
+        if (tvl < TVL_FLOOR_SVZCHF) revert TVLFloorNotMet(tvl, TVL_FLOOR_SVZCHF);
+        if (numerator < 0.52e18) revert InsufficientQualityGate(numerator);
     }
 }
