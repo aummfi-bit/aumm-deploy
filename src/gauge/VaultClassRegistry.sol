@@ -52,7 +52,7 @@ contract VaultClassRegistry {
      */
     struct VaultClassProposal {
         IVaultClassRegistry.AdmissionType admissionType; // fingerprint kind applying to admissionValue below
-        /// @notice For `AdmissionType.ImplementationAddress` — ERC-4626 implementation; factory address for FactoryAddress; sentinel/zero for BytecodeHash (constraints-only path).
+        /// @notice For `AdmissionType.ImplementationAddress` — ERC-4626 implementation; factory address for FactoryAddress; reserved for future use under BytecodeHash (deferred at G1.13-pre-B).
         address admissionValue;
         /// @notice Hash of off-chain / registry constraints associated with the fingerprint (G-D9).
         bytes32 constraintsHash;
@@ -129,6 +129,8 @@ contract VaultClassRegistry {
 
     error InvalidAdmissionType();
 
+    error BytecodeHashAdmissionDeferred();
+
     error ProposalAlreadyFinalized(uint256 proposalId);
 
     error VetoWindowExpired(uint256 proposalId);
@@ -181,6 +183,7 @@ contract VaultClassRegistry {
 
         for (uint256 i = 0; i < genesisTokens.length; ++i) {
             if (genesisTokens[i] == address(0)) revert ZeroAddress();
+            if (genesisTypes[i] == IVaultClassRegistry.AdmissionType.BytecodeHash) revert BytecodeHashAdmissionDeferred();
             if (admittedClasses[genesisTokens[i]]) revert DuplicateGenesisToken(genesisTokens[i]);
             admittedClasses[genesisTokens[i]] = true;
             admissionTypes[genesisTokens[i]] = genesisTypes[i];
@@ -206,5 +209,35 @@ contract VaultClassRegistry {
         if (governanceContract_ == address(0)) revert ZeroAddress();
         governanceContract = governanceContract_;
         governanceSetter = address(0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Public proposal entry point
+    // -------------------------------------------------------------------------
+
+    /// @notice Opens a vault-class proposal: pulls svZCHF bond per G-D12, forwards to Bodensee via `helper.donate` per G-D21 (registry owns magnitude).
+    /// @dev BytecodeHash proposals revert per G-D9 deferral-with-teeth; admission mutates only at finalize (G1.14).
+    function proposeVaultClass(
+        IVaultClassRegistry.AdmissionType admissionType,
+        address admissionValue,
+        bytes32 constraintsHash
+    ) external returns (uint256 proposalId) {
+        if (admissionType == IVaultClassRegistry.AdmissionType.BytecodeHash) revert BytecodeHashAdmissionDeferred();
+        if (admissionValue == address(0)) revert ZeroAddress();
+        if (admittedClasses[admissionValue]) revert ClassAlreadyAdmitted(admissionValue);
+        svZCHF.safeTransferFrom(msg.sender, address(this), PROPOSAL_BOND_SVZCHF);
+        svZCHF.safeTransfer(address(helper), PROPOSAL_BOND_SVZCHF);
+        helper.donate(svZCHF, PROPOSAL_BOND_SVZCHF);
+        proposalId = nextProposalId++;
+        proposals[proposalId] = VaultClassProposal({
+            admissionType: admissionType,
+            admissionValue: admissionValue,
+            constraintsHash: constraintsHash,
+            createdBlock: block.number,
+            vetoSupport: 0,
+            finalized: false,
+            revoked: false
+        });
+        emit VaultClassProposed(proposalId, msg.sender, admissionType, admissionValue, constraintsHash);
     }
 }
