@@ -227,9 +227,13 @@ contract SwapAndDepositToBodensee {
         uint8 sUsdsIndex_ = type(uint8).max;
         for (uint256 i = 0; i < len; ++i) {
             if (address(tokens[i]) == address(svZchf_)) {
+                // uint8(i) is safe: Bodensee is a 3-token pool by construction; len ≤ 3, i ∈ {0, 1, 2}; sentinel type(uint8).max reserved by the post-loop not-found check.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 svZchfIndex_ = uint8(i);
             }
             if (address(tokens[i]) == address(sUsds_)) {
+                // uint8(i) is safe: Bodensee is a 3-token pool by construction; len ≤ 3, i ∈ {0, 1, 2}; sentinel type(uint8).max reserved by the post-loop not-found check.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 sUsdsIndex_ = uint8(i);
             }
         }
