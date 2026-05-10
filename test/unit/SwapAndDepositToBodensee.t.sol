@@ -406,4 +406,176 @@ contract SwapAndDepositToBodenseeTest is Test {
         vm.prank(registry);
         helper.swapAndDeposit(IERC20(address(svZchf)), FEE_SVZCHF);
     }
+
+    function testConstructorZeroDonateAuthorizerReverts() public {
+        MockVault freshVault = new MockVault();
+        IERC20[] memory three = new IERC20[](3);
+        three[0] = IERC20(address(svZchf));
+        three[1] = IERC20(address(sUsds));
+        three[2] = IERC20(address(aumm));
+        freshVault.setTokens(three);
+
+        vm.expectRevert(SwapAndDepositToBodensee.ZeroAddress.selector);
+        new SwapAndDepositToBodensee(
+            IVault(address(freshVault)),
+            bodensee,
+            IERC20(address(svZchf)),
+            IERC20(address(sUsds)),
+            moduleAdmin,
+            address(0)
+        );
+    }
+
+    function testSetDonateAuthorizerOnlyByAuthorizer() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(0xDEAD))
+        );
+        helper.setDonateAuthorizer(address(0xAAAA));
+    }
+
+    function testSetDonateAuthorizerZeroAddressReverts() public {
+        vm.expectRevert(SwapAndDepositToBodensee.ZeroAddress.selector);
+        helper.setDonateAuthorizer(address(0));
+    }
+
+    function testSetDonateAuthorizerHappyPath() public {
+        address newAuth = address(0xAAAA);
+        vm.expectEmit(true, true, false, true, address(helper));
+        emit SwapAndDepositToBodensee.DonateAuthorizerSet(address(this), newAuth);
+        helper.setDonateAuthorizer(newAuth);
+        assertEq(helper.donateAuthorizer(), newAuth);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(this))
+        );
+        helper.setDonateAuthorizer(address(0xBBBB));
+
+        vm.prank(newAuth);
+        helper.setDonateAuthorizer(address(0xBBBB));
+        assertEq(helper.donateAuthorizer(), address(0xBBBB));
+    }
+
+    function testAddAuthorizedDonatorOnlyByAuthorizer() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(0xDEAD))
+        );
+        helper.addAuthorizedDonator(address(0xD1));
+    }
+
+    function testAddAuthorizedDonatorZeroAddressReverts() public {
+        vm.expectRevert(SwapAndDepositToBodensee.ZeroAddress.selector);
+        helper.addAuthorizedDonator(address(0));
+    }
+
+    function testAddAuthorizedDonatorAlreadyAuthorizedReverts() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.DonatorAlreadyAuthorized.selector, address(0xD1))
+        );
+        helper.addAuthorizedDonator(address(0xD1));
+    }
+
+    function testAddAuthorizedDonatorHappyPath() public {
+        vm.expectEmit(true, false, false, true, address(helper));
+        emit SwapAndDepositToBodensee.AuthorizedDonatorAdded(address(0xD1));
+        helper.addAuthorizedDonator(address(0xD1));
+        assertTrue(helper.authorizedDonators(address(0xD1)));
+    }
+
+    function testRemoveAuthorizedDonatorOnlyByAuthorizer() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(0xDEAD))
+        );
+        helper.removeAuthorizedDonator(address(0xD1));
+    }
+
+    function testRemoveAuthorizedDonatorNotAuthorizedReverts() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.DonatorNotAuthorized.selector, address(0xD1))
+        );
+        helper.removeAuthorizedDonator(address(0xD1));
+    }
+
+    function testRemoveAuthorizedDonatorHappyPath() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        vm.expectEmit(true, false, false, true, address(helper));
+        emit SwapAndDepositToBodensee.AuthorizedDonatorRemoved(address(0xD1));
+        helper.removeAuthorizedDonator(address(0xD1));
+        assertFalse(helper.authorizedDonators(address(0xD1)));
+
+        vm.prank(address(0xD1));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyAuthorizedDonator.selector, address(0xD1))
+        );
+        helper.donate(IERC20(address(svZchf)), 50e18);
+    }
+
+    function testDonateOnlyAuthorizedDonatorReverts() public {
+        vm.prank(address(0xDEAD));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyAuthorizedDonator.selector, address(0xDEAD))
+        );
+        helper.donate(IERC20(address(svZchf)), 50e18);
+    }
+
+    function testDonateInvalidPayTokenReverts() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        vm.prank(address(0xD1));
+        vm.expectRevert(
+            abi.encodeWithSelector(SwapAndDepositToBodensee.InvalidPayToken.selector, IERC20(address(0xBAD)))
+        );
+        helper.donate(IERC20(address(0xBAD)), 50e18);
+    }
+
+    function testDonateZeroAmountReverts() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        vm.prank(address(0xD1));
+        vm.expectRevert(SwapAndDepositToBodensee.ZeroAmount.selector);
+        helper.donate(IERC20(address(svZchf)), 0);
+    }
+
+    function testDonateReentrancyGuardFires() public {
+        vm.prank(moduleAdmin);
+        helper.setVaultClassRegistry(address(vault));
+        vm.prank(moduleAdmin);
+        helper.setGaugeRegistry(gauge);
+        helper.addAuthorizedDonator(address(vault));
+        vault.configureAttack(IERC20(address(svZchf)), FEE_SVZCHF);
+        vault.enableReentrancyAttack();
+        svZchf.mint(address(helper), 50e18);
+        vm.expectRevert(SwapAndDepositToBodensee.ReentrancyGuard.selector);
+        vm.prank(address(vault));
+        helper.donate(IERC20(address(svZchf)), 50e18);
+    }
+
+    function testDonateCallbackReachedAtNonFeeEqualAmount() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        svZchf.mint(address(helper), 50e18);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SwapAndDepositToBodensee.ReserveDeltaMismatch.selector,
+                1_050e18,
+                1_000e18
+            )
+        );
+        vm.prank(address(0xD1));
+        helper.donate(IERC20(address(svZchf)), 50e18);
+    }
+
+    function testDonateCallbackReachedAtOneWei() public {
+        helper.addAuthorizedDonator(address(0xD1));
+        svZchf.mint(address(helper), 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                SwapAndDepositToBodensee.ReserveDeltaMismatch.selector,
+                1_000e18 + 1,
+                1_000e18
+            )
+        );
+        vm.prank(address(0xD1));
+        helper.donate(IERC20(address(svZchf)), 1);
+    }
 }
