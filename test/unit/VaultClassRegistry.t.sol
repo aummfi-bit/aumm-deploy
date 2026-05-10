@@ -296,4 +296,89 @@ contract VaultClassRegistryTest is Test {
             types
         );
     }
+
+    function _propose(address admissionValue) internal returns (uint256 proposalId) {
+        vm.prank(proposer);
+        proposalId = registry.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            admissionValue,
+            bytes32(0)
+        );
+    }
+
+    function _warpPastWindow() internal {
+        vm.roll(block.number + registry.VETO_WINDOW_BLOCKS() + 1);
+    }
+
+    function testPropose_Success() public {
+        address admissionValue = makeAddr("newToken");
+        uint256 balBefore = svZCHF.balanceOf(proposer);
+        _propose(admissionValue);
+        assertEq(svZCHF.balanceOf(proposer), balBefore - registry.PROPOSAL_BOND_SVZCHF());
+        assertEq(svZCHF.balanceOf(proposer), PROPOSER_SVZCHF_BALANCE - registry.PROPOSAL_BOND_SVZCHF());
+        assertEq(registry.nextProposalId(), 1);
+        assertEq(mockHelper.donateCallCount(), 1);
+        assertEq(mockHelper.lastDonateAmount(), registry.PROPOSAL_BOND_SVZCHF());
+        assertEq(svZCHF.balanceOf(address(mockHelper)), registry.PROPOSAL_BOND_SVZCHF());
+        (,,,,, bool finalized, bool revoked) = registry.proposals(0);
+        assertFalse(finalized);
+        assertFalse(revoked);
+    }
+
+    function testVeto_SufficientWeight_KillsProposal() public {
+        address admissionValue = makeAddr("vetoKillAdmission");
+        _propose(admissionValue);
+        address vetoer = makeAddr("vetoer");
+        mockAuMT.setGovernanceWeight(vetoer, 100_000e18);
+        vm.prank(vetoer);
+        registry.vetoProposal(0);
+        (,,,,, bool finalized, bool revoked) = registry.proposals(0);
+        assertTrue(finalized);
+        assertTrue(revoked);
+        assertFalse(registry.admittedClasses(admissionValue));
+    }
+
+    function testVeto_InsufficientWeight_Accumulates() public {
+        address admissionValue = makeAddr("insufficientVetoAdmission");
+        _propose(admissionValue);
+        address vetoer = makeAddr("weakVetoer");
+        mockAuMT.setGovernanceWeight(vetoer, 99_999e18);
+        vm.prank(vetoer);
+        registry.vetoProposal(0);
+        (,,,, uint256 vetoSupp, bool finalized, bool revoked) = registry.proposals(0);
+        assertFalse(finalized);
+        assertFalse(revoked);
+        assertEq(vetoSupp, 99_999e18);
+    }
+
+    function testVeto_Cumulative_CrossesThreshold() public {
+        address admissionValue = makeAddr("cumulativeVetoAdmission");
+        _propose(admissionValue);
+        address vetoer1 = makeAddr("vetoer1");
+        address vetoer2 = makeAddr("vetoer2");
+        mockAuMT.setGovernanceWeight(vetoer1, 50_000e18);
+        mockAuMT.setGovernanceWeight(vetoer2, 50_000e18);
+        vm.prank(vetoer1);
+        registry.vetoProposal(0);
+        (,,,,, bool finalizedAfterFirst, bool revokedAfterFirst) = registry.proposals(0);
+        assertFalse(finalizedAfterFirst);
+        assertFalse(revokedAfterFirst);
+        vm.prank(vetoer2);
+        registry.vetoProposal(0);
+        (,,,,, bool finalized, bool revoked) = registry.proposals(0);
+        assertTrue(finalized);
+        assertTrue(revoked);
+    }
+
+    function testFinalize_AfterWindow_AdmitsClass() public {
+        address admissionValue = makeAddr("finalizeAdmission");
+        _propose(admissionValue);
+        _warpPastWindow();
+        registry.finalizeProposal(0);
+        (,,,,, bool finalized, bool revoked) = registry.proposals(0);
+        assertTrue(finalized);
+        assertFalse(revoked);
+        assertTrue(registry.admittedClasses(admissionValue));
+        assertEq(uint256(registry.admissionTypes(admissionValue)), uint256(IVaultClassRegistry.AdmissionType.ImplementationAddress));
+    }
 }
