@@ -118,6 +118,7 @@ contract SwapAndDepositToBodenseeForkTest is Test {
             bodenseePool,
             svZchf,
             IERC20(address(susds)),
+            address(this),
             address(this)
         );
         helper.setVaultClassRegistry(address(this));

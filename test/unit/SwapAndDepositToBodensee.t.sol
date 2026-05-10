@@ -169,7 +169,8 @@ contract SwapAndDepositToBodenseeTest is Test {
             bodensee,
             IERC20(address(svZchf)),
             IERC20(address(sUsds)),
-            moduleAdmin
+            moduleAdmin,
+            address(this)
         );
         vault.setHelper(address(helper));
     }
@@ -196,6 +197,7 @@ contract SwapAndDepositToBodenseeTest is Test {
             bodensee,
             IERC20(address(svZchf)),
             IERC20(address(sUsds)),
+            moduleAdmin,
             moduleAdmin
         );
     }
@@ -215,6 +217,7 @@ contract SwapAndDepositToBodenseeTest is Test {
             bodensee,
             IERC20(address(svZchf)),
             IERC20(address(sUsds)),
+            moduleAdmin,
             moduleAdmin
         );
     }

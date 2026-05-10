@@ -55,6 +55,12 @@ contract SwapAndDepositToBodensee {
     /// @notice Gauge registry — set post-deploy via one-shot setter (G1.5); zero before set ⇒ corresponding caller path unreachable per partial-activation invariant.
     address public gaugeRegistry;
 
+    /// @notice Donation authorizer — set at construction to deploy multisig per OQ-10; multi-shot, mutable post-deploy via `setDonateAuthorizer` per G-D21 authorizer-rotation.
+    address public donateAuthorizer;
+
+    /// @notice Runtime-mutable allowlist of contracts authorized to call `donate` per G-D21; populated post-deploy by the donateAuthorizer.
+    mapping(address => bool) public authorizedDonators;
+
     // -------------------------------------------------------------------------
     // Transient slot constants
     // -------------------------------------------------------------------------
@@ -121,6 +127,18 @@ contract SwapAndDepositToBodensee {
     /// @notice Callback args drift from cached payload.
     error CallbackPayloadMismatch();
 
+    /// @notice `donate` caller-gate miss — `msg.sender` not in `authorizedDonators` (G-D21).
+    error OnlyAuthorizedDonator(address caller);
+
+    /// @notice Authorization-mutator caller-gate miss — `msg.sender` not the donateAuthorizer (G-D21).
+    error OnlyDonateAuthorizer(address caller);
+
+    /// @notice `addAuthorizedDonator` called for a donator already in the allowlist (G-D21).
+    error DonatorAlreadyAuthorized(address donator);
+
+    /// @notice `removeAuthorizedDonator` called for a donator not currently in the allowlist (G-D21).
+    error DonatorNotAuthorized(address donator);
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
@@ -137,6 +155,15 @@ contract SwapAndDepositToBodensee {
     /// @notice Emitted by `setGaugeRegistry` after the slot is written and any atomic admin-burn (per G-D12 event surface).
     event GaugeRegistrySet(address indexed registry);
 
+    /// @notice Emitted by `setDonateAuthorizer` after the slot is rotated (G-D21).
+    event DonateAuthorizerSet(address indexed previous, address indexed current);
+
+    /// @notice Emitted by `addAuthorizedDonator` after the mapping is set true (G-D21).
+    event AuthorizedDonatorAdded(address indexed donator);
+
+    /// @notice Emitted by `removeAuthorizedDonator` after the mapping is cleared (G-D21).
+    event AuthorizedDonatorRemoved(address indexed donator);
+
     // -------------------------------------------------------------------------
     // Modifiers
     // -------------------------------------------------------------------------
@@ -145,6 +172,22 @@ contract SwapAndDepositToBodensee {
     modifier onlyAuthorizedCaller() {
         if (msg.sender != vaultClassRegistry && msg.sender != gaugeRegistry) {
             revert OnlyAuthorizedCaller(msg.sender);
+        }
+        _;
+    }
+
+    /// @notice `donate`-path caller-gate per G-D21 — variable-amount path is gated to the runtime allowlist, not the one-shot caller slots.
+    modifier onlyAuthorizedDonator() {
+        if (!authorizedDonators[msg.sender]) {
+            revert OnlyAuthorizedDonator(msg.sender);
+        }
+        _;
+    }
+
+    /// @notice Authorization-mutator caller-gate per G-D21.
+    modifier onlyDonateAuthorizer() {
+        if (msg.sender != donateAuthorizer) {
+            revert OnlyDonateAuthorizer(msg.sender);
         }
         _;
     }
@@ -161,19 +204,22 @@ contract SwapAndDepositToBodensee {
         address bodensee_,
         IERC20 svZchf_,
         IERC20 sUsds_,
-        address moduleAdmin_
+        address moduleAdmin_,
+        address donateAuthorizer_
     ) {
         if (address(vault_) == address(0)) revert ZeroAddress();
         if (bodensee_ == address(0)) revert ZeroAddress();
         if (address(svZchf_) == address(0)) revert ZeroAddress();
         if (address(sUsds_) == address(0)) revert ZeroAddress();
         if (moduleAdmin_ == address(0)) revert ZeroAddress();
+        if (donateAuthorizer_ == address(0)) revert ZeroAddress();
 
         _vault = vault_;
         _bodensee = bodensee_;
         _svZchf = svZchf_;
         _sUsds = sUsds_;
         moduleAdmin = moduleAdmin_;
+        donateAuthorizer = donateAuthorizer_;
 
         IERC20[] memory tokens = vault_.getPoolTokens(bodensee_);
         uint256 len = tokens.length;
@@ -227,6 +273,39 @@ contract SwapAndDepositToBodensee {
     }
 
     // -------------------------------------------------------------------------
+    // Donate authorization mutators (G-D21)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Rotates `donateAuthorizer` rights — multi-shot per G-D21 (Stage K hands authorizer from multisig to AureumGovernance).
+     */
+    function setDonateAuthorizer(address newAuthorizer) external onlyDonateAuthorizer {
+        if (newAuthorizer == address(0)) revert ZeroAddress();
+        address previous = donateAuthorizer;
+        donateAuthorizer = newAuthorizer;
+        emit DonateAuthorizerSet(previous, newAuthorizer);
+    }
+
+    /**
+     * @notice Adds `donator` to the `donate` allowlist — G-D21 trust boundary: no `code.length > 0` check; authorizer review duty is operational, not on-chain.
+     */
+    function addAuthorizedDonator(address donator) external onlyDonateAuthorizer {
+        if (donator == address(0)) revert ZeroAddress();
+        if (authorizedDonators[donator]) revert DonatorAlreadyAuthorized(donator);
+        authorizedDonators[donator] = true;
+        emit AuthorizedDonatorAdded(donator);
+    }
+
+    /**
+     * @notice Removes `donator` from the `donate` allowlist (G-D21).
+     */
+    function removeAuthorizedDonator(address donator) external onlyDonateAuthorizer {
+        if (!authorizedDonators[donator]) revert DonatorNotAuthorized(donator);
+        authorizedDonators[donator] = false;
+        emit AuthorizedDonatorRemoved(donator);
+    }
+
+    // -------------------------------------------------------------------------
     // External entry points
     // -------------------------------------------------------------------------
 
@@ -252,6 +331,36 @@ contract SwapAndDepositToBodensee {
         uint256 required = _requiredAmount(payToken);
         if (amount != required) {
             revert IncorrectAmount(amount, required);
+        }
+        if (_EXECUTING_SLOT.asBoolean().tload()) {
+            revert ReentrancyGuard();
+        }
+        _EXECUTING_SLOT.asBoolean().tstore(true);
+        _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(payToken));
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(amount);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(msg.sender);
+        _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
+        _EXECUTING_SLOT.asBoolean().tstore(false);
+        _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
+        uint256 residual = payToken.balanceOf(address(this));
+        if (residual != 0) {
+            revert HelperBalanceNonZero(residual);
+        }
+    }
+
+    /**
+     * @notice Variable-amount DONATION entry point per G-D21 — gated to the `authorizedDonators` allowlist; serves vault-class admission bonds (G-D9 path #2), F-12 gauge-challenge deposits (Stage K path #3), composition-challenge deposits (Stage K/O path #4), and fee-proposal deposits (Stage K path #5). Reuses the same nine-step `_swapAndDepositCallback` and four transient slots as `swapAndDeposit`; the only validation surface delta vs `swapAndDeposit` is the absence of the magnitude check (variable `amount` flows through unchecked at the helper layer per G-D21 trust boundary — caller's bond math is upstream).
+     * @param payToken svZCHF or sUSDS.
+     * @param amount Variable amount; magnitude validation is the upstream caller's responsibility per G-D21.
+     */
+    function donate(IERC20 payToken, uint256 amount) external onlyAuthorizedDonator {
+        if (payToken != _svZchf && payToken != _sUsds) {
+            revert InvalidPayToken(payToken);
+        }
+        if (amount == 0) {
+            revert ZeroAmount();
         }
         if (_EXECUTING_SLOT.asBoolean().tload()) {
             revert ReentrancyGuard();
