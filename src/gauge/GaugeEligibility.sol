@@ -100,4 +100,72 @@ contract GaugeEligibility {
     error InsufficientQualityGate(uint256 numerator);
 
     error EfficiencyDataUnavailable(address pool);
+
+    // -------------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Wires the six deploy-time dependencies for eligibility evaluation and the 52% numerator path.
+     * @dev Assigns all immutables after **G-D15a** / G-D8 / OQ-1 address validation — any zero input reverts **ZeroAddress** before storage binds.
+     * @param approvedFactory_ Balancer pool factory admitted for G-D15a singleton equality checks.
+     * @param vaultClassRegistry_ **G-D8** `VaultClassRegistry` for ERC-4626 class admission look-ups.
+     * @param tvlOracle_ Oracle binding for TVL / fee inputs at **G2.4+** / **G2.5**.
+     * @param vault_ Balancer V3 vault for pool token reads at **G2.4+**.
+     * @param auMM_ T-I3 forbidden token — AuMM.
+     * @param auMT_ T-I3 forbidden token — AuMT.
+     */
+    constructor(
+        address approvedFactory_,
+        address vaultClassRegistry_,
+        address tvlOracle_,
+        address vault_,
+        address auMM_,
+        address auMT_
+    ) {
+        if (approvedFactory_ == address(0)) revert ZeroAddress();
+        if (vaultClassRegistry_ == address(0)) revert ZeroAddress();
+        if (tvlOracle_ == address(0)) revert ZeroAddress();
+        if (vault_ == address(0)) revert ZeroAddress();
+        if (auMM_ == address(0)) revert ZeroAddress();
+        if (auMT_ == address(0)) revert ZeroAddress();
+
+        approvedFactory = approvedFactory_;
+        vaultClassRegistry = vaultClassRegistry_;
+        tvlOracle = tvlOracle_;
+        vault = vault_;
+        _auMM = auMM_;
+        _auMT = auMT_;
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Accumulates normalized weights for ERC-4626 pool tokens whose underlying implementation class is admitted — the **G-D8** 52% Quality Gate numerator.
+     * @dev **G-D10** — `try IERC4626(token).asset()`/`catch` discriminates ERC-4626Claiming candidates from plain ERC-20s; **T-I3** blocks AuMM / AuMT before the probe. Non-4626 tokens hit an empty `catch` and add **0**; admitted 4626 tokens add `weights[i]`.
+     * @param tokens Pool token set aligned index-wise with `weights`.
+     * @param weights Normalized weights from `IBasePool.getNormalizedWeights` — same length as `tokens`.
+     * @return numerator Sum of weights for admitted ERC-4626 classes, **1e18**-scale fixed-point compatible with the half-pool bar.
+     */
+    function _compute52PctNumerator(IERC20[] memory tokens, uint256[] memory weights)
+        internal
+        view
+        returns (uint256 numerator)
+    {
+        uint256 length = tokens.length;
+        for (uint256 i = 0; i < length; ++i) {
+            address token = address(tokens[i]);
+            if (token == _auMM || token == _auMT) revert ForbiddenToken(token);
+
+            try IERC4626(token).asset() returns (address) {
+                if (IVaultClassRegistry(vaultClassRegistry).isAdmittedClass(token)) {
+                    numerator += weights[i];
+                }
+            } catch {
+                // Plain ERC-20 — no numerator contribution (G-D10 empty catch).
+            }
+        }
+    }
 }
