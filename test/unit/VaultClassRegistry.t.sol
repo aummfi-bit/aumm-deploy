@@ -94,6 +94,18 @@ contract VaultClassRegistryTest is Test {
 
     uint256 internal constant PROPOSER_SVZCHF_BALANCE = 100_000e18;
 
+    event VaultClassProposed(
+        uint256 indexed proposalId,
+        address indexed proposer,
+        IVaultClassRegistry.AdmissionType admissionType,
+        address admissionValue,
+        bytes32 constraintsHash
+    );
+
+    event VaultClassVetoed(uint256 indexed proposalId, address indexed vetoer, uint256 weight);
+
+    event VaultClassFinalized(uint256 indexed proposalId, address indexed admissionValue);
+
     function setUp() public {
         svZCHF = new MockERC20("svZCHF", "svZCHF", 18);
         mockHelper = new MockSwapAndDepositToBodensee();
@@ -380,5 +392,187 @@ contract VaultClassRegistryTest is Test {
         assertFalse(revoked);
         assertTrue(registry.admittedClasses(admissionValue));
         assertEq(uint256(registry.admissionTypes(admissionValue)), uint256(IVaultClassRegistry.AdmissionType.ImplementationAddress));
+    }
+
+    function testVeto_AfterWindow_Reverts() public {
+        address admissionValue = makeAddr("afterWindow");
+        uint256 proposalId = _propose(admissionValue);
+        address vetoer = makeAddr("lateVetoer");
+        _warpPastWindow();
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.VetoWindowExpired.selector, proposalId));
+        vm.prank(vetoer);
+        registry.vetoProposal(proposalId);
+    }
+
+    function testFinalize_BeforeWindow_Reverts() public {
+        address admissionValue = makeAddr("beforeWindow");
+        uint256 proposalId = _propose(admissionValue);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.VetoWindowOpen.selector, proposalId));
+        registry.finalizeProposal(proposalId);
+    }
+
+    function testVeto_AlreadyFinalized_Reverts() public {
+        address admissionValue = makeAddr("doubleVeto");
+        uint256 proposalId = _propose(admissionValue);
+        address vetoer = makeAddr("vetoerFinalize");
+        mockAuMT.setGovernanceWeight(vetoer, 100_000e18);
+        vm.prank(vetoer);
+        registry.vetoProposal(proposalId);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ProposalAlreadyFinalized.selector, proposalId));
+        vm.prank(vetoer);
+        registry.vetoProposal(proposalId);
+    }
+
+    function testFinalize_AlreadyFinalized_Reverts() public {
+        address admissionValue = makeAddr("doubleFinalize");
+        uint256 proposalId = _propose(admissionValue);
+        _warpPastWindow();
+        registry.finalizeProposal(proposalId);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ProposalAlreadyFinalized.selector, proposalId));
+        registry.finalizeProposal(proposalId);
+    }
+
+    function testRevoke_NonGovernance_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.OnlyGovernance.selector, address(this)));
+        registry.revokeVaultClass(genesisTokenA);
+    }
+
+    function testRevoke_ClassNotAdmitted_Reverts() public {
+        address stranger = makeAddr("stranger");
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ClassNotAdmitted.selector, stranger));
+        vm.prank(governance);
+        registry.revokeVaultClass(stranger);
+    }
+
+    function testRevoke_GenesisToken_Success() public {
+        vm.prank(governance);
+        registry.revokeVaultClass(genesisTokenA);
+        assertFalse(registry.isAdmittedClass(genesisTokenA));
+    }
+
+    function testPropose_BytecodeHash_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.BytecodeHashAdmissionDeferred.selector);
+        vm.prank(proposer);
+        registry.proposeVaultClass(IVaultClassRegistry.AdmissionType.BytecodeHash, makeAddr("bhAdmission"), bytes32(0));
+    }
+
+    function testPropose_ClassAlreadyAdmitted_Reverts() public {
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ClassAlreadyAdmitted.selector, genesisTokenA));
+        vm.prank(proposer);
+        registry.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            genesisTokenA,
+            bytes32(0)
+        );
+    }
+
+    function testSetAuMT_ReCall_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.OnlyAuMTSetter.selector);
+        vm.prank(auMTSetter);
+        registry.setAuMT(address(mockAuMT));
+    }
+
+    function testSetGovernanceContract_ReCall_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.OnlyGovernanceSetter.selector);
+        vm.prank(governanceSetter);
+        registry.setGovernanceContract(governance);
+    }
+
+    function testSetAuMT_ZeroAddress_Reverts() public {
+        address setter = makeAddr("bareAuMTSetter");
+        VaultClassRegistry bare = new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            setter,
+            makeAddr("bareGovSetterAuMT"),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        vm.prank(setter);
+        bare.setAuMT(address(0));
+    }
+
+    function testSetGovernanceContract_ZeroAddress_Reverts() public {
+        address setter = makeAddr("bareGovSetter");
+        VaultClassRegistry bare = new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("bareAuMTZeroGov"),
+            setter,
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        vm.prank(setter);
+        bare.setGovernanceContract(address(0));
+    }
+
+    function testVeto_PreSetAuMT_Reverts() public {
+        VaultClassRegistry bare = new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("unusedAuMTSetter"),
+            makeAddr("unusedGovSetter"),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+        vm.prank(proposer);
+        svZCHF.approve(address(bare), type(uint256).max);
+        vm.prank(proposer);
+        bare.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            makeAddr("preAuMTAdmission"),
+            bytes32(0)
+        );
+        vm.expectRevert();
+        bare.vetoProposal(0);
+    }
+
+    function testRevoke_PreSetGovernanceContract_Reverts() public {
+        address genesisToken = makeAddr("bareGenesis");
+        address[] memory tokens = new address[](1);
+        tokens[0] = genesisToken;
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](1);
+        types[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+        VaultClassRegistry bare = new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("bareAuMTRevoke"),
+            makeAddr("bareGovSetterRevoke"),
+            tokens,
+            types
+        );
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.OnlyGovernance.selector, address(this)));
+        bare.revokeVaultClass(genesisToken);
+    }
+
+    function testPropose_EmitsVaultClassProposed() public {
+        address admissionValue = makeAddr("emitPropose");
+        vm.expectEmit(true, true, false, true);
+        emit VaultClassProposed(0, proposer, IVaultClassRegistry.AdmissionType.ImplementationAddress, admissionValue, bytes32(0));
+        _propose(admissionValue);
+    }
+
+    function testVeto_EmitsVaultClassVetoed() public {
+        address admissionValue = makeAddr("emitVeto");
+        uint256 proposalId = 0;
+        _propose(admissionValue);
+        address vetoer = makeAddr("emitVetoer");
+        mockAuMT.setGovernanceWeight(vetoer, 50_000e18);
+        vm.expectEmit(true, true, false, true);
+        emit VaultClassVetoed(proposalId, vetoer, 50_000e18);
+        vm.prank(vetoer);
+        registry.vetoProposal(proposalId);
+    }
+
+    function testFinalize_EmitsVaultClassFinalized() public {
+        address admissionValue = makeAddr("emitFinalize");
+        uint256 proposalId = 0;
+        _propose(admissionValue);
+        _warpPastWindow();
+        vm.expectEmit(true, true, false, false);
+        emit VaultClassFinalized(proposalId, admissionValue);
+        registry.finalizeProposal(proposalId);
     }
 }
