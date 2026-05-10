@@ -47,23 +47,23 @@ contract MockAuMT is IAuMT {
         return _totalSupply;
     }
 
-    function balanceOf(address) external view returns (uint256) {
+    function balanceOf(address) external pure returns (uint256) {
         return 0;
     }
 
-    function allowance(address, address) external view returns (uint256) {
+    function allowance(address, address) external pure returns (uint256) {
         return 0;
     }
 
-    function transfer(address, uint256) external returns (bool) {
+    function transfer(address, uint256) external pure returns (bool) {
         return false;
     }
 
-    function approve(address, uint256) external returns (bool) {
+    function approve(address, uint256) external pure returns (bool) {
         return false;
     }
 
-    function transferFrom(address, address, uint256) external returns (bool) {
+    function transferFrom(address, address, uint256) external pure returns (bool) {
         return false;
     }
 }
@@ -133,5 +133,167 @@ contract VaultClassRegistryTest is Test {
 
         vm.prank(proposer);
         svZCHF.approve(address(registry), type(uint256).max);
+    }
+
+    function testGenesisTokenA_Admitted() public view {
+        assertTrue(registry.isAdmittedClass(genesisTokenA));
+    }
+
+    function testGenesisTokenB_Admitted() public view {
+        assertTrue(registry.isAdmittedClass(genesisTokenB));
+    }
+
+    function testGenesisAdmissionType_TokenA() public view {
+        assertEq(uint256(registry.admissionType(genesisTokenA)), uint256(IVaultClassRegistry.AdmissionType.ImplementationAddress));
+    }
+
+    function testGenesisAdmissionType_TokenB() public view {
+        assertEq(uint256(registry.admissionType(genesisTokenB)), uint256(IVaultClassRegistry.AdmissionType.FactoryAddress));
+    }
+
+    function testNonGenesisToken_NotAdmitted() public {
+        assertFalse(registry.isAdmittedClass(makeAddr("stranger")));
+    }
+
+    function testConstructorZeroSvZCHF_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        new VaultClassRegistry(
+            IERC20(address(0)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+    }
+
+    function testConstructorZeroHelper_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(0)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+    }
+
+    function testConstructorZeroAuMTSetter_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            address(0),
+            makeAddr("s2"),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+    }
+
+    function testConstructorZeroGovernanceSetter_Reverts() public {
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            address(0),
+            new address[](0),
+            new IVaultClassRegistry.AdmissionType[](0)
+        );
+    }
+
+    function testGenesisLengthMismatch_Reverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = makeAddr("lenMismatchA");
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](2);
+        types[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+        types[1] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.GenesisLengthMismatch.selector, uint256(1), uint256(2)));
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            tokens,
+            types
+        );
+    }
+
+    function testGenesisOverflow_Reverts() public {
+        uint256 cap = registry.MAX_GENESIS_CLASSES();
+        address[] memory tokens = new address[](cap + 1);
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](cap + 1);
+        for (uint256 i = 0; i < cap + 1; ++i) {
+            tokens[i] = makeAddr(vm.toString(i));
+            types[i] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(VaultClassRegistry.GenesisOverflow.selector, uint256(cap + 1), cap)
+        );
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            tokens,
+            types
+        );
+    }
+
+    function testGenesisDuplicate_Reverts() public {
+        address dup = makeAddr("dupGenesis");
+        address[] memory tokens = new address[](2);
+        tokens[0] = dup;
+        tokens[1] = dup;
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](2);
+        types[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+        types[1] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.DuplicateGenesisToken.selector, dup));
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            tokens,
+            types
+        );
+    }
+
+    function testGenesisBytecodeHash_Reverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = makeAddr("bhGenesis");
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](1);
+        types[0] = IVaultClassRegistry.AdmissionType.BytecodeHash;
+
+        vm.expectRevert(VaultClassRegistry.BytecodeHashAdmissionDeferred.selector);
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            tokens,
+            types
+        );
+    }
+
+    function testGenesisZeroAddress_Reverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(0);
+        IVaultClassRegistry.AdmissionType[] memory types = new IVaultClassRegistry.AdmissionType[](1);
+        types[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+
+        vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
+        new VaultClassRegistry(
+            IERC20(address(svZCHF)),
+            SwapAndDepositToBodensee(address(mockHelper)),
+            makeAddr("s1"),
+            makeAddr("s2"),
+            tokens,
+            types
+        );
     }
 }
