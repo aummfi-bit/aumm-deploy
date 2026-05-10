@@ -11,10 +11,9 @@ import {IAuMT} from "../token/IAuMT.sol";
 /**
  * @title VaultClassRegistry
  * @notice Frankencoin-inspired propose-veto-finalize-revoke registry for ERC-4626 vault classes counted toward the 52% Quality Gate numerator per G-D8 + G-D9.
- * @dev Constructor body, propose / veto / finalize / revoke functions, setters, and `IVaultClassRegistry` inheritance + view bridges land at G1.12+;
- *      this scaffold ships only types / state / immutables / constants / errors / events surface per G-D9 + G-D19 (G1.9 tunables lock).
+ * @dev Ships full propose-veto-finalize-revoke surface per G-D9 + G-D19 (G1.9 tunables lock); inherits `IVaultClassRegistry` per G1.10 surface — `isAdmittedClass(token)` / `admissionType(token)` view bridges forward to existing `admittedClasses` / `admissionTypes` storage mappings.
  */
-contract VaultClassRegistry {
+contract VaultClassRegistry is IVaultClassRegistry {
     using SafeERC20 for IERC20;
 
     // -------------------------------------------------------------------------
@@ -222,17 +221,31 @@ contract VaultClassRegistry {
     }
 
     // -------------------------------------------------------------------------
+    // View bridges (`IVaultClassRegistry`)
+    // -------------------------------------------------------------------------
+
+    /// @inheritdoc IVaultClassRegistry
+    function isAdmittedClass(address token) external view override returns (bool) {
+        return admittedClasses[token];
+    }
+
+    /// @inheritdoc IVaultClassRegistry
+    function admissionType(address token) external view override returns (IVaultClassRegistry.AdmissionType) {
+        return admissionTypes[token];
+    }
+
+    // -------------------------------------------------------------------------
     // Public proposal entry point
     // -------------------------------------------------------------------------
 
     /// @notice Opens a vault-class proposal: pulls svZCHF bond per G-D12, forwards to Bodensee via `helper.donate` per G-D21 (registry owns magnitude).
     /// @dev BytecodeHash proposals revert per G-D9 deferral-with-teeth; admission mutates only at finalize (G1.14).
     function proposeVaultClass(
-        IVaultClassRegistry.AdmissionType admissionType,
+        IVaultClassRegistry.AdmissionType admissionType_,
         address admissionValue,
         bytes32 constraintsHash
     ) external returns (uint256 proposalId) {
-        if (admissionType == IVaultClassRegistry.AdmissionType.BytecodeHash) revert BytecodeHashAdmissionDeferred();
+        if (admissionType_ == IVaultClassRegistry.AdmissionType.BytecodeHash) revert BytecodeHashAdmissionDeferred();
         if (admissionValue == address(0)) revert ZeroAddress();
         if (admittedClasses[admissionValue]) revert ClassAlreadyAdmitted(admissionValue);
         svZCHF.safeTransferFrom(msg.sender, address(this), PROPOSAL_BOND_SVZCHF);
@@ -240,7 +253,7 @@ contract VaultClassRegistry {
         helper.donate(svZCHF, PROPOSAL_BOND_SVZCHF);
         proposalId = nextProposalId++;
         proposals[proposalId] = VaultClassProposal({
-            admissionType: admissionType,
+            admissionType: admissionType_,
             admissionValue: admissionValue,
             constraintsHash: constraintsHash,
             createdBlock: block.number,
@@ -248,7 +261,7 @@ contract VaultClassRegistry {
             finalized: false,
             revoked: false
         });
-        emit VaultClassProposed(proposalId, msg.sender, admissionType, admissionValue, constraintsHash);
+        emit VaultClassProposed(proposalId, msg.sender, admissionType_, admissionValue, constraintsHash);
     }
 
     // -------------------------------------------------------------------------
