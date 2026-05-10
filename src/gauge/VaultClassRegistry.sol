@@ -240,4 +240,35 @@ contract VaultClassRegistry {
         });
         emit VaultClassProposed(proposalId, msg.sender, admissionType, admissionValue, constraintsHash);
     }
+
+    // -------------------------------------------------------------------------
+    // Veto + finalize entry points
+    // -------------------------------------------------------------------------
+
+    /// @notice Records AuMT-weighted veto support during the window per G-D9 / G-D19; crossing threshold auto-revokes the proposal.
+    /// @dev Emits `VaultClassVetoed` on every call; bond remains in Bodensee on successful veto per G-D9.
+    function vetoProposal(uint256 proposalId) external {
+        VaultClassProposal storage proposal = proposals[proposalId];
+        if (proposal.finalized || proposal.revoked) revert ProposalAlreadyFinalized(proposalId);
+        if (block.number > proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowExpired(proposalId);
+        uint256 weight = auMT.governanceWeight(msg.sender);
+        proposal.vetoSupport += weight;
+        if ((proposal.vetoSupport * 10_000) / auMT.totalSupply() >= VETO_THRESHOLD_BPS) {
+            proposal.finalized = true;
+            proposal.revoked = true;
+        }
+        emit VaultClassVetoed(proposalId, msg.sender, weight);
+    }
+
+    /// @notice Admits the class after veto window expiry per G-D9 auto-finalize; permissionless caller.
+    /// @dev Mutates `admittedClasses` / `admissionTypes`; emits `VaultClassFinalized` (G-D19 window constant).
+    function finalizeProposal(uint256 proposalId) external {
+        VaultClassProposal storage proposal = proposals[proposalId];
+        if (proposal.finalized) revert ProposalAlreadyFinalized(proposalId);
+        if (block.number <= proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowOpen(proposalId);
+        proposal.finalized = true;
+        admittedClasses[proposal.admissionValue] = true;
+        admissionTypes[proposal.admissionValue] = proposal.admissionType;
+        emit VaultClassFinalized(proposalId, proposal.admissionValue);
+    }
 }
