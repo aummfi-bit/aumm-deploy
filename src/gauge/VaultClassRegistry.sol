@@ -156,6 +156,16 @@ contract VaultClassRegistry {
     error OnlyGovernanceSetter();
 
     // -------------------------------------------------------------------------
+    // Modifiers
+    // -------------------------------------------------------------------------
+
+    /// @notice Gates governance-only surfaces until `setGovernanceContract` wires a non-zero binding (pre-setter callers revert).
+    modifier onlyGovernance() {
+        if (msg.sender != governanceContract) revert OnlyGovernance(msg.sender);
+        _;
+    }
+
+    // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
@@ -270,5 +280,17 @@ contract VaultClassRegistry {
         admittedClasses[proposal.admissionValue] = true;
         admissionTypes[proposal.admissionValue] = proposal.admissionType;
         emit VaultClassFinalized(proposalId, proposal.admissionValue);
+    }
+
+    // -------------------------------------------------------------------------
+    // Revocation entry point
+    // -------------------------------------------------------------------------
+
+    /// @notice Governance-gated revocation per G-D9 "Revocable-with-grandfather"; pool grace-period logic is GaugeRegistry G3 (G-D8).
+    /// @dev Class-layer is non-terminal per G-D17 — re-admission follows propose-veto-finalize; `admissionTypes` left stale until a later finalize.
+    function revokeVaultClass(address admissionValue) external onlyGovernance {
+        if (!admittedClasses[admissionValue]) revert ClassNotAdmitted(admissionValue);
+        admittedClasses[admissionValue] = false;
+        emit VaultClassRevoked(admissionValue);
     }
 }
