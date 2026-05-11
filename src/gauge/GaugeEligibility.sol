@@ -194,6 +194,101 @@ contract GaugeEligibility {
     }
 
     // -------------------------------------------------------------------------
+    // External — F-10 efficiency tournament (G-D3 + OQ-G1 + G-D22 + G-D23)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice F-10 efficiency tournament epoch snapshot per **G-D3** + **OQ-G1** + **T-I5** + **G-D5** + **G-D22** + **G-D23** — reads pre-smoothed efficiency inputs, ranks post-grace survivors, assigns cohorts, emits transition events on cohort crossings.
+     * @dev Caller-gated by **G-D22** via `onlyGaugeRegistry` (the wired GaugeRegistry binding from G2.4-post's F-D23 one-shot setter). Per-pool zero-handling precedence per **G-D23 (v)**: cold-start grace (first sighting writes `firstTournamentEpoch[pool] = newEpoch`, pool is skipped without revert) → warmup window (`newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS`, pool is skipped without revert) → post-warmup `denominatorSma == 0` reverts `EfficiencyDataUnavailable(pool)` → ratio compute `(numeratorSma * 1e18) / denominatorSma` (1e18 fixed-point, dimensionless per F-10 price-agnostic). Survivors sorted descending by `efficiencyRatio` via in-memory insertion sort with address-ascending tiebreak per **G-D23 (iv)** / **T-T3** stable-sort determinism — no storage write during sort. Cutoff `favoredCount = (nRanked * 15 + 99) / 100` per **G-D3** ceiling arithmetic. Transition events fire exactly once per pool per epoch per **G-D5** with reshaped ABI per **G-D23 (iii)**: top-to-bottom → `GaugeEfficiencyDropped` (**T-T2**); bottom-to-top → `GaugeEfficiencyRising` (**T-T1**). Per-pool emission-share caps NOT applied here — F-10 caps deferred to Stage H emission distributor per **G-D15b**. Caller (GaugeRegistry) responsible for passing a deduped `eligiblePools` set.
+     * @param eligiblePools Pre-filtered set of eligible Balancer V3 pools (deduped by caller per G-D22).
+     */
+    function computeEpochSnapshot(address[] calldata eligiblePools) external onlyGaugeRegistry {
+        uint256 newEpoch = currentSnapshotEpoch + 1;
+        uint256 totalLen = eligiblePools.length;
+
+        address[] memory rankedPools = new address[](totalLen);
+        uint256[] memory rankedNumeratorSma = new uint256[](totalLen);
+        uint256[] memory rankedDenominatorSma = new uint256[](totalLen);
+        uint256[] memory rankedRatios = new uint256[](totalLen);
+        uint256 nRanked = 0;
+
+        // Pass 1 — oracle read + zero-handling precedence per G-D23 (v).
+        for (uint256 i = 0; i < totalLen; ++i) {
+            address pool = eligiblePools[i];
+            (uint256 numeratorSma, uint256 denominatorSma) =
+                IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
+
+            if (firstTournamentEpoch[pool] == 0) {
+                firstTournamentEpoch[pool] = newEpoch;
+                continue;
+            }
+
+            if (newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS) {
+                continue;
+            }
+
+            if (denominatorSma == 0) {
+                revert EfficiencyDataUnavailable(pool);
+            }
+
+            uint256 efficiencyRatio = (numeratorSma * 1e18) / denominatorSma;
+
+            rankedPools[nRanked] = pool;
+            rankedNumeratorSma[nRanked] = numeratorSma;
+            rankedDenominatorSma[nRanked] = denominatorSma;
+            rankedRatios[nRanked] = efficiencyRatio;
+            ++nRanked;
+        }
+
+        // Pass 2 — insertion sort: descending by ratio, ascending by address on tie (G-D23 (iv) / T-T3).
+        for (uint256 i = 1; i < nRanked; ++i) {
+            address poolI = rankedPools[i];
+            uint256 numI = rankedNumeratorSma[i];
+            uint256 denomI = rankedDenominatorSma[i];
+            uint256 ratioI = rankedRatios[i];
+            uint256 j = i;
+            while (
+                j > 0 &&
+                (rankedRatios[j - 1] < ratioI ||
+                    (rankedRatios[j - 1] == ratioI && rankedPools[j - 1] > poolI))
+            ) {
+                rankedPools[j] = rankedPools[j - 1];
+                rankedNumeratorSma[j] = rankedNumeratorSma[j - 1];
+                rankedDenominatorSma[j] = rankedDenominatorSma[j - 1];
+                rankedRatios[j] = rankedRatios[j - 1];
+                --j;
+            }
+            rankedPools[j] = poolI;
+            rankedNumeratorSma[j] = numI;
+            rankedDenominatorSma[j] = denomI;
+            rankedRatios[j] = ratioI;
+        }
+
+        // Pass 3 — ceiling 15% cutoff + cohort assignment + transition events (G-D3 + G-D5).
+        uint256 favoredCount = (nRanked * 15 + 99) / 100;
+        for (uint256 i = 0; i < nRanked; ++i) {
+            address pool = rankedPools[i];
+            bool wasFavored = isFavoredCohort[pool];
+            bool isFavored = i < favoredCount;
+
+            if (wasFavored && !isFavored) {
+                emit GaugeEfficiencyDropped(
+                    pool, newEpoch, rankedNumeratorSma[i], rankedDenominatorSma[i], rankedRatios[i]
+                );
+            } else if (!wasFavored && isFavored) {
+                emit GaugeEfficiencyRising(
+                    pool, newEpoch, rankedNumeratorSma[i], rankedDenominatorSma[i], rankedRatios[i]
+                );
+            }
+
+            isFavoredCohort[pool] = isFavored;
+            lastSnapshotEpoch[pool] = newEpoch;
+        }
+
+        currentSnapshotEpoch = newEpoch;
+    }
+
+    // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
 
