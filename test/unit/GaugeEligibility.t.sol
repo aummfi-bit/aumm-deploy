@@ -514,3 +514,345 @@ contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
     }
 }
 
+/// @notice T-I5 arbitrary-contract caller test helper for `computeEpochSnapshot` modifier coverage.
+contract _SnapshotAttacker {
+    GaugeEligibility public eligibility;
+
+    constructor(GaugeEligibility e) {
+        eligibility = e;
+    }
+
+    function attack(address[] calldata pools) external {
+        eligibility.computeEpochSnapshot(pools);
+    }
+}
+
+/// @notice G2.7c — computeEpochSnapshot matrix per STAGE_G_PLAN.md L357-L361.
+contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
+    event GaugeEfficiencyRising(
+        address indexed pool,
+        uint256 indexed epoch,
+        uint256 numeratorSma,
+        uint256 denominatorSma,
+        uint256 efficiencyRatio
+    );
+
+    event GaugeEfficiencyDropped(
+        address indexed pool,
+        uint256 indexed epoch,
+        uint256 numeratorSma,
+        uint256 denominatorSma,
+        uint256 efficiencyRatio
+    );
+
+    function _advanceWarmup(address[] memory pools) internal {
+        for (uint256 i = 0; i < 3; ++i) {
+            vm.prank(gaugeRegistry);
+            eligibility.computeEpochSnapshot(pools);
+        }
+    }
+
+    function testNonGaugeRegistryEOAReverts() public {
+        address eoa = makeAddr("eoa");
+        vm.prank(eoa);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, eoa));
+        eligibility.computeEpochSnapshot(new address[](0));
+    }
+
+    function testNonGaugeRegistrySetterReverts() public {
+        vm.prank(gaugeRegistrySetter);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, gaugeRegistrySetter));
+        eligibility.computeEpochSnapshot(new address[](0));
+    }
+
+    function testNonGaugeRegistryArbitraryContractReverts() public {
+        _SnapshotAttacker attacker = new _SnapshotAttacker(eligibility);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, address(attacker)));
+        attacker.attack(new address[](0));
+    }
+
+    function testColdStartGraceFirstSightingDoesNotRevertOrEmit() public {
+        address p = makeAddr("p");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        vm.recordLogs();
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
+        assertEq(eligibility.isFavoredCohort(p), false);
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(eligibility.currentSnapshotEpoch(), 1);
+    }
+
+    function testColdStartGraceWithZeroDenominatorDoesNotRevert() public {
+        address p = makeAddr("pZeroDenom");
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
+    }
+
+    function testWarmupWindowSkipsWithoutEventOrRevert() public {
+        address p = makeAddr("pWarmSkip");
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+        vm.recordLogs();
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(eligibility.currentSnapshotEpoch(), 3);
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+    }
+
+    function testEfficiencyDataUnavailableRevertsPostWarmup() public {
+        address p = makeAddr("pEffUnavailable");
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        _advanceWarmup(pools);
+
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.EfficiencyDataUnavailable.selector, p));
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+    }
+
+    function testGaugeEfficiencyRisingEmitsOnAscension() public {
+        address p = makeAddr("pRisingAscend");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        _advanceWarmup(pools);
+
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit GaugeEfficiencyRising(p, 4, 100e18, 50e18, 2e18);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.isFavoredCohort(p), true);
+        assertEq(eligibility.lastSnapshotEpoch(p), 4);
+    }
+
+    function testGaugeEfficiencyDroppedEmitsOnDescent() public {
+        address a = address(uint160(0x1111));
+        address b = address(uint160(0x2222));
+        mockEfficiencyOracle.setEfficiencyInputs(a, 200e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(b, 100e18, 50e18);
+        address[] memory pools = new address[](2);
+        pools[0] = a;
+        pools[1] = b;
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        mockEfficiencyOracle.setEfficiencyInputs(a, 100e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit GaugeEfficiencyRising(b, 5, 200e18, 50e18, 4e18);
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit GaugeEfficiencyDropped(a, 5, 100e18, 50e18, 2e18);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.isFavoredCohort(a), false);
+        assertEq(eligibility.isFavoredCohort(b), true);
+    }
+
+    function testTieBreakAddressAscendingWins() public {
+        address low = address(uint160(0x1111));
+        address high = address(uint160(0x2222));
+        mockEfficiencyOracle.setEfficiencyInputs(low, 100e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(high, 100e18, 50e18);
+        address[] memory pools = new address[](2);
+        pools[0] = low;
+        pools[1] = high;
+
+        _advanceWarmup(pools);
+
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit GaugeEfficiencyRising(low, 4, 100e18, 50e18, 2e18);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.isFavoredCohort(low), true);
+        assertEq(eligibility.isFavoredCohort(high), false);
+    }
+
+    function testCeilingCutoffNRanked1() public {
+        address poolAddr = address(uint160(0x3333));
+        mockEfficiencyOracle.setEfficiencyInputs(poolAddr, 200e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = poolAddr;
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.isFavoredCohort(pools[0]), true);
+    }
+
+    function testCeilingCutoffNRanked7() public {
+        address[] memory pools = new address[](7);
+        for (uint256 i = 0; i < 7; ++i) {
+            pools[i] = address(uint160(0x1000 + uint160(i)));
+            mockEfficiencyOracle.setEfficiencyInputs(pools[i], (200 - i) * 1e18, 50e18);
+        }
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.isFavoredCohort(pools[0]), true);
+        assertEq(eligibility.isFavoredCohort(pools[1]), true);
+        for (uint256 j = 2; j < 7; ++j) {
+            assertEq(eligibility.isFavoredCohort(pools[j]), false);
+        }
+    }
+
+    function testCeilingCutoffNRanked20() public {
+        address[] memory pools = new address[](20);
+        for (uint256 i = 0; i < 20; ++i) {
+            pools[i] = address(uint160(0x2000 + uint160(i)));
+            mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
+        }
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        for (uint256 j = 0; j < 3; ++j) {
+            assertEq(eligibility.isFavoredCohort(pools[j]), true);
+        }
+        for (uint256 k = 3; k < 20; ++k) {
+            assertEq(eligibility.isFavoredCohort(pools[k]), false);
+        }
+    }
+
+    function testCeilingCutoffNRanked100() public {
+        address[] memory pools = new address[](100);
+        for (uint256 i = 0; i < 100; ++i) {
+            pools[i] = address(uint160(0x10000 + uint160(i)));
+            mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
+        }
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        for (uint256 j = 0; j < 15; ++j) {
+            assertEq(eligibility.isFavoredCohort(pools[j]), true);
+        }
+        for (uint256 k = 15; k < 100; ++k) {
+            assertEq(eligibility.isFavoredCohort(pools[k]), false);
+        }
+    }
+
+    function testMonotonicSnapshotEpochIncrementsByOne() public {
+        address[] memory empty = new address[](0);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(empty);
+        assertEq(eligibility.snapshotEpoch(), uint256(1));
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(empty);
+        assertEq(eligibility.snapshotEpoch(), uint256(2));
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(empty);
+        assertEq(eligibility.snapshotEpoch(), uint256(3));
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(empty);
+        assertEq(eligibility.snapshotEpoch(), uint256(4));
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(empty);
+        assertEq(eligibility.snapshotEpoch(), uint256(5));
+    }
+
+    function testLastSnapshotEpochUpdatedForRankedPool() public {
+        address p = makeAddr("pLastSnap");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        _advanceWarmup(pools);
+
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.lastSnapshotEpoch(p), 4);
+    }
+
+    function testLastSnapshotEpochNotUpdatedDuringColdStart() public {
+        address p = makeAddr("pColdLast");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
+    }
+
+    function testLastSnapshotEpochNotUpdatedDuringWarmup() public {
+        address p = makeAddr("pWarmLast");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+    }
+
+    function testNoCohortCrossingEmitsNoEvent() public {
+        address p = makeAddr("pNoCross");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        address[] memory pools = new address[](1);
+        pools[0] = p;
+
+        _advanceWarmup(pools);
+
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit GaugeEfficiencyRising(p, 4, 100e18, 50e18, 2e18);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        vm.recordLogs();
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(eligibility.isFavoredCohort(p), true);
+        assertEq(eligibility.lastSnapshotEpoch(p), 5);
+    }
+}
+
