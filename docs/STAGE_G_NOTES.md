@@ -465,13 +465,13 @@ Locks three Stage-G-scope `GaugeRegistry` design decisions ahead of G3.1 interfa
 
 **G-D16c — `activateGauge` fee-fail semantics: try/catch + non-reverting + `GaugeActivationFailed` event per OQ-G3 fee-non-refundable invariant.** Ordering discipline for G3.4 implementation (**five steps**):
 
-1. Read `_gaugeStatus[pool]`; if `GaugeStatus.Revoked` revert `AlreadyRevoked(pool)` per **G-D17**; if `GaugeStatus.Active` revert `AlreadyActive(pool)` — pre-locks revert-before-fee-pull so callers of already-active pools are not charged.
+1. Read `_gaugeStatus[pool]`; if `GaugeStatus.Revoked` revert `AlreadyRevoked(pool)` per **G-D17**; if `GaugeStatus.Active` revert `AlreadyGauged(pool)` — pre-locks revert-before-fee-pull so callers of already-active pools are not charged.
 2. Pull the anti-spam fee via `SwapAndDepositToBodensee.swapAndDeposit(payToken, amount)` per **G-D21** strict-equality routing — magnitude locked by **G-D12** (`FEE_SVZCHF = 100e18` or `FEE_SUSDS = 125e18`). Failure inside the helper (`safeTransferFrom` or downstream) propagates as a normal revert — caller did **not** pay; **outside** OQ-G3 non-refundable semantics.
 3. `try IGaugeEligibility(gaugeEligibility).evaluateEligibility(pool) returns (bool eligible) { ... } catch (bytes memory lowLevelData) { ... }`. Current `GaugeEligibility.evaluateEligibility` (`src/gauge/GaugeEligibility.sol` L296–L301) returns `true` on success and **reverts** on criteria failures; guarding `eligible == false` preserves forward compatibility if a future implementation returns `false` while `IGaugeEligibility` still declares `returns (bool)`.
 
 4. **Catch branch OR explicit `eligible == false`:** `emit GaugeActivationFailed(pool, reason); return;` — **no revert**, **no** `_gaugeStatus[pool]` write. Fee stays routed to Bodensee per step 2 — OQ-G3 honored.
 
-5. **Success (`eligible == true`):** `_gaugeStatus[pool] = GaugeStatus.Active; emit GaugeActivated(pool, msg.sender); return;`.
+5. **Success (`eligible == true`):** `_gaugeStatus[pool] = GaugeStatus.Active; emit GaugeActivated(pool, GaugeActivationPath.Permissionless); return;`.
 
 **`GaugeActivationFailed` event ABI lock.** `event GaugeActivationFailed(address indexed pool, bytes reason);` — `pool` indexed for off-chain indexing (same indexed-pool convention as **G-D5** transition events); `reason` is non-indexed `bytes`. Encoding: catch path forwards `lowLevelData` verbatim (typically a revert selector plus ABI tail from `ForbiddenToken`, `PoolTypeNotWhitelisted`, `TVLFloorNotMet`, `InsufficientQualityGate` at `GaugeEligibility.sol` L112–L122 plus args); explicit-false path uses `abi.encodeWithSelector(EligibilityReturnedFalse.selector)` with parameterless custom error `EligibilityReturnedFalse()` declared on `GaugeRegistry` at G3.2 (registry-only sentinel — **`GaugeEligibility` never emits or defines this**).
 
