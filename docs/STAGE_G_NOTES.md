@@ -670,6 +670,57 @@ Mainnet sequence: (1) Deploy `SwapAndDepositToBodensee` with `donateAuthorizer` 
 
 **Cross-references.** G-D9 (vault-class proposal bond — mechanism narrative + cross-references amended at this commit to specify `helper.donate(svZCHF, PROPOSAL_BOND_SVZCHF)` routing). G-D12 (anti-spam fee strict-equality lock — section closure amended at this commit with the two-entry-point split note). G-D14 (transient-storage discipline — applies identically to both entry points). G-D18 (reserve-read selector — applies identically to both entry points). G-D19 Tunable 1 (`PROPOSAL_BOND_SVZCHF = 1_000e18` routing-path clarification amended at this commit). PLAN G1.13 (`proposeVaultClass` body — amended at this commit to call `helper.donate` directly, single call, no loop). PLAN G1.6-bis / G1.7-bis (helper source + test amendments, next two §8e.1 beats — adds `donate` + authorization mutators + new errors / events; covers `donate`-path invariants). FINDINGS OQ-8 (F-12 gauge challenge variable formula — Stage K consumer of `donate` path #3). Constitution §xxvii (composition / fee proposal deposits at 1_000e18 — Stage K / O consumers of `donate` paths #4 / #5). OQ-10 (governance Safe ↔ Authorizer migration — `donateAuthorizer` follows the same migration pattern at Stage K).
 
+## G-D22 — `computeEpochSnapshot` caller restriction: `onlyGaugeRegistry` via F-D23 one-shot setter (G2.5 typed-domain lock)
+
+Resolves the G2.5 sub-step deferred decision ("caller restriction locked at G2.5 sub-step entry in Opus") for `GaugeEligibility.computeEpochSnapshot(address[] calldata eligiblePools)`. Locks the modifier to `onlyGaugeRegistry` and the wiring pattern to F-D23 one-shot setter (mirrors G1.12 `VaultClassRegistry.setAuMT` / `setGovernanceContract`).
+
+**Threat model — why not permissionless.** `computeEpochSnapshot` writes two storage classes:
+
+1. `mapping(address => bool) isFavoredCohort` — per-pool cohort flag consumed by Stage H emission distributor for F-10 cohort weighting.
+2. `uint256 currentSnapshotEpoch` — monotonic shared counter consumed by `lastSnapshotEpoch[pool]` reads to confirm T-I5 epoch-snapshot determinism.
+
+A permissionless `computeEpochSnapshot` admits two attack vectors:
+
+- **Cohort biasing.** The `eligiblePools` array is caller-supplied and unvalidated. A malicious caller could pass a cherry-picked subset that excludes adversarial pools or includes only ally pools, biasing the top-15% cutoff. Pools omitted from the call retain stale cohort flags; pools included get a re-ranked top-15% computed over a smaller-than-canonical set. Stage H emission distribution reads `isFavoredCohort[pool]` at emission tick — stale or biased flags translate directly into misallocated AuMM emissions.
+
+- **Epoch counter grinding.** A permissionless caller could call `computeEpochSnapshot` arbitrarily many times per block, each invocation incrementing `currentSnapshotEpoch`. The `lastSnapshotEpoch[pool]` reads written by `evaluateEligibility` (per-pool first-pass write) would decouple from real epoch ticks — T-I5 ("two reads at the same block return identical latched state") survives within a single block, but the broader invariant "snapshot epoch indexes real epoch boundaries" collapses. Stage H emission distributor reads `lastSnapshotEpoch[pool]` to gate emission cadence; arbitrary advancement breaks that gate.
+
+`onlyGaugeRegistry` pins the only writer to the contract that already owns canonical active-pool membership (`_gaugeStatus[pool] == GaugeStatus.Active`). GaugeRegistry is the natural epoch-tick driver: at Stage H, the emission distributor will call into GaugeRegistry's tick selector, GaugeRegistry will iterate its active-pool set, and GaugeRegistry will call `GaugeEligibility.computeEpochSnapshot(activePools)` with the canonical full list. No external entity can substitute a partial or biased list, and no external entity can advance the epoch counter outside the registry-driven cadence.
+
+**Implementation pattern — F-D23 one-shot setter, explicit address in constructor.**
+
+Mirrors G1.12 `VaultClassRegistry.setAuMT` / `setGovernanceContract` literally — explicit setter address as constructor argument, cleared setter slot post-set, named gate errors. Storage (not immutable; gauge-registry address is wired post-deploy because GaugeEligibility deploys before GaugeRegistry in the chain):
+
+- `address public gaugeRegistry` — runtime-mutable storage slot; zero at deploy; written exactly once via `setGaugeRegistry`. Reads on `onlyGaugeRegistry` modifier compare `msg.sender` against this slot. Pre-setter, all `computeEpochSnapshot` calls revert `OnlyGaugeRegistry(msg.sender)` because the slot is `address(0)` and no caller can match.
+- `address public gaugeRegistrySetter` — one-shot setter authority; set at construction to the explicit `gaugeRegistrySetter_` constructor argument; cleared to `address(0)` immediately after the first `setGaugeRegistry` call. Subsequent setter attempts revert `OnlyGaugeRegistrySetter()` because the slot is now zero (no caller can match `address(0)` under `msg.sender != address(0)` semantics).
+
+Constructor signature change: from 6-arg (`approvedFactory_, vaultClassRegistry_, tvlOracle_, vault_, auMM_, auMT_`) to **7-arg** (`approvedFactory_, vaultClassRegistry_, tvlOracle_, vault_, auMM_, auMT_, gaugeRegistrySetter_`). Zero-address check on `gaugeRegistrySetter_` per existing constructor discipline. The G2.2 six-immutable scaffold is **intentionally superseded** at G2.4-post for constructor arity — the seventh argument is load-bearing for the F-D23 wiring discipline, not an accidental addition. Future cleanup passes that remove the seventh arg as "unused" would re-open the permissionless-caller vector closed by this lock.
+
+`setGaugeRegistry(address gaugeRegistry_) external` body order mirrors `VaultClassRegistry.setAuMT` literally: gate (`if (msg.sender != gaugeRegistrySetter) revert OnlyGaugeRegistrySetter();`) → `ZeroAddress()` check on the new binding → assign (`gaugeRegistry = gaugeRegistry_;`) → clear setter slot (`gaugeRegistrySetter = address(0);`). The setter-slot clear at end of body is the structural seal — subsequent calls revert `OnlyGaugeRegistrySetter()` because the slot is `address(0)` post-clear.
+
+`onlyGaugeRegistry` modifier: `if (msg.sender != gaugeRegistry) revert OnlyGaugeRegistry(msg.sender);`. Pre-setter, the placeholder slot rejects all calls — structurally unreachable. Post-setter, only the wired GaugeRegistry contract passes.
+
+New errors (paralleling `VaultClassRegistry.OnlyAuMTSetter` / `OnlyGovernanceSetter`):
+
+- `OnlyGaugeRegistry(address caller)` — `computeEpochSnapshot` gate miss; passes the offending caller for diagnostic.
+- `OnlyGaugeRegistrySetter()` — `setGaugeRegistry` gate miss; no caller argument (mirrors `VaultClassRegistry.OnlyAuMTSetter()` / `OnlyGovernanceSetter()` shape).
+
+**Deploy sequence.** (1) Deploy `GaugeEligibility` with `gaugeRegistrySetter_` set to the Stage A–K Authorizer Safe per OQ-10 (or the deploy script's own address for fork-test setUp). (2) Deploy `GaugeRegistry` (passes GaugeEligibility's address into its constructor per G3.2). (3) Setter authority calls `gaugeEligibility.setGaugeRegistry(gaugeRegistryAddress)` — single one-shot call, slot cleared. Pre-step-(3) calls to `computeEpochSnapshot` revert `OnlyGaugeRegistry(msg.sender)` (slot is zero); post-step-(3), only GaugeRegistry passes.
+
+**Why storage and not immutable.** The wired `gaugeRegistry` address must remain in storage (not immutable) for the same reason `auMT` / `governanceContract` are storage in VaultClassRegistry: the address is unknown at GaugeEligibility's constructor (GaugeEligibility deploys before GaugeRegistry). Immutable would require deploying GaugeRegistry first, then deploying GaugeEligibility with the GaugeRegistry address baked in — but GaugeRegistry's constructor needs GaugeEligibility's address (per G3.2 / G3.3). The cycle is broken by storage + one-shot setter (the established F-D23 pattern), not by reordering the deploy.
+
+**Rejected alternatives.**
+
+(A) Permissionless with block-derived idempotence (`if (block.number / BLOCKS_PER_EPOCH <= currentSnapshotEpoch) return;`). Rejected: solves the epoch-grinding vector but not the cohort-biasing vector — partial `eligiblePools` arrays still write biased cohort flags within the canonical epoch tick. The biasing vector is the load-bearing one for Stage H emission distribution; idempotence-only is insufficient.
+
+(B) `onlyGovernance` (governance Safe directly drives the epoch tick). Rejected: forces a second governance binding in GaugeEligibility (currently no governance binding exists) and inserts a manual human-in-the-loop step into the per-epoch cadence. GaugeRegistry already has a `setGovernanceContract` handoff per G-D16 for Stage K — driving the epoch tick through GaugeRegistry composes with the existing governance surface rather than fragmenting it.
+
+(C) `onlyEpochManager` (new EpochManager contract drives both GaugeEligibility and Stage H emission distributor). Rejected: adds a contract that doesn't exist in any stage plan, inflates Stage G scope. The Stage H emission distributor naturally serves as the epoch-tick origin (its block-number arithmetic already drives emission cadence per `BLOCKS_PER_ERA` halving math); routing through GaugeRegistry keeps the registry as the membership-and-activation source-of-truth without a fourth contract.
+
+**Cross-references.** G2.4-post (this lock's source-step beat — F-D23 plumbing into `GaugeEligibility.sol`: constructor 7-arg + storage + errors + setter + modifier). G2.5 (caller restriction applied to `computeEpochSnapshot`). G3.2+ (GaugeRegistry deploy ordering — `setGaugeRegistry` called after GaugeRegistry deploys). F-D23 (one-shot setter pattern origin — Stage F `CCBMultiplier`). G-D9 / G1.12-pre-D (VaultClassRegistry parallel — `setAuMT` / `setGovernanceContract` mirror). T-I5 (epoch-snapshot determinism invariant — load-bearing reason for the lock).
+
+---
+
 ---
 
 ## Test matrix — must pass before Stage G closure
