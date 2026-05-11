@@ -298,3 +298,219 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
         eligibility.setGaugeRegistry(makeAddr("anotherRegistry"));
     }
 }
+
+/// @notice Plain ERC-20 double with no asset() — G-D10 empty-catch path for numerator zero.
+contract MockERC20Plain {}
+
+/// @notice Minimal ERC-4626 double — asset() only — so GaugeEligibility 4626 probe succeeds.
+contract MockERC4626Token {
+    address public asset_;
+
+    constructor(address asset__) {
+        asset_ = asset__;
+    }
+
+    function asset() external view returns (address) {
+        return asset_;
+    }
+}
+
+/// @notice G2.7b — evaluateEligibility matrix (T-I3, T-I4, G-D6, OQ-G2, G-D10, 52% gate, latch, T-I5).
+contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
+    function _wirePool(address[] memory tokensArr, uint256[] memory weightsArr) internal returns (address pool) {
+        MockWeightedPool weightedPool = new MockWeightedPool();
+        weightedPool.setNormalizedWeights(weightsArr);
+        pool = address(weightedPool);
+        vm.mockCall(
+            vault,
+            abi.encodeWithSignature("getPoolTokens(address)", pool),
+            abi.encode(tokensArr)
+        );
+        mockFactory.setPoolFromFactory(pool, true);
+        mockTvlOracle.setTvl(pool, 10_000e18);
+    }
+
+    function _admittedFourSixTwoSix() internal returns (MockERC4626Token token) {
+        token = new MockERC4626Token(makeAddr("fourSixTwoSixAsset"));
+        mockVaultClassRegistry.setAdmittedClass(address(token), true);
+    }
+
+    function _nonAdmittedFourSixTwoSix() internal returns (MockERC4626Token token) {
+        token = new MockERC4626Token(makeAddr("fourSixTwoSixAssetNA"));
+    }
+
+    function testForbiddenTokenAuMMRevertsAtPositionZero() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = auMM;
+        tokens[1] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, auMM));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testForbiddenTokenAuMTRevertsAtPositionOne() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        tokens[1] = auMT;
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, auMT));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testFastTrackSelectorsAbsent() public {
+        bytes4[] memory forbidden = new bytes4[](4);
+        forbidden[0] = bytes4(keccak256("activateFromSandbox(address)"));
+        forbidden[1] = bytes4(keccak256("fastTrackActivation(address)"));
+        forbidden[2] = bytes4(keccak256("sandboxFastTrack(address)"));
+        forbidden[3] = bytes4(keccak256("activateWithFastTrack(address)"));
+        for (uint256 i = 0; i < 4; ++i) {
+            (bool ok,) = address(eligibility).call(abi.encodeWithSelector(forbidden[i], makeAddr("anyPool")));
+            assertFalse(ok);
+        }
+    }
+
+    function testPoolTypeNotWhitelistedReverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        mockFactory.setPoolFromFactory(pool, false);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.PoolTypeNotWhitelisted.selector, address(mockFactory)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testTVLFloorRevertsBelowFloor() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        mockTvlOracle.setTvl(pool, 9_999e18);
+        vm.expectRevert(
+            abi.encodeWithSelector(GaugeEligibility.TVLFloorNotMet.selector, uint256(9_999e18), uint256(10_000e18))
+        );
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testTVLFloorPassesAtBorderline() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testPlainERC20ContributesZeroNumerator() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testAdmittedFourSixTwoSixContributesWeight() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testNonAdmittedFourSixTwoSixContributesZero() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_nonAdmittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testQualityGateAllAdmittedPasses() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        tokens[1] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        address pool = _wirePool(tokens, weights);
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testQualityGateBorderlineFiftyTwoPercentPasses() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        tokens[1] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.52e18;
+        weights[1] = 0.48e18;
+        address pool = _wirePool(tokens, weights);
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testQualityGateBelowFiftyTwoPercentReverts() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        tokens[1] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.51e18;
+        weights[1] = 0.49e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0.51e18)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testQualityGateAllPlainReverts() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(new MockERC20Plain());
+        tokens[1] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.5e18;
+        weights[1] = 0.5e18;
+        address pool = _wirePool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testPositivePathLatchWrites() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        uint256 epochBefore = eligibility.currentSnapshotEpoch();
+        eligibility.evaluateEligibility(pool);
+        assertTrue(eligibility.isGaugeEligible(pool));
+        assertEq(eligibility.lastSnapshotEpoch(pool), epochBefore);
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testEpochSnapshotDeterministicReads() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        eligibility.evaluateEligibility(pool);
+        bool first = eligibility.isEligible(pool);
+        bool second = eligibility.isEligible(pool);
+        assertEq(first, second);
+        assertTrue(first);
+    }
+}
+
