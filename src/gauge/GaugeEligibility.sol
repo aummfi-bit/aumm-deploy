@@ -15,9 +15,9 @@ import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 /**
  * @title GaugeEligibility
  * @notice Auto-gauge eligibility evaluator — 52% Quality Gate per **G-D8**, TVL floor per **OQ-G2**, pool-type whitelist per **G-D6**, F-10 efficiency tournament per **G-D3**, threshold transition events per **G-D5**.
- * @dev G2.3 — constructor body + `_compute52PctNumerator` (G-D8 + G-D10); G2.4 — `_checkEligibilityCriteria` (OQ-G2 + G-D6 + G-D15a); **G2.4-post** — F-D23 one-shot setter for `gaugeRegistry` + `onlyGaugeRegistry` modifier per **G-D22** (caller-restriction lock for `computeEpochSnapshot`; mirrors `VaultClassRegistry.setAuMT` at G1.12 literally). **G2.5-pre-2** — IEfficiencyOracle sibling import + 8-arg constructor + `efficiencyOracle` immutable + event ABI reshape (`tvlSma` → `numeratorSma` + `denominatorSma`) per **G-D23 (iii)** + `firstTournamentEpoch` storage per **G-D23 (v)**. **G2.5** — `computeEpochSnapshot` (carries `onlyGaugeRegistry`; reads `IEfficiencyOracle.efficiencyInputs` pair per **G-D23 (i)** with cold-start grace via `firstTournamentEpoch` per **G-D23 (v)**). **G2.6** — `evaluateEligibility` / `isEligible` / `cohortOf` / `snapshotEpoch` implementations and `is IGaugeEligibility` inheritance (deferred to G2.6 per G1.11 precedent).
+ * @dev G2.3 — constructor body + `_compute52PctNumerator` (G-D8 + G-D10); G2.4 — `_checkEligibilityCriteria` (OQ-G2 + G-D6 + G-D15a); **G2.4-post** — F-D23 one-shot setter for `gaugeRegistry` + `onlyGaugeRegistry` modifier per **G-D22** (caller-restriction lock for `computeEpochSnapshot`; mirrors `VaultClassRegistry.setAuMT` at G1.12 literally). **G2.5-pre-2** — IEfficiencyOracle sibling import + 8-arg constructor + `efficiencyOracle` immutable + event ABI reshape (`tvlSma` → `numeratorSma` + `denominatorSma`) per **G-D23 (iii)** + `firstTournamentEpoch` storage per **G-D23 (v)**. **G2.5** — `computeEpochSnapshot` (carries `onlyGaugeRegistry`; reads `IEfficiencyOracle.efficiencyInputs` pair per **G-D23 (i)** with cold-start grace via `firstTournamentEpoch` per **G-D23 (v)**). **G2.6** — `evaluateEligibility` (per-pool gate via `_checkEligibilityCriteria` + latch write) + view bridges `isEligible` / `cohortOf` / `snapshotEpoch` + `is IGaugeEligibility` inheritance per **G-D5** / **T-I5**.
  */
-contract GaugeEligibility {
+contract GaugeEligibility is IGaugeEligibility {
     // -------------------------------------------------------------------------
     // Immutables
     // -------------------------------------------------------------------------
@@ -286,6 +286,33 @@ contract GaugeEligibility {
         }
 
         currentSnapshotEpoch = newEpoch;
+    }
+
+    // -------------------------------------------------------------------------
+    // External — `IGaugeEligibility` surface (G-D5 + T-I5)
+    // -------------------------------------------------------------------------
+
+    /// @inheritdoc IGaugeEligibility
+    function evaluateEligibility(address pool) external override returns (bool) {
+        _checkEligibilityCriteria(pool);
+        isGaugeEligible[pool] = true;
+        lastSnapshotEpoch[pool] = currentSnapshotEpoch;
+        return true;
+    }
+
+    /// @inheritdoc IGaugeEligibility
+    function isEligible(address pool) external view override returns (bool) {
+        return isGaugeEligible[pool];
+    }
+
+    /// @inheritdoc IGaugeEligibility
+    function cohortOf(address pool) external view override returns (bool favored) {
+        favored = isFavoredCohort[pool];
+    }
+
+    /// @inheritdoc IGaugeEligibility
+    function snapshotEpoch() external view override returns (uint256) {
+        return currentSnapshotEpoch;
     }
 
     // -------------------------------------------------------------------------
