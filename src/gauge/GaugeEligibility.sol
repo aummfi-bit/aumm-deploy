@@ -9,12 +9,13 @@ import {IWeightedPool} from "@balancer-labs/v3-interfaces/contracts/pool-weighte
 import {IBasePoolFactory} from "@balancer-labs/v3-interfaces/contracts/vault/IBasePoolFactory.sol";
 import {IGaugeEligibility} from "./IGaugeEligibility.sol";
 import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
+import {IEfficiencyOracle} from "./IEfficiencyOracle.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 
 /**
  * @title GaugeEligibility
  * @notice Auto-gauge eligibility evaluator — 52% Quality Gate per **G-D8**, TVL floor per **OQ-G2**, pool-type whitelist per **G-D6**, F-10 efficiency tournament per **G-D3**, threshold transition events per **G-D5**.
- * @dev G2.3 — constructor body + `_compute52PctNumerator` (G-D8 + G-D10); G2.4 — `_checkEligibilityCriteria` (OQ-G2 + G-D6 + G-D15a); **G2.4-post** — F-D23 one-shot setter for `gaugeRegistry` + `onlyGaugeRegistry` modifier per **G-D22** (caller-restriction lock for `computeEpochSnapshot`; mirrors `VaultClassRegistry.setAuMT` at G1.12 literally). **G2.5** — `computeEpochSnapshot` (carries `onlyGaugeRegistry`). **G2.6** — `evaluateEligibility` / `isEligible` / `cohortOf` / `snapshotEpoch` implementations and `is IGaugeEligibility` inheritance (deferred to G2.6 per G1.11 precedent).
+ * @dev G2.3 — constructor body + `_compute52PctNumerator` (G-D8 + G-D10); G2.4 — `_checkEligibilityCriteria` (OQ-G2 + G-D6 + G-D15a); **G2.4-post** — F-D23 one-shot setter for `gaugeRegistry` + `onlyGaugeRegistry` modifier per **G-D22** (caller-restriction lock for `computeEpochSnapshot`; mirrors `VaultClassRegistry.setAuMT` at G1.12 literally). **G2.5-pre-2** — IEfficiencyOracle sibling import + 8-arg constructor + `efficiencyOracle` immutable + event ABI reshape (`tvlSma` → `numeratorSma` + `denominatorSma`) per **G-D23 (iii)** + `firstTournamentEpoch` storage per **G-D23 (v)**. **G2.5** — `computeEpochSnapshot` (carries `onlyGaugeRegistry`; reads `IEfficiencyOracle.efficiencyInputs` pair per **G-D23 (i)** with cold-start grace via `firstTournamentEpoch` per **G-D23 (v)**). **G2.6** — `evaluateEligibility` / `isEligible` / `cohortOf` / `snapshotEpoch` implementations and `is IGaugeEligibility` inheritance (deferred to G2.6 per G1.11 precedent).
  */
 contract GaugeEligibility {
     // -------------------------------------------------------------------------
@@ -29,6 +30,9 @@ contract GaugeEligibility {
 
     /// @notice TVL and fee-revenue oracle per OQ-G1 / OQ-22.
     address public immutable tvlOracle;
+
+    /// @notice F-10 efficiency oracle per **G-D23 (i)** — pre-smoothed numerator/denominator inputs for the canonical OQ-G1 formula `(swap_fee_revenue_i + yield_fee_revenue_i) / emissions_received_i`; oracle owns the 3-epoch SMA, contract reads pre-smoothed pair.
+    address public immutable efficiencyOracle;
 
     /// @notice Balancer V3 vault for pool token and factory reads at G2.3+.
     address public immutable vault;
@@ -62,6 +66,9 @@ contract GaugeEligibility {
 
     mapping(address => uint256) public lastSnapshotEpoch;
 
+    /// @notice First epoch index at which `pool` was ranked in `computeEpochSnapshot` per **G-D23 (v)** — single-purpose cold-start grace predicate; set once on first appearance and gates the 3-epoch warmup window. Never overloaded with `lastSnapshotEpoch` semantics.
+    mapping(address => uint256) public firstTournamentEpoch;
+
     uint256 public currentSnapshotEpoch;
 
     // -------------------------------------------------------------------------
@@ -82,19 +89,21 @@ contract GaugeEligibility {
      * @notice Emitted on top-to-bottom cohort crossing when a pool drops out of the favored set (T-T2).
      * @param pool The Balancer pool address.
      * @param epoch Snapshot epoch index for this transition.
-     * @param tvlSma Smoothed TVL anchor in **svZCHF-denominated 18-decimal fixed point** per `ITVLOracle` / OQ-22.
-     * @param efficiencyRatio F-10 fee-revenue-over-TVL efficiency ratio from `11_formulas.md`, scaled 1e18 after OQ-G1 smoothing.
+     * @param numeratorSma 3-epoch SMA of `swap_fee_revenue_i + yield_fee_revenue_i` per OQ-G1 / **G-D23 (i)**.
+     * @param denominatorSma 3-epoch SMA of `emissions_received_i` per OQ-G1 / **G-D23 (i)**; same unit as `numeratorSma` (F-10 is price-agnostic).
+     * @param efficiencyRatio F-10 dimensionless ratio `(numeratorSma * 1e18) / denominatorSma` per OQ-G1 / **G-D23 (i)**, 1e18 fixed-point.
      */
-    event GaugeEfficiencyDropped(address indexed pool, uint256 indexed epoch, uint256 tvlSma, uint256 efficiencyRatio);
+    event GaugeEfficiencyDropped(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
 
     /**
      * @notice Emitted on bottom-to-top cohort crossing when a pool enters the favored set (T-T1).
      * @param pool The Balancer pool address.
      * @param epoch Snapshot epoch index for this transition.
-     * @param tvlSma Smoothed TVL anchor in **svZCHF-denominated 18-decimal fixed point** per `ITVLOracle` / OQ-22.
-     * @param efficiencyRatio F-10 fee-revenue-over-TVL efficiency ratio from `11_formulas.md`, scaled 1e18 after OQ-G1 smoothing.
+     * @param numeratorSma 3-epoch SMA of `swap_fee_revenue_i + yield_fee_revenue_i` per OQ-G1 / **G-D23 (i)**.
+     * @param denominatorSma 3-epoch SMA of `emissions_received_i` per OQ-G1 / **G-D23 (i)**; same unit as `numeratorSma` (F-10 is price-agnostic).
+     * @param efficiencyRatio F-10 dimensionless ratio `(numeratorSma * 1e18) / denominatorSma` per OQ-G1 / **G-D23 (i)**, 1e18 fixed-point.
      */
-    event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 tvlSma, uint256 efficiencyRatio);
+    event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
 
     // -------------------------------------------------------------------------
     // Custom errors
@@ -140,6 +149,7 @@ contract GaugeEligibility {
      * @param auMM_ T-I3 forbidden token — AuMM.
      * @param auMT_ T-I3 forbidden token — AuMT.
      * @param gaugeRegistrySetter_ One-shot setter authority for wiring `gaugeRegistry` post-deploy per **G-D22**.
+     * @param efficiencyOracle_ **G-D23 (i)** + **G-D23 (ii)** F-10 efficiency oracle binding (sibling to `tvlOracle`) for the OQ-G1 canonical formula at **G2.5**.
      */
     constructor(
         address approvedFactory_,
@@ -148,7 +158,8 @@ contract GaugeEligibility {
         address vault_,
         address auMM_,
         address auMT_,
-        address gaugeRegistrySetter_
+        address gaugeRegistrySetter_,
+        address efficiencyOracle_
     ) {
         if (approvedFactory_ == address(0)) revert ZeroAddress();
         if (vaultClassRegistry_ == address(0)) revert ZeroAddress();
@@ -157,6 +168,7 @@ contract GaugeEligibility {
         if (auMM_ == address(0)) revert ZeroAddress();
         if (auMT_ == address(0)) revert ZeroAddress();
         if (gaugeRegistrySetter_ == address(0)) revert ZeroAddress();
+        if (efficiencyOracle_ == address(0)) revert ZeroAddress();
 
         approvedFactory = approvedFactory_;
         vaultClassRegistry = vaultClassRegistry_;
@@ -165,6 +177,7 @@ contract GaugeEligibility {
         _auMM = auMM_;
         _auMT = auMT_;
         gaugeRegistrySetter = gaugeRegistrySetter_;
+        efficiencyOracle = efficiencyOracle_;
     }
 
     // -------------------------------------------------------------------------
