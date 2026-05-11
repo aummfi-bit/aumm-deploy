@@ -14,7 +14,7 @@ import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 /**
  * @title GaugeEligibility
  * @notice Auto-gauge eligibility evaluator — 52% Quality Gate per **G-D8**, TVL floor per **OQ-G2**, pool-type whitelist per **G-D6**, F-10 efficiency tournament per **G-D3**, threshold transition events per **G-D5**.
- * @dev Scaffold only: types, immutables, constants, storage, events, and custom errors. **G2.3+** lands constructor body and `_compute52PctNumerator`; **G2.4** — `_checkEligibilityCriteria`; **G2.5** — `computeEpochSnapshot`; **G2.6** — `evaluateEligibility` / `isEligible` / `cohortOf` / `snapshotEpoch` implementations and `is IGaugeEligibility` inheritance (deferred to G2.6 per G1.11 precedent). Imports mirror the planned implementation surface; no runtime logic ships in this file.
+ * @dev G2.3 — constructor body + `_compute52PctNumerator` (G-D8 + G-D10); G2.4 — `_checkEligibilityCriteria` (OQ-G2 + G-D6 + G-D15a); **G2.4-post** — F-D23 one-shot setter for `gaugeRegistry` + `onlyGaugeRegistry` modifier per **G-D22** (caller-restriction lock for `computeEpochSnapshot`; mirrors `VaultClassRegistry.setAuMT` at G1.12 literally). **G2.5** — `computeEpochSnapshot` (carries `onlyGaugeRegistry`). **G2.6** — `evaluateEligibility` / `isEligible` / `cohortOf` / `snapshotEpoch` implementations and `is IGaugeEligibility` inheritance (deferred to G2.6 per G1.11 precedent).
  */
 contract GaugeEligibility {
     // -------------------------------------------------------------------------
@@ -65,6 +65,16 @@ contract GaugeEligibility {
     uint256 public currentSnapshotEpoch;
 
     // -------------------------------------------------------------------------
+    // Post-deploy wiring (F-D23 pattern per G-D22)
+    // -------------------------------------------------------------------------
+
+    /// @notice GaugeRegistry binding wired post-deploy via `setGaugeRegistry` (G-D22 / G1.12 mirror) — storage, not immutable, because GaugeRegistry's constructor depends on `IGaugeEligibility`.
+    address public gaugeRegistry;
+
+    /// @notice one-shot, cleared on first `setGaugeRegistry` call (F-D23 pattern).
+    address public gaugeRegistrySetter;
+
+    // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
 
@@ -102,6 +112,20 @@ contract GaugeEligibility {
 
     error EfficiencyDataUnavailable(address pool);
 
+    error OnlyGaugeRegistry(address caller);
+
+    error OnlyGaugeRegistrySetter();
+
+    // -------------------------------------------------------------------------
+    // Modifiers
+    // -------------------------------------------------------------------------
+
+    /// @notice Gates `computeEpochSnapshot` to the wired `gaugeRegistry` per G-D22 (T-I5 epoch-snapshot determinism).
+    modifier onlyGaugeRegistry() {
+        if (msg.sender != gaugeRegistry) revert OnlyGaugeRegistry(msg.sender);
+        _;
+    }
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -115,6 +139,7 @@ contract GaugeEligibility {
      * @param vault_ Balancer V3 vault for pool token reads at **G2.4+**.
      * @param auMM_ T-I3 forbidden token — AuMM.
      * @param auMT_ T-I3 forbidden token — AuMT.
+     * @param gaugeRegistrySetter_ One-shot setter authority for wiring `gaugeRegistry` post-deploy per **G-D22**.
      */
     constructor(
         address approvedFactory_,
@@ -122,7 +147,8 @@ contract GaugeEligibility {
         address tvlOracle_,
         address vault_,
         address auMM_,
-        address auMT_
+        address auMT_,
+        address gaugeRegistrySetter_
     ) {
         if (approvedFactory_ == address(0)) revert ZeroAddress();
         if (vaultClassRegistry_ == address(0)) revert ZeroAddress();
@@ -130,6 +156,7 @@ contract GaugeEligibility {
         if (vault_ == address(0)) revert ZeroAddress();
         if (auMM_ == address(0)) revert ZeroAddress();
         if (auMT_ == address(0)) revert ZeroAddress();
+        if (gaugeRegistrySetter_ == address(0)) revert ZeroAddress();
 
         approvedFactory = approvedFactory_;
         vaultClassRegistry = vaultClassRegistry_;
@@ -137,6 +164,20 @@ contract GaugeEligibility {
         vault = vault_;
         _auMM = auMM_;
         _auMT = auMT_;
+        gaugeRegistrySetter = gaugeRegistrySetter_;
+    }
+
+    // -------------------------------------------------------------------------
+    // One-shot setters (F-D23 pattern)
+    // -------------------------------------------------------------------------
+
+    /// @notice Wires `gaugeRegistry` from the designated setter and seals the `gaugeRegistrySetter` slot per **G-D22** F-D23 pattern.
+
+    function setGaugeRegistry(address gaugeRegistry_) external {
+        if (msg.sender != gaugeRegistrySetter) revert OnlyGaugeRegistrySetter();
+        if (gaugeRegistry_ == address(0)) revert ZeroAddress();
+        gaugeRegistry = gaugeRegistry_;
+        gaugeRegistrySetter = address(0);
     }
 
     // -------------------------------------------------------------------------
