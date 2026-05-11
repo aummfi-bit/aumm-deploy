@@ -719,6 +719,132 @@ New errors (paralleling `VaultClassRegistry.OnlyAuMTSetter` / `OnlyGovernanceSet
 
 **Cross-references.** G2.4-post (this lock's source-step beat — F-D23 plumbing into `GaugeEligibility.sol`: constructor 7-arg + storage + errors + setter + modifier). G2.5 (caller restriction applied to `computeEpochSnapshot`). G3.2+ (GaugeRegistry deploy ordering — `setGaugeRegistry` called after GaugeRegistry deploys). F-D23 (one-shot setter pattern origin — Stage F `CCBMultiplier`). G-D9 / G1.12-pre-D (VaultClassRegistry parallel — `setAuMT` / `setGovernanceContract` mirror). T-I5 (epoch-snapshot determinism invariant — load-bearing reason for the lock).
 
+## G-D23 — F-10 efficiency tournament on-chain encoding lock (G2.5-pre supersession of PLAN L317; OQ-G1 propagation)
+
+Resolves the G2.5 §12 ambiguity gate (G2.5-pre-A NOTES lock; surfaced 2026-05-10 at the G2.5 design pre-flight in Opus). The PLAN G2.5 paragraph at L317 was authored with a `fee_revenue / tvl_sma` formula that materially diverges from canonical F-10 per FINDINGS **OQ-G1** (resolved 2026-05-05):
+
+> efficiency_ratio(pool_i) = (swap_fee_revenue_i + yield_fee_revenue_i) / emissions_received_i
+
+— **subsidy efficiency**, not capital efficiency. The denominator is `emissions_received`, not `tvl_sma`; the numerator is a sum of two fee streams, not a single fee scalar. PLAN L317 is **superseded** by OQ-G1; G2.5-pre-B (the immediately-next NOTES landing's PLAN companion) rewrites PLAN L317 verbatim from OQ-G1.
+
+The lock decomposes into five sub-decisions, each binding for the G2.5-pre / G2.5 source landings and for the G2.7 test matrix.
+
+---
+
+**G-D23 (i) — F-10 on-chain encoding (OQ-G1 verbatim).**
+
+- **Numerator:** `swap_fee_revenue_i + yield_fee_revenue_i` summed at the oracle layer, returned as a single 3-epoch SMA value.
+- **Denominator:** `emissions_received_i` over the same 3-epoch SMA window.
+- **Smoothing:** 3-epoch (`EFFICIENCY_TOURNAMENT_SMOOTHING_EPOCHS = 3` per OQ-4 constant table; matches the existing `SMOOTHING_EPOCHS = 3` constant declared at `src/gauge/GaugeEligibility.sol` L53 at G2.2 scaffold). The oracle owns smoothing; the consumer (`GaugeEligibility`) reads already-smoothed pair values.
+- **Ratio precision:** 1e18 fixed-point per OQ-G1's "ratio values exposed for events" line. Consumer computes `ratio = numeratorSma * 1e18 / denominatorSma` (or equivalent via `FixedPoint.divDown` if smaller-but-correct precision is required); the oracle does NOT pre-divide.
+- **Units (price-agnostic per F-10).** F-10 (canonical at `aummfi-bit/aumm-site/main/11_formulas.md`) states both sides are measured "in the same unit" — the ratio is dimensionless and price-agnostic. The interface NatSpec MUST cite F-10's price-agnostic property and decline to lock a specific numéraire at the interface level. Concrete oracle implementations (deferred — Stage H or pre-Stage-H per OQ-G1's "Stage G contract lock" framing) choose svZCHF or AuMM consistently across both sides; the ratio is unit-invariant.
+
+PLAN L317's `fee_revenue / tvl_sma` is superseded in full. The `tvl_sma` term no longer appears in the F-10 path — the existing `tvlOracle` immutable on `GaugeEligibility` is retained for the TVL-floor eligibility gate (G2.4 path), but it is **not** consumed by `computeEpochSnapshot`.
+
+---
+
+**G-D23 (ii) — Oracle architecture: new sibling `IEfficiencyOracle` interface (G2.5-pre source step).**
+
+A second oracle interface is added at `src/gauge/IEfficiencyOracle.sol`, parallel to `src/ccb/ITVLOracle.sol`. Read shape: `function efficiencyInputs(address pool) external view returns (uint256 numeratorSma, uint256 denominatorSma);`. Two return values, both 18-decimal in the oracle's chosen numéraire (NatSpec'd as price-agnostic per G-D23 (i)). The oracle internalizes the 3-epoch SMA window; consumer treats reads as authoritative for the current epoch.
+
+**Why a sibling interface, not an extension of `ITVLOracle`.** OQ-22 (resolved 2026-04-29) pinned `ITVLOracle` semantically to svZCHF-denominated TVL only. The F-10 inputs (fees + emissions) are typed-domain distinct from TVL — folding them under `ITVLOracle` blurs the OQ-22 anchor and conflicts with the "concrete oracle deferred" framing. A sibling interface preserves the OQ-22 boundary cleanly: `tvlOracle` for the floor / eligibility path, `efficiencyOracle` for the F-10 tournament path.
+
+**Constructor arity change.** `GaugeEligibility`'s constructor extends from 7-arg to **8-arg** at G2.5-pre — appends `address efficiencyOracle_` after `gaugeRegistrySetter_`. Zero-address check + immutable bind + storage assign per existing constructor discipline. The G2.4-post 7-arg layout is intentionally superseded at G2.5-pre; G2.2 retro-note acknowledges the second arity bump in the same sub-step the events reshape lands.
+
+**Storage / immutability.** `address public immutable efficiencyOracle;` — wired at deploy, no post-deploy mutability. The concrete oracle deployment ordering (oracle deploys before `GaugeEligibility`, mirroring `tvlOracle`'s existing pattern) is upstream — Stage H / pre-Stage-H deploy script handles it.
+
+---
+
+**G-D23 (iii) — Event parameter reshape (G2.2 scaffold retro-fix).**
+
+The events declared at G2.2 scaffold (`src/gauge/GaugeEligibility.sol` L88 + L97) carry a `tvlSma` parameter that only makes sense under the superseded PLAN L317 formula. Under OQ-G1, the observability-relevant quantities are the two F-10 SMAs and the derived ratio. The reshape:
+
+- `GaugeEfficiencyDropped(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio)` — five params (was four).
+- `GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio)` — five params (was four).
+
+NatSpec amended to describe both raw SMAs + the derived 1e18 fixed-point ratio. The `tvlSma` parameter is **removed**, not kept-and-deprecated — the cleanest ABI surface for the auditor and for downstream indexers.
+
+**ABI break call-out.** The reshape is a strict ABI break vs the G2.2 scaffold's declared shape. No off-chain consumer indexes these events yet (Stage G is the first stage to ship them); the break is interior to the project. Plan / spec sweep: G2.7 unit tests must verify against the new shape; any future Stage H emission distributor that subscribes to these events binds to the new shape from day one. No external integrator notification surface.
+
+The reshape lands at G2.5-pre — same source commit as the 8-arg constructor extension and the new oracle import — not at a separate retro-fix sub-step. Bundling them keeps the "G2.2 scaffold corrections per G-D23" beat atomic.
+
+---
+
+**G-D23 (iv) — Tournament sort + epoch event semantic locks.**
+
+- **Sort direction.** Descending by `efficiency_ratio` per G-D3 (rank 1 = highest ratio). Already locked at G-D3; restated here for the §8e.1 Must-match grounding.
+- **Algorithm.** Insertion sort on an in-memory `(address pool, uint256 ratio)` array. N ≤ 28 (the 28 Miliarium pools per F-D27 / CCB scoping; the broader gauged-pool set may exceed 28 once non-Miliarium pools enter, but the auto-gauge surface anticipates ≤ 28 in any realistic Stage G–H window). O(N²) is fine at this N; gas cost is bounded; no storage write during sort. Quicksort / merge sort considered and rejected as unnecessary complexity at this N.
+- **Tiebreak — address ascending.** On equal `efficiency_ratio`, the pool with the lower address sorts higher (rank-wise). Deterministic, callable-free, no external state dependency. Locks T-T3 verbatim.
+- **Event `epoch` arg semantic.** The event's `epoch` indexed parameter binds to the **new** epoch index — the one the cohort assignment writes for, not the prior epoch. Implementation: `uint256 newEpoch = currentSnapshotEpoch + 1;` computed at the top of `computeEpochSnapshot`; events emit with `newEpoch`; `currentSnapshotEpoch = newEpoch;` at the end of the function. Off-by-one debates in tests are eliminated by treating `event.epoch == newEpoch == currentSnapshotEpoch (post-increment)` as the load-bearing invariant.
+
+---
+
+**G-D23 (v) — Cold-start grace via explicit `firstTournamentEpoch[pool]` mapping + zero-handling precedence.**
+
+The cold-start case: a pool just activated at epoch K has zero (or partial) emission history in the 3-epoch SMA window. Under naive denominator-zero handling, `computeEpochSnapshot` would revert `EfficiencyDataUnavailable(pool)` and block the entire epoch tick for all pools. The grace rule prevents that:
+
+**New storage slot on `GaugeEligibility`:** `mapping(address => uint256) public firstTournamentEpoch;` — set once on first inclusion in an `eligiblePools` array; zero sentinel = "not yet ranked".
+
+**G2.5 body order (per-pool loop in `computeEpochSnapshot`):**
+
+1. Read `uint256 firstEpoch = firstTournamentEpoch[pool];`.
+2. If `firstEpoch == 0`: set `firstTournamentEpoch[pool] = newEpoch;` and `continue` (skip cohort update + skip oracle read).
+3. If `(newEpoch - firstEpoch) < SMOOTHING_EPOCHS`: `continue` (warmup window — still skip).
+4. Read oracle: `(uint256 numSma, uint256 denomSma) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);`.
+5. If `denomSma == 0`: revert `EfficiencyDataUnavailable(pool)` (post-warmup, unexpected — pool should have emission history by this point).
+6. Compute ratio + rank + emit + update `isFavoredCohort[pool]` + `lastSnapshotEpoch[pool] = newEpoch`.
+
+**Worked example.** Pool first appears in `eligiblePools` at the call where `newEpoch = 5`:
+
+| Call (newEpoch) | firstTournamentEpoch[pool] (pre) | Behaviour |
+| --- | --- | --- |
+| 5 | 0 | Set `firstTournamentEpoch[pool] = 5`; skip. |
+| 6 | 5 | `6 - 5 = 1 < 3` → skip (warmup). |
+| 7 | 5 | `7 - 5 = 2 < 3` → skip (warmup). |
+| 8 | 5 | `8 - 5 = 3 ≥ 3` → rank normally. |
+
+Three warmup epochs (5, 6, 7) match `SMOOTHING_EPOCHS = 3` — the pool ranks first at epoch 8 with a fully-filled SMA window behind it.
+
+**Zero-handling precedence.** Three cases, ordered:
+
+| Case | Resolution |
+| --- | --- |
+| Pool in cold-start window (steps 1-3 above) | Skip — no cohort update, no oracle read, no revert. Warmup-skip takes precedence over all revert conditions. |
+| `numSma == 0, denomSma > 0` (post-warmup) | `ratio = 0` → ranks at the bottom of the descending sort. No revert. Matches G-D3 spam-defense corollary. |
+| `denomSma == 0` (post-warmup, any numSma) | Revert `EfficiencyDataUnavailable(pool)`. Indicates either an oracle bug or a structural emissions failure — should not occur post-warmup under normal operation. |
+
+The warmup-skip rule unambiguously takes precedence over the denominator-zero revert — they do **not** overlap by virtue of the body order (warmup check at step 2-3 → continue; oracle read at step 4; denom-zero check at step 5 only on the post-warmup path). The "don't leave revert and skip overlapping" discipline (user-flagged at G2.5-pre-A drafting) is satisfied by ordering, not by a runtime branching condition.
+
+**Why not denominator-only check (no warmup epoch tracking).** Considered and rejected. A pure denominator-zero skip without `firstTournamentEpoch` cannot distinguish "brand-new pool — expected zero" from "old pool with broken oracle — unexpected zero". Silent skipping in the latter case masks oracle / emission failures. The explicit `firstTournamentEpoch` mapping pays one storage slot per pool (~21k gas first write, ~5k subsequent) for the diagnostic separation; the spurious-skip vs spurious-revert trade favours the explicit tracking.
+
+**Why not derive from `lastSnapshotEpoch[pool]`.** `lastSnapshotEpoch[pool]` is written by both `evaluateEligibility` (G2.6 per-pool first-pass) and `computeEpochSnapshot` (G2.5 epoch-boundary). Any predicate keyed on it conflates "first ranked appearance" with "last updated" — the user-flagged overloading at G2.5-pre-A drafting. `firstTournamentEpoch` is single-purpose, set-once.
+
+---
+
+**Mock + test surface implications (G2.7 anchor).**
+
+The G2.7 unit-test paragraph at `STAGE_G_PLAN.md` L419 enumerates `MockTVLOracle (per-pool TVL + fee-revenue returns)`. Under G-D23, that wording is wrong: the mock surface splits into:
+
+- **`MockEfficiencyOracle`** — implements `IEfficiencyOracle.efficiencyInputs(pool)`; per-pool settable `numeratorSma` + `denominatorSma` for tournament tests.
+- **`MockTVLOracle`** — retained as `ITVLOracle.tvl(pool)` per OQ-22, for the TVL-floor eligibility tests at G2.4 path.
+
+G2.7 paragraph rewrite is a Sonnet-tier cleanup at G2.5-pre-B (the PLAN companion to this NOTES lock).
+
+---
+
+**Cross-references.**
+
+- **FINDINGS OQ-G1** (L1292+) — canonical F-10 source; this lock propagates OQ-G1 verbatim into Stage G contract surface.
+- `11_formulas.md` F-10 (canonical, `aummfi-bit/aumm-site/main/11_formulas.md`) — price-agnostic numéraire NatSpec traceability.
+- **OQ-22** (FINDINGS L1100+) — `ITVLOracle` semantic boundary; G-D23 (ii) preserves the boundary by introducing a sibling interface rather than extending `ITVLOracle`.
+- **G-D3** — sort direction + cohort cutoff; G-D23 (iv) restates for the §8e.1 Must-match grounding.
+- **G-D5** — event ABI; G-D23 (iii) reshapes the event params; G-D5 wording (NOTES L40-L67) updated at G2.5-pre-B to reflect the new param set.
+- **G-D22** — `onlyGaugeRegistry` caller restriction (G2.4-post landing); G-D23 layers on top: caller-restricted + price-agnostic + warmup-grace.
+- **F-D27** — 28-pool CCB scoping; informs the sort algorithm choice (insertion sort for N ≤ 28).
+- **PLAN G2.5** — paragraph rewrite at G2.5-pre-B.
+- **PLAN G2.7** — `MockEfficiencyOracle` + `MockTVLOracle` split at G2.5-pre-B.
+- **G2.2 retro-fix** — events reshape + 8-arg constructor land at G2.5-pre source step; G2.2 scaffold L88 + L97 + L144-L168 superseded for parameter shape and arity respectively.
+
 ---
 
 ---
