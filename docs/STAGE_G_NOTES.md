@@ -925,6 +925,20 @@ Sub-step landing schedule for the `abstract` keyword on `contract GaugeRegistry 
 
 ---
 
+## G-D25 — G4.0 pre-flight integration-fixture locks (genesis composition + `_makePoolEligible` admission-before-TVL ordering invariant + sibling mock file home)
+
+**G-D25a — Genesis class composition.** `VaultClassRegistry` constructor in `StageGIntegrationFixture.setUp` SHALL receive `genesisTokens = [sUSDS]` + `genesisAdmissionTypes = [AdmissionType.ImplementationAddress]` — single-token genesis. Rationale: keeps the genesis set minimal so G4.1's propose-veto-finalize-revoke flow has admission paths to exercise on the remaining pilot-pool underlyings (ixEDEL-class, ixAUR-class, ixHEL-class non-sUSDS legs); sUSDS is the canonical ERC-4626 wrapped class used across all three Stage E pilots. Supersedes the `STAGE_G_PLAN.md` L437 phrase "genesis class set seeded against deployed pilot tokens per **G1.12**" — that phrase does not constrain genesis to a minimal set; this lock does.
+
+**G-D25b — `_makePoolEligible` admission-before-TVL ordering invariant.** `_makePoolEligible(pool, tvl)` MUST order side effects so class admission always precedes the TVL slot write that can make `evaluateEligibility` reach the weight gate:
+
+1. Admission verification via `IVaultClassRegistry.isAdmittedClass(token)` — when any material pool token fails admission, complete governance admission via `_proposeAndFinalizeClass(token, AdmissionType.ImplementationAddress, /* constraintsHash */)` before proceeding.
+
+2. TVL oracle slot write — after (1) succeeds for every required token, write `tvl` into the fixture-injected `MockTVLOracle` for `pool`.
+
+Rationale: reversing (2) before (1) surfaces `InsufficientQualityGate` while the TVL floor reads satisfied — masking an admission-ordering defect as oracle or wiring noise. **G-D24** (mock `IGaugeRegistry` stub backfill on `test/fork/mocks/CCBMocks.sol`) is orthogonal to this ordering but the same G4.0 harness must satisfy both locks.
+
+**G-D25c — Sibling mock file home: `test/fork/mocks/StageGMocks.sol`.** G4.0 SHALL house `MockEfficiencyOracle` and `MockAuMT` (and any other fork-only doubles migrated from unit-test homes) in `test/fork/mocks/StageGMocks.sol` by verbatim copy from `test/unit/GaugeEligibility.t.sol:49` and `test/unit/VaultClassRegistry.t.sol:29` respectively, preserving bytecode-identical surfaces for fork integration without changing mock semantics. §12 anchor amendment direction: update the NatSpec at `test/unit/GaugeEligibility.t.sol:161` so fork readers are directed to `test/fork/mocks/StageGMocks.sol` while unit tests retain their in-file embeds. Out of scope for this lock: `MockTVLOracle` triplet unification across `test/fork/mocks/CCBMocks.sol:10`, `test/unit/GaugeEligibility.t.sol:34`, and `test/unit/EMASampler.t.sol:325` — deferred to a later notes-driven sub-step.
+
 ## Test matrix — must pass before Stage G closure
 
 ### Invariants (unit / fuzz)
