@@ -210,6 +210,8 @@ abstract contract StageGIntegrationFixture is Test {
         vaultClassRegistry.setAuMT(address(mockAuMT));
         vaultClassRegistry.setGovernanceContract(address(this));
         gaugeEligibility.setGaugeRegistry(address(gaugeRegistry));
+
+        swapAndDeposit.addAuthorizedDonator(address(vaultClassRegistry));
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
