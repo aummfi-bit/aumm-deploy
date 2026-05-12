@@ -242,4 +242,91 @@ contract GaugeRegistryTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, POOL));
         registry.seedFoundingPool(POOL);
     }
+
+    // ── seedFoundingPools ─────────────────────────────────────────────────
+
+    function test_seedFoundingPools_succeeds_3pool_emitsFoundingPath() public {
+        address[] memory pools = new address[](3);
+        pools[0] = POOL;
+        pools[1] = POOL2;
+        pools[2] = POOL3;
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GaugeActivated(POOL, IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GaugeActivated(POOL2, IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GaugeActivated(POOL3, IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.prank(GOVERNANCE);
+        registry.seedFoundingPools(pools);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertEq(uint256(registry.gaugeStatus(POOL2)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertEq(uint256(registry.gaugeStatus(POOL3)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertEq(swapper.callCount(), 0);
+    }
+
+    function test_seedFoundingPools_partialState_revertsAlreadyGauged_noPartialActivation() public {
+        vm.prank(GOVERNANCE);
+        registry.seedFoundingPool(POOL2);
+
+        address[] memory pools = new address[](3);
+        pools[0] = POOL;
+        pools[1] = POOL2;
+        pools[2] = POOL3;
+
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, POOL2));
+        registry.seedFoundingPools(pools);
+
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.None));
+        assertEq(uint256(registry.gaugeStatus(POOL3)), uint256(IGaugeRegistry.GaugeStatus.None));
+        assertEq(uint256(registry.gaugeStatus(POOL2)), uint256(IGaugeRegistry.GaugeStatus.Active));
+    }
+
+    // ── revokeGauge ──────────────────────────────────────────────────────
+
+    function test_revokeGauge_nonGovernanceReverts() public {
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, ALICE));
+        registry.revokeGauge(POOL);
+    }
+
+    function test_revokeGauge_succeeds_emitsGaugeRevoked_statusBecomesRevoked() public {
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+
+        vm.expectEmit(true, false, false, false);
+        emit IGaugeRegistry.GaugeRevoked(POOL);
+        vm.prank(GOVERNANCE);
+        registry.revokeGauge(POOL);
+
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
+        assertFalse(registry.isGaugeApproved(POOL));
+        assertEq(swapper.callCount(), 0);
+    }
+
+    function test_revokeGauge_notGaugedReverts() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGauged.selector, POOL));
+        registry.revokeGauge(POOL);
+    }
+
+    // ── setGovernanceContract ────────────────────────────────────────────
+
+    function test_setGovernanceContract_handoff_emitsGovernanceTransferred() public {
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GovernanceTransferred(GOVERNANCE, BOB);
+        vm.prank(GOVERNANCE);
+        registry.setGovernanceContract(BOB);
+
+        assertEq(registry.governanceContract(), BOB);
+
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, GOVERNANCE));
+        registry.registerGaugeFromComposition(POOL);
+
+        vm.prank(BOB);
+        registry.registerGaugeFromComposition(POOL);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertEq(swapper.callCount(), 0);
+    }
 }
