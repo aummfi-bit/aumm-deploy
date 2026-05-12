@@ -329,4 +329,65 @@ contract GaugeRegistryTest is Test {
         assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
         assertEq(swapper.callCount(), 0);
     }
+
+    // ── isGaugeApproved (Stage F compat — F-D17 / G-D16a) ────────────────────
+
+    function test_isGaugeApproved_parametric_allStatusValues() public {
+        // None — never gauged
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.None));
+        assertFalse(registry.isGaugeApproved(POOL));
+
+        // Active — via registerGaugeFromComposition
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertTrue(registry.isGaugeApproved(POOL));
+
+        // Revoked — terminal per G-D17
+        vm.prank(GOVERNANCE);
+        registry.revokeGauge(POOL);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
+        assertFalse(registry.isGaugeApproved(POOL));
+    }
+
+    // ── T-I6 Revoked-terminality cross-cut (G-D17) ────────────────────────────
+
+    function test_activateGauge_revoked_revertsAlreadyRevoked_preFee() public {
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        vm.prank(GOVERNANCE);
+        registry.revokeGauge(POOL);
+
+        _fundAndApprove(ALICE, FEE);
+        uint256 aliceBalBefore = svZchf.balanceOf(ALICE);
+
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, POOL));
+        registry.activateGauge(POOL);
+
+        assertEq(svZchf.balanceOf(ALICE), aliceBalBefore);
+        assertEq(swapper.callCount(), 0);
+    }
+
+    function test_registerGaugeFromComposition_revoked_revertsAlreadyRevoked() public {
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        vm.prank(GOVERNANCE);
+        registry.revokeGauge(POOL);
+
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, POOL));
+        registry.registerGaugeFromComposition(POOL);
+    }
+
+    function test_seedFoundingPool_revoked_revertsAlreadyRevoked() public {
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        vm.prank(GOVERNANCE);
+        registry.revokeGauge(POOL);
+
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, POOL));
+        registry.seedFoundingPool(POOL);
+    }
 }
