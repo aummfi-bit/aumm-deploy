@@ -90,4 +90,150 @@ abstract contract StageGIntegrationFixture is Test {
     function setUp() public virtual {
         // Body lands at G4.0b — full deploy chain + one-shot setter wiring per F-D20—F23 + G-D22.
     }
+
+    // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
+    function _bodenseeTokenConfigs() private view returns (TokenConfig[] memory) {
+        address t0 = address(aumm);
+        address t1 = address(susds);
+        address t2 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        if (t1 > t2) (t1, t2) = (t2, t1);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+
+        TokenConfig[] memory tokens = new TokenConfig[](3);
+        tokens[0] = t0 == address(aumm)
+            ? TokenConfig({
+                token: IERC20(t0),
+                tokenType: TokenType.STANDARD,
+                rateProvider: IRateProvider(address(0)),
+                paysYieldFees: false
+            })
+            : t0 == address(susds)
+                ? TokenConfig({
+                    token: IERC20(t0),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+                    paysYieldFees: true
+                })
+                : TokenConfig({
+                    token: IERC20(t0),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+                    paysYieldFees: true
+                });
+        tokens[1] = t1 == address(aumm)
+            ? TokenConfig({
+                token: IERC20(t1),
+                tokenType: TokenType.STANDARD,
+                rateProvider: IRateProvider(address(0)),
+                paysYieldFees: false
+            })
+            : t1 == address(susds)
+                ? TokenConfig({
+                    token: IERC20(t1),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+                    paysYieldFees: true
+                })
+                : TokenConfig({
+                    token: IERC20(t1),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+                    paysYieldFees: true
+                });
+        tokens[2] = t2 == address(aumm)
+            ? TokenConfig({
+                token: IERC20(t2),
+                tokenType: TokenType.STANDARD,
+                rateProvider: IRateProvider(address(0)),
+                paysYieldFees: false
+            })
+            : t2 == address(susds)
+                ? TokenConfig({
+                    token: IERC20(t2),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+                    paysYieldFees: true
+                })
+                : TokenConfig({
+                    token: IERC20(t2),
+                    tokenType: TokenType.WITH_RATE,
+                    rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+                    paysYieldFees: true
+                });
+        return tokens;
+    }
+
+    function _bodenseeWeights() private view returns (uint256[] memory) {
+        address t0 = address(aumm);
+        address t1 = address(susds);
+        address t2 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        if (t1 > t2) (t1, t2) = (t2, t1);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+
+        uint256[] memory weights = new uint256[](3);
+        weights[0] = t0 == address(aumm) ? 4e17 : 3e17;
+        weights[1] = t1 == address(aumm) ? 4e17 : 3e17;
+        weights[2] = t2 == address(aumm) ? 4e17 : 3e17;
+        return weights;
+    }
+
+    function _initializeBodensee() private returns (uint256 bptOut) {
+        deal(address(aumm), address(this), INIT_SEED, true);
+        deal(address(susds), address(this), INIT_SEED, true);
+        deal(address(svZchf), address(this), INIT_SEED, true);
+
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializeBodenseeCallback, ()));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializeBodenseeCallback() external returns (uint256 bptOut) {
+        require(msg.sender == address(vault), "onlyVault");
+        address t0 = address(aumm);
+        address t1 = address(susds);
+        address t2 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        if (t1 > t2) (t1, t2) = (t2, t1);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = IERC20(t0);
+        tokens[1] = IERC20(t1);
+        tokens[2] = IERC20(t2);
+        uint256[] memory amountsIn = new uint256[](3);
+        amountsIn[0] = INIT_SEED;
+        amountsIn[1] = INIT_SEED;
+        amountsIn[2] = INIT_SEED;
+
+        bptOut = vault.initialize(bodenseePool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i <= 2; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    // Pilot pool β-pattern helpers — generalized from D7 fork test
+    function _initializePool(address pool, IERC20[] memory tokens, uint256[] memory amountsIn)
+        internal
+        returns (uint256 bptOut)
+    {
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            deal(address(tokens[i]), address(this), amountsIn[i]);
+        }
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializePoolCallback, (pool, tokens, amountsIn)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializePoolCallback(address pool, IERC20[] memory tokens, uint256[] memory amountsIn)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        bptOut = vault.initialize(pool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
 }
