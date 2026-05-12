@@ -129,4 +129,38 @@ abstract contract GaugeRegistry is IGaugeRegistry {
         _gaugeStatus[pool] = GaugeStatus.Active;
         emit GaugeActivated(pool, GaugeActivationPath.Permissionless);
     }
+
+    // ----------------------------------------------------------------------------
+    // External — governance (composition + revocation)
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IGaugeRegistry
+    function registerGaugeFromComposition(address pool) external override onlyGovernance {
+        GaugeStatus status = _gaugeStatus[pool];
+        if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
+        if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
+        _gaugeStatus[pool] = GaugeStatus.Active;
+        emit GaugeActivated(pool, GaugeActivationPath.Composition);
+    }
+
+    /// @inheritdoc IGaugeRegistry
+    function revokeGauge(address pool) external override onlyGovernance {
+        if (_gaugeStatus[pool] != GaugeStatus.Active) revert NotGauged(pool);
+        _gaugeStatus[pool] = GaugeStatus.Revoked;
+        emit GaugeRevoked(pool);
+    }
+
+    // ----------------------------------------------------------------------------
+    // External — views
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IGaugeRegistry
+    function isGaugeApproved(address pool) external view override returns (bool) {
+        return _gaugeStatus[pool] == GaugeStatus.Active;
+    }
+
+    /// @inheritdoc IGaugeRegistry
+    function gaugeStatus(address pool) external view override returns (GaugeStatus) {
+        return _gaugeStatus[pool];
+    }
 }
