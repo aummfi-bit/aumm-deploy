@@ -191,6 +191,25 @@ abstract contract StageGIntegrationFixture is Test {
         amts2[3] = 1_000e18;
         amts2[4] = 1_000e18;
         _initializePool(pilotPools[2], tokens2, amts2);
+
+        mockTVLOracle = new MockTVLOracle();
+        mockEfficiencyOracle = new MockEfficiencyOracle();
+        mockAuMT = new MockAuMT();
+
+        swapAndDeposit = new SwapAndDepositToBodensee(vault, bodenseePool, svZchf, IERC20(address(susds)), address(this), address(this));
+        address[] memory genesisTokens = new address[](1);
+        genesisTokens[0] = address(susds);
+        IVaultClassRegistry.AdmissionType[] memory genesisTypes = new IVaultClassRegistry.AdmissionType[](1);
+        genesisTypes[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
+        vaultClassRegistry = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
+        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockAuMT), address(this), address(mockEfficiencyOracle));
+        gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf));
+
+        swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));
+        swapAndDeposit.setGaugeRegistry(address(gaugeRegistry));
+        vaultClassRegistry.setAuMT(address(mockAuMT));
+        vaultClassRegistry.setGovernanceContract(address(this));
+        gaugeEligibility.setGaugeRegistry(address(gaugeRegistry));
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
