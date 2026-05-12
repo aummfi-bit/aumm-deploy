@@ -190,4 +190,56 @@ contract GaugeRegistryTest is Test {
         assertEq(swapper.callCount(), swapperCountBefore);
         assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.Active);
     }
+
+    // ── registerGaugeFromComposition ──────────────────────────────────────
+
+    function test_registerGaugeFromComposition_nonGovernanceReverts() public {
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, ALICE));
+        registry.registerGaugeFromComposition(POOL);
+    }
+
+    function test_registerGaugeFromComposition_succeeds_emitsCompositionPath_noSwapperCall() public {
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GaugeActivated(POOL, IGaugeRegistry.GaugeActivationPath.Composition);
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertTrue(registry.isGaugeApproved(POOL));
+        assertEq(swapper.callCount(), 0);
+    }
+
+    function test_registerGaugeFromComposition_alreadyGaugedReverts() public {
+        vm.prank(GOVERNANCE);
+        registry.registerGaugeFromComposition(POOL);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, POOL));
+        registry.registerGaugeFromComposition(POOL);
+    }
+
+    // ── seedFoundingPool ──────────────────────────────────────────────────
+
+    function test_seedFoundingPool_nonGovernanceReverts() public {
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, ALICE));
+        registry.seedFoundingPool(POOL);
+    }
+
+    function test_seedFoundingPool_succeeds_emitsFoundingPath_noSwapperCall() public {
+        vm.expectEmit(true, true, false, false);
+        emit IGaugeRegistry.GaugeActivated(POOL, IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.prank(GOVERNANCE);
+        registry.seedFoundingPool(POOL);
+        assertEq(uint256(registry.gaugeStatus(POOL)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertTrue(registry.isGaugeApproved(POOL));
+        assertEq(swapper.callCount(), 0);
+    }
+
+    function test_seedFoundingPool_alreadyGaugedReverts() public {
+        vm.prank(GOVERNANCE);
+        registry.seedFoundingPool(POOL);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, POOL));
+        registry.seedFoundingPool(POOL);
+    }
 }
