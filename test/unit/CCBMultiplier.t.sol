@@ -44,9 +44,23 @@ contract MockGaugeRegistry is IGaugeRegistry {
         _approved[gauge] = flag;
     }
 
-    function isGaugeApproved(address gauge) external view returns (bool) {
+    function isGaugeApproved(address gauge) external view override returns (bool) {
         return _approved[gauge];
     }
+
+    function gaugeStatus(address) external view override returns (GaugeStatus status) {}
+
+    function activateGauge(address) external override {}
+
+    function registerGaugeFromComposition(address) external override {}
+
+    function seedFoundingPool(address) external override {}
+
+    function seedFoundingPools(address[] calldata) external override {}
+
+    function revokeGauge(address) external override {}
+
+    function setGovernanceContract(address) external override {}
 }
 
 contract MockEMASampler is IEMASampler {

@@ -45,7 +45,7 @@ contract MockMiliariumRegistry is IMiliariumRegistry {
     }
 }
 
-/// @notice Test-only mock for `IGaugeRegistry` — F4.1 / F-D26.
+/// @notice Test-only mock for `IGaugeRegistry` — F4.1 / F-D26 + **G3.3-fix2** seven-stub backfill per **G-D24** Schedule (b) for the Stage G interface expansion (1 → 8 functions); mock retains the `setApproved` test helper + the real `isGaugeApproved` getter (Stage F **F-D17** boost-gate consumer); all other interface functions are empty stubs that return defaults.
 contract MockGaugeRegistry is IGaugeRegistry {
     mapping(address => bool) private _approved;
 
@@ -53,7 +53,21 @@ contract MockGaugeRegistry is IGaugeRegistry {
         _approved[gauge] = approved;
     }
 
-    function isGaugeApproved(address gauge) external view returns (bool) {
+    function isGaugeApproved(address gauge) external view override returns (bool) {
         return _approved[gauge];
     }
+
+    function gaugeStatus(address) external view override returns (GaugeStatus status) {}
+
+    function activateGauge(address) external override {}
+
+    function registerGaugeFromComposition(address) external override {}
+
+    function seedFoundingPool(address) external override {}
+
+    function seedFoundingPools(address[] calldata) external override {}
+
+    function revokeGauge(address) external override {}
+
+    function setGovernanceContract(address) external override {}
 }
