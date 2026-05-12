@@ -13,7 +13,7 @@ import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
  * @notice Gauge state machine for pool activation — three paths: permissionless `activateGauge` (**OQ-G3** anti-spam fee + eligibility), governance `registerGaugeFromComposition`, and governance `seedFoundingPool` / `seedFoundingPools`; revocation via `revokeGauge`. Cross-references: **G-D7** — three activation paths — **G-D17** — `Revoked` is terminal — no Stage G recovery to `Active`.
  * @dev **G3.3** constructor + `setGovernanceContract` + `activateGauge` over **G3.2** scaffold + **G3.3-pre-fix2c** typed-domain correction — four-argument constructor with zero-address checks (**ZeroAddress**) and raw `address` stores per **G-D16d**, Stage K `setGovernanceContract` handoff, **OQ-G3** permissionless `activateGauge` per the **G-D16c** five-step ordering (status precheck → fee pull → fee push → Bodensee routing → fee event → try/catch eligibility → state write + activated event) with non-reverting failure path. Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy. + **G3.3-fix1** abstract-keyword + override modifier on the two G3.3 interface functions per **G-D24** Schedule (a) (contract remains abstract through **G3.4**; concrete at **G3.5**).
  */
-abstract contract GaugeRegistry is IGaugeRegistry {
+contract GaugeRegistry is IGaugeRegistry {
     using SafeERC20 for IERC20;
 
     // ----------------------------------------------------------------------------
@@ -148,6 +148,31 @@ abstract contract GaugeRegistry is IGaugeRegistry {
         if (_gaugeStatus[pool] != GaugeStatus.Active) revert NotGauged(pool);
         _gaugeStatus[pool] = GaugeStatus.Revoked;
         emit GaugeRevoked(pool);
+    }
+
+    // ----------------------------------------------------------------------------
+    // External — governance (founding seeds)
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IGaugeRegistry
+    function seedFoundingPool(address pool) external override onlyGovernance {
+        GaugeStatus status = _gaugeStatus[pool];
+        if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
+        if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
+        _gaugeStatus[pool] = GaugeStatus.Active;
+        emit GaugeActivated(pool, GaugeActivationPath.Founding);
+    }
+
+    /// @inheritdoc IGaugeRegistry
+    function seedFoundingPools(address[] calldata pools) external override onlyGovernance {
+        for (uint256 i = 0; i < pools.length; ++i) {
+            address pool = pools[i];
+            GaugeStatus status = _gaugeStatus[pool];
+            if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
+            if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
+            _gaugeStatus[pool] = GaugeStatus.Active;
+            emit GaugeActivated(pool, GaugeActivationPath.Founding);
+        }
     }
 
     // ----------------------------------------------------------------------------
