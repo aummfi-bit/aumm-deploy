@@ -158,7 +158,7 @@ abstract contract GaugeEligibilityFixture is Test {
 
 /// @title GaugeEligibilityWiringTest
 /// @notice G2.7a — mocks + fixture + wiring/constructor/setter tests per docs/STAGE_G_PLAN.md L345-L349 + G2.7-decompose umbrella row.
-/// @dev Mock signatures (MockVaultClassRegistry / MockTVLOracle / MockEfficiencyOracle / MockBasePoolFactory / MockWeightedPool) lock here per ABI-stability constraint; G2.7b / G2.7c append test contracts only and configure mocks via the setters declared here.
+/// @dev Mock signatures (MockVaultClassRegistry / MockTVLOracle / MockEfficiencyOracle / MockBasePoolFactory / MockWeightedPool) lock here per ABI-stability constraint; G2.7b / G2.7c append test contracts only and configure mocks via the setters declared here. Per **G-D25c**, `MockEfficiencyOracle` also mirrors verbatim at `test/fork/mocks/StageGMocks.sol` for Stage G fork integration (`StageGIntegrationFixture`); this in-file embed remains the ABI-stability source-of-truth — any future signature change MUST be propagated to the StageGMocks.sol mirror in the same commit.
 contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
     function testConstructorRevertsOnZeroApprovedFactory() public {
         vm.expectRevert(GaugeEligibility.ZeroAddress.selector);
