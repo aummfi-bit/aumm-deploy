@@ -88,7 +88,109 @@ abstract contract StageGIntegrationFixture is Test {
     MockAuMT internal mockAuMT;
 
     function setUp() public virtual {
-        // Body lands at G4.0b — full deploy chain + one-shot setter wiring per F-D20—F23 + G-D22.
+        svZchf = IERC20(vm.envAddress("SV_ZCHF"));
+        susds = IERC4626(vm.envAddress("SUSDS"));
+
+        uint64 startNonce = vm.getNonce(address(this));
+        address vaultScriptAddr = vm.computeCreateAddress(address(this), startNonce + 0);
+        address wpfAddr = vm.computeCreateAddress(address(this), startNonce + 1);
+        address auMmAddr = vm.computeCreateAddress(address(this), startNonce + 2);
+        address hookAddr = vm.computeCreateAddress(address(this), startNonce + 3);
+        address awpfAddr = vm.computeCreateAddress(address(this), startNonce + 4);
+        address predictedController = vm.computeCreateAddress(vaultScriptAddr, 2);
+        address predictedFactory = vm.computeCreateAddress(vaultScriptAddr, 3);
+        address predictedVault = CREATE3.getDeployed(VAULT_SALT, predictedFactory);
+        address predictedBodensee = CREATE3.getDeployed(
+            keccak256(abi.encode(address(this), block.chainid, BODENSEE_SALT)),
+            wpfAddr
+        );
+
+        // Rationale: vm.setEnv is flagged by forge-lint as an "unsafe
+        // cheatcode" because it mutates process environment state. In this
+        // test it is the intentional harness mechanism for parameterizing
+        // DeployAureumVault.s.sol — the script reads deployment config via
+        // vm.envString / vm.envUint, so the fork test must populate those
+        // env vars before calling deploy(). Scoped to setUp() in a fork
+        // test; no production code path touches vm.setEnv. Per Foundry
+        // lint best-practice ("Minimize Scope"), each call is suppressed
+        // individually with a targeted disable-next-line directive.
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNANCE_MULTISIG));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("DER_BODENSEE_POOL", vm.toString(predictedBodensee));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("FEE_ROUTING_HOOK", vm.toString(hookAddr));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("SALT", vm.toString(VAULT_SALT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PAUSE_WINDOW_DURATION", vm.toString(uint256(PAUSE_WINDOW_DURATION)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("BUFFER_PERIOD_DURATION", vm.toString(BUFFER_PERIOD_DURATION));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MIN_TRADE_AMOUNT", vm.toString(MIN_TRADE_AMOUNT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MIN_WRAP_AMOUNT", vm.toString(MIN_WRAP_AMOUNT));
+
+        vaultScript = new DeployAureumVault();
+        assert(address(vaultScript) == vaultScriptAddr);
+
+        vaultScript.deploy(address(vaultScript));
+        vault = vaultScript.vault();
+        controller = vaultScript.aureumFeeController();
+        assert(address(vault) == predictedVault);
+        assert(address(controller) == predictedController);
+
+        wpf = new WeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);
+        assert(address(wpf) == wpfAddr);
+
+        aumm = new AuMM(block.number, address(this));
+        assert(address(aumm) == auMmAddr);
+
+        bodenseePool = wpf.create("der-Bodensee", "BODENSEE", _bodenseeTokenConfigs(), _bodenseeWeights(), PoolRoleAccounts({pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: address(0), poolCreator: address(0)}), 0.0075e18, address(0), true, false, BODENSEE_SALT);
+        assert(bodenseePool == predictedBodensee);
+
+        hook = new AureumFeeRoutingHook(address(vault), predictedBodensee, svZchf, IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG);
+        assert(address(hook) == hookAddr);
+
+        awpf = new AureumWeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);
+        assert(address(awpf) == awpfAddr);
+
+        _initializeBodensee();
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("AUREUM_WEIGHTED_POOL_FACTORY", vm.toString(address(awpf)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("FEE_ROUTING_HOOK", vm.toString(address(hook)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNANCE_MULTISIG));
+
+        pilotPools[0] = new DeployIxHelvetia().run();
+        IERC20[] memory tokens0 = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory amts0 = new uint256[](2);
+        amts0[0] = INIT_SEED;
+        amts0[1] = INIT_SEED;
+        _initializePool(pilotPools[0], tokens0, amts0);
+
+        pilotPools[1] = new DeployIxEdelweiss().run();
+        IERC20[] memory tokens1 = vault.getPoolTokens(pilotPools[1]);
+        // Per E10 / E-D25 — 1_000 × 10**decimals(token), address-sorted slot order.
+        uint256[] memory amts1 = new uint256[](4);
+        amts1[0] = 1_000e6;
+        amts1[1] = 1_000e6;
+        amts1[2] = 1_000e18;
+        amts1[3] = 1_000e18;
+        _initializePool(pilotPools[1], tokens1, amts1);
+
+        pilotPools[2] = new DeployIxAurebit().run();
+        IERC20[] memory tokens2 = vault.getPoolTokens(pilotPools[2]);
+        // Per E10 / E-D25 — 1_000 × 10**decimals(token), address-sorted slot order.
+        uint256[] memory amts2 = new uint256[](5);
+        amts2[0] = 1_000e8;
+        amts2[1] = 1_000e18;
+        amts2[2] = 1_000e8;
+        amts2[3] = 1_000e18;
+        amts2[4] = 1_000e18;
+        _initializePool(pilotPools[2], tokens2, amts2);
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
