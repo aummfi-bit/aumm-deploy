@@ -100,4 +100,94 @@ contract GaugeRegistryTest is Test {
         vm.prank(caller);
         svZchf.approve(address(registry), amount);
     }
+
+    function test_activateGauge_permissionless_happyPath() public {
+        _fundAndApprove(ALICE, FEE);
+        eligibility.setEligibility(POOL, true);
+
+        uint256 aliceBalanceBefore = svZchf.balanceOf(ALICE);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IGaugeRegistry.AntiSpamFeeRouted(ALICE, FEE);
+        vm.expectEmit(true, true, false, false, address(registry));
+        emit IGaugeRegistry.GaugeActivated(POOL, IGaugeRegistry.GaugeActivationPath.Permissionless);
+
+        vm.prank(ALICE);
+        registry.activateGauge(POOL);
+
+        assertEq(svZchf.balanceOf(ALICE), aliceBalanceBefore - FEE);
+        assertEq(svZchf.balanceOf(address(registry)), 0);
+        assertEq(svZchf.balanceOf(address(swapper)), FEE);
+        assertEq(swapper.callCount(), 1);
+        assertTrue(swapper.lastPayToken() == IERC20(address(svZchf)));
+        assertEq(swapper.lastAmount(), FEE);
+        assertEq(swapper.lastCaller(), address(registry));
+        assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(registry.isGaugeApproved(POOL));
+    }
+
+    function test_activateGauge_eligibilityReturnsFalse_retainsFee_nonRevert() public {
+        _fundAndApprove(ALICE, FEE);
+        eligibility.setEligibility(POOL, false);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IGaugeRegistry.AntiSpamFeeRouted(ALICE, FEE);
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IGaugeRegistry.GaugeActivationFailed(POOL, bytes(""));
+
+        vm.prank(ALICE);
+        registry.activateGauge(POOL);
+
+        assertEq(svZchf.balanceOf(address(swapper)), FEE);
+        assertEq(swapper.callCount(), 1);
+        assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.None);
+        assertFalse(registry.isGaugeApproved(POOL));
+    }
+
+    function test_activateGauge_eligibilityReverts_tryCatch_retainsFee_nonRevert() public {
+        _fundAndApprove(ALICE, FEE);
+        bytes memory reason = bytes("eligibility-revert-reason");
+        eligibility.setRevertReason(POOL, reason);
+
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IGaugeRegistry.AntiSpamFeeRouted(ALICE, FEE);
+        vm.expectEmit(true, false, false, true, address(registry));
+        emit IGaugeRegistry.GaugeActivationFailed(POOL, reason);
+
+        vm.prank(ALICE);
+        registry.activateGauge(POOL);
+
+        assertEq(svZchf.balanceOf(address(swapper)), FEE);
+        assertEq(swapper.callCount(), 1);
+        assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.None);
+        assertFalse(registry.isGaugeApproved(POOL));
+    }
+
+    function test_activateGauge_insufficientAllowance_revertsBeforeSwapper() public {
+        vm.prank(ALICE);
+        vm.expectRevert();
+        registry.activateGauge(POOL);
+
+        assertEq(swapper.callCount(), 0);
+        assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_activateGauge_alreadyGauged_secondActivationNoFee_noSecondSwapperCall() public {
+        _fundAndApprove(ALICE, FEE * 2);
+        eligibility.setEligibility(POOL, true);
+
+        vm.prank(ALICE);
+        registry.activateGauge(POOL);
+
+        uint256 aliceBalanceAfterFirst = svZchf.balanceOf(ALICE);
+        uint256 swapperCountBefore = swapper.callCount();
+
+        vm.prank(ALICE);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, POOL));
+        registry.activateGauge(POOL);
+
+        assertEq(svZchf.balanceOf(ALICE), aliceBalanceAfterFirst);
+        assertEq(swapper.callCount(), swapperCountBefore);
+        assertTrue(registry.gaugeStatus(POOL) == IGaugeRegistry.GaugeStatus.Active);
+    }
 }
