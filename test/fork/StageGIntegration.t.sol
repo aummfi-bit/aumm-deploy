@@ -359,4 +359,35 @@ abstract contract StageGIntegrationFixture is Test {
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
+
+    // Stage G fixture helpers — class admission + pool eligibility + activate-with-fee
+    function _proposeAndFinalizeClass(address token, IVaultClassRegistry.AdmissionType admissionType_, bytes32 constraintsHash)
+        internal
+        returns (uint256 proposalId)
+    {
+        deal(address(svZchf), address(this), vaultClassRegistry.PROPOSAL_BOND_SVZCHF());
+        svZchf.approve(address(vaultClassRegistry), vaultClassRegistry.PROPOSAL_BOND_SVZCHF());
+        proposalId = vaultClassRegistry.proposeVaultClass(admissionType_, token, constraintsHash);
+        vm.roll(block.number + vaultClassRegistry.VETO_WINDOW_BLOCKS() + 1);
+        vaultClassRegistry.finalizeProposal(proposalId);
+    }
+
+    function _makePoolEligible(address pool, uint256 tvl) internal {
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            address token = address(tokens[i]);
+            if (!vaultClassRegistry.isAdmittedClass(token)) {
+                _proposeAndFinalizeClass(token, IVaultClassRegistry.AdmissionType.ImplementationAddress, bytes32(0));
+            }
+        }
+        mockTVLOracle.set(pool, tvl);
+    }
+
+    function _approveAndActivate(address caller, address pool, uint256 fee) internal {
+        deal(address(svZchf), caller, fee);
+        vm.startPrank(caller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+    }
 }
