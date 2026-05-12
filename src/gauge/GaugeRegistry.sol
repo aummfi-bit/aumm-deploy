@@ -11,7 +11,7 @@ import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
 /**
  * @title GaugeRegistry
  * @notice Gauge state machine for pool activation — three paths: permissionless `activateGauge` (**OQ-G3** anti-spam fee + eligibility), governance `registerGaugeFromComposition`, and governance `seedFoundingPool` / `seedFoundingPools`; revocation via `revokeGauge`. Cross-references: **G-D7** — three activation paths — **G-D17** — `Revoked` is terminal — no Stage G recovery to `Active`.
- * @dev **G3.2** scaffold — constants, immutables, `_gaugeStatus` mapping, governance and eligibility bindings, `onlyGovernance` modifier — no constructor, no external function bodies (**G-D16**). Typed domain per **G-D16d** — `svZCHF` and `swapAndDeposit` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` casts at call sites only; `gaugeEligibility` is post-deploy `address` storage with `IGaugeEligibility` cast at call sites.
+ * @dev **G3.2** scaffold + **G3.3-pre-fix2c** typed-domain correction — constants, immutables, `_gaugeStatus` mapping, governance binding, `onlyGovernance` modifier — no constructor, no external function bodies (**G-D16**). Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy.
  */
 contract GaugeRegistry is IGaugeRegistry {
     using SafeERC20 for IERC20;
@@ -33,6 +33,9 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice **G-D12** Bodensee fee-router helper binding. Stored as `address`; cast to `SwapAndDepositToBodensee(swapAndDeposit)` at every call site per **G-D16d**.
     address public immutable swapAndDeposit;
 
+    /// @notice Eligibility evaluator binding — `GaugeEligibility` deploys first with this registry as its `gaugeRegistrySetter_` authority per **G-D22**; the registry then receives the eligibility address as a constructor arg, and the deployer calls `GaugeEligibility.setGaugeRegistry(this)` post-deploy. Cast to `IGaugeEligibility(gaugeEligibility)` at every call site per **G-D16d**.
+    address public immutable gaugeEligibility;
+
     // ----------------------------------------------------------------------------
     // Storage
     // ----------------------------------------------------------------------------
@@ -42,9 +45,6 @@ contract GaugeRegistry is IGaugeRegistry {
 
     /// @notice Governance authority for restricted entrypoints (`registerGaugeFromComposition`, `seedFoundingPool`, `seedFoundingPools`, `revokeGauge`, `setGovernanceContract`). Not `immutable` — Stage K rebinding via `setGovernanceContract`.
     address public governanceContract;
-
-    /// @notice Eligibility evaluator binding — post-deploy storage (not `immutable`) per G3.2 wiring discipline: `GaugeEligibility` constructor depends on this registry, so the registry deploys first and receives the eligibility address in a later one-shot wire step. Cast to `IGaugeEligibility(gaugeEligibility)` at every call site per **G-D16d**.
-    address public gaugeEligibility;
 
     // ----------------------------------------------------------------------------
     // Modifier
