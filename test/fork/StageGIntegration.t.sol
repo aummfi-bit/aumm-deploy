@@ -528,6 +528,9 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
 }
 
 contract StageGEligibilityTest is StageGIntegrationFixture {
+    event GaugeEfficiencyDropped(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
+    event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
+
     function test_happyPath_evaluateEligibilityPasses() external {
         address pool = pilotPools[0];
         // _makePoolEligible admits all pool tokens via _proposeAndFinalizeClass
@@ -609,5 +612,36 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         assertTrue(gaugeEligibility.isFavoredCohort(pools[0]));
         assertFalse(gaugeEligibility.isFavoredCohort(pools[1]));
         assertFalse(gaugeEligibility.isFavoredCohort(pools[4]));
+    }
+
+    function test_epochSnapshot_emitsRisingAndDroppedOnLeaderSwap() external {
+        address[] memory pools = new address[](5);
+        pools[0] = makeAddr("transition-pool-A");
+        pools[1] = makeAddr("transition-pool-B");
+        pools[2] = makeAddr("transition-pool-C");
+        pools[3] = makeAddr("transition-pool-D");
+        pools[4] = makeAddr("transition-pool-E");
+        mockEfficiencyOracle.setEfficiencyInputs(pools[0], 5e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[1], 4e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[2], 3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
+        _warmupTournament(pools);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.computeEpochSnapshot(pools);
+        // Cycle 1 — single-slot cohort; pools[0] is favored after epoch 4 snapshot.
+        assertTrue(gaugeEligibility.isFavoredCohort(pools[0]));
+        mockEfficiencyOracle.setEfficiencyInputs(pools[1], 6e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[0], 0.5e18, 1e18);
+        // Cycle 2 — expect Rising for new leader then Dropped for former leader at epoch 5.
+        vm.expectEmit(true, true, false, true, address(gaugeEligibility));
+        emit GaugeEfficiencyRising(pools[1], 5, 6e18, 1e18, 6e18);
+        vm.expectEmit(true, true, false, true, address(gaugeEligibility));
+        emit GaugeEfficiencyDropped(pools[0], 5, 0.5e18, 1e18, 0.5e18);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.computeEpochSnapshot(pools);
+        assertEq(gaugeEligibility.currentSnapshotEpoch(), 5);
+        assertTrue(gaugeEligibility.isFavoredCohort(pools[1]));
+        assertFalse(gaugeEligibility.isFavoredCohort(pools[0]));
     }
 }
