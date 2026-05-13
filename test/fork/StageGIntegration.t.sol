@@ -531,6 +531,11 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
     event GaugeEfficiencyDropped(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
     event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
 
+    function _ord(uint256 ordinal) private pure returns (address) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return address(uint160(ordinal));
+    }
+
     function test_happyPath_evaluateEligibilityPasses() external {
         address pool = pilotPools[0];
         // _makePoolEligible admits all pool tokens via _proposeAndFinalizeClass
@@ -643,5 +648,45 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         assertEq(gaugeEligibility.currentSnapshotEpoch(), 5);
         assertTrue(gaugeEligibility.isFavoredCohort(pools[1]));
         assertFalse(gaugeEligibility.isFavoredCohort(pools[0]));
+    }
+
+    function test_epochSnapshot_addressAscendingTiebreakWithEqualRatios() external {
+        address leader    = _ord(0x500);  // sole ratio leader at 10e18
+        address tieWinner = _ord(0x100);  // lowest address among the 6 tied at 3e18 — wins boundary slot
+        address tied200   = _ord(0x200);
+        address tied300   = _ord(0x300);
+        address tied400   = _ord(0x400);
+        address tied600   = _ord(0x600);
+        address tied700   = _ord(0x700);
+
+        address[] memory pools = new address[](7);
+        pools[0] = tied700;
+        pools[1] = tieWinner;
+        pools[2] = leader;
+        pools[3] = tied300;
+        pools[4] = tied600;
+        pools[5] = tied200;
+        pools[6] = tied400;
+
+        mockEfficiencyOracle.setEfficiencyInputs(leader,    10e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tieWinner,  3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tied200,    3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tied300,    3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tied400,    3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tied600,    3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(tied700,    3e18, 1e18);
+
+        _warmupTournament(pools);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.computeEpochSnapshot(pools);
+
+        assertEq(gaugeEligibility.currentSnapshotEpoch(), 4);
+        assertTrue(gaugeEligibility.isFavoredCohort(leader));
+        assertTrue(gaugeEligibility.isFavoredCohort(tieWinner));
+        assertFalse(gaugeEligibility.isFavoredCohort(tied200));
+        assertFalse(gaugeEligibility.isFavoredCohort(tied300));
+        assertFalse(gaugeEligibility.isFavoredCohort(tied400));
+        assertFalse(gaugeEligibility.isFavoredCohort(tied600));
+        assertFalse(gaugeEligibility.isFavoredCohort(tied700));
     }
 }
