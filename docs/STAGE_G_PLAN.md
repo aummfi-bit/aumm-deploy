@@ -524,3 +524,32 @@ Pre-merge audit (Opus): Claude Code reads (i) `git log stage-g ^stage-f-complete
 | docs (ROBUSTNESS register skeleton) | 364ebc6 | 2026-05-07 | ROBUSTNESS_BACKPORT_REGISTER.md — Stage B-F retrofit candidate register skeleton (scope + columns + RB-001 seed; rows populated via audit) |
 | G0.4 | 4f1f4ec | 2026-05-07 | docs/STAGE_G_PLAN.md — G1.4 body 7→6 immutables + _moduleAdmin storage-only wording (per G0.2 disambiguation) |
 | G0.5 | 11c0604 | 2026-05-07 | docs/ROBUSTNESS_BACKPORT_REGISTER.md — RB-002 (CCBMultiplier.emaSampler) + RB-003 (AureumWeightedPoolFactory._poolVersion) + Storage-class hardening class |
+| RB-002.0 | 2fe6ef8 | 2026-05-07 | src/ccb/CCBMultiplier.sol — promote emaSampler to public immutable (Storage-class hardening per register RB-002) |
+| RB-002.2 | daffa62 | 2026-05-07 | docs/ROBUSTNESS_BACKPORT_REGISTER.md — close RB-002 (emaSampler immutable backport; Stage F regression 263/263 at 2fe6ef8) |
+| RB-004.open | a8d995c | 2026-05-07 | docs/ROBUSTNESS_BACKPORT_REGISTER.md — open RB-004 (External-call & type-cast safety; Stage D/E/F test code) + 10th hardening class bullet |
+| RB-004.0a | 8bc8e6e | 2026-05-07 | test/fork/{AureumFeeRoutingHook,PilotPools}.t.sol — SafeERC20 migration (full bare-transfer sweep: 6 call sites) |
+| RB-004.0b | 67ce558 | 2026-05-07 | test/unit/CCBMultiplier.t.sol — SafeCast helper + typed constants + 16 cast-site removals |
+| RB-004.0c | 7bdfbcc | 2026-05-07 | test/unit/CCBMultiplier.t.sol — makeAddr migration for synthetic pool addresses (L449, L621) |
+| RB-004.2a | d2cd966 | 2026-05-07 | docs/STAGE_F_NOTES.md — append F13 (F12 test-side extension) + F14 (forge cache stale-list recovery) |
+| RB-004.2b | 6a2a0b1 | 2026-05-07 | docs/ROBUSTNESS_BACKPORT_REGISTER.md — close RB-004 (forge-lint 0/21; 263/263 at 7bdfbcc) |
+| RB-004.2c | 901d61b | 2026-05-07 | CLAUDE.md §11 — append F13 (test-side type-discipline) + F14 (forge cache stale-list) housekeeping bullets |
+| G1.4-pre-A | 18a7bbf | 2026-05-07 | docs/STAGE_G_NOTES.md — G-D12 error signatures typed (14 errors, G1.4-pre-A lock) |
+| G1.4-pre-B | 06b6156 | 2026-05-07 | docs/STAGE_G_PLAN.md — G1.4 + G1.5 bodies amended for option (a) constructor split |
+| G1.4-pre-C | 038b5ed | 2026-05-07 | docs/STAGE_G_NOTES.md — G-D14 transient-storage lock (resolve G-D12 line 351 deferral) |
+| G1.4-pre-D | 0dd41d5 | 2026-05-07 | docs/STAGE_G_PLAN.md + STAGE_G_NOTES.md — post-option-(a)+G-D14 hygiene (storage split, G1.6 repoints) |
+| G1.4-pre-E1 | 161c109 | 2026-05-08 | docs/STAGE_G_NOTES.md + STAGE_G_PLAN.md — G-D14 amended to Balancer assembly-helper pattern; G10 finding appended |
+| G1.4-pre-E2 | 0b67402 | 2026-05-08 | CLAUDE.md §11 — append G10 bullet (§12 NOTES language-feature compile-probe rule) |
+| G1.4 | 2e100cb | 2026-05-08 | src/gauge/SwapAndDepositToBodensee.sol — helper scaffold (errors, event, immutables, storage, transient slot constants, constructor) |
+| G1.5-pre-A | e8adf51 | 2026-05-08 | docs/STAGE_G_NOTES.md + STAGE_G_PLAN.md — constant→immutable keyword fix for slot identifiers (G-D14 L383+L406; PLAN L161) + G11 finding appended |
+| G1.5-pre-B | 6c209dd | 2026-05-08 | docs/STAGE_G_NOTES.md + STAGE_G_PLAN.md — G-D12 event surface extended to 3 events (VaultClassRegistrySet + GaugeRegistrySet setter events per Stage D precedent) |
+| G1.5 | b061ef3 | 2026-05-08 | src/gauge/SwapAndDepositToBodensee.sol — constructor refactor (5-param, ZeroAddress + TokenNotInPool guards, getPoolTokens index derivation) + onlyAuthorizedCaller modifier + setVaultClassRegistry + setGaugeRegistry one-shot setters (G-D12 caller-gate model) |
+| G1.5-pre-B | 39b7edd | 2026-05-08 | docs/STAGE_G_NOTES.md — G-D15 (Revoked is terminal; no permissionless reactivation) + T-I6 invariant + recovery-shape coda |
+| G1.5-pre-B-fix | 6bad870 | 2026-05-08 | docs/STAGE_G_NOTES.md — G-D15 → G-D17 renumber (Revoked-terminal; resolves PLAN G2.0 code collision) |
+| G1.5-pre-B2 | dd25053 | 2026-05-08 | docs/STAGE_G_PLAN.md — G-D17 cross-reference paragraph (§G3 seam) + T-I6 binding to G3.6 + G4.4 |
+| G1.6-pre-A | 057773e | 2026-05-08 | docs/STAGE_G_NOTES.md — AddLiquidityParams struct literal L293 + to: address(this) (6-field VaultTypes shape) |
+| G1.6-pre-B | 693ed90 | 2026-05-08 | docs/STAGE_G_NOTES.md — G-D18 (V3 reserve-read selector lock: getPoolTokenInfo + balancesRaw[index]; getReservesOf + getCurrentLiveBalances rejected) + L290 cross-reference |
+| G1.6 | 342c057 | 2026-05-08 | src/gauge/SwapAndDepositToBodensee.sol — swapAndDeposit + _swapAndDepositCallback (G-D12 nine-step outer + nine-step callback; G-D14 typed-slot transient via using StorageSlotExtension for *; G-D18 single-source getPoolTokenInfo + balancesRaw[idx] in _currentReserve helper; requiredAmount/_requiredAmount + Pick 3 6-field AddLiquidityParams) |
+| G1.6-post-A | 5daa2ec | 2026-05-08 | docs/STAGE_G_NOTES.md — G-D14 Implementation pattern correction (using StorageSlotExtension for *; tload/tstore source-attribution from StorageSlotExtension not TransientStorageHelpers) + G12 finding (using-directive chain-rule lesson) |
+| G1.7 | 43d04e2 | 2026-05-08 | test/unit/SwapAndDepositToBodensee.t.sol — 19 unit tests covering 14 G-D12 invariants (constructor TokenNotInPool, allowlist/setter/partial-activation, outer-entry guards, callback-side guards via MockVault attack-mode getPoolTokenInfo + corrupt-mode unlock); 19 passed |
+| G1.8 | 75f466c | 2026-05-08 | test/fork/SwapAndDepositToBodensee.t.sol — 3 fork tests covering 4 G-D12 fork invariants (svZCHF + sUSDS happy paths verifying bptOut/delta/residue/event; ReserveDeltaMismatch via vm.mockCall on getPoolTokenInfo freezing pre-state); 3 passed in 13.89s |
+| G1.8-post-A | 05480d2 | 2026-05-08 | docs/STAGE_G_PLAN.md L185 + docs/STAGE_G_NOTES.md L363 + tail — FoT counterfactual wording amendments (vm.mockCall on _vault.getPoolTokenInfo replacing payToken.transfer) + G13 finding (Foundry vm.expectRevert(bytes4) strict-match rule + frozen-pre-state mock pattern) |
