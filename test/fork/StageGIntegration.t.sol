@@ -1076,3 +1076,46 @@ contract StageGRegistryFoundingTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pools[2]) == IGaugeRegistry.GaugeStatus.None);
     }
 }
+
+contract StageGRegistryRevocationTest is StageGIntegrationFixture {
+    event GaugeRevoked(address indexed pool);
+
+    function test_revokeGauge_happyPath_emitsGaugeRevokedAndFlipsStatus() external {
+        address pool = makeAddr("revocation-pool-happy");
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        vm.expectEmit(true, false, false, true, address(gaugeRegistry));
+        emit GaugeRevoked(pool);
+        gaugeRegistry.revokeGauge(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+        assertFalse(gaugeRegistry.isGaugeApproved(pool));
+    }
+
+    function test_revokeGauge_nonGovernance_revertsNotGovernance() external {
+        address pool = makeAddr("revocation-pool-non-gov");
+        // No pre-activation needed — onlyGovernance modifier (L59) runs before the status check (L148), so the access revert fires regardless of pool status.
+        address nonGov = makeAddr("revocation-non-governance");
+        vm.prank(nonGov);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, nonGov));
+        gaugeRegistry.revokeGauge(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_revokeGauge_noneStatusPool_revertsNotGauged() external {
+        address pool = makeAddr("revocation-pool-none");
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGauged.selector, pool));
+        gaugeRegistry.revokeGauge(pool); // governance == address(this) — access check passes; status check (None != Active) reverts NotGauged
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_revokeGauge_alreadyRevokedPool_revertsNotGauged() external {
+        address pool = makeAddr("revocation-pool-double-revoke");
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        gaugeRegistry.revokeGauge(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGauged.selector, pool));
+        gaugeRegistry.revokeGauge(pool); // G-D17 terminal: Revoked != Active, single guard rejects double-revoke
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+    }
+}
