@@ -858,4 +858,55 @@ contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
         assertFalse(gaugeRegistry.isGaugeApproved(pool));
     }
+
+    function test_activateGauge_alreadyActive_revertsAlreadyGauged() external {
+        address pool = pilotPools[0];
+        _makePoolEligible(pool, 50_000e18);
+        address firstCaller = makeAddr("firstCallerForAlreadyGauged");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        deal(address(svZchf), firstCaller, fee);
+        vm.startPrank(firstCaller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        address secondCaller = makeAddr("secondCallerForAlreadyGauged");
+        deal(address(svZchf), secondCaller, fee);
+        uint256 secondCallerBalancePre = svZchf.balanceOf(secondCaller);
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        vm.startPrank(secondCaller);
+        svZchf.approve(address(gaugeRegistry), fee); // approval granted — proves fee NOT pulled is from status check, not from missing approval
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, pool));
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(secondCaller), secondCallerBalancePre); // fee NOT pulled
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre); // Bodensee NOT mutated
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+    }
+
+    function test_activateGauge_revoked_revertsAlreadyRevoked() external {
+        address pool = pilotPools[0];
+        _makePoolEligible(pool, 50_000e18);
+        address firstCaller = makeAddr("firstCallerForRevoke");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        deal(address(svZchf), firstCaller, fee);
+        vm.startPrank(firstCaller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+        gaugeRegistry.revokeGauge(pool); // governance == address(this) per fixture L208 — no prank needed
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+        address secondCaller = makeAddr("secondCallerAfterRevoke");
+        deal(address(svZchf), secondCaller, fee);
+        uint256 secondCallerBalancePre = svZchf.balanceOf(secondCaller);
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        vm.startPrank(secondCaller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, pool));
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(secondCaller), secondCallerBalancePre);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+    }
 }
