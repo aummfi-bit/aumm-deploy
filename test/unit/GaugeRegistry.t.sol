@@ -28,7 +28,7 @@ contract MockGaugeEligibility is IGaugeEligibility {
         revertReasons[pool] = reason;
     }
 
-    function evaluateEligibility(address pool) external override returns (bool) {
+    function evaluateEligibility(address pool) external view override returns (bool) {
         bytes memory reason = revertReasons[pool];
         if (reason.length > 0) {
             assembly {
@@ -42,11 +42,11 @@ contract MockGaugeEligibility is IGaugeEligibility {
         return eligibilityReturns[pool];
     }
 
-    function cohortOf(address) external view override returns (bool favored) {
+    function cohortOf(address) external pure override returns (bool favored) {
         return false;
     }
 
-    function snapshotEpoch() external view override returns (uint256) {
+    function snapshotEpoch() external pure override returns (uint256) {
         return 0;
     }
 }
