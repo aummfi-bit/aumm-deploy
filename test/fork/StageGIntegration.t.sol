@@ -516,3 +516,23 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
         assertEq(vaultClassRegistry.isAdmittedClass(target), false);
     }
 }
+
+contract StageGEligibilityTest is StageGIntegrationFixture {
+    function test_happyPath_evaluateEligibilityPasses() external {
+        address pool = pilotPools[0];
+        // _makePoolEligible admits all pool tokens via _proposeAndFinalizeClass
+        // and sets mockTVLOracle to the second argument
+        _makePoolEligible(pool, 50_000e18);
+
+        // Pre-evaluate state
+        assertEq(gaugeEligibility.isGaugeEligible(pool), false);
+
+        // Trigger evaluation
+        bool ok = gaugeEligibility.evaluateEligibility(pool);
+
+        // Post-evaluate state
+        assertTrue(ok);
+        assertEq(gaugeEligibility.isGaugeEligible(pool), true);
+        assertTrue(gaugeEligibility.isEligible(pool));
+    }
+}
