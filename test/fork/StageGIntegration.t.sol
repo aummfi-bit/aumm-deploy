@@ -35,8 +35,11 @@ import { GaugeEligibility } from "../../src/gauge/GaugeEligibility.sol";
 import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { IEfficiencyOracle } from "../../src/gauge/IEfficiencyOracle.sol";
-import { MockTVLOracle } from "./mocks/CCBMocks.sol";
+import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
 import { MockEfficiencyOracle, MockAuMT } from "./mocks/StageGMocks.sol";
+import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
+import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
+import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 
 /**
  * @title StageGIntegrationFixture
@@ -1163,5 +1166,60 @@ contract StageGRegistryGovernanceHandoffTest is StageGIntegrationFixture {
         vm.prank(newGov);
         gaugeRegistry.registerGaugeFromComposition(poolForNewGovAttempt);
         assertTrue(gaugeRegistry.gaugeStatus(poolForNewGovAttempt) == IGaugeRegistry.GaugeStatus.Active);
+    }
+}
+
+contract StageGRegistryStageFRegressionTest is StageGIntegrationFixture {
+    CCBMultiplier private ccbMultiplier;
+    MockMiliariumRegistry private mockMiliariumRegistry;
+    MockGaugeRegistry private mockGaugeRegistry;
+    address private regressionMiliariumPool;
+
+    function setUp() public override {
+        super.setUp();
+        regressionMiliariumPool = makeAddr("regression-miliarium-pool");
+        address[3] memory pools = [regressionMiliariumPool, makeAddr("regression-miliarium-slot-1"), makeAddr("regression-miliarium-slot-2")];
+        mockMiliariumRegistry = new MockMiliariumRegistry(pools);
+        mockGaugeRegistry = new MockGaugeRegistry();
+        ccbMultiplier = new CCBMultiplier(
+            IMiliariumRegistry(address(mockMiliariumRegistry)),
+            IGaugeRegistry(address(mockGaugeRegistry)),
+            IEMASampler(makeAddr("regression-ema-placeholder"))
+        );
+        ccbMultiplier.setGaugeRegistry(IGaugeRegistry(address(gaugeRegistry))); // F-D23 one-shot handoff to the production Stage G registry
+        assertEq(address(ccbMultiplier.gaugeRegistry()), address(gaugeRegistry)); // handoff landed
+        assertEq(ccbMultiplier.gaugeRegistrySetter(), address(0)); // seal closed per F-D23
+    }
+
+    function test_activateBoost_realGaugeRegistry_acceptsApprovedGauge() external {
+        address gauge = makeAddr("regression-approved-gauge");
+        gaugeRegistry.registerGaugeFromComposition(gauge); // governance == address(this); composition path activates gauge without fee/eligibility
+        assertTrue(gaugeRegistry.isGaugeApproved(gauge));
+        uint256 blockBefore = block.number;
+        vm.prank(gauge);
+        ccbMultiplier.activateBoost(regressionMiliariumPool);
+        assertEq(ccbMultiplier.boostExpiryBlock(regressionMiliariumPool), blockBefore + ccbMultiplier.GAUGE_BOOST_DURATION_BLOCKS());
+        assertEq(ccbMultiplier.M_i(regressionMiliariumPool), ccbMultiplier.INITIAL_MULTIPLIER());
+    }
+
+    function test_activateBoost_realGaugeRegistry_rejectsUnapprovedGauge() external {
+        address unapprovedCaller = makeAddr("regression-unapproved-caller");
+        assertFalse(gaugeRegistry.isGaugeApproved(unapprovedCaller)); // sanity: registry has not seen this address
+        vm.prank(unapprovedCaller);
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.OnlyApprovedGauge.selector, unapprovedCaller));
+        ccbMultiplier.activateBoost(regressionMiliariumPool);
+        assertEq(ccbMultiplier.boostExpiryBlock(regressionMiliariumPool), 0); // no state mutation
+    }
+
+    function test_activateBoost_realGaugeRegistry_rejectsRevokedGauge() external {
+        address gauge = makeAddr("regression-revoked-gauge");
+        gaugeRegistry.registerGaugeFromComposition(gauge);
+        assertTrue(gaugeRegistry.isGaugeApproved(gauge));
+        gaugeRegistry.revokeGauge(gauge);
+        assertFalse(gaugeRegistry.isGaugeApproved(gauge)); // G-D17 terminal — isGaugeApproved now returns false through the live registry read
+        vm.prank(gauge);
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.OnlyApprovedGauge.selector, gauge));
+        ccbMultiplier.activateBoost(regressionMiliariumPool);
+        assertEq(ccbMultiplier.boostExpiryBlock(regressionMiliariumPool), 0);
     }
 }
