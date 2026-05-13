@@ -542,4 +542,12 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.TVLFloorNotMet.selector, 0, gaugeEligibility.TVL_FLOOR_SVZCHF()));
         gaugeEligibility.evaluateEligibility(pool);
     }
+
+    function test_svZchfUnadmitted_revertsInsufficientQualityGate() external {
+        mockTVLOracle.set(pilotPools[0], 15_000e18);
+
+        // sUSDS admitted (genesis) but svZCHF not admitted — numerator = 0.2e18 < 0.52e18
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0.2e18)));
+        gaugeEligibility.evaluateEligibility(pilotPools[0]);
+    }
 }
