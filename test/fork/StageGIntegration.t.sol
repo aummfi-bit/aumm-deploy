@@ -477,4 +477,28 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
         vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ProposalAlreadyFinalized.selector, proposalId));
         vaultClassRegistry.finalizeProposal(proposalId);
     }
+
+    function test_vetoWindowGuards_expiredAndOpen() external {
+        address proposer = makeAddr("guardProposer");
+        address target = makeAddr("guardTarget");
+        uint256 bondAmount = vaultClassRegistry.PROPOSAL_BOND_SVZCHF();
+
+        deal(address(svZchf), proposer, bondAmount);
+        vm.startPrank(proposer);
+        svZchf.approve(address(vaultClassRegistry), bondAmount);
+        uint256 proposalId = vaultClassRegistry.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            target,
+            bytes32(0)
+        );
+        vm.stopPrank();
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.VetoWindowOpen.selector, proposalId));
+        vaultClassRegistry.finalizeProposal(proposalId);
+
+        vm.roll(block.number + vaultClassRegistry.VETO_WINDOW_BLOCKS() + 1);
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.VetoWindowExpired.selector, proposalId));
+        vaultClassRegistry.vetoProposal(proposalId);
+    }
 }
