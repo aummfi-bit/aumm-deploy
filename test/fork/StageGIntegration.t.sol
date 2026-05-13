@@ -17,6 +17,7 @@ import {
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
+import { IBasePoolFactory } from "@balancer-labs/v3-interfaces/contracts/vault/IBasePoolFactory.sol";
 
 import { AuMM } from "../../src/token/AuMM.sol";
 import { AureumFeeRoutingHook } from "../../src/fee_router/AureumFeeRoutingHook.sol";
@@ -555,5 +556,16 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         // Bodensee pool contains AuMM by construction — T-I3 gate fires inside _compute52PctNumerator before factory/TVL checks
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, address(aumm)));
         gaugeEligibility.evaluateEligibility(bodenseePool);
+    }
+
+    function test_poolNotFromAwpf_revertsPoolTypeNotWhitelisted() external {
+        // Mock awpf to deny pilotPools[0] — exercises G-D6 / G-D15a factory whitelist gate
+        vm.mockCall(
+            address(awpf),
+            abi.encodeWithSelector(IBasePoolFactory.isPoolFromFactory.selector, pilotPools[0]),
+            abi.encode(false)
+        );
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.PoolTypeNotWhitelisted.selector, address(awpf)));
+        gaugeEligibility.evaluateEligibility(pilotPools[0]);
     }
 }
