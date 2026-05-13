@@ -971,3 +971,108 @@ contract StageGRegistryCompositionTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
     }
 }
+
+contract StageGRegistryFoundingTest is StageGIntegrationFixture {
+    event GaugeActivated(address indexed pool, IGaugeRegistry.GaugeActivationPath indexed path);
+
+    function _bodenseeSvZchfIndex() private view returns (uint256) {
+        IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (address(tokens[i]) == address(svZchf)) return i;
+        }
+        revert("svZchf not in Bodensee");
+    }
+
+    function _bodenseeSvZchfBalance() private view returns (uint256) {
+        uint256 idx = _bodenseeSvZchfIndex();
+        (, , uint256[] memory balances, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balances[idx];
+    }
+
+    function test_seedFoundingPool_happyPath_emitsFoundingPathTag() external {
+        address pool = makeAddr("founding-pool-scalar-happy");
+        uint256 govSvZchfPre = svZchf.balanceOf(address(this));
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GaugeActivated(pool, IGaugeRegistry.GaugeActivationPath.Founding);
+        gaugeRegistry.seedFoundingPool(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.isGaugeApproved(pool));
+        assertEq(svZchf.balanceOf(address(this)), govSvZchfPre);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre);
+    }
+
+    function test_seedFoundingPool_nonGovernance_revertsNotGovernance() external {
+        address pool = makeAddr("founding-pool-scalar-non-gov");
+        address nonGov = makeAddr("founding-non-governance");
+        vm.prank(nonGov);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, nonGov));
+        gaugeRegistry.seedFoundingPool(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_seedFoundingPool_alreadyActive_revertsAlreadyGauged() external {
+        address pool = makeAddr("founding-pool-scalar-already-gauged");
+        gaugeRegistry.seedFoundingPool(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, pool));
+        gaugeRegistry.seedFoundingPool(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+    }
+
+    function test_seedFoundingPool_revokedPool_revertsAlreadyRevoked() external {
+        address pool = makeAddr("founding-pool-scalar-revoked");
+        gaugeRegistry.seedFoundingPool(pool);
+        gaugeRegistry.revokeGauge(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, pool));
+        gaugeRegistry.seedFoundingPool(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+    }
+
+    function test_seedFoundingPools_batchHappyPath_emitsFoundingForEachPool() external {
+        address[] memory pools = new address[](3);
+        pools[0] = makeAddr("founding-batch-pool-0");
+        pools[1] = makeAddr("founding-batch-pool-1");
+        pools[2] = makeAddr("founding-batch-pool-2");
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GaugeActivated(pools[0], IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GaugeActivated(pools[1], IGaugeRegistry.GaugeActivationPath.Founding);
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GaugeActivated(pools[2], IGaugeRegistry.GaugeActivationPath.Founding);
+        gaugeRegistry.seedFoundingPools(pools);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[0]) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[1]) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[2]) == IGaugeRegistry.GaugeStatus.Active);
+    }
+
+    function test_seedFoundingPools_nonGovernance_revertsNotGovernance() external {
+        address[] memory pools = new address[](2);
+        pools[0] = makeAddr("founding-batch-non-gov-pool-0");
+        pools[1] = makeAddr("founding-batch-non-gov-pool-1");
+        address nonGov = makeAddr("founding-batch-non-governance");
+        vm.prank(nonGov);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, nonGov));
+        gaugeRegistry.seedFoundingPools(pools);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[0]) == IGaugeRegistry.GaugeStatus.None);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[1]) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_seedFoundingPools_secondPoolAlreadyActive_atomicRevertsAndFirstPoolStaysNone() external {
+        address[] memory pools = new address[](3);
+        pools[0] = makeAddr("founding-batch-atomic-pool-0-fresh");
+        pools[1] = makeAddr("founding-batch-atomic-pool-1-preActive");
+        pools[2] = makeAddr("founding-batch-atomic-pool-2-fresh");
+        gaugeRegistry.seedFoundingPool(pools[1]);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[1]) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[0]) == IGaugeRegistry.GaugeStatus.None);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[2]) == IGaugeRegistry.GaugeStatus.None);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, pools[1]));
+        gaugeRegistry.seedFoundingPools(pools);
+        // Atomicity: pools[0] write from loop iteration 0 must be rolled back — pools[2] never reached.
+        assertTrue(gaugeRegistry.gaugeStatus(pools[0]) == IGaugeRegistry.GaugeStatus.None);
+        assertTrue(gaugeRegistry.gaugeStatus(pools[1]) == IGaugeRegistry.GaugeStatus.Active); // pre-seed state intact
+        assertTrue(gaugeRegistry.gaugeStatus(pools[2]) == IGaugeRegistry.GaugeStatus.None);
+    }
+}
