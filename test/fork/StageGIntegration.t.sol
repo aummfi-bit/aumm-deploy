@@ -834,4 +834,28 @@ contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
         assertFalse(gaugeRegistry.isGaugeApproved(pool));
     }
+
+    function test_activateGauge_noApproval_revertsAndPreservesAllState() external {
+        address pool = pilotPools[0];
+        _makePoolEligible(pool, 50_000e18); // pool IS eligible — proves the revert is from fee precondition, not downstream eligibility
+        address caller = makeAddr("permissionlessCallerNoApproval");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        deal(address(svZchf), caller, fee); // caller funded — revert is from missing approval, not missing balance
+        // NO svZchf.approve call — allowance(caller, registry) stays 0
+        uint256 callerBalancePre = svZchf.balanceOf(caller);
+        uint256 registryBalancePre = svZchf.balanceOf(address(gaugeRegistry));
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        uint256 bptSupplyPre = IERC20(bodenseePool).totalSupply();
+        vm.startPrank(caller);
+        vm.expectRevert();
+        gaugeRegistry.activateGauge(pool);
+        vm.stopPrank();
+
+        assertEq(svZchf.balanceOf(caller), callerBalancePre);
+        assertEq(svZchf.balanceOf(address(gaugeRegistry)), registryBalancePre);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+        assertFalse(gaugeRegistry.isGaugeApproved(pool));
+    }
 }
