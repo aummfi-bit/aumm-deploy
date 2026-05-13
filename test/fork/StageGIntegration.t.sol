@@ -910,3 +910,64 @@ contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
     }
 }
+
+contract StageGRegistryCompositionTest is StageGIntegrationFixture {
+    event GaugeActivated(address indexed pool, IGaugeRegistry.GaugeActivationPath indexed path);
+
+    function _bodenseeSvZchfIndex() private view returns (uint256) {
+        IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (address(tokens[i]) == address(svZchf)) return i;
+        }
+        revert("svZchf not in Bodensee");
+    }
+
+    function _bodenseeSvZchfBalance() private view returns (uint256) {
+        uint256 idx = _bodenseeSvZchfIndex();
+        (, , uint256[] memory balances, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balances[idx];
+    }
+
+    function test_registerGaugeFromComposition_happyPath_bypassesEligibilityAndFee() external {
+        address pool = makeAddr("composition-pool-happy");
+        uint256 govSvZchfPre = svZchf.balanceOf(address(this));
+        uint256 registrySvZchfPre = svZchf.balanceOf(address(gaugeRegistry));
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GaugeActivated(pool, IGaugeRegistry.GaugeActivationPath.Composition);
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.isGaugeApproved(pool));
+        assertEq(svZchf.balanceOf(address(this)), govSvZchfPre); // no fee on composition path
+        assertEq(svZchf.balanceOf(address(gaugeRegistry)), registrySvZchfPre);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre); // Bodensee NOT touched
+    }
+
+    function test_registerGaugeFromComposition_nonGovernance_revertsNotGovernance() external {
+        address pool = makeAddr("composition-pool-non-gov");
+        address nonGov = makeAddr("composition-non-governance");
+        vm.prank(nonGov);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, nonGov));
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+    }
+
+    function test_registerGaugeFromComposition_alreadyActive_revertsAlreadyGauged() external {
+        address pool = makeAddr("composition-pool-already-gauged");
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, pool));
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+    }
+
+    function test_registerGaugeFromComposition_revokedPool_revertsAlreadyRevoked() external {
+        address pool = makeAddr("composition-pool-revoked");
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        gaugeRegistry.revokeGauge(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyRevoked.selector, pool));
+        gaugeRegistry.registerGaugeFromComposition(pool);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
+    }
+}
