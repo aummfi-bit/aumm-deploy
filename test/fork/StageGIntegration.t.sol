@@ -535,4 +535,11 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         assertEq(gaugeEligibility.isGaugeEligible(pool), true);
         assertTrue(gaugeEligibility.isEligible(pool));
     }
+
+    function test_subFloorTVL_revertsTVLFloorNotMet() external {
+        address pool = pilotPools[0];
+
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.TVLFloorNotMet.selector, 0, gaugeEligibility.TVL_FLOOR_SVZCHF()));
+        gaugeEligibility.evaluateEligibility(pool);
+    }
 }
