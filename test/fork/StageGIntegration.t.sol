@@ -689,4 +689,41 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         assertFalse(gaugeEligibility.isFavoredCohort(tied600));
         assertFalse(gaugeEligibility.isFavoredCohort(tied700));
     }
+
+    function test_epochSnapshot_isEligibleDeterministicAcrossSameBlockReads() external {
+        _makePoolEligible(pilotPools[0], 50_000e18);
+        gaugeEligibility.evaluateEligibility(pilotPools[0]);
+
+        address[] memory pools = new address[](5);
+        pools[0] = makeAddr("determinism-A");
+        pools[1] = makeAddr("determinism-B");
+        pools[2] = makeAddr("determinism-C");
+        pools[3] = makeAddr("determinism-D");
+        pools[4] = makeAddr("determinism-E");
+        mockEfficiencyOracle.setEfficiencyInputs(pools[0], 5e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[1], 4e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[2], 3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
+        _warmupTournament(pools);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.computeEpochSnapshot(pools);
+
+        uint256 anchorBlock = block.number;
+        bool isEligibleA = gaugeEligibility.isEligible(pilotPools[0]);
+        bool cohortA = gaugeEligibility.cohortOf(pools[0]);
+        uint256 epochA = gaugeEligibility.snapshotEpoch();
+        bool isEligibleB = gaugeEligibility.isEligible(pilotPools[0]);
+        bool cohortB = gaugeEligibility.cohortOf(pools[0]);
+        uint256 epochB = gaugeEligibility.snapshotEpoch();
+
+        assertEq(block.number, anchorBlock);
+        assertEq(isEligibleA, isEligibleB);
+        assertEq(cohortA, cohortB);
+        assertEq(epochA, epochB);
+
+        assertTrue(isEligibleA);
+        assertTrue(cohortA);
+        assertEq(epochA, 4);
+    }
 }
