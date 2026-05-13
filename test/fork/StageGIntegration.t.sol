@@ -395,6 +395,7 @@ abstract contract StageGIntegrationFixture is Test {
 contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
     event VaultClassFinalized(uint256 indexed proposalId, address indexed admissionValue);
     event VaultClassVetoed(uint256 indexed proposalId, address indexed vetoer, uint256 weight);
+    event VaultClassRevoked(address indexed admissionValue);
 
     function _bodenseeSvZchfIndex() private view returns (uint256) {
         IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
@@ -500,5 +501,18 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
 
         vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.VetoWindowExpired.selector, proposalId));
         vaultClassRegistry.vetoProposal(proposalId);
+    }
+
+    function test_revokeVaultClass_flipsAdmission() external {
+        address target = makeAddr("revokeTarget");
+
+        _proposeAndFinalizeClass(target, IVaultClassRegistry.AdmissionType.ImplementationAddress, bytes32(0));
+        assertEq(vaultClassRegistry.isAdmittedClass(target), true);
+
+        vm.expectEmit(true, false, false, false, address(vaultClassRegistry));
+        emit VaultClassRevoked(target);
+        vaultClassRegistry.revokeVaultClass(target);
+
+        assertEq(vaultClassRegistry.isAdmittedClass(target), false);
     }
 }
