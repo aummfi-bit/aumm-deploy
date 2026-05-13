@@ -1119,3 +1119,49 @@ contract StageGRegistryRevocationTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Revoked);
     }
 }
+
+contract StageGRegistryGovernanceHandoffTest is StageGIntegrationFixture {
+    event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
+
+    function test_setGovernanceContract_happyPath_emitsGovernanceTransferredAndUpdatesStorage() external {
+        address oldGov = gaugeRegistry.governanceContract();
+        assertEq(oldGov, address(this));
+        address newGov = makeAddr("new-governance-happy");
+        vm.expectEmit(true, true, false, true, address(gaugeRegistry));
+        emit GovernanceTransferred(oldGov, newGov);
+        gaugeRegistry.setGovernanceContract(newGov);
+        assertEq(gaugeRegistry.governanceContract(), newGov);
+    }
+
+    function test_setGovernanceContract_nonGovernance_revertsNotGovernance() external {
+        address oldGov = gaugeRegistry.governanceContract();
+        address nonGov = makeAddr("handoff-non-governance");
+        address newGov = makeAddr("handoff-new-governance-rejected");
+        vm.prank(nonGov);
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, nonGov));
+        gaugeRegistry.setGovernanceContract(newGov);
+        assertEq(gaugeRegistry.governanceContract(), oldGov);
+    }
+
+    function test_setGovernanceContract_zeroAddress_revertsZeroAddress() external {
+        address oldGov = gaugeRegistry.governanceContract();
+        vm.expectRevert(abi.encodeWithSelector(GaugeRegistry.ZeroAddress.selector));
+        gaugeRegistry.setGovernanceContract(address(0));
+        assertEq(gaugeRegistry.governanceContract(), oldGov);
+    }
+
+    function test_setGovernanceContract_handoffShiftsAuthority_oldRejectedNewAccepted() external {
+        address oldGov = gaugeRegistry.governanceContract();
+        address newGov = makeAddr("handoff-new-governance-active");
+        gaugeRegistry.setGovernanceContract(newGov);
+        assertEq(gaugeRegistry.governanceContract(), newGov);
+        address poolForOldGovAttempt = makeAddr("handoff-pool-old-gov-attempt");
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.NotGovernance.selector, oldGov));
+        gaugeRegistry.registerGaugeFromComposition(poolForOldGovAttempt);
+        assertTrue(gaugeRegistry.gaugeStatus(poolForOldGovAttempt) == IGaugeRegistry.GaugeStatus.None);
+        address poolForNewGovAttempt = makeAddr("handoff-pool-new-gov-attempt");
+        vm.prank(newGov);
+        gaugeRegistry.registerGaugeFromComposition(poolForNewGovAttempt);
+        assertTrue(gaugeRegistry.gaugeStatus(poolForNewGovAttempt) == IGaugeRegistry.GaugeStatus.Active);
+    }
+}
