@@ -568,4 +568,15 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.PoolTypeNotWhitelisted.selector, address(awpf)));
         gaugeEligibility.evaluateEligibility(pilotPools[0]);
     }
+
+    function test_g_d10TryCatchPaths_borderlinePass() external {
+        address aavePrimeGho = 0xC71Ea051a5F82c67ADcF634c36FFE6334793D24C;
+        _proposeAndFinalizeClass(aavePrimeGho, IVaultClassRegistry.AdmissionType.ImplementationAddress, bytes32(0));
+        _proposeAndFinalizeClass(address(svZchf), IVaultClassRegistry.AdmissionType.ImplementationAddress, bytes32(0));
+        mockTVLOracle.set(pilotPools[2], 50_000e18);
+        // ixAurebit (pilotPools[2]) — all three G-D10 paths: WBTC + cbBTC + ixEDEL hit catch (0 each); Aave Prime GHO + svZCHF admitted ERC-4626 (0.26e18 each); numerator = 0.52e18 = bar, passes
+        bool ok = gaugeEligibility.evaluateEligibility(pilotPools[2]);
+        assertTrue(ok);
+        assertTrue(gaugeEligibility.isEligible(pilotPools[2]));
+    }
 }
