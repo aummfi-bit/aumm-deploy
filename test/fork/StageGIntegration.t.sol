@@ -391,6 +391,15 @@ abstract contract StageGIntegrationFixture is Test {
         gaugeRegistry.activateGauge(pool);
         vm.stopPrank();
     }
+
+    function _warmupTournament(address[] memory pools) internal {
+        uint256 smoothing = gaugeEligibility.SMOOTHING_EPOCHS();
+        vm.startPrank(address(gaugeRegistry));
+        for (uint256 i = 0; i < smoothing; ++i) {
+            gaugeEligibility.computeEpochSnapshot(pools);
+        }
+        vm.stopPrank();
+    }
 }
 
 contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
@@ -578,5 +587,27 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         bool ok = gaugeEligibility.evaluateEligibility(pilotPools[2]);
         assertTrue(ok);
         assertTrue(gaugeEligibility.isEligible(pilotPools[2]));
+    }
+
+    function test_epochSnapshot_assignsTop15PctFavoredCohort() external {
+        // 5 synthetic pools — favoredCount = (5*15 + 99) / 100 = 1; only top-1 favored after warmup + epoch 4 ranking.
+        address[] memory pools = new address[](5);
+        pools[0] = makeAddr("pool-A");
+        pools[1] = makeAddr("pool-B");
+        pools[2] = makeAddr("pool-C");
+        pools[3] = makeAddr("pool-D");
+        pools[4] = makeAddr("pool-E");
+        mockEfficiencyOracle.setEfficiencyInputs(pools[0], 5e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[1], 4e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[2], 3e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
+        mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
+        _warmupTournament(pools);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.computeEpochSnapshot(pools);
+        assertEq(gaugeEligibility.currentSnapshotEpoch(), 4);
+        assertTrue(gaugeEligibility.isFavoredCohort(pools[0]));
+        assertFalse(gaugeEligibility.isFavoredCohort(pools[1]));
+        assertFalse(gaugeEligibility.isFavoredCohort(pools[4]));
     }
 }
