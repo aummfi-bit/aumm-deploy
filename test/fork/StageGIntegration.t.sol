@@ -550,4 +550,10 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.InsufficientQualityGate.selector, uint256(0.2e18)));
         gaugeEligibility.evaluateEligibility(pilotPools[0]);
     }
+
+    function test_aummInPool_revertsForbiddenToken() external {
+        // Bodensee pool contains AuMM by construction — T-I3 gate fires inside _compute52PctNumerator before factory/TVL checks
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, address(aumm)));
+        gaugeEligibility.evaluateEligibility(bodenseePool);
+    }
 }
