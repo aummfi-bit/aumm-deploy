@@ -394,6 +394,7 @@ abstract contract StageGIntegrationFixture is Test {
 
 contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
     event VaultClassFinalized(uint256 indexed proposalId, address indexed admissionValue);
+    event VaultClassVetoed(uint256 indexed proposalId, address indexed vetoer, uint256 weight);
 
     function _bodenseeSvZchfIndex() private view returns (uint256) {
         IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
@@ -442,5 +443,38 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
 
         assertEq(vaultClassRegistry.isAdmittedClass(target), true);
         assertTrue(vaultClassRegistry.admissionType(target) == IVaultClassRegistry.AdmissionType.ImplementationAddress);
+    }
+
+    function test_vetoSuccess_blocksAdmissionAndKeepsBond() external {
+        address voter = makeAddr("vetoVoter");
+        address proposer = makeAddr("vetoProposer");
+        address target = makeAddr("vetoTarget");
+        uint256 bondAmount = vaultClassRegistry.PROPOSAL_BOND_SVZCHF();
+        mockAuMT.setTotalSupply(100e18);
+        mockAuMT.setGovernanceWeight(voter, 11e18);
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+
+        deal(address(svZchf), proposer, bondAmount);
+        vm.startPrank(proposer);
+        svZchf.approve(address(vaultClassRegistry), bondAmount);
+        uint256 proposalId = vaultClassRegistry.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            target,
+            bytes32(0)
+        );
+        vm.stopPrank();
+
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre + bondAmount);
+
+        vm.expectEmit(true, true, false, false, address(vaultClassRegistry));
+        emit VaultClassVetoed(proposalId, voter, 11e18);
+        vm.prank(voter);
+        vaultClassRegistry.vetoProposal(proposalId);
+
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre + bondAmount);
+        assertEq(svZchf.balanceOf(proposer), 0);
+        assertEq(vaultClassRegistry.isAdmittedClass(target), false);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ProposalAlreadyFinalized.selector, proposalId));
+        vaultClassRegistry.finalizeProposal(proposalId);
     }
 }
