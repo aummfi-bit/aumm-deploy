@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -32,6 +33,7 @@ import { VaultClassRegistry } from "../../src/gauge/VaultClassRegistry.sol";
 import { IVaultClassRegistry } from "../../src/gauge/IVaultClassRegistry.sol";
 import { GaugeEligibility } from "../../src/gauge/GaugeEligibility.sol";
 import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
+import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { IEfficiencyOracle } from "../../src/gauge/IEfficiencyOracle.sol";
 import { MockTVLOracle } from "./mocks/CCBMocks.sol";
 import { MockEfficiencyOracle, MockAuMT } from "./mocks/StageGMocks.sol";
@@ -725,5 +727,66 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         assertTrue(isEligibleA);
         assertTrue(cohortA);
         assertEq(epochA, 4);
+    }
+}
+
+contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
+    event GaugeActivated(address indexed pool, IGaugeRegistry.GaugeActivationPath indexed path);
+    event AntiSpamFeeRouted(address indexed payer, uint256 amount);
+
+    function _bodenseeSvZchfIndex() private view returns (uint256) {
+        IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (address(tokens[i]) == address(svZchf)) return i;
+        }
+        revert("svZchf not in Bodensee");
+    }
+
+    function _bodenseeSvZchfBalance() private view returns (uint256) {
+        uint256 idx = _bodenseeSvZchfIndex();
+        (, , uint256[] memory balances, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balances[idx];
+    }
+
+    function test_activateGauge_happyPath_routesAntiSpamFeeAndActivates() external {
+        address pool = pilotPools[0];
+        _makePoolEligible(pool, 50_000e18);
+
+        address caller = makeAddr("permissionlessCaller");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        uint256 bptSupplyPre = IERC20(bodenseePool).totalSupply();
+
+        deal(address(svZchf), caller, fee);
+
+        vm.startPrank(caller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        vm.recordLogs();
+        gaugeRegistry.activateGauge(pool);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        vm.stopPrank();
+
+        bool foundFeeRouted;
+        bool foundActivated;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].emitter != address(gaugeRegistry)) continue;
+            if (logs[i].topics[0] == AntiSpamFeeRouted.selector) {
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), caller);
+                assertEq(abi.decode(logs[i].data, (uint256)), fee);
+                foundFeeRouted = true;
+            } else if (logs[i].topics[0] == GaugeActivated.selector) {
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), pool);
+                assertEq(uint256(logs[i].topics[2]), uint256(uint8(IGaugeRegistry.GaugeActivationPath.Permissionless)));
+                foundActivated = true;
+            }
+        }
+        assertTrue(foundFeeRouted);
+        assertTrue(foundActivated);
+
+        assertEq(svZchf.balanceOf(caller), 0);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre + fee);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
+        assertTrue(gaugeRegistry.isGaugeApproved(pool));
     }
 }
