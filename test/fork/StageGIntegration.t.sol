@@ -216,70 +216,71 @@ abstract contract StageGIntegrationFixture is Test {
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
     function _bodenseeTokenConfigs() private view returns (TokenConfig[] memory) {
-        address t0 = address(aumm);
-        address t1 = address(susds);
-        address t2 = address(svZchf);
-        if (t0 > t1) (t0, t1) = (t1, t0);
-        if (t1 > t2) (t1, t2) = (t2, t1);
-        if (t0 > t1) (t0, t1) = (t1, t0);
+        address[3] memory addrs;
+        addrs[0] = address(aumm);
+        addrs[1] = address(susds);
+        addrs[2] = address(svZchf);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
+        if (addrs[1] > addrs[2]) (addrs[1], addrs[2]) = (addrs[2], addrs[1]);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
 
         TokenConfig[] memory tokens = new TokenConfig[](3);
-        tokens[0] = t0 == address(aumm)
+        tokens[0] = addrs[0] == address(aumm)
             ? TokenConfig({
-                token: IERC20(t0),
+                token: IERC20(addrs[0]),
                 tokenType: TokenType.STANDARD,
                 rateProvider: IRateProvider(address(0)),
                 paysYieldFees: false
             })
-            : t0 == address(susds)
+            : addrs[0] == address(susds)
                 ? TokenConfig({
-                    token: IERC20(t0),
+                    token: IERC20(addrs[0]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
                     paysYieldFees: true
                 })
                 : TokenConfig({
-                    token: IERC20(t0),
+                    token: IERC20(addrs[0]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
                     paysYieldFees: true
                 });
-        tokens[1] = t1 == address(aumm)
+        tokens[1] = addrs[1] == address(aumm)
             ? TokenConfig({
-                token: IERC20(t1),
+                token: IERC20(addrs[1]),
                 tokenType: TokenType.STANDARD,
                 rateProvider: IRateProvider(address(0)),
                 paysYieldFees: false
             })
-            : t1 == address(susds)
+            : addrs[1] == address(susds)
                 ? TokenConfig({
-                    token: IERC20(t1),
+                    token: IERC20(addrs[1]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
                     paysYieldFees: true
                 })
                 : TokenConfig({
-                    token: IERC20(t1),
+                    token: IERC20(addrs[1]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
                     paysYieldFees: true
                 });
-        tokens[2] = t2 == address(aumm)
+        tokens[2] = addrs[2] == address(aumm)
             ? TokenConfig({
-                token: IERC20(t2),
+                token: IERC20(addrs[2]),
                 tokenType: TokenType.STANDARD,
                 rateProvider: IRateProvider(address(0)),
                 paysYieldFees: false
             })
-            : t2 == address(susds)
+            : addrs[2] == address(susds)
                 ? TokenConfig({
-                    token: IERC20(t2),
+                    token: IERC20(addrs[2]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
                     paysYieldFees: true
                 })
                 : TokenConfig({
-                    token: IERC20(t2),
+                    token: IERC20(addrs[2]),
                     tokenType: TokenType.WITH_RATE,
                     rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
                     paysYieldFees: true
@@ -288,17 +289,18 @@ abstract contract StageGIntegrationFixture is Test {
     }
 
     function _bodenseeWeights() private view returns (uint256[] memory) {
-        address t0 = address(aumm);
-        address t1 = address(susds);
-        address t2 = address(svZchf);
-        if (t0 > t1) (t0, t1) = (t1, t0);
-        if (t1 > t2) (t1, t2) = (t2, t1);
-        if (t0 > t1) (t0, t1) = (t1, t0);
+        address[3] memory addrs;
+        addrs[0] = address(aumm);
+        addrs[1] = address(susds);
+        addrs[2] = address(svZchf);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
+        if (addrs[1] > addrs[2]) (addrs[1], addrs[2]) = (addrs[2], addrs[1]);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
 
         uint256[] memory weights = new uint256[](3);
-        weights[0] = t0 == address(aumm) ? 4e17 : 3e17;
-        weights[1] = t1 == address(aumm) ? 4e17 : 3e17;
-        weights[2] = t2 == address(aumm) ? 4e17 : 3e17;
+        weights[0] = addrs[0] == address(aumm) ? 4e17 : 3e17;
+        weights[1] = addrs[1] == address(aumm) ? 4e17 : 3e17;
+        weights[2] = addrs[2] == address(aumm) ? 4e17 : 3e17;
         return weights;
     }
 
@@ -313,17 +315,15 @@ abstract contract StageGIntegrationFixture is Test {
 
     function _initializeBodenseeCallback() external returns (uint256 bptOut) {
         require(msg.sender == address(vault), "onlyVault");
-        address t0 = address(aumm);
-        address t1 = address(susds);
-        address t2 = address(svZchf);
-        if (t0 > t1) (t0, t1) = (t1, t0);
-        if (t1 > t2) (t1, t2) = (t2, t1);
-        if (t0 > t1) (t0, t1) = (t1, t0);
 
         IERC20[] memory tokens = new IERC20[](3);
-        tokens[0] = IERC20(t0);
-        tokens[1] = IERC20(t1);
-        tokens[2] = IERC20(t2);
+        tokens[0] = IERC20(address(aumm));
+        tokens[1] = IERC20(address(susds));
+        tokens[2] = IERC20(address(svZchf));
+        if (address(tokens[0]) > address(tokens[1])) (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
+        if (address(tokens[1]) > address(tokens[2])) (tokens[1], tokens[2]) = (tokens[2], tokens[1]);
+        if (address(tokens[0]) > address(tokens[1])) (tokens[0], tokens[1]) = (tokens[1], tokens[0]);
+
         uint256[] memory amountsIn = new uint256[](3);
         amountsIn[0] = INIT_SEED;
         amountsIn[1] = INIT_SEED;
@@ -389,5 +389,58 @@ abstract contract StageGIntegrationFixture is Test {
         svZchf.approve(address(gaugeRegistry), fee);
         gaugeRegistry.activateGauge(pool);
         vm.stopPrank();
+    }
+}
+
+contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
+    event VaultClassFinalized(uint256 indexed proposalId, address indexed admissionValue);
+
+    function _bodenseeSvZchfIndex() private view returns (uint256) {
+        IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (address(tokens[i]) == address(svZchf)) return i;
+        }
+        revert("svZchf not in Bodensee");
+    }
+
+    function _bodenseeSvZchfBalance() private view returns (uint256) {
+        uint256 idx = _bodenseeSvZchfIndex();
+        (, , uint256[] memory balances, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balances[idx];
+    }
+
+    function test_happyPath_proposeFinalizeAdmitsClass() external {
+        address proposer = makeAddr("proposer");
+        address target = makeAddr("targetClass");
+        uint256 bondAmount = vaultClassRegistry.PROPOSAL_BOND_SVZCHF();
+
+        assertEq(vaultClassRegistry.isAdmittedClass(target), false);
+
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        uint256 bptSupplyPre = IERC20(bodenseePool).totalSupply();
+
+        deal(address(svZchf), proposer, bondAmount);
+        vm.startPrank(proposer);
+        svZchf.approve(address(vaultClassRegistry), bondAmount);
+        uint256 proposalId = vaultClassRegistry.proposeVaultClass(
+            IVaultClassRegistry.AdmissionType.ImplementationAddress,
+            target,
+            bytes32(0)
+        );
+        vm.stopPrank();
+
+        assertEq(svZchf.balanceOf(proposer), 0);
+
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre + bondAmount);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre);
+
+        vm.roll(block.number + vaultClassRegistry.VETO_WINDOW_BLOCKS() + 1);
+
+        vm.expectEmit(true, true, false, false, address(vaultClassRegistry));
+        emit VaultClassFinalized(proposalId, target);
+        vaultClassRegistry.finalizeProposal(proposalId);
+
+        assertEq(vaultClassRegistry.isAdmittedClass(target), true);
+        assertTrue(vaultClassRegistry.admissionType(target) == IVaultClassRegistry.AdmissionType.ImplementationAddress);
     }
 }
