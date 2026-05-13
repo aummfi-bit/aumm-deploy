@@ -504,3 +504,23 @@ Pre-merge audit (Opus): Claude Code reads (i) `git log stage-g ^stage-f-complete
 
 | Sub-step | Commit | Date | Summary |
 |----------|--------|------|---------|
+| RT-02 | 6a6cba5 | 2026-05-05 | docs/STAGE_G_NOTES.md — G-D3 Option A lock (top-15% favored, descending rank, anti-concentration caps) |
+| RT-01+RT-04 | 7e19d01 | 2026-05-05 | docs/STAGE_G_NOTES.md — G-D7 three activation paths + per-path boost policy (seedFoundingPool, RT-03 fwd-ref) |
+| docs (Stage G pivot prep) | 37d985b | 2026-05-05 | Stage G pivot prep — FINDINGS.md (OQ-G1–G3 addendum + auto-gauge cross-refs) + new docs/STAGE_G_PRECHECK_AUTO_GAUGE.md |
+| docs (FINDINGS OQ-G4) | b9a30c6 | 2026-05-05 | FINDINGS.md — OQ-G4 (Vault-Class Registry; ERC-4626 numerator class admission, Frankencoin veto model) |
+| docs (FINDINGS intro) | dd3d7df | 2026-05-05 | FINDINGS.md — intro: Stage G addendum indexes OQ-G1–G4 (was OQ-G1–G3) |
+| docs (CLAUDE Stage G pivot) | 963a601 | 2026-05-05 | CLAUDE.md — Stage G pivot orientation (§3 tree, §4 ref table, §5 cross-ref codes, §11 next-step) |
+| docs (STAGES_OVERVIEW pivot) | ba11236 | 2026-05-05 | STAGES_OVERVIEW.md — Stage G pivot: permissionless gauge activation, OQ-G1–G4 (K/M/R downstream alignment) |
+| G0 | 61fb085 | 2026-05-05 | docs/STAGE_G_NOTES.md + docs/STAGE_G_PLAN.md — Stage G scaffold |
+| G1.0 | 5567533 | 2026-05-05 | docs/STAGE_G_NOTES.md G-D11 + docs/STAGE_G_PLAN.md G-DP10 supersession (Option A DONATION) |
+| G1.1 | 07b65a6 | 2026-05-06 | script/DeployDerBodensee.s.sol + test/fork/{AureumFeeRoutingHook,PilotPools,CCBEngine}.t.sol — enableDonation = true on Bodensee (per G-D11) |
+| G1.2 | 7afca17 | 2026-05-06 | docs/STAGE_G_NOTES.md — G-D12 SwapAndDeposit full spec lock + G-D11 equivalence supersession |
+| G1.3 | 7164b13 | 2026-05-06 | docs/STAGE_G_NOTES.md — G-D13 (90-day boost deprecation) + G-D7 inline supersession + G-D1 + T-T4 amendments |
+| G1.3-fix | 07e3c98 | 2026-05-06 | docs/STAGE_G_NOTES.md — G-D9 + G-D11 stale fee-language sweep (100 svZCHF/sUSDS → asymmetric per G-D12) |
+| G0.1b | bca29f8 | 2026-05-07 | docs/STAGE_G_PLAN.md — G2 (GaugeEligibility + F-10 ranking) + G3 (GaugeRegistry + three activation paths) sub-step body fill |
+| G0.1c | ea3300f | 2026-05-07 | docs/STAGE_G_PLAN.md — G4 (integration fork test) + G5 (docs sweep) + G9 (close) sub-step body fill |
+| G0.2 | 7610a80 | 2026-05-07 | docs/STAGE_G_NOTES.md — G-D12 line 315 _moduleAdmin slot disambiguation (6 immutables + 1 burnable storage; no immutable mirror) |
+| docs (CLAUDE §12 ambiguity-gate) | 27bc91d | 2026-05-07 | CLAUDE.md §12 — ambiguity-gate rule for typed domain and state semantics (per 2026-05-07 robustness-first guidance) |
+| docs (ROBUSTNESS register skeleton) | 364ebc6 | 2026-05-07 | ROBUSTNESS_BACKPORT_REGISTER.md — Stage B-F retrofit candidate register skeleton (scope + columns + RB-001 seed; rows populated via audit) |
+| G0.4 | 4f1f4ec | 2026-05-07 | docs/STAGE_G_PLAN.md — G1.4 body 7→6 immutables + _moduleAdmin storage-only wording (per G0.2 disambiguation) |
+| G0.5 | 11c0604 | 2026-05-07 | docs/ROBUSTNESS_BACKPORT_REGISTER.md — RB-002 (CCBMultiplier.emaSampler) + RB-003 (AureumWeightedPoolFactory._poolVersion) + Storage-class hardening class |
