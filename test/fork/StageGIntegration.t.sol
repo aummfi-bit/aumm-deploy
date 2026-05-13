@@ -733,6 +733,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
 contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
     event GaugeActivated(address indexed pool, IGaugeRegistry.GaugeActivationPath indexed path);
     event AntiSpamFeeRouted(address indexed payer, uint256 amount);
+    event GaugeActivationFailed(address indexed pool, bytes reason);
 
     function _bodenseeSvZchfIndex() private view returns (uint256) {
         IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
@@ -788,5 +789,49 @@ contract StageGRegistryPermissionlessTest is StageGIntegrationFixture {
         assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre);
         assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.Active);
         assertTrue(gaugeRegistry.isGaugeApproved(pool));
+    }
+
+    function test_activateGauge_failsEligibility_routesFeeButNoActivation() external {
+        address pool = pilotPools[0]; // NO _makePoolEligible — TVL oracle stays at 0 → TVLFloorNotMet revert in evaluateEligibility
+        address caller = makeAddr("permissionlessCallerFail");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        uint256 svZchfReservePre = _bodenseeSvZchfBalance();
+        uint256 bptSupplyPre = IERC20(bodenseePool).totalSupply();
+        bytes memory expectedReason = abi.encodeWithSelector(GaugeEligibility.TVLFloorNotMet.selector, uint256(0), gaugeEligibility.TVL_FLOOR_SVZCHF());
+
+        deal(address(svZchf), caller, fee);
+
+        vm.startPrank(caller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        vm.recordLogs();
+        gaugeRegistry.activateGauge(pool);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        vm.stopPrank();
+
+        bool foundFeeRouted;
+        bool foundFailed;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].emitter != address(gaugeRegistry)) continue;
+            if (logs[i].topics[0] == AntiSpamFeeRouted.selector) {
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), caller);
+                assertEq(abi.decode(logs[i].data, (uint256)), fee);
+                foundFeeRouted = true;
+            } else if (logs[i].topics[0] == GaugeActivationFailed.selector) {
+                assertEq(address(uint160(uint256(logs[i].topics[1]))), pool);
+                bytes memory actualReason = abi.decode(logs[i].data, (bytes));
+                assertEq(actualReason, expectedReason);
+                foundFailed = true;
+            } else if (logs[i].topics[0] == GaugeActivated.selector) {
+                assertTrue(false, "GaugeActivated must not be emitted on eligibility-fail path");
+            }
+        }
+        assertTrue(foundFeeRouted);
+        assertTrue(foundFailed);
+
+        assertEq(svZchf.balanceOf(caller), 0);
+        assertEq(_bodenseeSvZchfBalance(), svZchfReservePre + fee);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre);
+        assertTrue(gaugeRegistry.gaugeStatus(pool) == IGaugeRegistry.GaugeStatus.None);
+        assertFalse(gaugeRegistry.isGaugeApproved(pool));
     }
 }
