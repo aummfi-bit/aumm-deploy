@@ -52,6 +52,54 @@ The literal F-1 text in `11_formulas.md` fixes a 28-way equal-split denominator 
 
 ---
 
+## Architecture
+
+Stage H concentrates new Solidity under `src/emission/`—the emission distributor itself, concrete `TVLOracle` at H2a, concrete `EfficiencyOracle` at H2b, the separate BodenseeBootstrapChannel per H-D2, and the Stage L forward-dependency stub `src/incendiary/IIncendiaryRegistry.sol` slated for H7. AuMM enforces era halving internally through `IAuMM.blockEmissionRate(blockNumber)` returning `GENESIS_RATE >> eraIndex`, which means Stage H consumes (does not reimplement) the halving schedule—and every halving-aware call site in Stage H collapses into a single `IAuMM.blockEmissionRate(block.number)` read. Routine orchestration traverses four schedule phases tied to formulae references: F-0 piecewise bootstrap across Months 0—6 followed by Months 6—10, F-1 equal splitting across twenty-eight nominal Miliarium lanes through Month 10, F-3 linear blending from equal weights toward CCB-weighted shares spanning Months 11—12, and F-7’s full tournament allocations once Year 2 begins. Readers reach backward into Stage F and Stage G solely through immutable, read-only accessors—TVL EMA probes, multiplier reads, roster membership predicates, gauge approval—with mutating workload isolated to accumulator slots inside Stage H contracts plus mediated `IAuMM.mint` calls once deployments satisfy the eventual H-D7 `setMinter` timing gate. Matching H-D5, every guarded entry exposes an explicit `address pool` parameter and predicates on `IGaugeRegistry.isGaugeApproved(pool)`, so enumeration across the upstream registry ABI never enters the distributor design.
+
+### New contracts and interfaces
+
+Files Stage H creates or retrofits. Sub-step landing targets are indicative — exact ordering may shift during execution but the inventory is locked.
+
+| File | Role | Sub-step |
+| --- | --- | --- |
+| `src/emission/IEmissionDistributor.sol` | Stage H distributor interface — claim entry points for AuMT holders + recordDeposit/recordWithdrawal entry points for the Stage I AuMT contract + accumulator getters | H4 |
+| `src/emission/EmissionDistributor.sol` | Pull / lazy-accrual distributor (H-D4) with MasterChef-style `accRewardPerScoreUnit`; pool-scoped state with incremental `totalScore` aggregate (H-D5); epoch-cadence F-7 share weights (H-D3); F-3 blend factor α evolution; F-7 Incendiary-skim integration | H4 + H5 |
+| `src/emission/IBodenseeBootstrapChannel.sol` | F-0 bootstrap rail interface — accrual + deposit-and-distribute to der Bodensee, governance one-shot wiring | H3 |
+| `src/emission/BodenseeBootstrapChannel.sol` | F-0 piecewise routing (Months 0—6 then 6—10) + one-sided AuMM deposit to der Bodensee via the Vault unlock pattern; audit-isolated per H-D2 mirroring G-D11 / G-D21 precedent | H3 |
+| `src/emission/TVLOracle.sol` | Concrete `ITVLOracle` per FINDINGS OQ-22 — svZCHF-denominated TVL via RP-aware unwrap plus constellation-spot averaging | H2a |
+| `src/emission/EfficiencyOracle.sol` | Concrete `IEfficiencyOracle` per G-D23 (i) — 3-epoch SMA of `(swap_fee_revenue + yield_fee_revenue) / emissions_received`; consumed by Stage G `GaugeEligibility.computeEpochSnapshot`, not by the H distributor directly | H2b |
+| `src/ccb/ICCBMultiplier.sol` | Stage F retrofit interface — Stage F shipped CCBMultiplier without an interface; Stage H needs typed cross-contract access for `getMultiplier(pool)` reads. Robustness backport (RB-005) candidate | H1.x-bis or pre-H micro-stage |
+| `src/incendiary/IIncendiaryRegistry.sol` | Stage L forward-dep stub — read-only shape for per-block Incendiary boost claims surface; pre-Stage-L stub returns zero claims | H7 |
+
+### Consumer surface (read-only)
+
+Stage H contracts consume the following from earlier stages — no writes, no state mutation upstream. Forward-dep consumers are listed separately at the end.
+
+- `IAuMM.blockEmissionRate(blockNumber)` (Stage C): per-block AuMM mint budget; internal era halving already applied via `GENESIS_RATE >> eraIndex`. Stage H queries this view — never reimplements halving math.
+- `IAuMM.mint(to, amount)` (Stage C): gated by `msg.sender == minter`; Stage H deploys with the `setMinter` one-shot handoff timing locked at H-D7.
+- `AureumTime` boundary helpers (Stage C, `src/lib/AureumTime.sol`): `month6EndBlock`, `month10EndBlock`, `month13StartBlock`, `year1EndBlock`, `firstHalvingBlock`, `nthHalvingBlock`, `monthIndex`, `epochIndex`, `eraIndex` — all in place; Stage H phase-boundary checks reduce to library calls against the genesis-block immutable.
+- `IMiliariumRegistry.isMiliarium(pool)` plus pool enumeration (Stage F per F-D9; concrete implementation lives at Stage J): identifies the F-1 / F-3 equal-split slots. Pre-Stage-J the placeholder returns `false` for every pool, so F-1 / F-3 mints exclude all pools until Stage J's registry is wired in.
+- `IGaugeRegistry.isGaugeApproved(pool)` (Stage G per G-D16a, retained ABI from pre-G-D16a callers): per-call gate on every distributor entry point per H-D5; no enumeration consumed — pool-scoped is the design.
+- `IEMASampler.tvlEMA(pool)` (Stage F per F-D5 plus OQ-5a-bis): per-day-sampled svZCHF-denominated TVL EMA with α = 2/61; `TVL_EMA60` input to F-7 Step 3 score.
+- `CCBMultiplier.getMultiplier(pool)` (Stage F per OQ-23): per-pool multiplier `CCB_mult` input to F-7 Step 3 score; the 90-day boost gate (F-D17) is deprecated at G-D13, so Stage H consumes the returned value as a plain multiplier without special-casing the boost window.
+- `CCBShare.shares(uint256[])` (Stage F per F-D10): F-6 share normalization library — converts per-pool scores into a FixedPoint share vector summing to approximately `FixedPoint.ONE` (modulo `divDown` floor rounding); Stage H feeds Step 3 scores into this lib to obtain Step 4 shares.
+
+`IIncendiaryRegistry.activeBoostClaims(pool, block)` (forward-dep stub at H7): drives F-7 Step 1 Incendiary skim — Stage H ships a zero-claim stub interface at H7 to keep distributor compile-targets stable; Stage L lands the concrete registry that returns nonzero claim amounts per active boost.
+
+### Schedules by phase
+
+Per-block routing rules, organised by phase. Block ranges are inclusive of the lower bound; upper-bound semantics follow `AureumTime` boundary-helper conventions (`monthNEndBlock` returns the last block of month N — see `src/lib/AureumTime.sol`). Halving (era) cadence is orthogonal to phase and applies multiplicatively at every era boundary.
+
+| Phase | Block range | Routing rule | Inputs consumed |
+| --- | --- | --- | --- |
+| Bootstrap A (F-0 + F-1) | [genesisBlock, month6EndBlock] — Months 0—6 | F-0 piecewise: `bodensee_share(block) = 0.80 − 0.30 × t1` where `t1 = (block − genesisBlock) / (month6EndBlock − genesisBlock)` (linear 80% → 50% as `t1` runs 0 → 1); `lp_share = 1 − bodensee_share`; F-1 equal-split: `emission_to_pool_i(block) = lp_share × block_emission × (1/28)`. Pre-N=28 the `(28 − N)/28` LP-tranche fraction is unminted per H-D6 lock | `IAuMM.blockEmissionRate`, `IMiliariumRegistry` enumeration, `AureumTime.month6EndBlock` |
+| Bootstrap B (F-0 + F-1) | (month6EndBlock, month10EndBlock] — Months 6—10 | F-0 piecewise: `bodensee_share(block) = 0.50 − 0.50 × t2` where `t2 = (block − month6EndBlock) / (month10EndBlock − month6EndBlock)` (linear 50% → 0% as `t2` runs 0 → 1); F-1 equal-split unchanged | `IAuMM.blockEmissionRate`, `IMiliariumRegistry` enumeration, `AureumTime.month6EndBlock`, `AureumTime.month10EndBlock` |
+| Transition (F-3) | (month10EndBlock, year1EndBlock] — Months 11—12 | F-0: `bodensee_share = 0` permanently; F-3 blend: `share_i(block) = (1 − α(block)) × (1/28) + α(block) × CCB_share_i(block)`; α(block) linear, 0 at the first block of Month 11 and 1 at `year1EndBlock` | `IAuMM.blockEmissionRate`, `IMiliariumRegistry`, `IEMASampler.tvlEMA`, `CCBMultiplier.getMultiplier`, `CCBShare.shares`, `AureumTime.month10EndBlock`, `AureumTime.year1EndBlock` |
+| Tournament (F-7) | (year1EndBlock, ∞) — Year 2 onward | F-7 full sequence: EMA update (per-day per Stage F OQ-5a-bis) → Incendiary skim first (`Remaining = block_emission − Incendiary_total`) → CCB scoring `Score(pool_i) = TVL_EMA60(pool_i) × CCB_mult(pool_i)` → share computation `CCB_share(pool_i) = Remaining × Score(pool_i) / Σ Score(eligible)` via `CCBShare.shares` → `Total = CCB_share + Incendiary_claim`. F-7 share weights refresh per `BLOCKS_PER_EPOCH` (H-D3 deviation from spec literal `every block` — locked) | All Stage F consumer interfaces above + `IGaugeRegistry.isGaugeApproved` for eligibility + `IIncendiaryRegistry.activeBoostClaims` once Stage L is live |
+| Halving (orthogonal — every era) | Every `BLOCKS_PER_ERA = 10_512_000` blocks since genesis (firstHalvingBlock, secondHalvingBlock, …) | `IAuMM.blockEmissionRate(block) = GENESIS_RATE >> eraIndex`; halves the per-block budget independent of phase. Era 0 rate = `1e18` (1 AuMM/block); Era 1 rate = `0.5e18`; Era N rate = `1e18 >> N`. Stage H consumes `blockEmissionRate` per call and never special-cases the era boundary — the halving is multiplicative on every routing rule above | `IAuMM.blockEmissionRate`, `AureumTime.eraIndex`, `AureumTime.nthHalvingBlock` |
+
+---
+
 ## Findings queue
 
 Entries labeled H10+ accumulate once Stage H exits pure documentation scaffolding and Solidity surfaces stabilize; numbering stays decoupled from H-D planners per the conventions above until incidents surface.
