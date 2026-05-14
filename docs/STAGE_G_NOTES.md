@@ -1,6 +1,6 @@
 # Stage G — Notes & Design Freeze (Auto-Gauge Pivot)
 
-**Status:** Scaffold + **design freeze for G1.1 planning** — 2026-05-05.  
+**Status:** Complete at `stage-g-complete` (2026-05-14). Companion to [STAGE_G_PLAN.md](STAGE_G_PLAN.md).  
 **Precheck:** [STAGE_G_PRECHECK_AUTO_GAUGE.md](STAGE_G_PRECHECK_AUTO_GAUGE.md).
 
 ---
@@ -972,6 +972,9 @@ Rationale: reversing (2) before (1) surfaces `InsufficientQualityGate` while the
 ## Findings queue (reserved)
 
 (Numbered Stage G findings `G10+` appended here as implementation proceeds — analogous to Stage F NOTES.)
+
+
+**Roll-up across G10–G16.** Seven findings landed during Stage G implementation. **Solidity 0.8.26 language-feature claims (G10, G11, G14)** require a compile-probe at the project's pinned solc / `via_ir` / optimizer-runs / `evm_version` config before any §12 NOTES closure that asserts a keyword, type modifier, storage location, or parameter data location — the `transient` storage-location keyword (G10, parser support landed in 0.8.27, codegen in 0.8.28), `constant` initializers with `pure` function-call expressions (G11, only `immutable` permits `calculateSlot(...)` calls), and `calldata` for constructor parameters (G14, only `memory` is valid for constructor parameter data locations across all supported configs) all surfaced as NOTES claims that would not compile against the pinned toolchain. **Library `using` directive chain semantics (G12)** require `for *;` (or a separate `using LibraryName for R;` per intermediate return type) when a chained library call returns a custom user-defined type — `using StorageSlotExtension for bytes32;` attaches only the cast leg (`asBoolean` / `asAddress` / `asUint256`), not the typed-slot wrapper leg (`tload` / `tstore` on `BooleanSlotType` etc.). **Foundry test-side patterns (G13)** captured two lessons together — `vm.expectRevert(bytes4 selector)` strict-matches the full revert data, not just the selector, so parametric custom errors require `vm.expectRevert(abi.encodeWithSelector(Contract.Name.selector, expectedParam1, ...))`; in-fork helper-defensive counterfactuals (post-state must equal pre-state plus delta) are cleanest via `vm.mockCall` on the read the helper uses to verify the invariant (freezing the pre-state view), not by mocking a downstream side-effect the helper does not directly observe. **§8e.1 audit-discipline extensions (G15, G16)** harden the prompt-drafting Opus beat — scaffold NatSpec "X / Y / Z land at sub-step N+k" promises are a checklist the close-of-family `Must match` block must enumerate (G15 — `is IVaultClassRegistry` + view bridges promised at G1.12+ surfaced unimplemented at the G1.16 ambiguity-gate); interface-shaped fixes (interface expansion, abstract-keyword schedule, `override` addition, stub backfill, error / event / enum addition mirrored by implementations) require a pre-scope `grep -rn "is I<InterfaceName>" src/ test/ script/` enumeration before the §8e.1's `Files:` field closes (G16 — duplicate `MockGaugeRegistry` at `test/unit/CCBMultiplier.t.sol:40` missed at G3.3-fix2 scope-drafting). Cross-stage escalation to CLAUDE.md §11 housekeeping bullets: G10, G14, G15, G16 (project-wide repeat risk); G11, G12, G13 remain local to Stage G NOTES (cross-stage escalation only if either class repeats at a later stage).
 
 ### G10 — Compile-probe typed-domain syntax assumptions before §12 lock
 
