@@ -100,6 +100,43 @@ Per-block routing rules, organised by phase. Block ranges are inclusive of the l
 
 ---
 
+## Interface boundary
+
+Stage H sorts interface obligations into three explicit bins—Produced (Stage H authors), Consumed (frozen by prior stages), and Forward-dependency stubs that hold shape until sibling stages compile against them—which together document the full handshake before any H2 Solidity lands. Closing that boundary deliberately before H2 work begins prevents speculative ABI churn that would otherwise ripple through mocks, scripts, and unit harnesses rewritten every week. Whenever post-H1 work uncovers contradictory reality versus this freeze, the CLAUDE.md §12 ambiguity-gate fires first—meaning a fresh H-D* log entry plus deliberate NOTES revision instead of tacit drift across typed domains. Stage G G-DP4’s forward-dependency convention is the precedent: unreachable governance slots stayed explicit placeholders until successors landed, and Stage H repeats that posture for stubs it does not own yet.
+
+### Produced — frozen at H1 close
+
+These interfaces are authoritative once H1 concludes; widening or renaming them afterward requires documenting a fresh H-D* lock and clearing the §12 ambiguity-gate before implementation edits proceed.
+
+| Interface | File | Locked surface | Sub-step |
+| --- | --- | --- | --- |
+| IEmissionDistributor | `src/emission/IEmissionDistributor.sol` | Per-pool claim entry point for AuMT holders; `recordDeposit` and `recordWithdrawal` entry points callable only by the Stage I AuMT contract per H-D4 pull semantics; views exposing `accRewardPerScoreUnit`, `totalScore`, `pendingClaim`; events for accrual, claim, and score updates | H4 |
+| IBodenseeBootstrapChannel | `src/emission/IBodenseeBootstrapChannel.sol` | Permissionless `accrue()` tick for per-block bootstrap mint; governance-callable `distribute()` to der Bodensee via Vault unlock; views for `pendingAccrual`, `totalDistributed`, `lastAccrualBlock`; events for accrual and distribution | H3 |
+| ICCBMultiplier (RB-005 retrofit) | `src/ccb/ICCBMultiplier.sol` | `getMultiplier(address pool)` view returning 1e18 / 1.2e18 / `M_i` per OQ-23; interface-only retrofit of the existing Stage F `CCBMultiplier` contract, no contract changes | H1.x-bis or pre-H micro-stage |
+
+### Consumed — frozen by prior stages
+
+Stage H assumes every upstream ABI in this roster remains fixed for its duration—if a predecessor ever widened selectors mid-stream, Stage H would replicate the G16-style inheritor sweep auditors already paid once, so this table is treated as immutable for the life of the stage.
+
+| Interface | File | Frozen at | Surface used |
+| --- | --- | --- | --- |
+| IAuMM | `src/token/IAuMM.sol` | Stage C `stage-c-complete` | `blockEmissionRate(uint256)`, `mint(address, uint256)`, `setMinter(address)` |
+| IGaugeRegistry | `src/ccb/IGaugeRegistry.sol` | Stage G G-D16a (original ABI retained for pre-G-D16a callers) | `isGaugeApproved(address)` — per-call gate per H-D5, no enumeration consumed |
+| ITVLOracle | `src/ccb/ITVLOracle.sol` | Stage F F0.2 per F-D11 | `tvl(address)` — svZCHF, 18-decimal fixed-point |
+| IEfficiencyOracle | `src/gauge/IEfficiencyOracle.sol` | Stage G G-D23 (ii) | `efficiencyInputs(address)` — consumed by `GaugeEligibility.computeEpochSnapshot`, not by the Stage H distributor directly |
+| IMiliariumRegistry | (concrete implementation lands Stage J; pre-Stage-J stub per F-D9) | Stage F F-D9 | `isMiliarium(address)` plus Miliarium pool enumeration |
+| IEMASampler | `src/ccb/EMASampler.sol` | Stage F F-D5 plus OQ-5a-bis | `tvlEMA(address)` — per-day-sampled, α = 2/61 |
+| CCBShare | `src/ccb/CCBShare.sol` | Stage F F-D10 | `shares(uint256[])` — F-6 share-normalisation library |
+
+### Forward-dependency stubs
+
+Stage G G-DP4 already proved that shipping compile-stable placeholders beats hiding missing dependencies; Stage H copies that recipe so distributor bytecode and tests remain buildable while Incendiary and AuMT contracts stay future work. Stubs therefore return zero values or static empty shapes until their owning stages replace them with real logic.
+
+- `src/incendiary/IIncendiaryRegistry.sol` (H7) — exposes the `activeBoostClaims(address pool, uint256 blockNumber)` view shape; pre-Stage-L stub returns 0 so F-7 Step 1 Incendiary skim collapses to `Remaining = block_emission − 0` and the full CCB-weighted distribution path remains exercisable in Stage H unit and fork tests.
+- `src/emission/IEmissionDistributor.sol` is itself a Stage I forward-dep producer — Stage H authors the consumer-facing surface (claim + recordDeposit + recordWithdrawal) that the concrete AuMT contract will plug into when Stage I lands; Stage H freezes that ABI at H1 close to give Stage I a known target. Same direction-of-boundary convention as IAuMT was for Stage G pre-Stage-I.
+
+---
+
 ## Findings queue
 
 Entries labeled H10+ accumulate once Stage H exits pure documentation scaffolding and Solidity surfaces stabilize; numbering stays decoupled from H-D planners per the conventions above until incidents surface.
