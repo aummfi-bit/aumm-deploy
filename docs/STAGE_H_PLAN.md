@@ -53,4 +53,5 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 
 | Sub-step | Commit | Date | Notes |
 |----------|--------|------|-------|
-| H0.1 | TBD | 2026-05-14 | docs/STAGE_H_PLAN.md scaffold created (header + Goal + Dependencies + Sub-step skeleton + H-D Decisions table H-D1—H-D7 + Completion Log header) |
+| H0.1 | 86d166c | 2026-05-14 | docs/STAGE_H_PLAN.md scaffold created (header + Goal + Dependencies + Sub-step skeleton + H-D Decisions table H-D1—H-D7 + Completion Log header) |
+| H0.2 | 610b07e | 2026-05-14 | docs/STAGE_H_NOTES.md scaffold created (status header + organization rubric + H-D1—H-D5 LOCKED bodies + H-D6/H-D7 OPEN placeholders + findings queue + open questions queue) |
