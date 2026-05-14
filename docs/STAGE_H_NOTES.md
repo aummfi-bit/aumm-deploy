@@ -1,8 +1,8 @@
 # Stage H — Notes & Design Freeze
 
-> **Status:** Pre-implementation. H-D design surface partially locked (H-D1—H-D5 LOCKED at H0.1; H-D6, H-D7 OPEN — to be locked at H1 and H10 respectively). Companion to STAGE_H_PLAN.md.
+> **Status:** Pre-implementation. H-D design surface partially locked (H-D1—H-D6 LOCKED; H-D7 OPEN — to lock at H10). Companion to STAGE_H_PLAN.md.
 >
-> **Last update:** 2026-05-14 — H0.2 NOTES scaffold created.
+> **Last update:** 2026-05-14 — H1 architecture inventory + interface boundary + H-D6 lock (H1.1—H1.3).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4. Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 >
@@ -20,7 +20,7 @@
 
 ## Design decisions
 
-The H-D rows below replay STAGE_H_PLAN.md:L40-L51 while expanding rationale. Entries H-D1—H-D5 reflect the design-freeze lock asserted at plan scaffold H0.1 (2026-05-14). Entries H-D6 and H-D7 remain deliberately OPEN placeholders until architectural lock (H-D6 expected at Stage H architecture sub-steps around H1) and deployment-timing lock (H-D7 expected at H10 scripting).
+The H-D rows below replay STAGE_H_PLAN.md:L40-L51 while expanding rationale. Entries H-D1—H-D6 reflect confirmed design locks (H-D1—H-D5 from plan scaffold H0.1; H-D6 locked at H1.3, 2026-05-14). Entry H-D7 remains an OPEN placeholder until deployment-timing lock (H-D7 expected at H10 scripting).
 
 ### H-D1 — Oracles in-stage as H2a (concrete TVLOracle) + H2b (concrete EfficiencyOracle) — status LOCKED
 

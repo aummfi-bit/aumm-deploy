@@ -46,7 +46,7 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H-D3 | F-7 share weights step-function sampled at BLOCKS_PER_EPOCH boundaries | LOCKED | F-7 spec literal "every block" discretised to epoch cadence — matches F-8 multiplier cadence per F-D24; deviation documented in STAGE_H_NOTES.md |
 | H-D4 | Pull / lazy accrual via MasterChef-style accRewardPerScoreUnit accumulator | LOCKED | Spec language "deposit triggers accrual; withdrawal stops it immediately" and gas economics dictate pull model |
 | H-D5 | Pool-scoped distributor; no IGaugeRegistry enumeration; incremental totalScore aggregate updated permissionlessly per recordScore(pool) | LOCKED | isGaugeApproved(pool) per score-record call suffices — no G16-class mock sweep needed |
-| H-D6 | F-1 share denominator — fixed 1/28 literal vs dynamic 1/N_miliarium | OPEN | To lock at H1 design; spec says "1/28" but pre-mainnet only 3 pilot pools live |
+| H-D6 | F-1 share denominator — fixed 1/28 literal vs dynamic 1/N_miliarium | LOCKED | Literal 1/28 per F-1 canonical text — pre-N=28 fraction structurally unminted by design (no treasury buffer, no deferred mint); F-3 equal-split leg inherits same denominator; dynamic-N enumeration rejected per H-D5; no FINDINGS promotion needed — see STAGE_H_NOTES.md H-D6 |
 | H-D7 | AuMM.setMinter() handoff timing — Stage H deploy vs Stage K governance migration | OPEN | To lock at H10; affects emission start block and upgrade path |
 
 ## Completion Log
@@ -55,3 +55,7 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 |----------|--------|------|-------|
 | H0.1 | 86d166c | 2026-05-14 | docs/STAGE_H_PLAN.md scaffold created (header + Goal + Dependencies + Sub-step skeleton + H-D Decisions table H-D1—H-D7 + Completion Log header) |
 | H0.2 | 610b07e | 2026-05-14 | docs/STAGE_H_NOTES.md scaffold created (status header + organization rubric + H-D1—H-D5 LOCKED bodies + H-D6/H-D7 OPEN placeholders + findings queue + open questions queue) |
+| H0.3 | d8d67d4 | 2026-05-14 | docs/STAGE_H_PLAN.md — Completion Log H0.1 hash fill + H0.2 row added |
+| H1.1 | b6f37d2 | 2026-05-14 | docs/STAGE_H_NOTES.md — ## Architecture section (new contracts/interfaces inventory + consumer surface + schedules-by-phase table) |
+| H1.2 | 5f36a89 | 2026-05-14 | docs/STAGE_H_NOTES.md — ## Interface boundary section (Produced + Consumed + Forward-dependency stubs) |
+| H1.3 | 87b62a7 | 2026-05-14 | docs/STAGE_H_NOTES.md — H-D6 OPEN → LOCKED (1/28 literal per F-1; supply-deflationary by design; H-D6 Open-questions bullet removed) |
