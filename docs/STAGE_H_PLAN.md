@@ -2,7 +2,7 @@
 
 > **Status:** Implementation in progress. H2a complete — TVLOracle concrete + 28 unit tests passing; H-D1—H-D6 + H-D8—H-D9 LOCKED; H-D7 OPEN (lock at H10). Next: H2b (concrete EfficiencyOracle).
 >
-> **Last update:** 2026-05-15 — H2a closed (TVLOracle implementation + 28 unit tests, 28 pass); Completion Log through H2a.7c (H2a.9a).
+> **Last update:** 2026-05-15 — H2a closed (TVLOracle implementation + 28 unit tests, 28 pass); Completion Log through H2a.9a (H2a.9b).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4 (post core distributor lock). Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 
@@ -74,3 +74,10 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H2a.7a | e4a9eee | 2026-05-15 | src/emission/TVLOracle.sol — SVZCHF immutable + constructor param (_svzchf, ZeroAddress guard, assignment, @param NatSpec) |
 | H2a.7b | cdb94f8 | 2026-05-15 | src/emission/TVLOracle.sol — _constellationRatio helper (H-D9 Step 2 balance-ratio averaging, PoolData import, Internal helpers section) |
 | H2a.7c | 00eb759 | 2026-05-15 | src/emission/TVLOracle.sol — concrete tvl() body (H-D9 Step 1+2), abstract keyword removal, title + @dev NatSpec fix |
+| H2a.8a | 21d5734 | 2026-05-15 | test/fork/mocks/StageHMocks.sol — MockVaultExplorer (minimal IVaultExplorer stub: setPool, getPoolTokens, getPoolData, LengthMismatch) |
+| H2a.8b | 82f6b4f | 2026-05-15 | test/unit/TVLOracle.t.sol — scaffold (imports, TVLOracleTest, setUp deploying TVLOracle + MockVaultExplorer cast, _addr helper; no test functions) |
+| H2a.8c | b5da9e2 | 2026-05-15 | test/unit/TVLOracle.t.sol — constructor revert + immutable wiring + seed-map + setGovernanceContract tests (11 tests, 11 pass) |
+| H2a.8d | 2b7ca03 | 2026-05-15 | test/unit/TVLOracle.t.sol — addConstellationPool + setTokenUnderlying tests (9 tests; 20 total, 20 pass) |
+| H2a.8e1 | 0f281df | 2026-05-15 | test/unit/TVLOracle.t.sol — tvl() helpers (_mapToken, _setComposition, _addVenue) + 4 edge-case tests (empty pool, unmapped, no venue, svZCHF identity; 24 total, 24 pass) |
+| H2a.8e2 | 4a7f400 | 2026-05-15 | test/unit/TVLOracle.t.sol — tvl() arithmetic tests: single-venue ratio, two-venue avg, multi-token per-underlying summing, multi-underlying pool sum (4 tests; 28 total, 28 pass) |
+| H2a.9a | 95191c7 | 2026-05-15 | docs/STAGE_H_PLAN.md — status header refresh (H2a complete) + Completion Log rows H1.8 + H2a.1—H2a.7c |
