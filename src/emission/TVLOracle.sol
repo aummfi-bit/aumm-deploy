@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 
 /// @title TVLOracle — `ITVLOracle` scaffold (abstract; concrete `tvl()` at H2a.6)
@@ -50,10 +51,16 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Reverts when a non-governance address invokes a governance-only entry point.
     error NotGovernance(address caller);
 
+    /// @notice Reverts when `addConstellationPool` is called against a pool already in `isInGovernanceRoster`.
+    error AlreadyAdded(address pool);
+
     /* ---------- Events ---------- */
 
     /// @notice Emitted when `setGovernanceContract` rebinds the `governance` authority (Stage K handoff per H-D8).
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
+
+    /// @notice Emitted when governance appends a pool to the H-D8 append-only constellation roster leg (`indexed` for off-chain indexing).
+    event ConstellationPoolAdded(address indexed pool);
 
     /* ---------- Modifiers ---------- */
 
@@ -109,6 +116,28 @@ abstract contract TVLOracle is ITVLOracle {
         address oldGovernance = governance;
         governance = newGovernance;
         emit GovernanceTransferred(oldGovernance, newGovernance);
+    }
+
+    /* ---------- Constellation management ---------- */
+
+    /**
+     * @notice Appends `pool` to the governance leg of the H-D8 constellation roster (`_governanceAddedPools`) — append-only at Stage H.
+     * @dev H-D9 — `_underlyingToPools` reverse-map is indexed at write time for Phase 1 direct-venue arithmetic. Reads `vaultExplorer.getPoolTokens(pool)` and appends `pool` under each Vault token's mapped `tokenToUnderlying` resolution; tokens with no `tokenToUnderlying` entry (zero-address resolution) are skipped without reverting — deferred indexing via `setTokenUnderlying` at H2a.6. Reverts `ZeroAddress` when `pool == address(0)`, `AlreadyAdded(pool)` on duplicate. Emits `ConstellationPoolAdded(pool)`.
+     * @param pool The constellation venue address to append.
+     */
+    function addConstellationPool(address pool) external onlyGovernance {
+        if (pool == address(0)) revert ZeroAddress();
+        if (isInGovernanceRoster[pool]) revert AlreadyAdded(pool);
+        isInGovernanceRoster[pool] = true;
+        _governanceAddedPools.push(pool);
+        IERC20[] memory tokens = vaultExplorer.getPoolTokens(pool);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            address underlying = tokenToUnderlying[address(tokens[i])];
+            if (underlying != address(0)) {
+                _underlyingToPools[underlying].push(pool);
+            }
+        }
+        emit ConstellationPoolAdded(pool);
     }
 
     /// @inheritdoc ITVLOracle
