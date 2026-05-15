@@ -192,4 +192,64 @@ contract TVLOracleTest is Test {
         oracle.setTokenUnderlying(token, newU);
         assertEq(oracle.tokenToUnderlying(token), newU);
     }
+
+    function _mapToken(address token, address underlying) internal {
+        vm.prank(GOVERNANCE);
+        oracle.setTokenUnderlying(token, underlying);
+    }
+
+    function _setComposition(address target, address[] memory tokenAddrs, uint256[] memory balances) internal {
+        IERC20[] memory ierc20Tokens = new IERC20[](tokenAddrs.length);
+        for (uint256 i = 0; i < tokenAddrs.length; i++) {
+            ierc20Tokens[i] = IERC20(tokenAddrs[i]);
+        }
+        mockExplorer.setPool(target, ierc20Tokens, balances);
+    }
+
+    function _addVenue(address venue, address[] memory tokenAddrs, uint256[] memory balances) internal {
+        _setComposition(venue, tokenAddrs, balances);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+    }
+
+    function test_tvl_emptyPool_returnsZero() public {
+        address pool = _addr(0x5001);
+        _setComposition(pool, new address[](0), new uint256[](0));
+        assertEq(oracle.tvl(pool), 0);
+    }
+
+    function test_tvl_unmappedToken_returnsZero() public {
+        address pool = _addr(0x5001);
+        address token = _addr(0xA1);
+        address[] memory toks = new address[](1);
+        toks[0] = token;
+        uint256[] memory bals = new uint256[](1);
+        bals[0] = 1000e18;
+        _setComposition(pool, toks, bals);
+        assertEq(oracle.tvl(pool), 0);
+    }
+
+    function test_tvl_mappedButNoVenue_returnsZero() public {
+        address pool = _addr(0x5001);
+        address token = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(token, underlying);
+        address[] memory toks = new address[](1);
+        toks[0] = token;
+        uint256[] memory bals = new uint256[](1);
+        bals[0] = 1000e18;
+        _setComposition(pool, toks, bals);
+        assertEq(oracle.tvl(pool), 0);
+    }
+
+    function test_tvl_svzchfIdentity_returnsBalanceUnchanged() public {
+        address pool = _addr(0x5001);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory toks = new address[](1);
+        toks[0] = SVZCHF;
+        uint256[] memory bals = new uint256[](1);
+        bals[0] = 1000e18;
+        _setComposition(pool, toks, bals);
+        assertEq(oracle.tvl(pool), 1000e18);
+    }
 }
