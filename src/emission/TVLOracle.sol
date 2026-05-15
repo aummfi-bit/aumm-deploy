@@ -44,27 +44,40 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Reverts when a zero address is supplied for an immutable or the initial governance slot.
     error ZeroAddress();
 
+    /// @notice Reverts when seed array lengths mismatch (`_tokensSeed.length != _underlyingsSeed.length`).
+    error ArrayLengthMismatch();
+
     /* ---------- Constructor ---------- */
 
     /**
-     * @notice Wires the read-only `vaultExplorer` binding, the immutable `BODENSEE_POOL` leg of the H-D8 constellation union, and the initial `governance` authority from deploy-time arguments.
-     * @dev The `tokenToUnderlying` seed loop and `_governanceAddedPools` initial seed are deferred to later H2a sub-steps. Any zero-address input reverts with `ZeroAddress`.
+     * @notice Wires `vaultExplorer`, `BODENSEE_POOL`, initial `governance`, and genesis `tokenToUnderlying` mappings per H-D9.
+     * @dev `_governanceAddedPools` initial seed remains deferred to a later H2a sub-step. If `_tokensSeed.length != _underlyingsSeed.length`, reverts with `ArrayLengthMismatch`. Zero-address inputs for immutables or governance revert with `ZeroAddress`.
      * @param _vaultExplorer Balancer V3 `IVaultExplorer` — read entry for `getPoolData` / `balancesLiveScaled18` per H-D9 Step 1.
      * @param _bodenseePool Der Bodensee pool address — immutable constellation member per H-D8.
      * @param _initialGovernance Initial governance — Stage A–K Authorizer Safe at deploy; Stage K rebind via `setGovernanceContract` per H-D8.
+     * @param _tokensSeed Tokens whose wrapper → underlying mapping is seeded at construction per H-D9 (STANDARD tokens use self-mapping where `_tokensSeed[i] == _underlyingsSeed[i]`).
+     * @param _underlyingsSeed Per-index underlying address corresponding to `_tokensSeed[i]`; `_tokensSeed.length` must equal `_underlyingsSeed.length`.
      */
     constructor(
         IVaultExplorer _vaultExplorer,
         address _bodenseePool,
-        address _initialGovernance
+        address _initialGovernance,
+        address[] memory _tokensSeed,
+        address[] memory _underlyingsSeed
     ) {
         if (address(_vaultExplorer) == address(0)) revert ZeroAddress();
         if (_bodenseePool == address(0)) revert ZeroAddress();
         if (_initialGovernance == address(0)) revert ZeroAddress();
 
+        if (_tokensSeed.length != _underlyingsSeed.length) revert ArrayLengthMismatch();
+
         vaultExplorer = _vaultExplorer;
         BODENSEE_POOL = _bodenseePool;
         governance = _initialGovernance;
+
+        for (uint256 i = 0; i < _tokensSeed.length; i++) {
+            tokenToUnderlying[_tokensSeed[i]] = _underlyingsSeed[i];
+        }
     }
 
     /// @inheritdoc ITVLOracle
