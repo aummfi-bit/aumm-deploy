@@ -39,6 +39,34 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Precomputed reverse index from underlying to constellation pools — rebuilt when roster or `tokenToUnderlying` changes.
     mapping(address => address[]) internal _underlyingToPools;
 
+    /* ---------- Errors ---------- */
+
+    /// @notice Reverts when a zero address is supplied for an immutable or the initial governance slot.
+    error ZeroAddress();
+
+    /* ---------- Constructor ---------- */
+
+    /**
+     * @notice Wires the read-only `vaultExplorer` binding, the immutable `BODENSEE_POOL` leg of the H-D8 constellation union, and the initial `governance` authority from deploy-time arguments.
+     * @dev The `tokenToUnderlying` seed loop and `_governanceAddedPools` initial seed are deferred to later H2a sub-steps. Any zero-address input reverts with `ZeroAddress`.
+     * @param _vaultExplorer Balancer V3 `IVaultExplorer` — read entry for `getPoolData` / `balancesLiveScaled18` per H-D9 Step 1.
+     * @param _bodenseePool Der Bodensee pool address — immutable constellation member per H-D8.
+     * @param _initialGovernance Initial governance — Stage A–K Authorizer Safe at deploy; Stage K rebind via `setGovernanceContract` per H-D8.
+     */
+    constructor(
+        IVaultExplorer _vaultExplorer,
+        address _bodenseePool,
+        address _initialGovernance
+    ) {
+        if (address(_vaultExplorer) == address(0)) revert ZeroAddress();
+        if (_bodenseePool == address(0)) revert ZeroAddress();
+        if (_initialGovernance == address(0)) revert ZeroAddress();
+
+        vaultExplorer = _vaultExplorer;
+        BODENSEE_POOL = _bodenseePool;
+        governance = _initialGovernance;
+    }
+
     /// @inheritdoc ITVLOracle
     function tvl(address pool) external view virtual override returns (uint256);
 }
