@@ -108,4 +108,88 @@ contract TVLOracleTest is Test {
         vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, GOVERNANCE));
         oracle.setGovernanceContract(_addr(0x9002));
     }
+
+    function test_addConstellationPool_revert_notGovernance() public {
+        address attacker = _addr(0x9999);
+        address pool = _addr(0x5001);
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, attacker));
+        oracle.addConstellationPool(pool);
+    }
+
+    function test_addConstellationPool_revert_zeroAddress() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        oracle.addConstellationPool(address(0));
+    }
+
+    function test_addConstellationPool_revert_alreadyAdded() public {
+        address pool = _addr(0x5001);
+        mockExplorer.setPool(pool, new IERC20[](0), new uint256[](0));
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(pool);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.AlreadyAdded.selector, pool));
+        oracle.addConstellationPool(pool);
+    }
+
+    function test_addConstellationPool_happyPath_setsFlagAndEmits() public {
+        address pool = _addr(0x5001);
+        address token = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        vm.prank(GOVERNANCE);
+        oracle.setTokenUnderlying(token, underlying);
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = IERC20(token);
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 1000e18;
+        mockExplorer.setPool(pool, tokens, balances);
+        vm.expectEmit(true, false, false, false);
+        emit TVLOracle.ConstellationPoolAdded(pool);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(pool);
+        assertTrue(oracle.isInGovernanceRoster(pool));
+    }
+
+    function test_setTokenUnderlying_revert_notGovernance() public {
+        address attacker = _addr(0x9999);
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, attacker));
+        oracle.setTokenUnderlying(_addr(0xA1), _addr(0xB1));
+    }
+
+    function test_setTokenUnderlying_revert_zeroToken() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        oracle.setTokenUnderlying(address(0), _addr(0xB1));
+    }
+
+    function test_setTokenUnderlying_revert_zeroUnderlying() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        oracle.setTokenUnderlying(_addr(0xA1), address(0));
+    }
+
+    function test_setTokenUnderlying_happyPath_firstSet_emitsOldZero() public {
+        address token = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        vm.expectEmit(true, true, true, false);
+        emit TVLOracle.TokenUnderlyingSet(token, address(0), underlying);
+        vm.prank(GOVERNANCE);
+        oracle.setTokenUnderlying(token, underlying);
+        assertEq(oracle.tokenToUnderlying(token), underlying);
+    }
+
+    function test_setTokenUnderlying_overwrite_emitsOldNonZero() public {
+        address token = _addr(0xA1);
+        address oldU = _addr(0xB1);
+        address newU = _addr(0xB2);
+        vm.prank(GOVERNANCE);
+        oracle.setTokenUnderlying(token, oldU);
+        vm.expectEmit(true, true, true, false);
+        emit TVLOracle.TokenUnderlyingSet(token, oldU, newU);
+        vm.prank(GOVERNANCE);
+        oracle.setTokenUnderlying(token, newU);
+        assertEq(oracle.tokenToUnderlying(token), newU);
+    }
 }
