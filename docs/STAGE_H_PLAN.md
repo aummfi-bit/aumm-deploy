@@ -1,8 +1,8 @@
 # Stage H — Emission Distributor
 
-> **Status:** Pre-implementation. H-D design surface partially locked (H-D1 through H-D5 resolved). Awaiting plan review and approval before §8e.1 sub-step prompts beyond H0.X scaffold work begin.
+> **Status:** Implementation in progress. H1 complete — H-D1—H-D6 + H-D8 LOCKED; H-D7 OPEN (lock at H10). Next: H2a (concrete TVLOracle).
 >
-> **Last update:** 2026-05-14 — H0.1 plan scaffold authored.
+> **Last update:** 2026-05-15 — H1 complete; H-D8 locked (H1.5); Completion Log through H1.5 (H1.6).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4 (post core distributor lock). Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 
@@ -59,3 +59,6 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H1.1 | b6f37d2 | 2026-05-14 | docs/STAGE_H_NOTES.md — ## Architecture section (new contracts/interfaces inventory + consumer surface + schedules-by-phase table) |
 | H1.2 | 5f36a89 | 2026-05-14 | docs/STAGE_H_NOTES.md — ## Interface boundary section (Produced + Consumed + Forward-dependency stubs) |
 | H1.3 | 87b62a7 | 2026-05-14 | docs/STAGE_H_NOTES.md — H-D6 OPEN → LOCKED (1/28 literal per F-1; supply-deflationary by design; H-D6 Open-questions bullet removed) |
+| H1.4 | d992f68 | 2026-05-14 | docs/STAGE_H_PLAN.md + docs/STAGE_H_NOTES.md — H-D6 row LOCKED + Completion Log rows H0.3/H1.1—H1.3 + NOTES status header refresh |
+| H1.x-bis | 3d39978 | 2026-05-15 | src/ccb/ICCBMultiplier.sol — ICCBMultiplier interface retrofit RB-005 (getMultiplier per OQ-23) |
+| H1.5 | 4e25a57 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D8 LOCKED (constellation enumeration source for OQ-22 cross-asset leg) |
