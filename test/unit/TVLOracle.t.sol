@@ -252,4 +252,117 @@ contract TVLOracleTest is Test {
         _setComposition(pool, toks, bals);
         assertEq(oracle.tvl(pool), 1000e18);
     }
+
+    function test_tvl_singleVenue_appliesRatio() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 100e18);
+    }
+
+    function test_tvl_twoVenues_averagesRatios() public {
+        address pool = _addr(0x5001);
+        address venue1 = _addr(0x6001);
+        address venue2 = _addr(0x6002);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory v1Tokens = new address[](2);
+        v1Tokens[0] = tokenU;
+        v1Tokens[1] = SVZCHF;
+        uint256[] memory v1Bals = new uint256[](2);
+        v1Bals[0] = 100e18;
+        v1Bals[1] = 200e18;
+        _addVenue(venue1, v1Tokens, v1Bals);
+        address[] memory v2Tokens = new address[](2);
+        v2Tokens[0] = tokenU;
+        v2Tokens[1] = SVZCHF;
+        uint256[] memory v2Bals = new uint256[](2);
+        v2Bals[0] = 100e18;
+        v2Bals[1] = 300e18;
+        _addVenue(venue2, v2Tokens, v2Bals);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 100e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 250e18);
+    }
+
+    function test_tvl_venueMultiTokenSummingPerUnderlying() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU1 = _addr(0xA1);
+        address tokenU2 = _addr(0xA2);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU1, underlying);
+        _mapToken(tokenU2, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](3);
+        vTokens[0] = tokenU1;
+        vTokens[1] = tokenU2;
+        vTokens[2] = SVZCHF;
+        uint256[] memory vBals = new uint256[](3);
+        vBals[0] = 60e18;
+        vBals[1] = 40e18;
+        vBals[2] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU1;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 100e18);
+    }
+
+    function test_tvl_poolMultiUnderlying_sumsAcrossTokens() public {
+        address pool = _addr(0x5001);
+        address venue1 = _addr(0x6001);
+        address venue2 = _addr(0x6002);
+        address tokenU1 = _addr(0xA1);
+        address tokenU2 = _addr(0xA2);
+        address underlying1 = _addr(0xB1);
+        address underlying2 = _addr(0xB2);
+        _mapToken(tokenU1, underlying1);
+        _mapToken(tokenU2, underlying2);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory v1Tokens = new address[](2);
+        v1Tokens[0] = tokenU1;
+        v1Tokens[1] = SVZCHF;
+        uint256[] memory v1Bals = new uint256[](2);
+        v1Bals[0] = 100e18;
+        v1Bals[1] = 200e18;
+        _addVenue(venue1, v1Tokens, v1Bals);
+        address[] memory v2Tokens = new address[](2);
+        v2Tokens[0] = tokenU2;
+        v2Tokens[1] = SVZCHF;
+        uint256[] memory v2Bals = new uint256[](2);
+        v2Bals[0] = 100e18;
+        v2Bals[1] = 300e18;
+        _addVenue(venue2, v2Tokens, v2Bals);
+        address[] memory pTokens = new address[](2);
+        pTokens[0] = tokenU1;
+        pTokens[1] = tokenU2;
+        uint256[] memory pBals = new uint256[](2);
+        pBals[0] = 30e18;
+        pBals[1] = 20e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 120e18);
+    }
 }
