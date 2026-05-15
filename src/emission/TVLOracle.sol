@@ -47,6 +47,23 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Reverts when seed array lengths mismatch (`_tokensSeed.length != _underlyingsSeed.length`).
     error ArrayLengthMismatch();
 
+    /// @notice Reverts when a non-governance address invokes a governance-only entry point.
+    error NotGovernance(address caller);
+
+    /* ---------- Events ---------- */
+
+    /// @notice Emitted when `setGovernanceContract` rebinds the `governance` authority (Stage K handoff per H-D8).
+    event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
+
+    /* ---------- Modifiers ---------- */
+
+    /// @notice Restricts execution to the current `governance` authority; reverts `NotGovernance(msg.sender)` otherwise.
+    /// @dev H-D8 — `setGovernanceContract`-pivoting governance slot mirroring Stage G `GaugeRegistry` precedent.
+    modifier onlyGovernance() {
+        if (msg.sender != governance) revert NotGovernance(msg.sender);
+        _;
+    }
+
     /* ---------- Constructor ---------- */
 
     /**
@@ -78,6 +95,20 @@ abstract contract TVLOracle is ITVLOracle {
         for (uint256 i = 0; i < _tokensSeed.length; i++) {
             tokenToUnderlying[_tokensSeed[i]] = _underlyingsSeed[i];
         }
+    }
+
+    /* ---------- Governance ---------- */
+
+    /**
+     * @notice Stage K migration handoff per H-D8 — rebinds governance authority.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input; emits `GovernanceTransferred(oldGovernance, newGovernance)`.
+     * @param newGovernance The new governance authority — typically the on-chain governance contract at Stage K.
+     */
+    function setGovernanceContract(address newGovernance) external onlyGovernance {
+        if (newGovernance == address(0)) revert ZeroAddress();
+        address oldGovernance = governance;
+        governance = newGovernance;
+        emit GovernanceTransferred(oldGovernance, newGovernance);
     }
 
     /// @inheritdoc ITVLOracle
