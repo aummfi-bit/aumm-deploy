@@ -17,6 +17,9 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Immutable der Bodensee pool address — always in the H-D8 constellation union.
     address public immutable BODENSEE_POOL;
 
+    /// @notice Immutable svZCHF numéraire address per H-D9 — quote currency for all `tvl()` outputs; may itself appear as a constellation pool token (svZCHF dual-role).
+    address public immutable SVZCHF;
+
     /* ---------- Governance (Stage K) ---------- */
 
     /// @notice Governance authority — Stage A–K Safe at deploy; rebound via `setGovernanceContract` at Stage K per H-D8.
@@ -81,6 +84,7 @@ abstract contract TVLOracle is ITVLOracle {
      * @dev `_governanceAddedPools` initial seed remains deferred to a later H2a sub-step. If `_tokensSeed.length != _underlyingsSeed.length`, reverts with `ArrayLengthMismatch`. Zero-address inputs for immutables or governance revert with `ZeroAddress`.
      * @param _vaultExplorer Balancer V3 `IVaultExplorer` — read entry for `getPoolData` / `balancesLiveScaled18` per H-D9 Step 1.
      * @param _bodenseePool Der Bodensee pool address — immutable constellation member per H-D8.
+     * @param _svzchf svZCHF numéraire address per H-D9 — quote currency for `tvl()` and a permitted constellation pool token (svZCHF dual-role). Reverts `ZeroAddress` on zero input.
      * @param _initialGovernance Initial governance — Stage A–K Authorizer Safe at deploy; Stage K rebind via `setGovernanceContract` per H-D8.
      * @param _tokensSeed Tokens whose wrapper → underlying mapping is seeded at construction per H-D9 (STANDARD tokens use self-mapping where `_tokensSeed[i] == _underlyingsSeed[i]`).
      * @param _underlyingsSeed Per-index underlying address corresponding to `_tokensSeed[i]`; `_tokensSeed.length` must equal `_underlyingsSeed.length`.
@@ -88,18 +92,21 @@ abstract contract TVLOracle is ITVLOracle {
     constructor(
         IVaultExplorer _vaultExplorer,
         address _bodenseePool,
+        address _svzchf,
         address _initialGovernance,
         address[] memory _tokensSeed,
         address[] memory _underlyingsSeed
     ) {
         if (address(_vaultExplorer) == address(0)) revert ZeroAddress();
         if (_bodenseePool == address(0)) revert ZeroAddress();
+        if (_svzchf == address(0)) revert ZeroAddress();
         if (_initialGovernance == address(0)) revert ZeroAddress();
 
         if (_tokensSeed.length != _underlyingsSeed.length) revert ArrayLengthMismatch();
 
         vaultExplorer = _vaultExplorer;
         BODENSEE_POOL = _bodenseePool;
+        SVZCHF = _svzchf;
         governance = _initialGovernance;
 
         for (uint256 i = 0; i < _tokensSeed.length; i++) {
