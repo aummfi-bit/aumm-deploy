@@ -1,8 +1,8 @@
 # Stage H — Emission Distributor
 
-> **Status:** Implementation in progress. H1 complete — H-D1—H-D6 + H-D8 LOCKED; H-D7 OPEN (lock at H10). Next: H2a (concrete TVLOracle).
+> **Status:** Implementation in progress. H1 complete — H-D1—H-D6 + H-D8—H-D9 LOCKED; H-D7 OPEN (lock at H10). Next: H2a (concrete TVLOracle).
 >
-> **Last update:** 2026-05-15 — H1 complete; H-D8 locked (H1.5); Completion Log through H1.5 (H1.6).
+> **Last update:** 2026-05-15 — H-D9 locked (H1.7); Completion Log through H1.7 (H1.8).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4 (post core distributor lock). Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 
@@ -62,3 +62,5 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H1.4 | d992f68 | 2026-05-14 | docs/STAGE_H_PLAN.md + docs/STAGE_H_NOTES.md — H-D6 row LOCKED + Completion Log rows H0.3/H1.1—H1.3 + NOTES status header refresh |
 | H1.x-bis | 3d39978 | 2026-05-15 | src/ccb/ICCBMultiplier.sol — ICCBMultiplier interface retrofit RB-005 (getMultiplier per OQ-23) |
 | H1.5 | 4e25a57 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D8 LOCKED (constellation enumeration source for OQ-22 cross-asset leg) |
+| H1.6 | b0403b5 | 2026-05-15 | docs/STAGE_H_PLAN.md — status header refresh (H-D8 LOCKED) + Completion Log rows H1.4/H1.x-bis/H1.5 |
+| H1.7 | 20614e3 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D9 LOCKED (TVLOracle arithmetic: balancesLiveScaled18 step 1, tokenToUnderlying map, balance-ratio α step 2, Phase 1 direct-venues-only + OQ-22 L1115 carry-forward) |
