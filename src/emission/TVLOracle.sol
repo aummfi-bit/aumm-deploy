@@ -62,6 +62,9 @@ abstract contract TVLOracle is ITVLOracle {
     /// @notice Emitted when governance appends a pool to the H-D8 append-only constellation roster leg (`indexed` for off-chain indexing).
     event ConstellationPoolAdded(address indexed pool);
 
+    /// @notice Emitted on H-D9 governance-curated `tokenToUnderlying` writes; `token`, `oldUnderlying`, and `newUnderlying` are indexed for off-chain reconstruction of mapping history (Solidity 3-indexed-param limit).
+    event TokenUnderlyingSet(address indexed token, address indexed oldUnderlying, address indexed newUnderlying);
+
     /* ---------- Modifiers ---------- */
 
     /// @notice Restricts execution to the current `governance` authority; reverts `NotGovernance(msg.sender)` otherwise.
@@ -138,6 +141,22 @@ abstract contract TVLOracle is ITVLOracle {
             }
         }
         emit ConstellationPoolAdded(pool);
+    }
+
+    /* ---------- Token underlying management ---------- */
+
+    /**
+     * @notice Post-construction governance write to `tokenToUnderlying` per H-D9 — complements the constructor genesis seed at H2a.3.
+     * @dev Governance-curated per-token wrapper → underlying resolution; STANDARD tokens self-map per the H2a.3 seed convention. Reverse-map `_underlyingToPools` staleness is governance's responsibility: callers MUST invoke `setTokenUnderlying` BEFORE `addConstellationPool` for pools that hold `token`, or `_underlyingToPools` retains stale entries under the prior underlying — concrete rebuild deferred per H-D9 Phase 1 direct-venue-only scope and OQ-22 L1115 carry-forward. Reverts `ZeroAddress` when `token == address(0)` or `underlying == address(0)`. Emits `TokenUnderlyingSet(token, oldUnderlying, underlying)`. Clearing (`tokenToUnderlying[token] = address(0)`) is NOT supported at Phase 1 — the map is sticky once set non-zero; a dedicated clear primitive may land post-Phase 1 if needed.
+     * @param token The pool token whose valuation underlying is set or updated.
+     * @param underlying The non-zero valuation underlying address (`token` may equal `underlying` for STANDARD tokens).
+     */
+    function setTokenUnderlying(address token, address underlying) external onlyGovernance {
+        if (token == address(0)) revert ZeroAddress();
+        if (underlying == address(0)) revert ZeroAddress();
+        address oldUnderlying = tokenToUnderlying[token];
+        tokenToUnderlying[token] = underlying;
+        emit TokenUnderlyingSet(token, oldUnderlying, underlying);
     }
 
     /// @inheritdoc ITVLOracle
