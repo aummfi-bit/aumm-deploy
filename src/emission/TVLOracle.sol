@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
+import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 
@@ -164,6 +165,41 @@ abstract contract TVLOracle is ITVLOracle {
         address oldUnderlying = tokenToUnderlying[token];
         tokenToUnderlying[token] = underlying;
         emit TokenUnderlyingSet(token, oldUnderlying, underlying);
+    }
+
+    /* ---------- Internal helpers (H-D9 Step 2) ---------- */
+
+    /**
+     * @notice H-D9 Step 2 — balance-ratio averaging α(`underlying`): the cross-venue arithmetic mean of `(balZ * 1e18) / balU` across constellation venues that hold both `underlying` and `SVZCHF` (Phase 1 direct venues only per OQ-22 L1115 — no 2-hop carry-forward).
+     * @dev (1) If `underlying == SVZCHF`, returns `1e18` identity. (2) If no constellation venue holds both `underlying` and `SVZCHF`, or every such venue has zero `balU` or zero `balZ`, returns `0` (that underlying's contribution is omitted from the `tvl()` sum). (3) Within one venue, `balU` and `balZ` sum `balancesLiveScaled18` across all pool tokens whose `tokenToUnderlying` resolves to `underlying` or `SVZCHF` respectively — aggregating wrappers and bases that map to the same underlying. (4) Outer iteration walks `_underlyingToPools[underlying]`; Phase 1 uses per-venue `getPoolTokens` + `getPoolData`; OQ-5a-bis daily EMA cadence absorbs read cost.
+     * @param underlying The valuation underlying being priced in svZCHF; if equal to `SVZCHF`, returns the 1e18 identity ratio without iteration.
+     * @return ratio 18-dec fixed-point average of `(balZ * 1e18) / balU` across eligible venues; `0` when no eligible venue exists.
+     */
+    function _constellationRatio(address underlying) internal view returns (uint256) {
+        if (underlying == SVZCHF) return 1e18;
+        address[] storage pools = _underlyingToPools[underlying];
+        uint256 acc = 0;
+        uint256 count = 0;
+        for (uint256 i = 0; i < pools.length; i++) {
+            address v = pools[i];
+            IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
+            PoolData memory data = vaultExplorer.getPoolData(v);
+            uint256 balU = 0;
+            uint256 balZ = 0;
+            for (uint256 j = 0; j < tokens.length; j++) {
+                address u = tokenToUnderlying[address(tokens[j])];
+                if (u == underlying) {
+                    balU += data.balancesLiveScaled18[j];
+                } else if (u == SVZCHF) {
+                    balZ += data.balancesLiveScaled18[j];
+                }
+            }
+            if (balU > 0 && balZ > 0) {
+                acc += (balZ * 1e18) / balU;
+                count += 1;
+            }
+        }
+        return count == 0 ? 0 : acc / count;
     }
 
     /// @inheritdoc ITVLOracle
