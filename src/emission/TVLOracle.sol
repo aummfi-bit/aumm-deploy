@@ -6,10 +6,10 @@ import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 
-/// @title TVLOracle — `ITVLOracle` scaffold (abstract; concrete `tvl()` at H2a.6)
+/// @title TVLOracle — concrete `ITVLOracle` implementation per H-D8 + H-D9 (Phase 1: direct constellation venues)
 /// @notice svZCHF-denominated pool TVL via Balancer V3 scaled balances, per-token underlying mapping, and constellation balance-ratio averaging per H-D8 + H-D9.
-/// @dev H-D8 — constellation roster = `{IMiliariumRegistry roster} ∪ {BODENSEE_POOL} ∪ {governanceAddedPools}`; pre-Stage-J placeholder collapses to `{BODENSEE_POOL} ∪ {governanceAddedPools}` per F-D9 until concrete `IMiliariumRegistry` lands at Stage J. H-D9 — Step 1 reads `IVaultExplorer.getPoolData(pool).balancesLiveScaled18[i]`; Step 2 uses balance-ratio averaging at constellation venues; per-token wrapper → underlying resolution is governance-curated via `tokenToUnderlying`; ERC-4626 `asset()` introspection is rejected as a runtime fallback. OQ-22 (FINDINGS L1106—L1153; L1115 anchors the 2-hop carry-forward deferred out of Phase 1). OQ-8 — `BTC_WRAPPERS` governance-extensible precedent. OQ-5a-bis — daily EMA cadence absorbs per-block α-approximation noise. H-D5 — anti-enumeration applies to the distributor only; oracle siblings may mirror deliberate roster state. Phase 1 = direct venues only. Stage K — governance handoff via `setGovernanceContract`. Contract remains `abstract` with no concrete `tvl()` until H2a.6.
-abstract contract TVLOracle is ITVLOracle {
+/// @dev H-D8 — constellation roster = `{IMiliariumRegistry roster} ∪ {BODENSEE_POOL} ∪ {governanceAddedPools}`; pre-Stage-J placeholder collapses to `{BODENSEE_POOL} ∪ {governanceAddedPools}` per F-D9 until concrete `IMiliariumRegistry` lands at Stage J. H-D9 — Step 1 reads `IVaultExplorer.getPoolData(pool).balancesLiveScaled18[i]`; Step 2 uses balance-ratio averaging at constellation venues via `_constellationRatio`; per-token wrapper → underlying resolution is governance-curated via `tokenToUnderlying`; ERC-4626 `asset()` introspection is rejected as a runtime fallback. OQ-22 (FINDINGS L1106—L1153; L1115 anchors the 2-hop carry-forward deferred out of Phase 1). OQ-8 — `BTC_WRAPPERS` governance-extensible precedent. OQ-5a-bis — daily EMA cadence absorbs per-block α-approximation noise. H-D5 — anti-enumeration applies to the distributor only; oracle siblings may mirror deliberate roster state. Phase 1 = direct venues only. Stage K — governance handoff via `setGovernanceContract`.
+contract TVLOracle is ITVLOracle {
     /* ---------- Immutables ---------- */
 
     /// @notice Read-only Balancer V3 vault explorer — single entry for `getPoolData` per H-D9 Step 1.
@@ -202,6 +202,22 @@ abstract contract TVLOracle is ITVLOracle {
         return count == 0 ? 0 : acc / count;
     }
 
-    /// @inheritdoc ITVLOracle
-    function tvl(address pool) external view virtual override returns (uint256);
+    /* ---------- ITVLOracle ---------- */
+
+    /**
+     * @inheritdoc ITVLOracle
+     * @dev H-D9 implementation — Step 1: reads `vaultExplorer.getPoolData(pool).balancesLiveScaled18[]` for the input pool's own scaled balances; Step 2: calls `_constellationRatio(underlying)` per token to convert each balance into svZCHF and sum contributions. Tokens with no `tokenToUnderlying` entry (zero-address resolution) contribute 0. Underlyings with no constellation pricing (`_constellationRatio` returns 0) also contribute 0 — Phase 1 direct-venue-only scope per OQ-22 L1115; no 2-hop carry-forward. Return is 18-dec fixed-point svZCHF.
+     */
+    function tvl(address pool) external view override returns (uint256) {
+        PoolData memory data = vaultExplorer.getPoolData(pool);
+        uint256 sum = 0;
+        for (uint256 i = 0; i < data.tokens.length; i++) {
+            address u = tokenToUnderlying[address(data.tokens[i])];
+            if (u == address(0)) continue;
+            uint256 ratio = _constellationRatio(u);
+            if (ratio == 0) continue;
+            sum += (data.balancesLiveScaled18[i] * ratio) / 1e18;
+        }
+        return sum;
+    }
 }
