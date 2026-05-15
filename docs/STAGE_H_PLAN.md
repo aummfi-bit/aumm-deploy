@@ -1,8 +1,8 @@
 # Stage H — Emission Distributor
 
-> **Status:** Implementation in progress. H1 complete — H-D1—H-D6 + H-D8—H-D9 LOCKED; H-D7 OPEN (lock at H10). Next: H2a (concrete TVLOracle).
+> **Status:** Implementation in progress. H2a complete — TVLOracle concrete + 28 unit tests passing; H-D1—H-D6 + H-D8—H-D9 LOCKED; H-D7 OPEN (lock at H10). Next: H2b (concrete EfficiencyOracle).
 >
-> **Last update:** 2026-05-15 — H-D9 locked (H1.7); Completion Log through H1.7 (H1.8).
+> **Last update:** 2026-05-15 — H2a closed (TVLOracle implementation + 28 unit tests, 28 pass); Completion Log through H2a.7c (H2a.9a).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4 (post core distributor lock). Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 
@@ -64,3 +64,13 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H1.5 | 4e25a57 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D8 LOCKED (constellation enumeration source for OQ-22 cross-asset leg) |
 | H1.6 | b0403b5 | 2026-05-15 | docs/STAGE_H_PLAN.md — status header refresh (H-D8 LOCKED) + Completion Log rows H1.4/H1.x-bis/H1.5 |
 | H1.7 | 20614e3 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D9 LOCKED (TVLOracle arithmetic: balancesLiveScaled18 step 1, tokenToUnderlying map, balance-ratio α step 2, Phase 1 direct-venues-only + OQ-22 L1115 carry-forward) |
+| H1.8 | 342932e | 2026-05-15 | docs/STAGE_H_PLAN.md — status header refresh (H-D9 LOCKED) + Completion Log rows H1.6/H1.7 |
+| H2a.1 | e48a61c | 2026-05-15 | src/emission/TVLOracle.sol — skeleton scaffold (abstract contract, storage layout per H-D8 + H-D9, IVaultExplorer + ITVLOracle imports) |
+| H2a.2 | 6f157f7 | 2026-05-15 | src/emission/TVLOracle.sol — constructor (IVaultExplorer + BODENSEE_POOL + governance init, ZeroAddress guard) |
+| H2a.3 | 685a81e | 2026-05-15 | src/emission/TVLOracle.sol — tokenToUnderlying seed loop (2 new constructor params, ArrayLengthMismatch, genesis mapping loop) |
+| H2a.4 | 321c8c7 | 2026-05-15 | src/emission/TVLOracle.sol — governance setter (NotGovernance error, GovernanceTransferred event, onlyGovernance modifier, setGovernanceContract) |
+| H2a.5 | 1db1085 | 2026-05-15 | src/emission/TVLOracle.sol — addConstellationPool (AlreadyAdded error, ConstellationPoolAdded event, IERC20 import, _underlyingToPools incremental append) |
+| H2a.6 | 8b69cbb | 2026-05-15 | src/emission/TVLOracle.sol — setTokenUnderlying (TokenUnderlyingSet event, Token underlying management section, reverse-map staleness NatSpec) |
+| H2a.7a | e4a9eee | 2026-05-15 | src/emission/TVLOracle.sol — SVZCHF immutable + constructor param (_svzchf, ZeroAddress guard, assignment, @param NatSpec) |
+| H2a.7b | cdb94f8 | 2026-05-15 | src/emission/TVLOracle.sol — _constellationRatio helper (H-D9 Step 2 balance-ratio averaging, PoolData import, Internal helpers section) |
+| H2a.7c | 00eb759 | 2026-05-15 | src/emission/TVLOracle.sol — concrete tvl() body (H-D9 Step 1+2), abstract keyword removal, title + @dev NatSpec fix |
