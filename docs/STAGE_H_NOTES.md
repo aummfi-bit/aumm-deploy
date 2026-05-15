@@ -1,8 +1,8 @@
 # Stage H — Notes & Design Freeze
 
-> **Status:** Pre-implementation. H-D design surface partially locked (H-D1—H-D6 LOCKED; H-D7 OPEN — to lock at H10). Companion to STAGE_H_PLAN.md.
+> **Status:** Pre-implementation. H-D design surface partially locked (H-D1—H-D6 + H-D8 LOCKED; H-D7 OPEN — to lock at H10). Companion to STAGE_H_PLAN.md.
 >
-> **Last update:** 2026-05-14 — H1 architecture inventory + interface boundary + H-D6 lock (H1.1—H1.3).
+> **Last update:** 2026-05-15 — H-D8 constellation-enumeration-source lock (H1.5).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4. Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 >
@@ -20,7 +20,7 @@
 
 ## Design decisions
 
-The H-D rows below replay STAGE_H_PLAN.md:L40-L51 while expanding rationale. Entries H-D1—H-D6 reflect confirmed design locks (H-D1—H-D5 from plan scaffold H0.1; H-D6 locked at H1.3, 2026-05-14). Entry H-D7 remains an OPEN placeholder until deployment-timing lock (H-D7 expected at H10 scripting).
+The H-D rows below replay STAGE_H_PLAN.md:L40-L51 while expanding rationale. Entries H-D1—H-D6 and H-D8 reflect confirmed design locks (H-D1—H-D5 from plan scaffold H0.1; H-D6 locked at H1.3, 2026-05-14; H-D8 added at H1.5, 2026-05-15, per the in-stage decision convention recorded in `## How this file is organized` above). Entry H-D7 remains an OPEN placeholder until deployment-timing lock (H-D7 expected at H10 scripting).
 
 ### H-D1 — Oracles in-stage as H2a (concrete TVLOracle) + H2b (concrete EfficiencyOracle) — status LOCKED
 
@@ -49,6 +49,10 @@ H-D6 locks the F-1 equal-split denominator at the literal fixed fraction `1/28` 
 ### H-D7 — AuMM.setMinter() handoff timing (Stage H deploy vs Stage K governance migration) — status OPEN
 
 `IAuMM.setMinter()` remains an irreversible one-shot per Stage C precedent, leaving no recovery if the wired minter mishandles accumulator invariants downstream. Selecting whether emission begins during Stage H’s deployment window versus deferring mint authority activation until Stage K governance migration completes determines whether pre-governance timelines may emit AuMM earmarked toward bootstrap ramps or whether every mint awaits post-handoff governors. Earlier wiring favors faster bootstrap ramps scripted with auditor-reviewed bytecode even while governance ballots remain offline, whereas deferral keeps issuance paused until rehearsals finish cleanly at the governance layer. Locks therefore anchor to the H10 deployment sub-step alongside multisig-dry-run evidence. Cross-references: `IAuMM.setMinter`, Stage K governance handoff.
+
+### H-D8 — Constellation enumeration source for OQ-22 cross-asset leg — status LOCKED
+
+H-D8 narrows OQ-22 step 2's "all gauged Aureum pools" prose to a concrete typed-domain set: the constellation = `IMiliariumRegistry`-enumerated Miliarium pool roster (Stage J producer; F-D9 placeholder semantics pre-Stage-J) plus the immutable der Bodensee address plus an append-only governance-extensible roster owned by `TVLOracle` itself. The seed reflects OQ-8's two-part precedent — an enumerable pool set plus a governance-extensible token-of-interest set — translated from "BTC wrappers" to "constellation venues" without touching the non-enumerable `IGaugeRegistry` ABI. `IGaugeRegistry` extension is rejected because G-D5 / G-D7 lock its anti-enumeration posture; H-D5's anti-enumeration guard binds the distributor only, leaving oracle siblings free to mirror deliberate roster state — the TVLOracle's roster lives behind its own audit surface, isolated from accumulator math. Bootstrap horizon pre-Stage-J: `IMiliariumRegistry.isMiliarium(pool)` returns false uniformly per F-D9, so the constellation at H launch collapses to `{ BODENSEE_POOL } ∪ governanceAddedPools`, and tokens whose underlying ≠ svZCHF without a constellation venue resolve to `tvl_contribution = 0` non-revert per OQ-5a-bis EMASampler-compatible spot-read semantics. Governance gate on the additive setter follows the Stage G `GaugeRegistry` pattern — a mutable `governance` slot seeded to the Stage A–K Authorizer Safe at construction, switchable via `setGovernanceContract(address)` to the on-chain governance contract at Stage K migration. The roster is append-only at Stage H — revocation of constellation venues (e.g., a gauge-revoked pool that should drop from the average) is deferred to Stage K alongside broader governance-revocation discipline, so a wrongly-added pool is a known carry-forward concern rather than a Stage H surface. The semantic gap between OQ-22 prose ("all gauged Aureum pools") and operational reality ("Miliarium roster + Bodensee + governance-added pools") is recorded as a known carry-forward — the operationally-correct set is economically equivalent for F-1 / F-3 / F-7 ranking under the H launch composition, but FINDINGS prose alignment (likely a new OQ row or an OQ-22 addendum) is deferred to H11 cross-docs. Anchors closing the record: OQ-22 step 2 (cross-asset leg shape), OQ-8 (BTC_WRAPPERS governance-extensible precedent), G-D5 / G-D7 (`IGaugeRegistry` non-enumerable lock), H-D5 (distributor-only anti-enumeration), F-D9 (Miliarium registry placeholder semantics), Stage J (concrete `IMiliariumRegistry` landing), Stage K (governance handoff via `setGovernanceContract` per Stage G `GaugeRegistry` precedent).
 
 ---
 
