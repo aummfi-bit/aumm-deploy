@@ -88,4 +88,30 @@ abstract contract EfficiencyOracle is IEfficiencyOracle {
 
     /// @notice Emitted when `_ensureCurrentEpoch` flushes an in-progress accumulator pair to the history ring — `pool` and `epoch` are indexed for off-chain reconstruction of the per-pool SMA window.
     event EpochFinalized(address indexed pool, uint256 indexed epoch, uint256 numerator, uint256 denominator);
+
+    /* ---------- Constructor ---------- */
+
+    /**
+     * @notice Wires the four core immutables/governance slot for the H-D10 EfficiencyOracle Phase 1.
+     * @dev `feeRecorder` and `emissionsRecorder` default to `address(0)` and must be set post-construction via `setFeeRecorder` / `setEmissionsRecorder` (governance-gated, H2b.3) before `recordFees` / `recordEmissions` calls land per H-D10. ZeroAddress guards apply to the three address parameters; `_genesisBlock` accepts any `uint256` value (deploy-time correctness is governance's responsibility — invalid genesis values yield an arithmetically valid but semantically wrong epoch series via `AureumTime.epochIndex`). No constructor emit for `GovernanceTransferred` — mirrors TVLOracle pattern where the initial governance slot is set silently.
+     * @param _tvlOracle Concrete `ITVLOracle` deployed at H2a — required dependency for `quoteSvZCHF` conversions in `recordFees` + `recordEmissions` per H-D10 v2 (H1.9-bis). Reverts `ZeroAddress` on zero input.
+     * @param _aumm AuMM token address — passed as the `token` argument to `tvlOracle.quoteSvZCHF` in `recordEmissions` per H-D10 v2. Reverts `ZeroAddress` on zero input. Deploy prerequisite: `tvlOracle.tokenToUnderlying[_aumm]` must be seeded with a constellation venue pricing AuMM in svZCHF, or `recordEmissions` accumulates 0 and post-warmup `efficiencyInputs` returns `denominatorSma = 0`.
+     * @param _genesisBlock Stage H genesis block — anchors `AureumTime.epochIndex(GENESIS_BLOCK, block.number)` in `_ensureCurrentEpoch` and `efficiencyInputs` per H-D10. Same precedent as `AuMM.sol` GENESIS_BLOCK; no zero-check (uint256, accepts any value).
+     * @param _initialGovernance Initial governance authority — Stage A–K Authorizer Safe at deploy; Stage K rebind via `setGovernanceContract` per H-D8. Reverts `ZeroAddress` on zero input.
+     */
+    constructor(
+        ITVLOracle _tvlOracle,
+        address _aumm,
+        uint256 _genesisBlock,
+        address _initialGovernance
+    ) {
+        if (address(_tvlOracle) == address(0)) revert ZeroAddress();
+        if (_aumm == address(0)) revert ZeroAddress();
+        if (_initialGovernance == address(0)) revert ZeroAddress();
+
+        tvlOracle = _tvlOracle;
+        AuMM = _aumm;
+        GENESIS_BLOCK = _genesisBlock;
+        governance = _initialGovernance;
+    }
 }
