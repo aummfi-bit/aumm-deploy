@@ -220,4 +220,17 @@ contract TVLOracle is ITVLOracle {
         }
         return sum;
     }
+
+    /// @notice external wrapper for the H-D9 constellation-ratio conversion — converts `amountScaled18` of `token` into its svZCHF-denominated equivalent
+    /// @dev (a) mirrors the inner tvl() loop for a single (token, amount) input; (b) skip-on-zero semantics — returns 0 if `tokenToUnderlying[token] == address(0)` or if `_constellationRatio(underlying) == 0`; (c) input must be in Balancer V3 `balancesLiveScaled18` convention (18-decimal fixed-point of the token's economic amount); raw-decimal inputs must be pre-scaled by the caller; (d) required by Stage H H2b `EfficiencyOracle` per H-D10 for per-pool fee/emission svZCHF conversion
+    /// @param token — the pool token whose underlying valuation is queried
+    /// @param amountScaled18 — the amount of `token` to convert, in 18-decimal fixed-point per Balancer V3 scaled18 convention
+    /// @return svZCHFAmountScaled18 — the svZCHF-denominated equivalent in 18-decimal fixed-point; 0 when token is unmapped or has no constellation venue
+    function quoteSvZCHF(address token, uint256 amountScaled18) external view returns (uint256 svZCHFAmountScaled18) {
+        address u = tokenToUnderlying[token];
+        if (u == address(0)) return 0;
+        uint256 ratio = _constellationRatio(u);
+        if (ratio == 0) return 0;
+        return (amountScaled18 * ratio) / 1e18;
+    }
 }
