@@ -138,4 +138,54 @@ contract EfficiencyOracleTest is Test {
         vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, GOV));
         oracle.setFeeRecorder(_addr(0xF2));
     }
+
+    /* ---------- setFeeRecorder + setEmissionsRecorder tests ---------- */
+
+    function test_setFeeRecorder_happyPath_emitsAndUpdatesSlot() public {
+        address newRec = _addr(0xF2);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeeRecorderSet(FEE_REC, newRec);
+        vm.prank(GOV);
+        oracle.setFeeRecorder(newRec);
+        assertEq(oracle.feeRecorder(), newRec);
+    }
+
+    function test_setFeeRecorder_acceptsZeroAddress() public {
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeeRecorderSet(FEE_REC, address(0));
+        vm.prank(GOV);
+        oracle.setFeeRecorder(address(0));
+        assertEq(oracle.feeRecorder(), address(0));
+    }
+
+    function test_setFeeRecorder_revertsOnNonGovernance() public {
+        address nonGov = _addr(0xDE);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, nonGov));
+        vm.prank(nonGov);
+        oracle.setFeeRecorder(FEE_REC);
+    }
+
+    function test_setEmissionsRecorder_happyPath_emitsAndUpdatesSlot() public {
+        address newRec = _addr(0xE8);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EmissionsRecorderSet(EMIT_REC, newRec);
+        vm.prank(GOV);
+        oracle.setEmissionsRecorder(newRec);
+        assertEq(oracle.emissionsRecorder(), newRec);
+    }
+
+    function test_setEmissionsRecorder_acceptsZeroAddress() public {
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EmissionsRecorderSet(EMIT_REC, address(0));
+        vm.prank(GOV);
+        oracle.setEmissionsRecorder(address(0));
+        assertEq(oracle.emissionsRecorder(), address(0));
+    }
+
+    function test_setEmissionsRecorder_revertsOnNonGovernance() public {
+        address nonGov = _addr(0xDE);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, nonGov));
+        vm.prank(nonGov);
+        oracle.setEmissionsRecorder(EMIT_REC);
+    }
 }
