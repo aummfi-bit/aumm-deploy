@@ -67,4 +67,75 @@ contract EfficiencyOracleTest is Test {
         vm.prank(EMIT_REC);
         oracle.recordEmissions(pool, aummAmountScaled18);
     }
+
+    /* ---------- Constructor tests ---------- */
+
+    function test_constructor_revertsOnZeroTvlOracle() public {
+        vm.expectRevert(EfficiencyOracle.ZeroAddress.selector);
+        new EfficiencyOracle(ITVLOracle(address(0)), AUMM, GENESIS_BLOCK, GOV);
+    }
+
+    function test_constructor_revertsOnZeroAuMM() public {
+        vm.expectRevert(EfficiencyOracle.ZeroAddress.selector);
+        new EfficiencyOracle(tvlMock, address(0), GENESIS_BLOCK, GOV);
+    }
+
+    function test_constructor_revertsOnZeroInitialGovernance() public {
+        vm.expectRevert(EfficiencyOracle.ZeroAddress.selector);
+        new EfficiencyOracle(tvlMock, AUMM, GENESIS_BLOCK, address(0));
+    }
+
+    function test_constructor_acceptsZeroGenesisBlock() public {
+        EfficiencyOracle fresh = new EfficiencyOracle(tvlMock, AUMM, 0, GOV);
+        assertEq(fresh.GENESIS_BLOCK(), 0);
+    }
+
+    function test_constructor_wiresImmutablesGovernanceAndDefaultsRecordersToZero() public {
+        EfficiencyOracle fresh = new EfficiencyOracle(tvlMock, AUMM, GENESIS_BLOCK, GOV);
+        assertEq(address(fresh.tvlOracle()), address(tvlMock));
+        assertEq(fresh.AuMM(), AUMM);
+        assertEq(fresh.GENESIS_BLOCK(), GENESIS_BLOCK);
+        assertEq(fresh.governance(), GOV);
+        assertEq(fresh.feeRecorder(), address(0));
+        assertEq(fresh.emissionsRecorder(), address(0));
+    }
+
+    /* ---------- setGovernanceContract tests ---------- */
+
+    function test_setGovernanceContract_happyPath_emitsAndUpdatesSlot() public {
+        address newGov = _addr(0xBEEF);
+        vm.expectEmit(true, true, false, true);
+        emit EfficiencyOracle.GovernanceTransferred(GOV, newGov);
+        vm.prank(GOV);
+        oracle.setGovernanceContract(newGov);
+        assertEq(oracle.governance(), newGov);
+    }
+
+    function test_setGovernanceContract_revertsOnZeroAddress() public {
+        vm.prank(GOV);
+        vm.expectRevert(EfficiencyOracle.ZeroAddress.selector);
+        oracle.setGovernanceContract(address(0));
+    }
+
+    function test_setGovernanceContract_revertsOnNonGovernance() public {
+        address rando = _addr(0xDEAD);
+        vm.prank(rando);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, rando));
+        oracle.setGovernanceContract(_addr(0xBEEF));
+    }
+
+    function test_setGovernanceContract_postHandoffShiftsAccess() public {
+        address newGov = _addr(0xBEEF);
+        vm.prank(GOV);
+        oracle.setGovernanceContract(newGov);
+
+        address newFeeRec = _addr(0xF1);
+        vm.prank(newGov);
+        oracle.setFeeRecorder(newFeeRec);
+        assertEq(oracle.feeRecorder(), newFeeRec);
+
+        vm.prank(GOV);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, GOV));
+        oracle.setFeeRecorder(_addr(0xF2));
+    }
 }
