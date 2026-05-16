@@ -365,4 +365,118 @@ contract TVLOracleTest is Test {
         _setComposition(pool, pTokens, pBals);
         assertEq(oracle.tvl(pool), 120e18);
     }
+
+    function test_quoteSvZCHF_unmappedToken_returnsZero() public {
+        address token = _addr(0xA1);
+        assertEq(oracle.quoteSvZCHF(token, 1000e18), 0);
+    }
+
+    function test_quoteSvZCHF_mappedButNoVenue_returnsZero() public {
+        address token = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(token, underlying);
+        assertEq(oracle.quoteSvZCHF(token, 1000e18), 0);
+    }
+
+    function test_quoteSvZCHF_zeroAmount_returnsZero() public {
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        address venue = _addr(0x6001);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        assertEq(oracle.quoteSvZCHF(tokenU, 0), 0);
+    }
+
+    function test_quoteSvZCHF_svzchfIdentity_returnsAmountUnchanged() public {
+        _mapToken(SVZCHF, SVZCHF);
+        assertEq(oracle.quoteSvZCHF(SVZCHF, 1000e18), 1000e18);
+        assertEq(oracle.quoteSvZCHF(SVZCHF, 1), 1);
+    }
+
+    function test_quoteSvZCHF_singleVenue_appliesRatio() public {
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        address venue = _addr(0x6001);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        assertEq(oracle.quoteSvZCHF(tokenU, 50e18), 100e18);
+    }
+
+    function test_quoteSvZCHF_twoVenues_averagesRatios() public {
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        address venue1 = _addr(0x6001);
+        address venue2 = _addr(0x6002);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory v1Tokens = new address[](2);
+        v1Tokens[0] = tokenU;
+        v1Tokens[1] = SVZCHF;
+        uint256[] memory v1Bals = new uint256[](2);
+        v1Bals[0] = 100e18;
+        v1Bals[1] = 200e18;
+        _addVenue(venue1, v1Tokens, v1Bals);
+        address[] memory v2Tokens = new address[](2);
+        v2Tokens[0] = tokenU;
+        v2Tokens[1] = SVZCHF;
+        uint256[] memory v2Bals = new uint256[](2);
+        v2Bals[0] = 100e18;
+        v2Bals[1] = 300e18;
+        _addVenue(venue2, v2Tokens, v2Bals);
+        assertEq(oracle.quoteSvZCHF(tokenU, 100e18), 250e18);
+    }
+
+    function test_quoteSvZCHF_linearInAmount() public {
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        address venue = _addr(0x6001);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        uint256 q1 = oracle.quoteSvZCHF(tokenU, 1e18);
+        uint256 q100 = oracle.quoteSvZCHF(tokenU, 100e18);
+        assertEq(q1 * 100, q100);
+    }
+
+    function test_quoteSvZCHF_matchesTvlInnerLoop() public {
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        address venue = _addr(0x6001);
+        address pool = _addr(0x5001);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _addVenue(venue, vTokens, vBals);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 75e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.quoteSvZCHF(tokenU, 75e18), oracle.tvl(pool));
+    }
 }
