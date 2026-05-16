@@ -188,4 +188,48 @@ contract EfficiencyOracleTest is Test {
         vm.prank(nonGov);
         oracle.setEmissionsRecorder(EMIT_REC);
     }
+
+    /* ---------- onlyFeeRecorder + onlyEmissionsRecorder access-control tests ---------- */
+
+    function test_recordFees_revertsOnRandomCaller() public {
+        address randomCaller = _addr(0xBAD);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotFeeRecorder.selector, randomCaller));
+        vm.prank(randomCaller);
+        oracle.recordFees(_addr(0xCAFE), _addr(0xBEEF), 1_000e18);
+    }
+
+    function test_recordFees_revertsOnGovernanceCaller() public {
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotFeeRecorder.selector, GOV));
+        vm.prank(GOV);
+        oracle.recordFees(_addr(0xCAFE), _addr(0xBEEF), 1_000e18);
+    }
+
+    function test_recordFees_revertsAfterFeeRecorderDeprecation() public {
+        vm.prank(GOV);
+        oracle.setFeeRecorder(address(0));
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotFeeRecorder.selector, FEE_REC));
+        vm.prank(FEE_REC);
+        oracle.recordFees(_addr(0xCAFE), _addr(0xBEEF), 1_000e18);
+    }
+
+    function test_recordEmissions_revertsOnRandomCaller() public {
+        address randomCaller = _addr(0xBAD);
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, randomCaller));
+        vm.prank(randomCaller);
+        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+    }
+
+    function test_recordEmissions_revertsOnGovernanceCaller() public {
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, GOV));
+        vm.prank(GOV);
+        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+    }
+
+    function test_recordEmissions_revertsAfterEmissionsRecorderDeprecation() public {
+        vm.prank(GOV);
+        oracle.setEmissionsRecorder(address(0));
+        vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, EMIT_REC));
+        vm.prank(EMIT_REC);
+        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+    }
 }
