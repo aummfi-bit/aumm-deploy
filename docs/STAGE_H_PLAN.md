@@ -1,8 +1,8 @@
 # Stage H — Emission Distributor
 
-> **Status:** Implementation in progress. H2a complete — TVLOracle concrete + 28 unit tests passing; H-D1—H-D6 + H-D8—H-D9 LOCKED; H-D7 OPEN (lock at H10). Next: H2b (concrete EfficiencyOracle).
+> **Status:** Implementation in progress. H2a complete — TVLOracle concrete + quoteSvZCHF + 36 unit tests passing; H-D1—H-D6 + H-D8—H-D10 LOCKED; H-D7 OPEN (lock at H10). Next: H2b (concrete EfficiencyOracle, sub-steps H2b.1—H2b.6).
 >
-> **Last update:** 2026-05-15 — H2a closed (TVLOracle implementation + 28 unit tests, 28 pass); Completion Log through H2a.9a (H2a.9b).
+> **Last update:** 2026-05-16 — H-D10 locked (H1.9 + H1.9-bis); quoteSvZCHF added to TVLOracle (H2a.10a); 36 TVLOracle unit tests, 36 pass (H2a.10b); Completion Log through H2a.10b.
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults (halving math + F12 type-discipline domain). Drops to Opus high after H4 (post core distributor lock). Sonnet beats only for plan-row updates, commit drafts on closed sub-steps, and mechanical Completion Log entries.
 
@@ -48,6 +48,9 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H-D5 | Pool-scoped distributor; no IGaugeRegistry enumeration; incremental totalScore aggregate updated permissionlessly per recordScore(pool) | LOCKED | isGaugeApproved(pool) per score-record call suffices — no G16-class mock sweep needed |
 | H-D6 | F-1 share denominator — fixed 1/28 literal vs dynamic 1/N_miliarium | LOCKED | Literal 1/28 per F-1 canonical text — pre-N=28 fraction structurally unminted by design (no treasury buffer, no deferred mint); F-3 equal-split leg inherits same denominator; dynamic-N enumeration rejected per H-D5; no FINDINGS promotion needed — see STAGE_H_NOTES.md H-D6 |
 | H-D7 | AuMM.setMinter() handoff timing — Stage H deploy vs Stage K governance migration | OPEN | To lock at H10; affects emission start block and upgrade path |
+| H-D8 | TVLOracle constellation roster typed-domain set | LOCKED | `{IMiliariumRegistry roster} ∪ {BODENSEE_POOL} ∪ {governanceAddedPools}` per OQ-8 BTC_WRAPPERS precedent; pre-Stage-J collapses to `{BODENSEE_POOL} ∪ {governanceAddedPools}` per F-D9; governance-extensible via `setGovernanceContract`-pivoting pattern per Stage G `GaugeRegistry`; roster append-only at Stage H |
+| H-D9 | TVLOracle per-token underlying + cross-asset leg arithmetic | LOCKED | Step 1 reads `IVaultExplorer.getPoolData(pool).balancesLiveScaled18[]`; Step 2 balance-ratio averaging at constellation venues via `_constellationRatio`; per-token wrapper → underlying via governance-curated `tokenToUnderlying` map; Phase 1 direct venues only; OQ-22 L1115 2-hop carry-forward |
+| H-D10 | EfficiencyOracle intra-epoch accumulation + EpochEntry ring buffer + svZCHF numéraire | LOCKED | `EpochEntry[3]` ring with epoch-stamp stale detection; `recordFees(pool, token, amountScaled18)` + `recordEmissions(pool, aummAmountScaled18)` convert to svZCHF via `tvlOracle.quoteSvZCHF` (H-D10 v2 per H1.9-bis); `efficiencyInputs` view divides by 3; immutable `ITVLOracle tvlOracle` + `address AuMM` |
 
 ## Completion Log
 
@@ -81,3 +84,8 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H2a.8e1 | 0f281df | 2026-05-15 | test/unit/TVLOracle.t.sol — tvl() helpers (_mapToken, _setComposition, _addVenue) + 4 edge-case tests (empty pool, unmapped, no venue, svZCHF identity; 24 total, 24 pass) |
 | H2a.8e2 | 4a7f400 | 2026-05-15 | test/unit/TVLOracle.t.sol — tvl() arithmetic tests: single-venue ratio, two-venue avg, multi-token per-underlying summing, multi-underlying pool sum (4 tests; 28 total, 28 pass) |
 | H2a.9a | 95191c7 | 2026-05-15 | docs/STAGE_H_PLAN.md — status header refresh (H2a complete) + Completion Log rows H1.8 + H2a.1—H2a.7c |
+| H2a.9b | c283c2c | 2026-05-15 | docs/STAGE_H_PLAN.md — Last update refresh + Completion Log rows H2a.8a—H2a.8e2 + H2a.9a (H2a family closed) |
+| H1.9 | e90e561 | 2026-05-15 | docs/STAGE_H_NOTES.md — H-D10 LOCKED (EfficiencyOracle intra-epoch accumulation + EpochEntry ring buffer + epoch-stamp stale detection + view-side SMA simulation) |
+| H2a.10a | 50e7768 | 2026-05-15 | src/emission/TVLOracle.sol — quoteSvZCHF external wrapper (forward-prep H2b handoff primitive per H-D10; single-token mirror of inner tvl() conversion; skip-on-zero semantics) |
+| H1.9-bis | d30d12f | 2026-05-16 | docs/STAGE_H_NOTES.md — H-D10 v2 amendment (svZCHF numéraire, quoteSvZCHF push signatures, tvlOracle + AuMM constructor immutables, AuMM mapping prerequisite) |
+| H2a.10b | d95da68 | 2026-05-16 | test/unit/TVLOracle.t.sol — quoteSvZCHF unit tests (8 cases: unmapped, mapped-but-no-venue, zero amount, svZCHF identity, single-venue ratio, two-venue averaging, linearity in amount, tvl() inner-loop cross-check; 36/36 pass) |
