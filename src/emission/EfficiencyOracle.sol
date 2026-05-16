@@ -114,4 +114,49 @@ abstract contract EfficiencyOracle is IEfficiencyOracle {
         GENESIS_BLOCK = _genesisBlock;
         governance = _initialGovernance;
     }
+
+    /* ---------- Modifiers ---------- */
+
+    /// @notice Restricts execution to the current `governance` authority; reverts `NotGovernance(msg.sender)` otherwise.
+    /// @dev H-D8 — `setGovernanceContract`-pivoting governance slot mirroring TVLOracle precedent.
+    modifier onlyGovernance() {
+        if (msg.sender != governance) revert NotGovernance(msg.sender);
+        _;
+    }
+
+    /* ---------- Governance ---------- */
+
+    /**
+     * @notice Stage K migration handoff per H-D8 — rebinds governance authority.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input; emits `GovernanceTransferred(oldGovernance, newGovernance)`. Mirrors TVLOracle `setGovernanceContract`.
+     * @param newGovernance The new governance authority — typically the on-chain governance contract at Stage K.
+     */
+    function setGovernanceContract(address newGovernance) external onlyGovernance {
+        if (newGovernance == address(0)) revert ZeroAddress();
+        address oldGovernance = governance;
+        governance = newGovernance;
+        emit GovernanceTransferred(oldGovernance, newGovernance);
+    }
+
+    /**
+     * @notice Rebinds the `feeRecorder` slot per H-D10 — the authorized fee feed that gates `recordFees` (H2b.4).
+     * @dev `onlyGovernance`-gated; `address(0)` is permitted as a deprecation signal (clearing disables `recordFees` accumulation after a feed is deprecated, by definition since `msg.sender != address(0)`); emits `FeeRecorderSet(oldRecorder, newRecorder)`. Phase 1 deploy: initially the Stage H governance Safe; later upgrades wire the fee routing hook or a fee aggregator.
+     * @param newRecorder The new fee feed address; pass `address(0)` to disable recording.
+     */
+    function setFeeRecorder(address newRecorder) external onlyGovernance {
+        address oldRecorder = feeRecorder;
+        feeRecorder = newRecorder;
+        emit FeeRecorderSet(oldRecorder, newRecorder);
+    }
+
+    /**
+     * @notice Rebinds the `emissionsRecorder` slot per H-D10 — the authorized emissions feed that gates `recordEmissions` (H2b.4).
+     * @dev `onlyGovernance`-gated; `address(0)` is permitted as a deprecation signal (same safety valve as `setFeeRecorder`); emits `EmissionsRecorderSet(oldRecorder, newRecorder)`. Phase 1 deploy: wired to `EmissionDistributor` at H4 deploy.
+     * @param newRecorder The new emissions feed address; pass `address(0)` to disable recording.
+     */
+    function setEmissionsRecorder(address newRecorder) external onlyGovernance {
+        address oldRecorder = emissionsRecorder;
+        emissionsRecorder = newRecorder;
+        emit EmissionsRecorderSet(oldRecorder, newRecorder);
+    }
 }
