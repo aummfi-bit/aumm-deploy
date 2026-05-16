@@ -17,6 +17,10 @@ contract MockTVLOracle is ITVLOracle {
     function tvl(address pool) external view returns (uint256) {
         return _tvl[pool];
     }
+
+    function quoteSvZCHF(address, uint256) external pure override returns (uint256) {
+        return 0;
+    }
 }
 
 /// @notice Test-only mock for `IMiliariumRegistry` — F4.1 / F-D26.

@@ -332,4 +332,8 @@ contract MockTVLOracle is ITVLOracle {
     function tvl(address pool) external view override returns (uint256) {
         return _spotTvl[pool];
     }
+
+    function quoteSvZCHF(address, uint256) external pure override returns (uint256) {
+        return 0;
+    }
 }

@@ -43,6 +43,10 @@ contract MockTVLOracle is ITVLOracle {
     function tvl(address pool) external view override returns (uint256) {
         return tvlOf[pool];
     }
+
+    function quoteSvZCHF(address, uint256) external pure override returns (uint256) {
+        return 0;
+    }
 }
 
 /// @notice Minimal IEfficiencyOracle double storing SMA pair per pool.

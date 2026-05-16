@@ -226,7 +226,7 @@ contract TVLOracle is ITVLOracle {
     /// @param token — the pool token whose underlying valuation is queried
     /// @param amountScaled18 — the amount of `token` to convert, in 18-decimal fixed-point per Balancer V3 scaled18 convention
     /// @return svZCHFAmountScaled18 — the svZCHF-denominated equivalent in 18-decimal fixed-point; 0 when token is unmapped or has no constellation venue
-    function quoteSvZCHF(address token, uint256 amountScaled18) external view returns (uint256 svZCHFAmountScaled18) {
+    function quoteSvZCHF(address token, uint256 amountScaled18) external view override returns (uint256 svZCHFAmountScaled18) {
         address u = tokenToUnderlying[token];
         if (u == address(0)) return 0;
         uint256 ratio = _constellationRatio(u);
