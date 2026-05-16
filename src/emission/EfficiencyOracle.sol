@@ -8,7 +8,7 @@ import {AureumTime} from "../lib/AureumTime.sol";
 /// @title EfficiencyOracle — concrete `IEfficiencyOracle` implementation per H-D10 (Phase 1: svZCHF numéraire + intra-epoch accumulation + EpochEntry ring buffer)
 /// @notice Per-pool 3-epoch SMA of OQ-G1's F-10 efficiency inputs `(swap_fee_revenue_i + yield_fee_revenue_i, emissions_received_i)` — both legs denominated in svZCHF scaled18 via `tvlOracle.quoteSvZCHF` to satisfy G-D23(i)'s same-unit requirement.
 /// @dev H-D10 — intra-epoch accumulators (`_accNumerator`, `_accDenominator`, `_accEpoch`) advance via `_ensureCurrentEpoch` (lazy, O(1)); the per-pool `EpochEntry[3]` ring buffer at `_history[pool]` stores finalized epochs at slot `epoch % 3` with the epoch stamp enabling stale-slot detection in the pure view. H-D8 — `governance` slot mirrors TVLOracle's `setGovernanceContract`-pivoting pattern; `feeRecorder` / `emissionsRecorder` are governance-settable feed addresses (Phase 1: Stage H governance Safe; later upgrades wire the fee routing hook and `EmissionDistributor` respectively). Deploy prerequisite per H-D10 v2 (H1.9-bis): `tvlOracle.tokenToUnderlying[AuMM]` must be seeded with a constellation venue pricing AuMM in svZCHF, or `recordEmissions` accumulates 0 and `efficiencyInputs` returns `denominatorSma = 0` post-warmup, triggering `EfficiencyDataUnavailable` reverts in `GaugeEligibility`. Stage K — governance handoff via `setGovernanceContract`.
-abstract contract EfficiencyOracle is IEfficiencyOracle {
+contract EfficiencyOracle is IEfficiencyOracle {
     /* ---------- Structs ---------- */
 
     /// @notice Epoch-stamped ring buffer entry per H-D10 — the stored `epoch` field validates the slot against the target epoch during view-side SMA reconstruction; stale slots (epoch older than `currentEpoch - 3`) are implicitly ignored without a zero-fill loop.
@@ -225,5 +225,39 @@ abstract contract EfficiencyOracle is IEfficiencyOracle {
         uint256 svZCHFAmountScaled18 = tvlOracle.quoteSvZCHF(AuMM, aummAmountScaled18);
         _accDenominator[pool] += svZCHFAmountScaled18;
         emit EmissionsRecorded(pool, aummAmountScaled18, svZCHFAmountScaled18);
+    }
+
+    /* ---------- View (H-D10) ---------- */
+
+    /**
+     * @notice Returns pre-smoothed F-10 efficiency inputs for `pool` per OQ-G1 — 3-epoch SMA over finalized epochs `(currentEpoch − 1, currentEpoch − 2, currentEpoch − 3)` with early-epoch underflow guard per H-D10.
+     * @dev Two-tier retrieval per epoch target: tier 1 — if `_accEpoch[pool] == targetEpoch`, sum the live `_accNumerator[pool]` and `_accDenominator[pool]` (not yet flushed by `_ensureCurrentEpoch`); else tier 2 — read `_history[pool][targetEpoch % 3]` and contribute only when `epoch` matches `targetEpoch` (stale slots contribute 0; no zero-fill loop). Totals divide by `3` always (`sumNumerator / 3`, `sumDenominator / 3`), so dormant-epoch zeros attenuate the SMA. When `denominatorSma == 0` cold path, callers such as `GaugeEligibility` own `EfficiencyDataUnavailable`; this view never reverts.
+     * @param pool The Balancer V3 pool address.
+     * @return numeratorSma The 3-epoch SMA of `swap_fee_revenue_i + yield_fee_revenue_i` (1e18 fixed-point).
+     * @return denominatorSma The 3-epoch SMA of `emissions_received_i` (same unit as `numeratorSma`).
+     */
+    function efficiencyInputs(address pool) external view override returns (uint256 numeratorSma, uint256 denominatorSma) {
+        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (currentEpoch < 3) return (0, 0);
+
+        uint256 sumNumerator;
+        uint256 sumDenominator;
+
+        for (uint256 i = 1; i <= 3; ++i) {
+            uint256 targetEpoch = currentEpoch - i;
+            if (_accEpoch[pool] == targetEpoch) {
+                sumNumerator += _accNumerator[pool];
+                sumDenominator += _accDenominator[pool];
+            } else {
+                EpochEntry storage entry = _history[pool][targetEpoch % 3];
+                if (entry.epoch == targetEpoch) {
+                    sumNumerator += entry.numerator;
+                    sumDenominator += entry.denominator;
+                }
+            }
+        }
+
+        numeratorSma = sumNumerator / 3;
+        denominatorSma = sumDenominator / 3;
     }
 }
