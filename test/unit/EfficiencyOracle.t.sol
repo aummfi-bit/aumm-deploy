@@ -6,6 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {EfficiencyOracle} from "../../src/emission/EfficiencyOracle.sol";
 import {ITVLOracle} from "../../src/ccb/ITVLOracle.sol";
 import {AureumTime} from "../../src/lib/AureumTime.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 /// @notice Test-only ITVLOracle stub for EfficiencyOracle unit tests — linear `quoteSvZCHF` via settable per-token `rate` map; `tvl()` stubbed to 0 (unused by EfficiencyOracle per H-D10).
 contract MockEfficiencyTVLOracle is ITVLOracle {
@@ -288,5 +289,91 @@ contract EfficiencyOracleTest is Test {
         vm.expectEmit(true, true, true, true, address(oracle));
         emit EfficiencyOracle.EmissionsRecorded(pool, 0, 0);
         _recordEmissions(pool, 0);
+    }
+
+    /* ---------- _ensureCurrentEpoch rollover + ring slot tests ---------- */
+
+    function test_ensureCurrentEpoch_sameEpoch_accumulatorPreservesAcrossCalls() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _recordFees(pool, token, 100e18);
+        _recordFees(pool, token, 100e18);
+        _rollToEpoch(1);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EpochFinalized(pool, 0, 200e18, 0);
+        _recordFees(pool, token, 0);
+    }
+
+    function test_ensureCurrentEpoch_postFlushAccumulatorResets() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _recordFees(pool, token, 100e18);
+        _rollToEpoch(1);
+        _recordFees(pool, token, 50e18);
+        _rollToEpoch(2);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EpochFinalized(pool, 1, 50e18, 0);
+        _recordFees(pool, token, 0);
+    }
+
+    function test_ensureCurrentEpoch_multiEpochJump_singleFlushForPriorAccEpoch() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _recordFees(pool, token, 100e18);
+        _rollToEpoch(5);
+        vm.recordLogs();
+        _recordFees(pool, token, 0);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("EpochFinalized(address,uint256,uint256,uint256)");
+        uint256 count;
+        Vm.Log memory matchingLog;
+        bool foundMatch;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics.length > 0 && logs[i].topics[0] == sig) {
+                count++;
+                matchingLog = logs[i];
+                foundMatch = true;
+            }
+        }
+        assertEq(count, 1);
+        assertTrue(foundMatch);
+        address logPool = address(uint160(uint256(matchingLog.topics[1])));
+        uint256 logEpoch = uint256(matchingLog.topics[2]);
+        assertEq(logPool, pool);
+        assertEq(logEpoch, 0);
+        (uint256 num, uint256 denom) = abi.decode(matchingLog.data, (uint256, uint256));
+        assertEq(num, 100e18);
+        assertEq(denom, 0);
+    }
+
+    function test_ensureCurrentEpoch_phantomEntry_firstActivationAtNonZeroEpoch() public {
+        address freshPool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _rollToEpoch(5);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EpochFinalized(freshPool, 0, 0, 0);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeesRecorded(freshPool, token, 100e18, 100e18);
+        _recordFees(freshPool, token, 100e18);
+    }
+
+    function test_ensureCurrentEpoch_perPoolIsolation() public {
+        address poolA = _addr(0xA);
+        address poolB = _addr(0xB);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _recordFees(poolA, token, 100e18);
+        _recordFees(poolB, token, 50e18);
+        _rollToEpoch(1);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EpochFinalized(poolA, 0, 100e18, 0);
+        _recordFees(poolA, token, 0);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EpochFinalized(poolB, 0, 50e18, 0);
+        _recordFees(poolB, token, 0);
     }
 }
