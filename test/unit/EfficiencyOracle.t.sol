@@ -232,4 +232,61 @@ contract EfficiencyOracleTest is Test {
         vm.prank(EMIT_REC);
         oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
     }
+
+    /* ---------- recordFees + recordEmissions mechanics tests ---------- */
+
+    function test_recordFees_happyPath_emitsFeesRecordedWithCorrectConversion() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 2e18);
+        uint256 amount = 5e18;
+        uint256 expectedSvZCHF = (amount * 2e18) / 1e18;
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeesRecorded(pool, token, amount, expectedSvZCHF);
+        _recordFees(pool, token, amount);
+    }
+
+    function test_recordFees_unmappedToken_emitsZeroSvZCHF() public {
+        address pool = _addr(0xCAFE);
+        address unmappedToken = _addr(0xBEEF);
+        uint256 amount = 5e18;
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeesRecorded(pool, unmappedToken, amount, 0);
+        _recordFees(pool, unmappedToken, amount);
+    }
+
+    function test_recordFees_zeroAmount_emitsZeroSvZCHF() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 2e18);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.FeesRecorded(pool, token, 0, 0);
+        _recordFees(pool, token, 0);
+    }
+
+    function test_recordEmissions_happyPath_emitsEmissionsRecordedWithCorrectConversion() public {
+        address pool = _addr(0xCAFE);
+        _setRate(AUMM, 3e18);
+        uint256 aummAmount = 10e18;
+        uint256 expectedSvZCHF = (aummAmount * 3e18) / 1e18;
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EmissionsRecorded(pool, aummAmount, expectedSvZCHF);
+        _recordEmissions(pool, aummAmount);
+    }
+
+    function test_recordEmissions_unmappedAuMM_emitsZeroSvZCHF() public {
+        address pool = _addr(0xCAFE);
+        uint256 aummAmount = 10e18;
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EmissionsRecorded(pool, aummAmount, 0);
+        _recordEmissions(pool, aummAmount);
+    }
+
+    function test_recordEmissions_zeroAmount_emitsZeroSvZCHF() public {
+        address pool = _addr(0xCAFE);
+        _setRate(AUMM, 3e18);
+        vm.expectEmit(true, true, true, true, address(oracle));
+        emit EfficiencyOracle.EmissionsRecorded(pool, 0, 0);
+        _recordEmissions(pool, 0);
+    }
 }
