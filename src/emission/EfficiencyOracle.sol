@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 import {IEfficiencyOracle} from "../gauge/IEfficiencyOracle.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
 
 /// @title EfficiencyOracle — concrete `IEfficiencyOracle` implementation per H-D10 (Phase 1: svZCHF numéraire + intra-epoch accumulation + EpochEntry ring buffer)
 /// @notice Per-pool 3-epoch SMA of OQ-G1's F-10 efficiency inputs `(swap_fee_revenue_i + yield_fee_revenue_i, emissions_received_i)` — both legs denominated in svZCHF scaled18 via `tvlOracle.quoteSvZCHF` to satisfy G-D23(i)'s same-unit requirement.
@@ -158,5 +159,71 @@ abstract contract EfficiencyOracle is IEfficiencyOracle {
         address oldRecorder = emissionsRecorder;
         emissionsRecorder = newRecorder;
         emit EmissionsRecorderSet(oldRecorder, newRecorder);
+    }
+
+    /* ---------- Recorder modifiers ---------- */
+
+    /// @notice Restricts execution to the current `feeRecorder` authority; reverts `NotFeeRecorder(msg.sender)` otherwise.
+    /// @dev When `feeRecorder == address(0)` (deprecated/uninitialized), every call reverts because `msg.sender` cannot be `address(0)` in standard external-call contexts — the H-D10 deprecation safety valve operates implicitly via the equality check, no special branch.
+    modifier onlyFeeRecorder() {
+        if (msg.sender != feeRecorder) revert NotFeeRecorder(msg.sender);
+        _;
+    }
+
+    /// @notice Restricts execution to the current `emissionsRecorder` authority; reverts `NotEmissionsRecorder(msg.sender)` otherwise.
+    /// @dev Same `address(0)` safety semantics as `onlyFeeRecorder`.
+    modifier onlyEmissionsRecorder() {
+        if (msg.sender != emissionsRecorder) revert NotEmissionsRecorder(msg.sender);
+        _;
+    }
+
+    /* ---------- Internal helpers (H-D10) ---------- */
+
+    /**
+     * @notice Advances per-pool epoch accumulation state on epoch rollover — flushes the in-progress accumulator pair into the history ring and resets the accumulators per H-D10.
+     * @dev Reads `currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number)`. If `currentEpoch > _accEpoch[pool]`, writes `EpochEntry { epoch: _accEpoch[pool], numerator: _accNumerator[pool], denominator: _accDenominator[pool] }` to `_history[pool][_accEpoch[pool] % 3]`, emits `EpochFinalized`, resets the accumulators to zero, and advances `_accEpoch[pool]` to `currentEpoch`. Same-epoch calls are no-ops. First-activation for a pool (`_accEpoch[pool] == 0`) at any `currentEpoch > 0` writes a phantom `(epoch:0, num:0, denom:0)` entry into slot 0 on the first rollover — harmless because the read-side epoch-stamp check only matches stored epoch == target epoch (slot 0 stamped with epoch 0 matches only target epoch 0; otherwise the slot contributes 0 to the SMA). O(1) regardless of dormancy duration per H-D10's stale-slot detection design.
+     * @param pool The pool whose epoch state is being advanced.
+     */
+    function _ensureCurrentEpoch(address pool) internal {
+        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        uint256 accEpoch = _accEpoch[pool];
+        if (currentEpoch > accEpoch) {
+            uint256 num = _accNumerator[pool];
+            uint256 denom = _accDenominator[pool];
+            _history[pool][accEpoch % 3] = EpochEntry({ epoch: accEpoch, numerator: num, denominator: denom });
+            emit EpochFinalized(pool, accEpoch, num, denom);
+            _accNumerator[pool] = 0;
+            _accDenominator[pool] = 0;
+            _accEpoch[pool] = currentEpoch;
+        }
+    }
+
+    /* ---------- Recording (H-D10) ---------- */
+
+    /**
+     * @notice Records a per-pool fee revenue contribution per H-D10 v2 — converts `amountScaled18` of `token` to svZCHF via `tvlOracle.quoteSvZCHF` and accumulates the result into `_accNumerator[pool]`.
+     * @dev `onlyFeeRecorder`-gated; triggers `_ensureCurrentEpoch(pool)` before accumulating. Skip-on-zero semantics inherited from `quoteSvZCHF`: tokens unmapped in TVLOracle contribute `0` to the accumulator without revert (consistent with the wider H-D10 skip-on-zero design). Emits `FeesRecorded(pool, token, amountScaled18, svZCHFAmountScaled18)` for off-chain reconstruction even when `svZCHFAmountScaled18 == 0` (audit trail clarity).
+     * @param pool The pool whose numerator is being accumulated.
+     * @param token The token in which the fee revenue is denominated (must be mapped in `tvlOracle.tokenToUnderlying`, else the contribution is silently zeroed).
+     * @param amountScaled18 The 18-decimal fixed-point fee revenue amount per Balancer V3 `balancesLiveScaled18` convention.
+     */
+    function recordFees(address pool, address token, uint256 amountScaled18) external onlyFeeRecorder {
+        _ensureCurrentEpoch(pool);
+        uint256 svZCHFAmountScaled18 = tvlOracle.quoteSvZCHF(token, amountScaled18);
+        _accNumerator[pool] += svZCHFAmountScaled18;
+        emit FeesRecorded(pool, token, amountScaled18, svZCHFAmountScaled18);
+    }
+
+    /**
+     * @notice Records a per-pool AuMM emissions contribution per H-D10 v2 — converts `aummAmountScaled18` of the AuMM token to svZCHF via `tvlOracle.quoteSvZCHF(AuMM, ...)` and accumulates the result into `_accDenominator[pool]`.
+     * @dev `onlyEmissionsRecorder`-gated; triggers `_ensureCurrentEpoch(pool)` before accumulating. Skip-on-zero semantics: if the deploy prerequisite (`tvlOracle.tokenToUnderlying[AuMM]` seeded with a constellation venue pricing AuMM in svZCHF) is unsatisfied, contributions are silently zero — post-warmup `efficiencyInputs` will return `denominatorSma = 0`, triggering `EfficiencyDataUnavailable(pool)` reverts in `GaugeEligibility`. Emits `EmissionsRecorded(pool, aummAmountScaled18, svZCHFAmountScaled18)` for off-chain reconstruction.
+     * @param pool The pool whose denominator is being accumulated.
+     * @param aummAmountScaled18 The 18-decimal fixed-point AuMM emissions amount per Balancer V3 `balancesLiveScaled18` convention.
+     */
+    function recordEmissions(address pool, uint256 aummAmountScaled18) external onlyEmissionsRecorder {
+        _ensureCurrentEpoch(pool);
+        uint256 svZCHFAmountScaled18 = tvlOracle.quoteSvZCHF(AuMM, aummAmountScaled18);
+        _accDenominator[pool] += svZCHFAmountScaled18;
+        emit EmissionsRecorded(pool, aummAmountScaled18, svZCHFAmountScaled18);
     }
 }
