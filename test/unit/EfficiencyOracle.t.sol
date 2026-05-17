@@ -511,4 +511,110 @@ contract EfficiencyOracleTest is Test {
         assertEq(numSma, 0);
         assertEq(denomSma, 0);
     }
+
+    /* ---------- efficiencyInputs tier-2 history-ring lookup tests ---------- */
+
+    function test_efficiencyInputs_tier2AtI1_singleHistorySlotHit() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(4);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 999e18);
+        _recordEmissions(pool, 999e18);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier2AtI2_singleHistorySlotHit() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(4);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(6);
+        _recordFees(pool, _addr(0xF1), 999e18);
+        _recordEmissions(pool, 999e18);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier2AtI3_singleHistorySlotHit() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(4);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(7);
+        _recordFees(pool, _addr(0xF1), 999e18);
+        _recordEmissions(pool, 999e18);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier2AllThreeSlots_distinctPerEpochValues() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(3);
+        _recordFees(pool, _addr(0xF1), 30e18);
+        _recordEmissions(pool, 10e18);
+        _rollToEpoch(4);
+        _recordFees(pool, _addr(0xF1), 60e18);
+        _recordEmissions(pool, 20e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 90e18);
+        _recordEmissions(pool, 30e18);
+        _rollToEpoch(6);
+        _recordFees(pool, _addr(0xF1), 999e18);
+        _recordEmissions(pool, 999e18);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(60e18 + 120e18 + 180e18) / 3);
+        assertEq(denomSma, uint256(30e18 + 60e18 + 90e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1AndTier2Mixed_recencyAtI1HistoryAtI2I3() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 50e18);
+        _recordEmissions(pool, 10e18);
+        _rollToEpoch(6);
+        _recordFees(pool, _addr(0xF1), 60e18);
+        _recordEmissions(pool, 20e18);
+        _rollToEpoch(7);
+        _recordFees(pool, _addr(0xF1), 70e18);
+        _recordEmissions(pool, 30e18);
+        _rollToEpoch(8);
+        _recordFees(pool, _addr(0xF1), 80e18);
+        _recordEmissions(pool, 40e18);
+        _rollToEpoch(9);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(120e18 + 140e18 + 160e18) / 3);
+        assertEq(denomSma, uint256(60e18 + 90e18 + 120e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier2SurvivesDormancy_tier1AtI2HistoryAtI3() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 50e18);
+        _recordEmissions(pool, 10e18);
+        _rollToEpoch(6);
+        _recordFees(pool, _addr(0xF1), 60e18);
+        _recordEmissions(pool, 20e18);
+        _rollToEpoch(8);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(100e18 + 120e18) / 3);
+        assertEq(denomSma, uint256(30e18 + 60e18) / 3);
+    }
 }
