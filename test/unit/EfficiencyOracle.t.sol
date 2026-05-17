@@ -430,4 +430,85 @@ contract EfficiencyOracleTest is Test {
         assertEq(numeratorSma, 0);
         assertEq(denominatorSma, 0);
     }
+
+    /* ---------- efficiencyInputs tier-1 live-accumulator lookup tests ---------- */
+
+    function test_efficiencyInputs_tier1AtI1_returnsAccumulatorOverThree() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(6);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1AtI2_returnsAccumulatorOverThree() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(7);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1AtI3_returnsAccumulatorOverThree() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(8);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(200e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1_multipleFeeTokensSameEpoch_aggregateInLiveAccumulator() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _setRate(_addr(0xF2), 5e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordFees(pool, _addr(0xF2), 10e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(6);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, uint256(250e18) / 3);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1_emissionsOnly_numeratorRemainsZero() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(6);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, 0);
+        assertEq(denomSma, uint256(150e18) / 3);
+    }
+
+    function test_efficiencyInputs_tier1Stale_fourEpochsLater_noMatch() public {
+        address pool = _addr(0xA1);
+        _setRate(_addr(0xF1), 2e18);
+        _setRate(AUMM, 3e18);
+        _rollToEpoch(5);
+        _recordFees(pool, _addr(0xF1), 100e18);
+        _recordEmissions(pool, 50e18);
+        _rollToEpoch(9);
+        (uint256 numSma, uint256 denomSma) = oracle.efficiencyInputs(pool);
+        assertEq(numSma, 0);
+        assertEq(denomSma, 0);
+    }
 }
