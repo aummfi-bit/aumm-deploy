@@ -376,4 +376,58 @@ contract EfficiencyOracleTest is Test {
         emit EfficiencyOracle.EpochFinalized(poolB, 0, 50e18, 0);
         _recordFees(poolB, token, 0);
     }
+
+    /* ---------- efficiencyInputs early-epoch guard + cold-pool tests ---------- */
+
+    function test_efficiencyInputs_atEpoch0_returnsZero() public {
+        address pool = _addr(0xCAFE);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(pool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
+
+    function test_efficiencyInputs_atEpoch1_returnsZero() public {
+        address pool = _addr(0xCAFE);
+        _rollToEpoch(1);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(pool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
+
+    function test_efficiencyInputs_atEpoch2_returnsZero() public {
+        address pool = _addr(0xCAFE);
+        _rollToEpoch(2);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(pool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
+
+    function test_efficiencyInputs_atEpoch2WithEarlierRecordings_returnsZero() public {
+        address pool = _addr(0xCAFE);
+        address token = _addr(0x7010);
+        _setRate(token, 1e18);
+        _recordFees(pool, token, 100e18);
+        _rollToEpoch(1);
+        _recordFees(pool, token, 50e18);
+        _rollToEpoch(2);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(pool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
+
+    function test_efficiencyInputs_coldPoolAtEpoch3_returnsZero() public {
+        address coldPool = _addr(0xC07D);
+        _rollToEpoch(3);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(coldPool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
+
+    function test_efficiencyInputs_coldPoolAtLargeEpoch_returnsZero() public {
+        address coldPool = _addr(0xC07D);
+        _rollToEpoch(100);
+        (uint256 numeratorSma, uint256 denominatorSma) = oracle.efficiencyInputs(coldPool);
+        assertEq(numeratorSma, 0);
+        assertEq(denominatorSma, 0);
+    }
 }
