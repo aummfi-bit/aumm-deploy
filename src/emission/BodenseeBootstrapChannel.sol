@@ -85,4 +85,49 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
 
     /// @notice Emitted when setGovernanceContract rebinds the governance authority (Stage K handoff per H-D14).
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
+
+    /* ---------- Constructor ---------- */
+
+    /**
+     * @notice Wires the 5 core immutables + initial governance + lastAccrualBlock for the H-D11 / H-D12 BodenseeBootstrapChannel.
+     * @dev Resolves `_aummIndex` via `vault_.getPoolTokens(bodensee_)` loop with `type(uint8).max` sentinel per H-D12; reverts `IndexLookupFailed` if AuMM is not present in der Bodensee's token roster (misconfigured deploy is unrecoverable per H-D12). ZeroAddress guards apply to the 4 address-bearing params; `genesisBlock_` accepts any `uint256` value (deploy-time correctness is governance's responsibility — same pattern as EfficiencyOracle H2b.2). `lastAccrualBlock` initialized to `genesisBlock_` per H-D11 so the first `accrue()` call computes from block `genesisBlock_ + 1`. No constructor emit for `GovernanceTransferred` — mirrors TVLOracle / EfficiencyOracle pattern where the initial governance slot is set silently.
+     * @param vault_ Balancer V3 Vault — `IVault.unlock` callback entry point per H-D12. Reverts `ZeroAddress` on zero input.
+     * @param bodensee_ der Bodensee pool address — bootstrap destination per H-D14. Reverts `ZeroAddress` on zero input.
+     * @param aumm_ AuMM token — must be a token in der Bodensee's roster, else `IndexLookupFailed`. Reverts `ZeroAddress` on zero input.
+     * @param genesisBlock_ Stage H genesis block — anchors `AureumTime` helpers in `accrue()` per H-D11. No zero-check (uint256, accepts any value).
+     * @param initialGovernance_ Initial governance authority — Stage A—K Authorizer Safe at deploy; rebound at Stage K via `setGovernanceContract`. Reverts `ZeroAddress` on zero input.
+     */
+    constructor(
+        IVault vault_,
+        address bodensee_,
+        IAuMM aumm_,
+        uint256 genesisBlock_,
+        address initialGovernance_
+    ) {
+        if (address(vault_) == address(0)) revert ZeroAddress();
+        if (bodensee_ == address(0)) revert ZeroAddress();
+        if (address(aumm_) == address(0)) revert ZeroAddress();
+        if (initialGovernance_ == address(0)) revert ZeroAddress();
+
+        _vault = vault_;
+        BODENSEE_POOL = bodensee_;
+        AuMM = aumm_;
+        GENESIS_BLOCK = genesisBlock_;
+        governance = initialGovernance_;
+        lastAccrualBlock = genesisBlock_;
+
+        IERC20[] memory tokens = vault_.getPoolTokens(bodensee_);
+        uint256 len = tokens.length;
+        uint8 aummIndex_ = type(uint8).max;
+        for (uint256 i = 0; i < len; ++i) {
+            if (address(tokens[i]) == address(aumm_)) {
+                // uint8(i) is safe: Bodensee is a 3-token pool by construction; len <= 3, i in {0, 1, 2}; sentinel type(uint8).max reserved by the post-loop not-found check.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                aummIndex_ = uint8(i);
+            }
+        }
+        if (aummIndex_ == type(uint8).max) revert IndexLookupFailed();
+
+        _aummIndex = aummIndex_;
+    }
 }
