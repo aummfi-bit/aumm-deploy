@@ -14,7 +14,7 @@ import {AureumTime} from "../lib/AureumTime.sol";
 /// @title BodenseeBootstrapChannel — F-0 piecewise bootstrap rail routing accrued AuMM to der Bodensee from GENESIS_BLOCK through month10EndBlock per H-D2
 /// @notice Permissionless accrue() advances pendingAccrual and lastAccrualBlock via AP piecewise integration (Bootstrap A: 80% to 50% over Months 0—6; Bootstrap B: 50% to 0% over Months 6—10) without minting. Governance-gated distribute() mints the accrued AuMM and performs a one-sided Balancer V3 AddLiquidityKind.DONATION into der Bodensee via IVault.unlock per H-D11 + H-D12.
 /// @dev H-D14 — distribute() gated by onlyGovernance; BODENSEE_POOL is immutable (structurally stronger than H-D8 mutable constellation roster; no setBodenseePool setter). H-D12 — does NOT reuse SwapAndDepositToBodensee.donate (rejects non-svZCHF/sUSDS payToken per src/gauge/SwapAndDepositToBodensee.sol L362—L364); own IVault.unlock callback path with 3 transient slots. H-D13 — no selfdestruct / pause; permanent zero-activity fixture post-window with readable accumulator state. Stage K governance handoff via setGovernanceContract. Deploy prerequisite per H-D7: IAuMM.setMinter(address(this)) at H10.
-abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
+contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
     using SafeERC20 for IERC20;
     using StorageSlotExtension for *;
 
@@ -223,6 +223,30 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
         uint256 n = to - from + 1;
         return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
+    /* ---------- Distribution (H-D12) ---------- */
+
+    /**
+     * @notice Governance-gated outer half of H-D12 — mints `pendingAccrual` via `IAuMM.mint`, then invokes `_vault.unlock(abi.encodeCall(this._distributeCallback, (amount)))` so the callback performs the one-sided `AddLiquidityKind.DONATION` into der Bodensee per H-D14.
+     * @dev H-D11 mint-at-distribute lock — mint timing belongs in `distribute()`, never in `accrue()`. H-D14 `onlyGovernance` gate — mint authority is the scarce resource; permissionless `distribute()` would let any caller force-flush at a self-chosen price window. H-D7-pending wiring — channel must hold `IAuMM` mint authority via `IAuMM.setMinter(address(this))` at H10. 3-transient-slot reentrancy + payload pattern mirrors G-D11 with `_PENDING_PAY_TOKEN_SLOT` omitted (AuMM is immutable pay token). Structural template is `src/gauge/SwapAndDepositToBodensee.sol` L328—L355 (`swapAndDeposit`) with substitutions — no `payToken` slot write, `AuMM.mint(address(this), amount)` precedes the reentrancy check, `IERC20(address(AuMM)).balanceOf(address(this))` for the residual read (IAuMM lacks the `using SafeERC20 for IERC20` binding so the cast is required), residual check uses the already-declared `HelperBalanceNonZero(residual)` error.
+     */
+    function distribute() external override onlyGovernance {
+        uint256 amount = pendingAccrual;
+        if (amount == 0) revert NoPendingAccrual();
+        pendingAccrual = 0;
+        totalDistributed += amount;
+        AuMM.mint(address(this), amount);
+        if (_EXECUTING_SLOT.asBoolean().tload()) revert ReentrancyGuard();
+        _EXECUTING_SLOT.asBoolean().tstore(true);
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(amount);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(msg.sender);
+        _vault.unlock(abi.encodeCall(this._distributeCallback, (amount)));
+        _EXECUTING_SLOT.asBoolean().tstore(false);
+        _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
+        _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
+        uint256 residual = IERC20(address(AuMM)).balanceOf(address(this));
+        if (residual != 0) revert HelperBalanceNonZero(residual);
     }
 
     /* ---------- Vault callback (H-D12) ---------- */
