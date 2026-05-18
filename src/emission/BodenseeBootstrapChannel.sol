@@ -81,6 +81,15 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
     /// @notice Reverts post-unlock if IERC20(address(AuMM)).balanceOf(address(this)) != 0 — ensures complete AuMM settlement per H-D12 residual assert.
     error HelperBalanceNonZero(uint256 residual);
 
+    /// @notice Reverts when distribute() is called while `_EXECUTING_SLOT` transient is already true — guards against re-entrant unlock per H-D12 (mirrors SwapAndDepositToBodensee G-D11).
+    error ReentrancyGuard();
+
+    /// @notice Reverts in `_distributeCallback` when DONATION returned `bptOut != 0` — `AddLiquidityKind.DONATION` must mint zero BPT per Balancer V3 invariant (mirrors SwapAndDepositToBodensee G-D11).
+    error BptMintedOnDonation(uint256 bptOut);
+
+    /// @notice Reverts in `_distributeCallback` when `postReserve != preReserve + amount` — AuMM reserve must increase by exactly `amount` after DONATION settlement (mirrors SwapAndDepositToBodensee G-D18).
+    error ReserveDeltaMismatch(uint256 expected, uint256 actual);
+
     /* ---------- Events ---------- */
 
     /// @notice Emitted when setGovernanceContract rebinds the governance authority (Stage K handoff per H-D14).
@@ -214,5 +223,50 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
         uint256 n = to - from + 1;
         return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
+    /* ---------- Vault callback (H-D12) ---------- */
+
+    /**
+     * @notice G-D12-style `_vault.unlock` callback: settle AuMM, DONATION add-liquidity, reserve delta check, `Distributed` emit per H-D12 steps 6—9.
+     * @dev `external` — callable from `_vault.unlock` via `abi.encodeCall`; `OnlyVault` gate restricts `msg.sender` to `_vault`. `CallbackPayloadMismatch` sentinel verifies `amount` against `_PENDING_AMOUNT_SLOT.asUint256().tload()`. Pre/post reserve snapshot via `_currentReserve(_aummIndex)`. AuMM transferred to Vault via `IERC20(address(AuMM)).safeTransfer` (IAuMM lacks the using-for binding so explicit cast required). `_vault.settle` discards returned credit. `addLiquidity` with `AddLiquidityKind.DONATION` + `maxAmountsIn[_aummIndex] = amount` + `minBptAmountOut = 0` + `userData = ""`. `BptMintedOnDonation` rejects nonzero `bptOut`. `ReserveDeltaMismatch` rejects post-DONATION reserve drift. Emits `Distributed(_ORIGINAL_CALLER_SLOT.asAddress().tload(), amount)` as the final step per H-D12 step 9. Mirrors `src/gauge/SwapAndDepositToBodensee.sol` L390—L429 `_swapAndDepositCallback` with substitutions (`BODENSEE_POOL` replaces `_bodensee`; `_aummIndex` replaces dynamic idx; AuMM via IERC20 cast replaces dynamic payToken; `CallbackPayloadMismatch` carries `(expected, actual)` args; `IBodenseeBootstrapChannel.Distributed` event signature `(address indexed governance, uint256 amount)`).
+     * @param amount The AuMM amount (scaled18) snapshotted in `_PENDING_AMOUNT_SLOT` before unlock — must match the transient slot or `CallbackPayloadMismatch` reverts.
+     */
+    function _distributeCallback(uint256 amount) external {
+        if (msg.sender != address(_vault)) revert OnlyVault(msg.sender);
+        uint256 expectedAmount = _PENDING_AMOUNT_SLOT.asUint256().tload();
+        if (amount != expectedAmount) revert CallbackPayloadMismatch(expectedAmount, amount);
+        uint256 preReserve = _currentReserve(_aummIndex);
+        IERC20(address(AuMM)).safeTransfer(address(_vault), amount);
+        _vault.settle(IERC20(address(AuMM)), amount);
+        uint256[] memory maxAmountsIn = new uint256[](3);
+        maxAmountsIn[_aummIndex] = amount;
+        (, uint256 bptOut, ) = _vault.addLiquidity(
+            AddLiquidityParams({
+                pool: BODENSEE_POOL,
+                to: address(this),
+                maxAmountsIn: maxAmountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.DONATION,
+                userData: ""
+            })
+        );
+        if (bptOut != 0) revert BptMintedOnDonation(bptOut);
+        uint256 postReserve = _currentReserve(_aummIndex);
+        if (postReserve != preReserve + amount) revert ReserveDeltaMismatch(preReserve + amount, postReserve);
+        emit Distributed(_ORIGINAL_CALLER_SLOT.asAddress().tload(), amount);
+    }
+
+    /* ---------- Internal helpers ---------- */
+
+    /**
+     * @notice Reads the raw on-chain reserve balance for token index `idx` in der Bodensee.
+     * @dev G-D18 — reads `balancesRaw[idx]` from `_vault.getPoolTokenInfo(BODENSEE_POOL)`. Mirrors `src/gauge/SwapAndDepositToBodensee.sol` L447—L450 `_currentReserve`.
+     * @param idx Token index within der Bodensee's roster — `_aummIndex` for AuMM in the DONATION callback.
+     * @return Raw reserve balance (token-native decimals) for the indexed token.
+     */
+    function _currentReserve(uint8 idx) internal view returns (uint256) {
+        (, , uint256[] memory balancesRaw, ) = _vault.getPoolTokenInfo(BODENSEE_POOL);
+        return balancesRaw[idx];
     }
 }
