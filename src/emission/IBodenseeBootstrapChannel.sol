@@ -24,8 +24,9 @@ interface IBodenseeBootstrapChannel {
     event Accrued(uint256 fromBlock, uint256 toBlock, uint256 contribution);
 
     /// @notice Emitted when `distribute()` mints and donates AuMM to der Bodensee.
+    /// @param governance The governance address that called `distribute()` (read from the `_ORIGINAL_CALLER_SLOT` transient slot inside the Vault unlock callback).
     /// @param amount The amount of AuMM (scaled18) minted and donated in this distribution.
-    event Distributed(uint256 amount);
+    event Distributed(address indexed governance, uint256 amount);
 
     /// @notice Permissionlessly advances the bootstrap accumulator for the elapsed block interval.
     /// @dev Pure bookkeeping — does NOT call `IAuMM.mint` per H-D11. Cross-boundary AP split at
