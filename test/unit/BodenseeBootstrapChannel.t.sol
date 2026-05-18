@@ -241,4 +241,52 @@ contract BodenseeBootstrapChannelTest is Test {
     function _month10End() internal pure returns (uint256) {
         return AureumTime.month10EndBlock(GENESIS_BLOCK_);
     }
+
+    /* ---------- Constructor (H-D14 + H-D11) ---------- */
+
+    function test_Constructor_RevertWhen_VaultZero() public {
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        new BodenseeBootstrapChannel(IVault(address(0)), BODENSEE_POOL_, IAuMM(address(aumm)), GENESIS_BLOCK_, GOV);
+    }
+
+    function test_Constructor_RevertWhen_BodenseeZero() public {
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        new BodenseeBootstrapChannel(IVault(address(vault)), address(0), IAuMM(address(aumm)), GENESIS_BLOCK_, GOV);
+    }
+
+    function test_Constructor_RevertWhen_AummZero() public {
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        new BodenseeBootstrapChannel(IVault(address(vault)), BODENSEE_POOL_, IAuMM(address(0)), GENESIS_BLOCK_, GOV);
+    }
+
+    function test_Constructor_RevertWhen_GovernanceZero() public {
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        new BodenseeBootstrapChannel(IVault(address(vault)), BODENSEE_POOL_, IAuMM(address(aumm)), GENESIS_BLOCK_, address(0));
+    }
+
+    function test_Constructor_RevertWhen_AummNotInBodensee() public {
+        MockVault badVault = new MockVault();
+        MockERC20 other = new MockERC20("Other", "OTHER");
+        IERC20[] memory roster = new IERC20[](3);
+        roster[0] = IERC20(address(svZchf));
+        roster[1] = IERC20(address(sUsds));
+        roster[2] = IERC20(address(other));
+        badVault.setTokens(roster);
+        vm.expectRevert(BodenseeBootstrapChannel.IndexLookupFailed.selector);
+        new BodenseeBootstrapChannel(IVault(address(badVault)), BODENSEE_POOL_, IAuMM(address(aumm)), GENESIS_BLOCK_, GOV);
+    }
+
+    function test_Constructor_WiresImmutables() public view {
+        assertEq(channel.BODENSEE_POOL(), BODENSEE_POOL_, "BODENSEE_POOL");
+        assertEq(address(channel.AuMM()), address(aumm), "AuMM");
+        assertEq(channel.GENESIS_BLOCK(), GENESIS_BLOCK_, "GENESIS_BLOCK");
+    }
+
+    function test_Constructor_InitsGovernance() public view {
+        assertEq(channel.governance(), GOV, "governance");
+    }
+
+    function test_Constructor_InitsLastAccrualBlock() public view {
+        assertEq(channel.lastAccrualBlock(), GENESIS_BLOCK_, "lastAccrualBlock");
+    }
 }
