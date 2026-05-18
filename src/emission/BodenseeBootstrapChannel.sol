@@ -153,4 +153,66 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         governance = newGovernance;
         emit GovernanceTransferred(oldGovernance, newGovernance);
     }
+
+    /* ---------- Accrual (H-D11) ---------- */
+
+    /**
+     * @notice Permissionlessly advances `pendingAccrual` and `lastAccrualBlock` from `lastAccrualBlock + 1` through `min(block.number, month10EndBlock)` via AP piecewise integration over the F-0 piecewise share schedule per H-D11.
+     * @dev O(1) regardless of interval length — each bootstrap leg is integrated via the arithmetic-progression closed-form `((first + last) / 2) × n × rate / 1e18`. Cross-boundary intervals (spanning `month6EndBlock`) split into two AP sums per H-D11 — A-leg covers `[from, month6End]` under Bootstrap A coefficients (80% to 50%), B-leg covers `[month6End + 1, to]` under Bootstrap B coefficients (50% to 0%). Lifecycle clamp `to = min(block.number, month10EndBlock)` per H-D13 — calls after the bootstrap window closes still capture residual emission up to `month10EndBlock` but no further; subsequent calls short-circuit via the empty-interval guard. Empty-interval guard `if (from > to) return;` short-circuits no-op calls (pre-genesis blocks, post-window dormancy) without emitting `Accrued`. `IAuMM.blockEmissionRate(block.number)` is snapshotted once per call per H-D11; Era 0 covers all of Months 0—10 per OQ-3 (`month10EndBlock` ≈ 2.19M < 10.5M = first halving), so the snapshot is exact within bootstrap. No `IAuMM.mint` invoked — minting happens in `distribute()` per H-D11 mint-at-distribute lock. Permissionless (no access control) — bookkeeping advance is a public good per H-D11.
+     */
+    function accrue() external override {
+        uint256 from = lastAccrualBlock + 1;
+        uint256 month6End = AureumTime.month6EndBlock(GENESIS_BLOCK);
+        uint256 month10End = AureumTime.month10EndBlock(GENESIS_BLOCK);
+        uint256 to = block.number < month10End ? block.number : month10End;
+        if (from > to) return;
+
+        uint256 rate = AuMM.blockEmissionRate(block.number);
+        uint256 contribution;
+
+        if (to <= month6End) {
+            // Entirely within Bootstrap A (80% to 50% over [genesisBlock, month6End])
+            contribution = _apSum(from, to, GENESIS_BLOCK, month6End, 8e17, 3e17, rate);
+        } else if (from > month6End) {
+            // Entirely within Bootstrap B (50% to 0% over (month6End, month10End])
+            contribution = _apSum(from, to, month6End, month10End, 5e17, 5e17, rate);
+        } else {
+            // Boundary-spanning: A-leg [from, month6End] + B-leg [month6End + 1, to] per H-D11
+            uint256 aSum = _apSum(from, month6End, GENESIS_BLOCK, month6End, 8e17, 3e17, rate);
+            uint256 bSum = _apSum(month6End + 1, to, month6End, month10End, 5e17, 5e17, rate);
+            contribution = aSum + bSum;
+        }
+
+        pendingAccrual += contribution;
+        lastAccrualBlock = to;
+        emit Accrued(from, to, contribution);
+    }
+
+    /**
+     * @notice Computes the AP-closed-form sum `Σ_{b=from}^{to} bodensee_share(b) × rate` for a single bootstrap leg per H-D11.
+     * @dev `bodensee_share(b) = startShare − dropShare × (b − anchorStart) / (anchorEnd − anchorStart)` — linear in `b`, so the arithmetic-progression formula `n × (first + last) / 2 × rate / 1e18` applies exactly. Both `from` and `to` are inclusive; `n = to − from + 1`. `startShare` and `dropShare` are FixedPoint 1e18-base (e.g. `8e17` = 80%, `3e17` = 30%). Returns total contribution in AuMM scaled18. Overflow analysis: `(first + last) ≤ 1.6e18`, `n ≤ 2.2e6` (max bootstrap window), `rate ≤ ~1e18` (Era 0 max) — product ≤ 3.5e42 fits comfortably in uint256.
+     * @param from First block in the integration window (inclusive).
+     * @param to Last block in the integration window (inclusive); must satisfy `to >= from` (caller guarantees).
+     * @param anchorStart The leg's anchor block — `share(anchorStart) = startShare`.
+     * @param anchorEnd The leg's terminal block — `share(anchorEnd) = startShare − dropShare`.
+     * @param startShare The share value at `anchorStart`, in FixedPoint 1e18-base.
+     * @param dropShare The total share decrease from `anchorStart` to `anchorEnd`, in FixedPoint 1e18-base.
+     * @param rate The per-block AuMM emission rate (scaled18 AuMM per block) snapshotted at `block.number`.
+     * @return The total AuMM (scaled18) contribution across `[from, to]`.
+     */
+    function _apSum(
+        uint256 from,
+        uint256 to,
+        uint256 anchorStart,
+        uint256 anchorEnd,
+        uint256 startShare,
+        uint256 dropShare,
+        uint256 rate
+    ) internal pure returns (uint256) {
+        uint256 width = anchorEnd - anchorStart;
+        uint256 first = startShare - (dropShare * (from - anchorStart)) / width;
+        uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
+        uint256 n = to - from + 1;
+        return ((first + last) * n * rate) / (2 * 1e18);
+    }
 }
