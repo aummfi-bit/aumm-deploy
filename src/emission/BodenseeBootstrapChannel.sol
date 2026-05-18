@@ -130,4 +130,27 @@ abstract contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
 
         _aummIndex = aummIndex_;
     }
+
+    /* ---------- Modifiers ---------- */
+
+    /// @notice Restricts execution to the current `governance` authority; reverts `NotGovernance(msg.sender)` otherwise.
+    /// @dev H-D14 — `setGovernanceContract`-pivoting governance slot mirroring TVLOracle / EfficiencyOracle precedent.
+    modifier onlyGovernance() {
+        if (msg.sender != governance) revert NotGovernance(msg.sender);
+        _;
+    }
+
+    /* ---------- Governance ---------- */
+
+    /**
+     * @notice Stage K migration handoff per H-D14 — rebinds governance authority.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input; emits `GovernanceTransferred(oldGovernance, newGovernance)`. Mirrors TVLOracle / EfficiencyOracle `setGovernanceContract`.
+     * @param newGovernance The new governance authority — typically the on-chain governance contract at Stage K.
+     */
+    function setGovernanceContract(address newGovernance) external onlyGovernance {
+        if (newGovernance == address(0)) revert ZeroAddress();
+        address oldGovernance = governance;
+        governance = newGovernance;
+        emit GovernanceTransferred(oldGovernance, newGovernance);
+    }
 }
