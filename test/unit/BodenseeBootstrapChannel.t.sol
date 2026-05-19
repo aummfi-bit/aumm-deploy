@@ -422,4 +422,63 @@ contract BodenseeBootstrapChannelTest is Test {
         vm.prank(_addr(42));
         channel.accrue();
     }
+
+    /* ---------- distribute (H-D12 + H-D14) ---------- */
+
+    function test_Distribute_RevertWhen_NoPendingAccrual() public {
+        vm.expectRevert(BodenseeBootstrapChannel.NoPendingAccrual.selector);
+        vm.prank(GOV);
+        channel.distribute();
+    }
+
+    function test_Distribute_RevertWhen_CallerNotGovernance() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        address bad = _addr(99);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, bad));
+        vm.prank(bad);
+        channel.distribute();
+    }
+
+    function test_Distribute_HappyPath_MutatesStateAndEmitsDistributed() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        uint256 expectedAmount = channel.pendingAccrual();
+        vault.enableBumpReserveOnDonation();
+        vm.expectEmit(true, false, false, true);
+        emit IBodenseeBootstrapChannel.Distributed(GOV, expectedAmount);
+        vm.prank(GOV);
+        channel.distribute();
+        assertEq(channel.pendingAccrual(), 0, "pendingAccrual cleared");
+        assertEq(channel.totalDistributed(), expectedAmount, "totalDistributed");
+    }
+
+    function test_Distribute_RevertWhen_HelperBalanceNonZero() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        vault.enableBumpReserveOnDonation();
+        uint256 residual = 50e18;
+        deal(address(aumm), address(channel), residual);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.HelperBalanceNonZero.selector, residual));
+        vm.prank(GOV);
+        channel.distribute();
+    }
+
+    function test_Distribute_RevertWhen_Reentrant() public {
+        BodenseeBootstrapChannel ch2 = new BodenseeBootstrapChannel(
+            IVault(address(vault)),
+            BODENSEE_POOL_,
+            IAuMM(address(aumm)),
+            GENESIS_BLOCK_,
+            address(vault)
+        );
+        vault.setHelper(address(ch2));
+        aumm.setMinter(address(ch2));
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        ch2.accrue();
+        vault.enableReentrancyAttack();
+        vm.expectRevert(BodenseeBootstrapChannel.NoPendingAccrual.selector);
+        vm.prank(address(vault));
+        ch2.distribute();
+    }
 }
