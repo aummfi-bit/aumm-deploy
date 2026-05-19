@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8.26;
+
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
+import {IEmissionDistributor} from "./IEmissionDistributor.sol";
+import {IAuMM} from "../token/IAuMM.sol";
+import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
+import {IEMASampler} from "../ccb/IEMASampler.sol";
+import {ICCBMultiplier} from "../ccb/ICCBMultiplier.sol";
+import {IEfficiencyOracle} from "../gauge/IEfficiencyOracle.sol";
+import {CCBScore} from "../ccb/CCBScore.sol";
+
+/// @title EmissionDistributor — Aureum Stage H pool-scoped emission distributor per H-D4—H-D5 + H-D15—H-D23
+/// @notice Two-tier MasterChef / Synthetix accumulator topology: global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy-settle per H-D15. Permissionless `recordScore(pool)` writes the F-5 absolute score per H-D17 with F12 signed-delta `totalScore` middleware per H-D19. AuMT recorder (Stage I) drives `recordDeposit` / `recordWithdrawal`; user-facing `claim(pool, to)` is the sole `IAuMM.mint` entry per H-D20.
+/// @dev H-D22 — two-tier storage (global + per-pool + per-user) + immutables, no transient storage (no Vault.unlock callback at H4). H-D15 — `_accrueGlobal` advances accRewardPerScoreUnit, `_settlePool` rebases poolAccDebt; F-10 `recordEmissions` push at the `_settlePool` boundary per H-D23 (allocation-side semantics, not literal-mint). H-D17 — score producer reverts `NotApproved(pool)` on revoked gauges. H-D21 — `_lpTrancheEmission(block_)` ships at H4 as a STUB returning `IAuMM.blockEmissionRate(block_)`; H5 wires F-0 / F-3 / F-7 phase-aware subtractions. H-D16 — per-user maps + `auMTContract` recorder slot (zero-address-acceptable safety valve mirroring EfficiencyOracle's H-D10 pattern). Deploy prerequisite per H-D7 (OPEN, locks at H10): `IAuMM.setMinter(address(this))` must fire before any `claim(...)` call hits `IAuMM.mint`. No `selfdestruct` / `pause` per H-D21 closing record.
+abstract contract EmissionDistributor is IEmissionDistributor {
+    using SafeCast for uint256;
+    using SafeCast for int256;
+    using FixedPoint for uint256;
+
+    /* ---------- Immutables (H-D22) ---------- */
+
+    /// @notice AuMM token — mint recipient at `claim` per H-D20; consumed for `blockEmissionRate(block_)` reads in `_lpTrancheEmission` per H-D21.
+    IAuMM public immutable AuMM;
+
+    /// @notice Stage G GaugeRegistry — gates `recordScore` via `isGaugeApproved(pool)` per H-D5 / H-D17 (a).
+    IGaugeRegistry public immutable _gaugeRegistry;
+
+    /// @notice Stage F EMASampler — read-only TVL_EMA source for F-5 score per H-D17 (c); never invokes `updateEMA` (F-D22 write/read separation).
+    IEMASampler public immutable _emaSampler;
+
+    /// @notice Stage F CCBMultiplier — read-only CCB_mult source for F-5 score per H-D17 (c); OQ-23 `1e18` default for non-Miliarium pools.
+    ICCBMultiplier public immutable _ccbMultiplier;
+
+    /// @notice Stage H EfficiencyOracle — `recordEmissions(pool, allocation)` push target at `_settlePool` per H-D23 (allocation-side F-10 semantics); push signature extended in-place at H4.1.x-bis.
+    IEfficiencyOracle public immutable _efficiencyOracle;
+
+    /// @notice Stage H genesis block — anchors halving math via `IAuMM.blockEmissionRate(block_)` per H-D21; same constructor-parameter precedent as `BodenseeBootstrapChannel` L36.
+    uint256 public immutable GENESIS_BLOCK;
+
+    /* ---------- Global accumulator (H-D15) ---------- */
+
+    /// @notice Global FixedPoint 18-decimal accumulator per H-D15 — `accRewardPerScoreUnit += (rate * Δblocks).divDown(totalScore)` advances at `_accrueGlobal`.
+    uint256 public override accRewardPerScoreUnit;
+
+    /// @notice Sum of `poolScore` over approved gauges per H-D15 — mutated only through the H-D19 F12 signed-delta middleware (no other write surface).
+    uint256 public override totalScore;
+
+    /// @notice Most recent `_accrueGlobal` block per H-D21 — empty-interval short-circuit when `block.number == lastAccrualBlock`.
+    uint256 public override lastAccrualBlock;
+
+    /* ---------- Per-pool state (H-D22) ---------- */
+
+    /// @notice Per-pool F-5 absolute score per H-D17 / H-D22 — written by `recordScore(pool)` as `CCBScore.score(tvlEMA, multiplier)`.
+    mapping(address => uint256) public override poolScore;
+
+    /// @notice Per-pool snapshot of `accRewardPerScoreUnit` at last `_settlePool` per H-D15 — write-only at `_settlePool` after the H-D23 `recordEmissions` push.
+    mapping(address => uint256) public override poolAccDebt;
+
+    /// @notice Σ `userLP[pool][*]` per H-D22 — needed for per-user share computation at settle time.
+    mapping(address => uint256) public override poolTotalLP;
+
+    /* ---------- Per-user state (H-D16 / H-D22) ---------- */
+
+    /// @notice Per-user AuMT stake in pool per H-D16 — mutated by `recordDeposit` / `recordWithdrawal` (gated on `auMTContract`).
+    mapping(address => mapping(address => uint256)) public override userLP;
+
+    /// @notice Per-user single-snapshot variant analogous to `poolAccDebt` per H-D16 — computed against pool-effective acc-per-LP-unit at settle time.
+    mapping(address => mapping(address => uint256)) public override userRewardDebt;
+
+    /* ---------- Governance + recorder slots (H-D14 / H-D16) ---------- */
+
+    /// @notice Mutable governance authority per H-D14 — Stage A—K Authorizer Safe at deploy; rebound via `setGovernanceContract` at Stage K (mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel governance-slot pattern).
+    address public override governance;
+
+    /// @notice Mutable AuMT recorder authority per H-D16 — `address(0)` pre-Stage-I and as deprecation safety valve (mirrors EfficiencyOracle's H-D10 recorder slots). Gates `recordDeposit` / `recordWithdrawal` via `onlyAuMTContract` modifier (lands at H4.5).
+    address public override auMTContract;
+
+}
