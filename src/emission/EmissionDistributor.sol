@@ -199,4 +199,17 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         poolAccDebt[pool] = acc;
     }
 
+    /* ---------- F12 signed-delta helper (H-D19) ---------- */
+
+    /**
+     * @notice Applies a signed `delta` to an unsigned `base` per F12 type-discipline / H-D19, returning the resulting unsigned value.
+     * @dev H-D19 totalScore signed-delta middleware + F12 Stage F type-discipline pattern at `src/ccb/CCBMultiplier.sol` L272 + L276 — extracts the inlined CCBMultiplier pattern into reusable form for `recordScore` (H4.5e). `base.toInt256()` reverts on `base > type(int256).max` (impossible for FixedPoint scores at 18-decimal scale under any plausible totalScore). `.toUint256()` reverts on the final int256 being negative (the F12 clamp invariant — recordScore's signed-delta middleware preserves `totalScore >= 0` because the only call site computes `delta = newScore - oldScore` against `totalScore`, where oldScore is a prior write to `poolScore[pool]` summed into `totalScore`, so subtracting it cannot drive the aggregate below zero in well-formed sequences).
+     * @param base The unsigned base value, typically `totalScore`.
+     * @param delta The signed delta to apply, typically `newScore.toInt256() - oldScore.toInt256()`.
+     * @return The resulting unsigned value after `(base.toInt256() + delta).toUint256()`.
+     */
+    function _applySignedDelta(uint256 base, int256 delta) internal pure returns (uint256) {
+        return (base.toInt256() + delta).toUint256();
+    }
+
 }
