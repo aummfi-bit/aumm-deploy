@@ -182,4 +182,21 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         lastAccrualBlock = block.number;
     }
 
+    /* ---------- Settlement (H-D15 / H-D23) ---------- */
+
+    /**
+     * @notice Settles `pool` against the current global accumulator snapshot per H-D15 / H-D23 — computes allocation, pushes to `_efficiencyOracle.recordEmissions`, rebases `poolAccDebt[pool]`.
+     * @dev H-D15 / H-D23 per-pool lazy-settle. Invoked AFTER `_accrueGlobal()` by every upstream mutator (`recordScore` at H4.5e, `recordDeposit` / `recordWithdrawal` at H4.6, `claim` at H4.7) so `accRewardPerScoreUnit` is guaranteed fresh against `block.number`. Computes `deltaAcc = accRewardPerScoreUnit - poolAccDebt[pool]` (no-underflow invariant: `poolAccDebt[pool] <= accRewardPerScoreUnit` always holds because the only write site is `poolAccDebt[pool] = accRewardPerScoreUnit` at the end of this function and `accRewardPerScoreUnit` is monotonically non-decreasing per H-D15) and `poolAllocation = deltaAcc.mulDown(poolScore[pool])` — FixedPoint mulDown converts (FixedPoint AuMM-per-score-unit × FixedPoint score) into AuMM_wei. H-D23 zero-skip: when `poolAllocation == 0` the external `_efficiencyOracle.recordEmissions(pool, poolAllocation)` call is skipped (saves the EfficiencyOracle `_ensureCurrentEpoch` round-trip + matches H-D10's skip-on-zero spirit). When `poolAllocation > 0` the push lands BEFORE `poolAccDebt[pool]` is rebased per H-D23 strict order — the allocation amount is captured against the pre-settle snapshot, and `poolAccDebt[pool]` writes immediately after so a subsequent `_settlePool(pool)` in the same interval pushes only the incremental `(Δacc × poolScore)` (typically zero if no intervening accrual). Recorder-gate revert NOT caught: H-D23 / H-D10 — when `_efficiencyOracle.emissionsRecorder != address(this)` (pre-deploy or deprecated posture) the push reverts from `onlyEmissionsRecorder` and the entire `_settlePool` reverts; distributor does NOT try/catch (deploy correctness is governance's responsibility per H-D7 / H-D23 closing record). First-settle behavior: when `poolAccDebt[pool] == 0` (default) the pool captures `accRewardPerScoreUnit.mulDown(poolScore[pool])` — if `poolScore[pool] == 0` (pre-`recordScore`) the result is 0 and the push is skipped, fast-forwarding the debt baseline to current acc; if `poolScore[pool] > 0` the result is the full accumulated allocation since deployment (intentional MasterChef set-initial-debt semantic). Local cache `acc` (accRewardPerScoreUnit SLOAD) eliminates the redundant read between the subtraction and the final debt write; `poolAccDebt[pool]` and `poolScore[pool]` are each read once so no cache.
+     * @param pool The Balancer V3 pool address to settle. No registry/gauge check here — `_settlePool` trusts the upstream caller to have already established gauge eligibility via the H-D17 / H-D5 `isGaugeApproved` check at `recordScore` (revoked-gauge pools entering `_settlePool` via stale state simply settle at the current accumulator with their last-known `poolScore`, then writing the debt baseline; no exploit surface because `poolScore` cannot grow without a fresh `recordScore` which itself requires gauge approval).
+     */
+    function _settlePool(address pool) internal {
+        uint256 acc = accRewardPerScoreUnit;
+        uint256 deltaAcc = acc - poolAccDebt[pool];
+        uint256 poolAllocation = deltaAcc.mulDown(poolScore[pool]);
+        if (poolAllocation > 0) {
+            _efficiencyOracle.recordEmissions(pool, poolAllocation);
+        }
+        poolAccDebt[pool] = acc;
+    }
+
 }
