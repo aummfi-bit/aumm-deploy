@@ -212,4 +212,23 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         return (base.toInt256() + delta).toUint256();
     }
 
+    /* ---------- Score producer (H-D17) ---------- */
+
+    /**
+     * @notice Permissionlessly records the current F-5 score for `pool` and updates `totalScore`.
+     * @dev H-D17 6-step sequence — (a) gauge gate via `_gaugeRegistry.isGaugeApproved(pool)` revert `NotApproved(pool)` per H-D5 / H-D17 (a); (b) H-D21 lazy accrual tick via `_accrueGlobal()` then per-pool settle via `_settlePool(pool)` BEFORE any score mutation; (c) F-5 recomputation via `CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool))` per H-D17 (c) — `IEMASampler.tvlEMA` is read-only (F-D22 separation; never invokes `updateEMA`), `ICCBMultiplier.getMultiplier` returns `INITIAL_MULTIPLIER = 1e18` for non-Miliarium pools per OQ-23 / F-D16; (d) H-D19 F12 signed-delta middleware: cache `oldScore = poolScore[pool]`, compute `delta = newScore.toInt256() - oldScore.toInt256()`, apply `totalScore = _applySignedDelta(totalScore, delta)` (the H4.5d helper); (e) `poolScore[pool] = newScore`; (f) emit `ScoreUpdated(pool, oldScore, newScore)`. Calling `recordScore` against a pool whose `newScore == oldScore` still applies the no-op delta (signed-delta yields zero, `_applySignedDelta` returns `totalScore` unchanged) and emits the event with identical old/new values — intentional per H-D17 (permissionless idempotent producer; off-chain consumers can detect no-op via event payload equality).
+     * @param pool The Balancer V3 pool address whose score is being recorded.
+     */
+    function recordScore(address pool) external override {
+        if (!_gaugeRegistry.isGaugeApproved(pool)) revert NotApproved(pool);
+        _accrueGlobal();
+        _settlePool(pool);
+        uint256 newScore = CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool));
+        uint256 oldScore = poolScore[pool];
+        int256 delta = newScore.toInt256() - oldScore.toInt256();
+        totalScore = _applySignedDelta(totalScore, delta);
+        poolScore[pool] = newScore;
+        emit ScoreUpdated(pool, oldScore, newScore);
+    }
+
 }
