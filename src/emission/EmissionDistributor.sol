@@ -116,4 +116,38 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         lastAccrualBlock = genesisBlock_;
     }
 
+    /* ---------- Modifiers ---------- */
+
+    /// @notice Restricts execution to the current `governance` authority; reverts `NotGovernance(msg.sender)` otherwise.
+    /// @dev H-D14 / H-D16 — `setGovernanceContract`-pivoting governance slot; mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel L145-L150 precedent.
+    modifier onlyGovernance() {
+        if (msg.sender != governance) revert NotGovernance(msg.sender);
+        _;
+    }
+
+    /* ---------- Governance setters (H-D14 / H-D16) ---------- */
+
+    /**
+     * @notice Stage K migration handoff per H-D14 — rebinds the `governance` authority.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input per H-D14 (non-zero recipient is the load-bearing handoff invariant — mint authority via H-D7 `setMinter` cannot route to address(0)); captures `oldGovernance` before overwrite; emits `GovernanceTransferred(oldGovernance, newGovernance)`. Mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel L159-L164 `setGovernanceContract` precedent.
+     * @param newGovernance The new governance authority — typically the on-chain governance contract at the Stage K handoff. Reverts `ZeroAddress` on zero input.
+     */
+    function setGovernanceContract(address newGovernance) external override onlyGovernance {
+        if (newGovernance == address(0)) revert ZeroAddress();
+        address oldGovernance = governance;
+        governance = newGovernance;
+        emit GovernanceTransferred(oldGovernance, newGovernance);
+    }
+
+    /**
+     * @notice Rebinds the `auMTContract` recorder slot per H-D16 — `onlyGovernance`-gated.
+     * @dev Zero address is acceptable per H-D16 deprecation safety valve — mirrors EfficiencyOracle's H-D10 `setEmissionsRecorder` / `setFeeRecorder` recorder-slot pattern where `address(0)` permanently bricks the producer entry (pre-Stage-I posture; `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(msg.sender)` because `msg.sender` cannot equal zero in external-call contexts, so the gate stays closed). Captures `oldAuMTContract` before overwrite; emits `AuMTContractSet(oldAuMTContract, newAuMTContract)`. The setter does NOT revert `ZeroAddress` (deliberate asymmetry with `setGovernanceContract` per H-D14 / H-D16 + IEmissionDistributor L89-L90 documented contract).
+     * @param newAuMTContract The new Stage I AuMT contract address. Zero address permitted as H-D16 deprecation safety valve.
+     */
+    function setAuMTContract(address newAuMTContract) external override onlyGovernance {
+        address oldAuMTContract = auMTContract;
+        auMTContract = newAuMTContract;
+        emit AuMTContractSet(oldAuMTContract, newAuMTContract);
+    }
+
 }
