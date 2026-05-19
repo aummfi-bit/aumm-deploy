@@ -173,6 +173,13 @@ interface IEmissionDistributor {
     /// @return The `poolAccDebt[pool]` snapshot value.
     function poolAccDebt(address pool) external view returns (uint256);
 
+    
+    /// @notice Returns the per-pool acc-reward-per-LP-unit accumulator for `pool`.
+    /// @dev Per-pool tier per H-D22 / H-D24 — FixedPoint 18-decimal AuMM-wei-per-LP-unit accumulator advanced by `_settlePool` after the H-D23 EfficiencyOracle push (skip-on-zero-LP semantic per H-D24). Source for `userRewardDebt` snapshot at user-settle time (H4.6) and `pendingClaim` derivation (H4.7).
+    /// @param pool The Balancer V3 pool address.
+    /// @return The current `poolAccRewardPerLP[pool]` accumulator (18-decimal fixed-point).
+    function poolAccRewardPerLP(address pool) external view returns (uint256);
+
     /// @notice Returns the total AuMT stake recorded in `pool`.
     /// @dev Per-pool tier per H-D22 — Σ `userLP[pool][*]`, needed for per-user share computation at settle
     ///      time per H-D22.
@@ -197,8 +204,9 @@ interface IEmissionDistributor {
 
     /// @notice Returns the unclaimed AuMM reward balance for `user` in `pool`.
     /// @dev H1 forward-dep producer view per STAGE_H_NOTES.md L177 — derives
-    ///      `(poolEffectiveAccPerLPunit − userRewardDebt[pool][user]) × userLP[pool][user]` per H-D16
-    ///      single-snapshot MasterChef variant; consumed by Stage I AuMT for pre-claim balance display.
+    ///      `(poolAccRewardPerLP[pool] − userRewardDebt[pool][user]).mulDown(userLP[pool][user])` per H-D16 / H-D24 single-snapshot MasterChef variant.
+    ///      `poolEffectiveAccPerLPunit` from H-D16 prose binds to `poolAccRewardPerLP[pool]` literally per H-D24; the FixedPoint mulDown form replaces the H-D16 prose's bare multiplication and matches the AuMM-wei output unit.
+    ///      Consumed by Stage I AuMT for pre-claim balance display.
     /// @param pool The Balancer V3 pool address.
     /// @param user The AuMT holder address.
     /// @return The pending AuMM claim amount (18-decimal fixed-point).
