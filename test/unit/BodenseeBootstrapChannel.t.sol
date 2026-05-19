@@ -10,6 +10,7 @@ import {AddLiquidityKind, AddLiquidityParams, TokenInfo} from "@balancer-labs/v3
 import {BodenseeBootstrapChannel} from "src/emission/BodenseeBootstrapChannel.sol";
 import {IAuMM} from "src/token/IAuMM.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+import {IBodenseeBootstrapChannel} from "src/emission/IBodenseeBootstrapChannel.sol";
 
 /// @notice Test-only ERC20 with public mint for setUp seeding.
 contract MockERC20 is ERC20 {
@@ -325,5 +326,100 @@ contract BodenseeBootstrapChannelTest is Test {
         vm.prank(newGov);
         channel.setGovernanceContract(yetAnother);
         assertEq(channel.governance(), yetAnother, "post-shift");
+    }
+
+    /* ---------- accrue (H-D11) ---------- */
+
+    /// @notice Test-side mirror of BodenseeBootstrapChannel._apSum for expected-value assertions.
+    function _expectedApSum(
+        uint256 from,
+        uint256 to,
+        uint256 anchorStart,
+        uint256 anchorEnd,
+        uint256 startShare,
+        uint256 dropShare,
+        uint256 rate
+    ) internal pure returns (uint256) {
+        uint256 width = anchorEnd - anchorStart;
+        uint256 first = startShare - (dropShare * (from - anchorStart)) / width;
+        uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
+        uint256 n = to - from + 1;
+        return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
+    function test_Accrue_EmptyInterval_NoOp() public {
+        channel.accrue();
+        assertEq(channel.pendingAccrual(), 0, "pendingAccrual");
+        assertEq(channel.lastAccrualBlock(), GENESIS_BLOCK_, "lastAccrualBlock");
+    }
+
+    function test_Accrue_BootstrapAOnly() public {
+        uint256 targetBlock = GENESIS_BLOCK_ + 1_000;
+        _rollTo(targetBlock);
+        uint256 expected = _expectedApSum(GENESIS_BLOCK_ + 1, targetBlock, GENESIS_BLOCK_, _month6End(), 8e17, 3e17, 1e18);
+        channel.accrue();
+        assertEq(channel.pendingAccrual(), expected, "pendingAccrual");
+        assertEq(channel.lastAccrualBlock(), targetBlock, "lastAccrualBlock");
+    }
+
+    function test_Accrue_BootstrapBOnly() public {
+        _rollTo(_month6End());
+        channel.accrue();
+        uint256 aSum = channel.pendingAccrual();
+        uint256 targetBlock = _month6End() + 1_000;
+        _rollTo(targetBlock);
+        uint256 expectedB = _expectedApSum(_month6End() + 1, targetBlock, _month6End(), _month10End(), 5e17, 5e17, 1e18);
+        channel.accrue();
+        assertEq(channel.pendingAccrual(), aSum + expectedB, "pendingAccrual");
+        assertEq(channel.lastAccrualBlock(), targetBlock, "lastAccrualBlock");
+    }
+
+    function test_Accrue_BoundarySpanning() public {
+        uint256 targetBlock = _month6End() + 1_000;
+        _rollTo(targetBlock);
+        uint256 aSum = _expectedApSum(GENESIS_BLOCK_ + 1, _month6End(), GENESIS_BLOCK_, _month6End(), 8e17, 3e17, 1e18);
+        uint256 bSum = _expectedApSum(_month6End() + 1, targetBlock, _month6End(), _month10End(), 5e17, 5e17, 1e18);
+        channel.accrue();
+        assertEq(channel.pendingAccrual(), aSum + bSum, "pendingAccrual");
+        assertEq(channel.lastAccrualBlock(), targetBlock, "lastAccrualBlock");
+    }
+
+    function test_Accrue_PostMonth10Clamp() public {
+        _rollTo(_month10End() + 1_000);
+        channel.accrue();
+        assertEq(channel.lastAccrualBlock(), _month10End(), "lastAccrualBlock clamped");
+    }
+
+    function test_Accrue_SecondCallAfterClampNoOp() public {
+        _rollTo(_month10End() + 1_000);
+        channel.accrue();
+        uint256 firstAccrual = channel.pendingAccrual();
+        _rollTo(_month10End() + 5_000);
+        channel.accrue();
+        assertEq(channel.pendingAccrual(), firstAccrual, "pendingAccrual unchanged");
+        assertEq(channel.lastAccrualBlock(), _month10End(), "lastAccrualBlock still clamped");
+    }
+
+    function test_Accrue_SequentialAccumulation_BootstrapA() public {
+        uint256 t1 = GENESIS_BLOCK_ + 1_000;
+        _rollTo(t1);
+        channel.accrue();
+        uint256 firstAccrual = channel.pendingAccrual();
+        uint256 t2 = GENESIS_BLOCK_ + 2_000;
+        _rollTo(t2);
+        channel.accrue();
+        uint256 expected2 = _expectedApSum(t1 + 1, t2, GENESIS_BLOCK_, _month6End(), 8e17, 3e17, 1e18);
+        assertEq(channel.pendingAccrual(), firstAccrual + expected2, "pendingAccrual");
+        assertEq(channel.lastAccrualBlock(), t2, "lastAccrualBlock");
+    }
+
+    function test_Accrue_PermissionlessAndEmits() public {
+        uint256 targetBlock = GENESIS_BLOCK_ + 1_000;
+        _rollTo(targetBlock);
+        uint256 expected = _expectedApSum(GENESIS_BLOCK_ + 1, targetBlock, GENESIS_BLOCK_, _month6End(), 8e17, 3e17, 1e18);
+        vm.expectEmit(false, false, false, true);
+        emit IBodenseeBootstrapChannel.Accrued(GENESIS_BLOCK_ + 1, targetBlock, expected);
+        vm.prank(_addr(42));
+        channel.accrue();
     }
 }
