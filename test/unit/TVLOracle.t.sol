@@ -28,8 +28,8 @@ contract TVLOracleTest is Test {
         );
     }
 
-    function _addr(uint256 seed) internal pure returns (address) {
-        return address(uint160(seed));
+    function _addr(uint256 seed) internal returns (address) {
+        return makeAddr(vm.toString(seed));
     }
 
     function test_constructor_revert_zeroVaultExplorer() public {

@@ -47,8 +47,8 @@ contract EfficiencyOracleTest is Test {
         vm.roll(GENESIS_BLOCK);
     }
 
-    function _addr(uint256 seed) internal pure returns (address) {
-        return address(uint160(seed));
+    function _addr(uint256 seed) internal returns (address) {
+        return makeAddr(vm.toString(seed));
     }
 
     function _setRate(address token, uint256 rate18) internal {

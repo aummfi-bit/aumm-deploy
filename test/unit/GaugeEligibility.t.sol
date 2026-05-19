@@ -714,7 +714,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function testCeilingCutoffNRanked7() public {
         address[] memory pools = new address[](7);
         for (uint256 i = 0; i < 7; ++i) {
-            pools[i] = address(uint160(0x1000 + uint160(i)));
+            pools[i] = makeAddr(string.concat("pool", vm.toString(i)));
             mockEfficiencyOracle.setEfficiencyInputs(pools[i], (200 - i) * 1e18, 50e18);
         }
 
@@ -733,7 +733,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function testCeilingCutoffNRanked20() public {
         address[] memory pools = new address[](20);
         for (uint256 i = 0; i < 20; ++i) {
-            pools[i] = address(uint160(0x2000 + uint160(i)));
+            pools[i] = makeAddr(string.concat("pool", vm.toString(i)));
             mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
         }
 
@@ -753,7 +753,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function testCeilingCutoffNRanked100() public {
         address[] memory pools = new address[](100);
         for (uint256 i = 0; i < 100; ++i) {
-            pools[i] = address(uint160(0x10000 + uint160(i)));
+            pools[i] = makeAddr(string.concat("pool", vm.toString(i)));
             mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
         }
 
