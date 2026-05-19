@@ -77,4 +77,43 @@ abstract contract EmissionDistributor is IEmissionDistributor {
     /// @notice Mutable AuMT recorder authority per H-D16 — `address(0)` pre-Stage-I and as deprecation safety valve (mirrors EfficiencyOracle's H-D10 recorder slots). Gates `recordDeposit` / `recordWithdrawal` via `onlyAuMTContract` modifier (lands at H4.5).
     address public override auMTContract;
 
+    /* ---------- Constructor ---------- */
+
+    /**
+     * @notice Wires the 6 core immutables + initial governance slot and anchors `lastAccrualBlock` for the H-D22 EmissionDistributor.
+     * @dev ZeroAddress guards apply to the 6 address-bearing params; `genesisBlock_` accepts any `uint256` value (deploy-time correctness is governance's responsibility — same pattern as `BodenseeBootstrapChannel` / `EfficiencyOracle`). `lastAccrualBlock` initialized to `genesisBlock_` per H-D21 so the first `_accrueGlobal()` call computes from block `genesisBlock_ + 1` when `totalScore > 0` (otherwise the H-D15 empty-`totalScore` guard short-circuits and resets `lastAccrualBlock` to `block.number`). `auMTContract` defaults to `address(0)` per H-D16 pre-Stage-I posture — `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(msg.sender)` until governance calls `setAuMTContract` post-deploy with the Stage I AuMT producer (lands at H4.4). Deploy prerequisite per H-D7 (OPEN, locks at H10): `IAuMM.setMinter(address(this))` must fire before any `claim(...)` invocation. Deploy prerequisite per H-D23: `_efficiencyOracle.setEmissionsRecorder(address(this))` must be called by EfficiencyOracle governance before the first `recordScore(pool)` settle pushes; pre-handoff calls revert from `onlyEmissionsRecorder` — distributor does not catch (deploy correctness is governance's responsibility). No constructor emit for `GovernanceTransferred` — mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel pattern where the initial governance slot is set silently.
+     * @param aumm_ AuMM token — mint recipient at `claim` per H-D20; consumed for `blockEmissionRate(block_)` reads in `_lpTrancheEmission` per H-D21. Reverts `ZeroAddress` on zero input.
+     * @param gaugeRegistry_ Stage G GaugeRegistry — gates `recordScore` via `isGaugeApproved(pool)` per H-D5 / H-D17 (a). Reverts `ZeroAddress` on zero input.
+     * @param emaSampler_ Stage F EMASampler — read-only TVL_EMA source for F-5 score per H-D17 (c); never invokes `updateEMA` (F-D22 write/read separation). Reverts `ZeroAddress` on zero input.
+     * @param ccbMultiplier_ Stage F CCBMultiplier — read-only CCB_mult source for F-5 score per H-D17 (c); OQ-23 `1e18` default for non-Miliarium pools. Reverts `ZeroAddress` on zero input.
+     * @param efficiencyOracle_ Stage H EfficiencyOracle — `recordEmissions(pool, allocation)` push target at `_settlePool` per H-D23. Reverts `ZeroAddress` on zero input.
+     * @param genesisBlock_ Stage H genesis block — anchors halving math via `IAuMM.blockEmissionRate(block_)` per H-D21; also seeds `lastAccrualBlock`. Same precedent as `BodenseeBootstrapChannel` / `EfficiencyOracle` / `AuMM.sol` `GENESIS_BLOCK`; no zero-check (uint256, accepts any value).
+     * @param initialGovernance_ Initial governance authority — Stage A—K Authorizer Safe at deploy; rebound at Stage K via `setGovernanceContract` per H-D14. Reverts `ZeroAddress` on zero input.
+     */
+    constructor(
+        IAuMM aumm_,
+        IGaugeRegistry gaugeRegistry_,
+        IEMASampler emaSampler_,
+        ICCBMultiplier ccbMultiplier_,
+        IEfficiencyOracle efficiencyOracle_,
+        uint256 genesisBlock_,
+        address initialGovernance_
+    ) {
+        if (address(aumm_) == address(0)) revert ZeroAddress();
+        if (address(gaugeRegistry_) == address(0)) revert ZeroAddress();
+        if (address(emaSampler_) == address(0)) revert ZeroAddress();
+        if (address(ccbMultiplier_) == address(0)) revert ZeroAddress();
+        if (address(efficiencyOracle_) == address(0)) revert ZeroAddress();
+        if (initialGovernance_ == address(0)) revert ZeroAddress();
+
+        AuMM = aumm_;
+        _gaugeRegistry = gaugeRegistry_;
+        _emaSampler = emaSampler_;
+        _ccbMultiplier = ccbMultiplier_;
+        _efficiencyOracle = efficiencyOracle_;
+        GENESIS_BLOCK = genesisBlock_;
+        governance = initialGovernance_;
+        lastAccrualBlock = genesisBlock_;
+    }
+
 }
