@@ -481,4 +481,42 @@ contract BodenseeBootstrapChannelTest is Test {
         vm.prank(address(vault));
         ch2.distribute();
     }
+
+    /* ---------- _distributeCallback (H-D12) ---------- */
+
+    function test_DistributeCallback_RevertWhen_NotVault() public {
+        address bad = _addr(42);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.OnlyVault.selector, bad));
+        vm.prank(bad);
+        channel._distributeCallback(0);
+    }
+
+    function test_Distribute_RevertWhen_CallbackPayloadMismatch() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        uint256 amount = channel.pendingAccrual();
+        vault.enableCorruptCallback();
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.CallbackPayloadMismatch.selector, amount, amount + 1));
+        vm.prank(GOV);
+        channel.distribute();
+    }
+
+    function test_Distribute_RevertWhen_BptMintedOnDonation() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        vault.enableBptMintOnDonation();
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.BptMintedOnDonation.selector, 1e18));
+        vm.prank(GOV);
+        channel.distribute();
+    }
+
+    function test_Distribute_RevertWhen_ReserveDeltaMismatch() public {
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        channel.accrue();
+        uint256 amount = channel.pendingAccrual();
+        uint256 preReserve = 1_000e18;
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.ReserveDeltaMismatch.selector, preReserve + amount, preReserve));
+        vm.prank(GOV);
+        channel.distribute();
+    }
 }
