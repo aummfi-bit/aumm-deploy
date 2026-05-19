@@ -150,4 +150,16 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         emit AuMTContractSet(oldAuMTContract, newAuMTContract);
     }
 
+    /* ---------- Emission rate stub (H-D21) ---------- */
+
+    /**
+     * @notice STUB returning the full per-block AuMM emission rate for `block_` per H-D21.
+     * @dev H-D21 — H4 ships `_lpTrancheEmission` as a STUB returning `AuMM.blockEmissionRate(block_)` (the full block emission), no F-0 / F-3 / F-7 phase subtractions. Over-accrues vs the true LP tranche until H5 wires phase-aware schedule logic — H5 will (a) subtract the F-0 bodensee share for Months 0—10 (handing the bootstrap leg to `BodenseeBootstrapChannel` per H-D2), (b) apply the F-3 α-blend for Months 11—12 (per H-D6's 1/28 literal for the equal-split leg via `(1 − α(block)) × (1/28) + α(block) × CCB_share`), and (c) subtract the F-7 Step 1 Incendiary skim for Year 2+ (via `IIncendiaryRegistry.activeBoostClaims`, H7 forward-dep stub). The H4 stub posture is intentional test-harness limitation per H-D21 + H-D18 — unit tests exercise the H-D15 accumulator + H-D17 score producer + H-D20 claim math in isolation against the full block emission rate; H5 unit cohort migrates in place. Single read per `_accrueGlobal` call (`_accrueGlobal` invokes `_lpTrancheEmission(block.number)` once after the empty-interval check).
+     * @param block_ The block number whose LP tranche emission rate to return.
+     * @return The AuMM tokens-per-block emission rate at `block_` (18-decimal wei scale).
+     */
+    function _lpTrancheEmission(uint256 block_) internal view returns (uint256) {
+        return AuMM.blockEmissionRate(block_);
+    }
+
 }
