@@ -162,4 +162,24 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         return AuMM.blockEmissionRate(block_);
     }
 
+    /* ---------- Accrual (H-D15 / H-D21) ---------- */
+
+    /**
+     * @notice Advances the global `accRewardPerScoreUnit` accumulator for the elapsed block interval per H-D15 / H-D21.
+     * @dev H-D15 / H-D21 lazy accrual tick invoked at every mutating external entry (`recordScore` at H4.5e, `recordDeposit` / `recordWithdrawal` at H4.6, `claim` at H4.7) BEFORE any state mutation, ensuring `accRewardPerScoreUnit` is fresh against `block.number`. Two short-circuits in strict order — (1) empty-interval per H-D21: `block.number == lastAccrualBlock` returns immediately, no rate read, no write; (2) empty-`totalScore` per H-D15: `totalScore == 0` resets `lastAccrualBlock = block.number` and returns (prevents divide-by-zero on the divDown denominator + ensures no scaled emission accrues when no eligible pools exist — pre-Stage-J or post-revocation-storm conditions). Otherwise reads `_lpTrancheEmission(block.number)` once per call per H-D21 (no caching layer; H4 stub returns full block emission) and applies FixedPoint divDown: `accRewardPerScoreUnit += (rate × Δblocks) × 1e18 / totalScore` (the `.divDown(uint256)` binding from L22's `using FixedPoint for uint256;`). FixedPoint scale convention keeps `accRewardPerScoreUnit` in AuMM_wei-per-score-unit (FixedPoint 18-decimal), matching the `(accRewardPerScoreUnit - poolAccDebt[pool]).mulDown(poolScore[pool])` allocation formula at `_settlePool` per H-D15 / H-D23 (lands at H4.5c). `lastAccrualBlock` writes `block.number` AFTER the accumulator math so subsequent calls within the same block short-circuit at the empty-interval guard. Local caches `last` (lastAccrualBlock SLOAD) and `total` (totalScore SLOAD) eliminate redundant storage reads in the success path.
+     */
+    function _accrueGlobal() internal {
+        uint256 last = lastAccrualBlock;
+        if (block.number == last) return;
+        uint256 total = totalScore;
+        if (total == 0) {
+            lastAccrualBlock = block.number;
+            return;
+        }
+        uint256 rate = _lpTrancheEmission(block.number);
+        uint256 deltaBlocks = block.number - last;
+        accRewardPerScoreUnit += (rate * deltaBlocks).divDown(total);
+        lastAccrualBlock = block.number;
+    }
+
 }
