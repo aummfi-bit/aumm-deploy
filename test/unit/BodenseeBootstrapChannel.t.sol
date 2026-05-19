@@ -289,4 +289,41 @@ contract BodenseeBootstrapChannelTest is Test {
     function test_Constructor_InitsLastAccrualBlock() public view {
         assertEq(channel.lastAccrualBlock(), GENESIS_BLOCK_, "lastAccrualBlock");
     }
+
+    /* ---------- setGovernanceContract (H-D14) ---------- */
+
+    function test_SetGovernanceContract_HappyPath_EmitsAndUpdates() public {
+        address newGov = _addr(1);
+        vm.expectEmit(true, true, false, false);
+        emit BodenseeBootstrapChannel.GovernanceTransferred(GOV, newGov);
+        vm.prank(GOV);
+        channel.setGovernanceContract(newGov);
+        assertEq(channel.governance(), newGov, "governance");
+    }
+
+    function test_SetGovernanceContract_RevertWhen_NewGovernanceZero() public {
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        vm.prank(GOV);
+        channel.setGovernanceContract(address(0));
+    }
+
+    function test_SetGovernanceContract_RevertWhen_CallerNotGovernance() public {
+        address bad = _addr(99);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, bad));
+        vm.prank(bad);
+        channel.setGovernanceContract(_addr(1));
+    }
+
+    function test_SetGovernanceContract_PostHandoffAccessShifts() public {
+        address newGov = _addr(1);
+        vm.prank(GOV);
+        channel.setGovernanceContract(newGov);
+        vm.prank(GOV);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, GOV));
+        channel.setGovernanceContract(_addr(2));
+        address yetAnother = _addr(3);
+        vm.prank(newGov);
+        channel.setGovernanceContract(yetAnother);
+        assertEq(channel.governance(), yetAnother, "post-shift");
+    }
 }
