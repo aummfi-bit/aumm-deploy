@@ -220,7 +220,7 @@ contract EfficiencyOracle is IEfficiencyOracle {
      * @param pool The pool whose denominator is being accumulated.
      * @param aummAmountScaled18 The 18-decimal fixed-point AuMM emissions amount per Balancer V3 `balancesLiveScaled18` convention.
      */
-    function recordEmissions(address pool, uint256 aummAmountScaled18) external onlyEmissionsRecorder {
+    function recordEmissions(address pool, uint256 aummAmountScaled18) external override onlyEmissionsRecorder {
         _ensureCurrentEpoch(pool);
         uint256 svZCHFAmountScaled18 = tvlOracle.quoteSvZCHF(AuMM, aummAmountScaled18);
         _accDenominator[pool] += svZCHFAmountScaled18;

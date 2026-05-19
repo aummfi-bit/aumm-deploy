@@ -65,6 +65,9 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
     function efficiencyInputs(address pool) external view override returns (uint256, uint256) {
         return (numeratorSmaOf[pool], denominatorSmaOf[pool]);
     }
+
+    /// @notice No-op stub for H4.1.x-bis interface conformance; tests pin `efficiencyInputs` directly via `setEfficiencyInputs`.
+    function recordEmissions(address, uint256) external override {}
 }
 
 /// @notice Factory-shaped double exposing only `isPoolFromFactory` for selector dispatch tests.
