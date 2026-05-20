@@ -14,7 +14,7 @@ import {CCBScore} from "../ccb/CCBScore.sol";
 /// @title EmissionDistributor — Aureum Stage H pool-scoped emission distributor per H-D4—H-D5 + H-D15—H-D23
 /// @notice Two-tier MasterChef / Synthetix accumulator topology: global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy-settle per H-D15. Permissionless `recordScore(pool)` writes the F-5 absolute score per H-D17 with F12 signed-delta `totalScore` middleware per H-D19. AuMT recorder (Stage I) drives `recordDeposit` / `recordWithdrawal`; user-facing `claim(pool, to)` is the sole `IAuMM.mint` entry per H-D20.
 /// @dev H-D22 — two-tier storage (global + per-pool + per-user) + immutables, no transient storage (no Vault.unlock callback at H4). H-D15 — `_accrueGlobal` advances accRewardPerScoreUnit, `_settlePool` rebases poolAccDebt; F-10 `recordEmissions` push at the `_settlePool` boundary per H-D23 (allocation-side semantics, not literal-mint). H-D17 — score producer reverts `NotApproved(pool)` on revoked gauges. H-D21 — `_lpTrancheEmission(block_)` ships at H4 as a STUB returning `IAuMM.blockEmissionRate(block_)`; H5 wires F-0 / F-3 / F-7 phase-aware subtractions. H-D16 — per-user maps + `auMTContract` recorder slot (zero-address-acceptable safety valve mirroring EfficiencyOracle's H-D10 pattern). Deploy prerequisite per H-D7 (OPEN, locks at H10): `IAuMM.setMinter(address(this))` must fire before any `claim(...)` call hits `IAuMM.mint`. No `selfdestruct` / `pause` per H-D21 closing record.
-abstract contract EmissionDistributor is IEmissionDistributor {
+contract EmissionDistributor is IEmissionDistributor {
     using SafeCast for uint256;
     using SafeCast for int256;
     using FixedPoint for uint256;
