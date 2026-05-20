@@ -737,4 +737,104 @@ contract EmissionDistributorTest is Test {
         vm.expectRevert();
         distributor.claim(POOL_A, address(0));
     }
+
+    /* ---------- pendingClaim view tests (H-D25) ---------- */
+
+    /// @notice Confirms `pendingClaim` returns 0 for a completely empty state — H-D25: pendingBalance = 0, userRewardDebt = 0, userLP = 0, poolAccRewardPerLP = 0 → 0 + (0 - 0).mulDown(0) = 0.
+    function test_PendingClaim_ZeroUserReturnsZero() public view {
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `pendingClaim` returns 0 immediately after a first deposit — H-D25 first-deposit baseline: pendingBalance = 0 (crystallization no-op against pre-deposit userLP = 0), userRewardDebt rebased to current acc; (acc - acc).mulDown(userLP) = 0.
+    function test_PendingClaim_PostDepositReturnsZero() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `pendingClaim` returns the crystallized `pendingBalance` alone when no live-delta exists — H-D25 additive form with second component zero: post-withdrawal pendingBalance = 1e18, userRewardDebt = poolAccRewardPerLP = 1e16, (acc - debt).mulDown(userLP) = 0.
+    function test_PendingClaim_ReflectsCrystallizedPendingOnly() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 1e18);
+    }
+
+    /// @notice Confirms `pendingClaim` does NOT live-simulate against `block.number` — uses the STORED `poolAccRewardPerLP` only per H-D25 NatSpec; after recordDeposit at GEN and vm.roll(+1) WITHOUT a mutating touch, the view still returns 0 because the stored accumulator has not advanced.
+    function test_PendingClaim_StaleSnapshotDoesNotSimulateLiveAccrual() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `pendingClaim` returns a fresh value after any mutating entry advances the stored accumulator — H-D17/H-D25: recordScore at +1 advances accRewardPerScoreUnit by 1e16 + settles POOL_A pushing poolAccRewardPerLP to 1e16; view = (1e16 - 0).mulDown(100e18) = 1e18.
+    function test_PendingClaim_FreshAfterRecordScoreTouch() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 1e18);
+    }
+
+    /// @notice Confirms `pendingClaim` returns 0 after a successful `claim` — H-D20/H-D25 post-claim invariant: claim zeroes `pendingBalance` and rebases `userRewardDebt = poolAccRewardPerLP`, so both additive components evaluate to 0.
+    function test_PendingClaim_DropsToZeroAfterClaim() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `pendingClaim` correctly sums BOTH H-D25 additive components — sequence: deposit 100e18 at GEN, roll +1, withdraw 90e18 (crystallizes 1e18 into pendingBalance, leaves userLP = 10e18, debt = 1e16, poolAccRewardPerLP = 1e16), roll +1, recordScore (advances poolAccRewardPerLP by 1e18/10e18 = 1e17, total = 1.1e17). View = 1e18 + (1.1e17 - 1e16).mulDown(10e18) = 1e18 + 1e18 = 2e18.
+    function test_PendingClaim_AdditiveFormBothComponentsNonZero() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 90e18);
+        vm.roll(GENESIS_BLOCK_ + 2);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.pendingClaim(POOL_A, USER_1), 2e18);
+    }
+
+    /// @notice Confirms `pendingClaim(POOL_B, USER_1)` is unaffected by POOL_A state — H-D22 per-pool storage isolation: all POOL_B accumulators remain at zero even after substantial POOL_A accrual.
+    function test_PendingClaim_DifferentPoolsIsolated() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.pendingClaim(POOL_B, USER_1), 0);
+    }
 }
