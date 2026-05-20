@@ -538,4 +538,87 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.userRewardDebt(POOL_A, USER_1), 1e16);
         assertEq(distributor.pendingBalance(POOL_A, USER_1), 1e18);
     }
+
+    /* ---------- recordWithdrawal tests (H-D16 / H-D21 / H-D25) ---------- */
+
+    /// @notice Reverts `NotAuMTContract` when `recordWithdrawal` is called by an address other than the current `auMTContract` recorder — guards the H-D16 onlyAuMTContract gate, symmetric to `recordDeposit`.
+    function test_RevertWhen_RecordWithdrawalCallerNotAuMTContract() public {
+        vm.prank(address(0xBADC0DE));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, address(0xBADC0DE)));
+        distributor.recordWithdrawal(POOL_A, USER_1, 100e18);
+    }
+
+    /// @notice Reverts with arithmetic underflow (Panic 0x11) when `recordWithdrawal` is called with an amount exceeding the user's recorded stake — H-D16 trust-the-recorder posture; no typed error declared.
+    function test_RevertWhen_RecordWithdrawalUnderflowOnOverWithdrawal() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(AUMT_REC);
+        vm.expectRevert();
+        distributor.recordWithdrawal(POOL_A, USER_1, 150e18);
+    }
+
+    /// @notice Reverts with arithmetic underflow (Panic 0x11) when `recordWithdrawal` is called for a user with no prior deposit — H-D16 trust-the-recorder posture; no typed error declared.
+    function test_RevertWhen_RecordWithdrawalUnderflowOnNoPriorDeposit() public {
+        vm.prank(AUMT_REC);
+        vm.expectRevert();
+        distributor.recordWithdrawal(POOL_A, USER_1, 1);
+    }
+
+    /// @notice Confirms a partial `recordWithdrawal` decrements `userLP` and `poolTotalLP` by the withdrawn amount — H-D16 stake-decrement path leaving a residual stake.
+    function test_RecordWithdrawal_PartialWithdrawalUpdatesUserLPAndPoolTotalLP() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 70e18);
+        assertEq(distributor.poolTotalLP(POOL_A), 70e18);
+    }
+
+    /// @notice Confirms a full `recordWithdrawal` zeroes both `userLP` and `poolTotalLP` — H-D16 complete-exit path.
+    function test_RecordWithdrawal_FullWithdrawalZerosUserLPAndPoolTotalLP() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 100e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+        assertEq(distributor.poolTotalLP(POOL_A), 0);
+    }
+
+    /// @notice Confirms `recordWithdrawal` emits `WithdrawalRecorded` with the correct pool, user, and amount — H-D16 event obligation on positive withdrawal.
+    function test_RecordWithdrawal_EmitsWithdrawalRecorded() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.expectEmit(true, true, false, true);
+        emit IEmissionDistributor.WithdrawalRecorded(POOL_A, USER_1, 30e18);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
+    }
+
+    /// @notice Confirms `recordWithdrawal` with amount zero is permitted — emits `WithdrawalRecorded` and leaves all state at zero, documenting the deliberate no-guard posture on zero amounts.
+    function test_RecordWithdrawal_ZeroAmountPermittedAndEmits() public {
+        vm.expectEmit(true, true, false, true);
+        emit IEmissionDistributor.WithdrawalRecorded(POOL_A, USER_1, 0);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+        assertEq(distributor.poolTotalLP(POOL_A), 0);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `recordWithdrawal` after a one-block accrual crystallizes the pending reward into `pendingBalance` and rebases `userRewardDebt` — H-D25 MasterChef settle-then-decrement pattern, symmetric to the deposit crystallization path.
+    function test_RecordWithdrawal_CrystallizesPendingOnTouch() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 70e18);
+        assertEq(distributor.poolTotalLP(POOL_A), 70e18);
+        assertEq(distributor.userRewardDebt(POOL_A, USER_1), 1e16);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 1e18);
+    }
 }
