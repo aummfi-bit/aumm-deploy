@@ -193,4 +193,108 @@ contract EmissionDistributorTest is Test {
     function _rollTo(uint256 blockNumber) internal {
         vm.roll(blockNumber);
     }
+
+    /* ---------- Constructor tests (H-D14 / H-D16 / H-D21 / H-D22) ---------- */
+
+    /// @notice Reverts `ZeroAddress` when the AuMM constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroAuMM() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(0)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the gauge registry constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroGaugeRegistry() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(0)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the EMA sampler constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroEMASampler() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(0)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the CCB multiplier constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroCCBMultiplier() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(0)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the efficiency oracle constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroEfficiencyOracle() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(0)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the initial governance constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroInitialGovernance() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            address(0)
+        );
+    }
+
+    /// @notice Asserts the setUp-deployed distributor wires all six immutables to the mock dependencies and genesis block constant.
+    function test_Constructor_WiresImmutables() public {
+        assertEq(address(distributor.AuMM()), address(aumm));
+        assertEq(address(distributor._gaugeRegistry()), address(gauges));
+        assertEq(address(distributor._emaSampler()), address(ema));
+        assertEq(address(distributor._ccbMultiplier()), address(mult));
+        assertEq(address(distributor._efficiencyOracle()), address(effOracle));
+        assertEq(distributor.GENESIS_BLOCK(), GENESIS_BLOCK_);
+    }
+
+    /// @notice Asserts the setUp-deployed distributor initializes governance, lastAccrualBlock, and both global accumulators to their constructor defaults.
+    function test_Constructor_InitsStorageSlots() public {
+        assertEq(distributor.governance(), GOV);
+        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_);
+        assertEq(distributor.accRewardPerScoreUnit(), 0);
+        assertEq(distributor.totalScore(), 0);
+    }
 }
