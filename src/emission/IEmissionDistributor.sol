@@ -202,9 +202,19 @@ interface IEmissionDistributor {
     /// @return The current `userRewardDebt[pool][user]`.
     function userRewardDebt(address pool, address user) external view returns (uint256);
 
+    /// @notice Returns the crystallized-pending AuMM reward balance for `user` in `pool`.
+    /// @dev Per-user tier per H-D22 / H-D25 — third per-user tier slot; FixedPoint 18-decimal AuMM-wei
+    ///      crystallized-pending balance accumulated by `recordDeposit` and `recordWithdrawal` at user-settle
+    ///      time per the H-D25 settle pattern, zeroed by `claim` per H-D20 / H-D25; the leading term in the
+    ///      `pendingClaim` additive form.
+    /// @param pool The Balancer V3 pool address.
+    /// @param user The AuMT holder address.
+    /// @return The current `pendingBalance[pool][user]` (18-decimal fixed-point).
+    function pendingBalance(address pool, address user) external view returns (uint256);
+
     /// @notice Returns the unclaimed AuMM reward balance for `user` in `pool`.
     /// @dev H1 forward-dep producer view per STAGE_H_NOTES.md L177 — derives
-    ///      `(poolAccRewardPerLP[pool] − userRewardDebt[pool][user]).mulDown(userLP[pool][user])` per H-D16 / H-D24 single-snapshot MasterChef variant.
+    ///      `pendingBalance[pool][user] + (poolAccRewardPerLP[pool] − userRewardDebt[pool][user]).mulDown(userLP[pool][user])` per H-D16 / H-D24 / H-D25 single-snapshot MasterChef variant.
     ///      `poolEffectiveAccPerLPunit` from H-D16 prose binds to `poolAccRewardPerLP[pool]` literally per H-D24; the FixedPoint mulDown form replaces the H-D16 prose's bare multiplication and matches the AuMM-wei output unit.
     ///      Consumed by Stage I AuMT for pre-claim balance display.
     /// @param pool The Balancer V3 pool address.
