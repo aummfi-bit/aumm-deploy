@@ -621,4 +621,120 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.userRewardDebt(POOL_A, USER_1), 1e16);
         assertEq(distributor.pendingBalance(POOL_A, USER_1), 1e18);
     }
+
+    /* ---------- claim tests (H-D20 / H-D21 / H-D25) ---------- */
+
+    /// @notice Confirms `claim` returns early when the caller has neither LP stake nor pending balance — H-D25 zero-amount short-circuit: (0 - 0).mulDown(0) = 0, pendingBalance = 0, amount = 0 → immediate return with no mint.
+    function test_Claim_ZeroAmountShortCircuitsOnEmptyUser() public {
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 0);
+    }
+
+    /// @notice Confirms `claim` returns early when the caller has LP stake but no blocks have elapsed since deposit — H-D21 empty-interval guard fires in `_accrueGlobal`, `accRewardPerScoreUnit` does not advance; amount = 0, no mint.
+    function test_Claim_ZeroAmountShortCircuitsOnLPNoAccrual() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 0);
+    }
+
+    /// @notice Happy-path `claim` after one-block accrual — H-D15/H-D25 math: accRewardPerScoreUnit = 1e16, poolAccRewardPerLP = 1e16, amount = (1e16 - 0).mulDown(100e18) = 1e18; H-D20 `AuMM.mint` fires exactly once; `pendingBalance` zeroed and `userRewardDebt` rebased to 1e16.
+    function test_Claim_HappyPathMintsToCallerAndUpdatesState() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 1e18);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 0);
+        assertEq(distributor.userRewardDebt(POOL_A, USER_1), 1e16);
+    }
+
+    /// @notice Confirms `claim` mints to the `to` parameter rather than `msg.sender` — H-D20 delegated claim: USER_1 is the stake holder, USER_2 receives the 1e18 AuMM mint; USER_1 balance stays zero.
+    function test_Claim_DelegatedRecipientMintsToTo() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_2);
+        assertEq(aumm.balanceOf(USER_2), 1e18);
+        assertEq(aumm.balanceOf(USER_1), 0);
+    }
+
+    /// @notice Confirms `claim` drains crystallized `pendingBalance` from a prior `recordWithdrawal` — H-D25 additive form: pending = 1e18 (crystallized at withdrawal), live delta = 0 (same-block claim); total amount = 1e18, `pendingBalance` zeroed after claim.
+    function test_Claim_DrainsPendingBalanceAndRebasesDebt() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 1e18);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `claim` emits `Claimed` with all four indexed/data fields correct — IEmissionDistributor L54: three indexed (pool, claimer, to) + one data field (amount); vm.expectEmit(true,true,true,true) asserts all four.
+    function test_Claim_EmitsClaimedWithCorrectTopics() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.expectEmit(true, true, true, true);
+        emit IEmissionDistributor.Claimed(POOL_A, USER_1, USER_1, 1e18);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+    }
+
+    /// @notice Confirms a second `claim` in the same block is a no-op — H-D21 + H-D25: empty-interval guard fires, no accrual, `(acc - userRewardDebt).mulDown(userLP) = 0`, `pendingBalance = 0`; amount = 0 → early return, balance unchanged.
+    function test_Claim_SecondClaimSameBlockIsNoOp() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 1e18);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 1e18);
+    }
+
+    /// @notice Confirms `claim` with `to == address(0)` reverts when amount is non-zero — H-D20 closing prose: no explicit Aureum guard; revert propagates from OpenZeppelin ERC-20 `_mint` zero-address check; bare `vm.expectRevert()` per project convention.
+    function test_RevertWhen_ClaimToZeroAddressWithPositiveAmount() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(USER_1);
+        vm.expectRevert();
+        distributor.claim(POOL_A, address(0));
+    }
 }
