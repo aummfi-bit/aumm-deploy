@@ -72,6 +72,9 @@ abstract contract EmissionDistributor is IEmissionDistributor {
     /// @notice Per-user single-snapshot variant analogous to `poolAccDebt` per H-D16 — computed against pool-effective acc-per-LP-unit at settle time.
     mapping(address => mapping(address => uint256)) public override userRewardDebt;
 
+    /// @notice Per-user crystallized-pending AuMM reward balance per H-D22 / H-D25 — third per-user tier slot; FixedPoint 18-decimal AuMM-wei accumulated by `recordDeposit` and `recordWithdrawal` at user-settle time per H-D25, zeroed by `claim` per H-D20 / H-D25; leading term in `pendingClaim` additive form.
+    mapping(address => mapping(address => uint256)) public override pendingBalance;
+
     /* ---------- Governance + recorder slots (H-D14 / H-D16) ---------- */
 
     /// @notice Mutable governance authority per H-D14 — Stage A—K Authorizer Safe at deploy; rebound via `setGovernanceContract` at Stage K (mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel governance-slot pattern).
@@ -125,6 +128,13 @@ abstract contract EmissionDistributor is IEmissionDistributor {
     /// @dev H-D14 / H-D16 — `setGovernanceContract`-pivoting governance slot; mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel L145-L150 precedent.
     modifier onlyGovernance() {
         if (msg.sender != governance) revert NotGovernance(msg.sender);
+        _;
+    }
+
+    /// @notice Restricts execution to the current `auMTContract` recorder; reverts `NotAuMTContract(msg.sender)` otherwise.
+    /// @dev H-D16 recorder-slot gate — `setAuMTContract`-pivoting `auMTContract` slot per H-D16; pre-Stage-I posture has `auMTContract == address(0)` which causes all callers to revert because `msg.sender` cannot equal zero in external-call contexts (H-D16 deprecation safety-valve semantic). Mirrors `onlyGovernance` structure at L126-L129.
+    modifier onlyAuMTContract() {
+        if (msg.sender != auMTContract) revert NotAuMTContract(msg.sender);
         _;
     }
 
