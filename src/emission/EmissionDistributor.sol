@@ -271,4 +271,25 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         emit DepositRecorded(pool, user, amount);
     }
 
+    /**
+     * @notice Records a withdrawal of `amount` AuMT for `user` in `pool` — AuMT-recorder gated per H-D16.
+     * @dev H-D16 / H-D21 / H-D25 symmetric settle pattern — mirrors `recordDeposit` with decrement instead of increment: (a) `onlyAuMTContract` gate; (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)`; (c) cache `acc = poolAccRewardPerLP[pool]`; (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-withdrawal `userLP` per H-D25 — crystallize via `pendingBalance[pool][user] += pending` when `pending > 0` (zero-skip); (e) decrement `userLP[pool][user] -= amount` and `poolTotalLP[pool] -= amount` AFTER the pending math so the snapshot uses pre-withdrawal `userLP`; (f) rebase `userRewardDebt[pool][user] = acc`; (g) emit `WithdrawalRecorded(pool, user, amount)`. Underflow at step (e) reverts on over-withdrawal — AuMT recorder is responsible for balance checks; no explicit guard added per H-D16 trust-the-recorder posture. No-underflow invariant on `acc - userRewardDebt[pool][user]` identical to `recordDeposit` — `userRewardDebt` is only ever written as a snapshot of the monotonically non-decreasing `poolAccRewardPerLP[pool]`. Zero-amount withdrawals are permitted.
+     * @param pool The Balancer V3 pool address.
+     * @param user The AuMT holder losing the stake credit.
+     * @param amount The AuMT amount withdrawn; zero permitted.
+     */
+    function recordWithdrawal(address pool, address user, uint256 amount) external override onlyAuMTContract {
+        _accrueGlobal();
+        _settlePool(pool);
+        uint256 acc = poolAccRewardPerLP[pool];
+        uint256 pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
+        if (pending > 0) {
+            pendingBalance[pool][user] += pending;
+        }
+        userLP[pool][user] -= amount;
+        poolTotalLP[pool] -= amount;
+        userRewardDebt[pool][user] = acc;
+        emit WithdrawalRecorded(pool, user, amount);
+    }
+
 }
