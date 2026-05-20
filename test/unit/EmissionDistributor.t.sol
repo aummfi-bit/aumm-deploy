@@ -459,4 +459,83 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.poolScore(POOL_B), 200e18);
         assertEq(distributor.totalScore(), 300e18);
     }
+
+    /* ---------- recordDeposit tests (H-D16 / H-D21 / H-D25) ---------- */
+
+    /// @notice Reverts `NotAuMTContract` when `recordDeposit` is called by an address other than the current `auMTContract` recorder — guards the H-D16 onlyAuMTContract gate.
+    function test_RevertWhen_RecordDepositCallerNotAuMTContract() public {
+        vm.prank(address(0xBADC0DE));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, address(0xBADC0DE)));
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+    }
+
+    /// @notice Confirms the first `recordDeposit` call writes `userLP` and `poolTotalLP` to the deposited amount — H-D16 stake-increment path with no prior state.
+    function test_RecordDeposit_FirstDepositUpdatesUserLPAndPoolTotalLP() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 100e18);
+        assertEq(distributor.poolTotalLP(POOL_A), 100e18);
+    }
+
+    /// @notice Confirms the first `recordDeposit` call leaves `pendingBalance` at zero — no prior accrual means no crystallization at the H-D25 settle boundary.
+    function test_RecordDeposit_FirstDepositLeavesPendingBalanceZero() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms the first `recordDeposit` rebases `userRewardDebt` to the current `poolAccRewardPerLP` — H-D16 single-snapshot MasterChef rebase at zero accumulator.
+    function test_RecordDeposit_FirstDepositRebasesUserRewardDebtToAcc() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.userRewardDebt(POOL_A, USER_1), distributor.poolAccRewardPerLP(POOL_A));
+        assertEq(distributor.userRewardDebt(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms `recordDeposit` emits `DepositRecorded` with the correct pool, user, and amount — H-D16 event obligation on positive deposit.
+    function test_RecordDeposit_EmitsDepositRecorded() public {
+        vm.expectEmit(true, true, false, true);
+        emit IEmissionDistributor.DepositRecorded(POOL_A, USER_1, 100e18);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+    }
+
+    /// @notice Confirms `recordDeposit` with amount zero is permitted — emits `DepositRecorded` and leaves all state at zero, documenting the deliberate no-guard posture on zero amounts.
+    function test_RecordDeposit_ZeroAmountPermittedAndEmits() public {
+        vm.expectEmit(true, true, false, true);
+        emit IEmissionDistributor.DepositRecorded(POOL_A, USER_1, 0);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 0);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+        assertEq(distributor.poolTotalLP(POOL_A), 0);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 0);
+    }
+
+    /// @notice Confirms deposits from two distinct users accumulate into `poolTotalLP` independently — H-D16 per-user map plus pool-aggregate invariant.
+    function test_RecordDeposit_MultiUserPoolTotalLPAggregates() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_2, 200e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 100e18);
+        assertEq(distributor.userLP(POOL_A, USER_2), 200e18);
+        assertEq(distributor.poolTotalLP(POOL_A), 300e18);
+    }
+
+    /// @notice Confirms a second `recordDeposit` after a one-block accrual crystallizes the pending reward into `pendingBalance` and rebases `userRewardDebt` — H-D25 MasterChef settle-then-increment pattern.
+    function test_RecordDeposit_SecondDepositCrystallizesPending() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 50e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 150e18);
+        assertEq(distributor.poolTotalLP(POOL_A), 150e18);
+        assertEq(distributor.userRewardDebt(POOL_A, USER_1), 1e16);
+        assertEq(distributor.pendingBalance(POOL_A, USER_1), 1e18);
+    }
 }
