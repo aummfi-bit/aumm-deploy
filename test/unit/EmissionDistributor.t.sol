@@ -837,4 +837,109 @@ contract EmissionDistributorTest is Test {
         distributor.recordScore(POOL_A);
         assertEq(distributor.pendingClaim(POOL_B, USER_1), 0);
     }
+
+    /* ---------- accrual + settle math tests (H-D15 / H-D21 / H-D23 / H-D24) ---------- */
+
+    /// @notice Confirms `_accrueGlobal` advances `accRewardPerScoreUnit` by `(rate × Δblocks).divDown(totalScore)` over a multi-block interval — H-D15: rate=1e18, Δ=5, totalScore=100e18 → accumulator += 5e16; `lastAccrualBlock` rewrites to current block.number.
+    function test_Accrual_MultiBlockAdvancesAccumulator() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.roll(GENESIS_BLOCK_ + 5);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.accRewardPerScoreUnit(), 5e16);
+        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_ + 5);
+    }
+
+    /// @notice Confirms the H-D15 empty-totalScore guard in `_accrueGlobal` — when `totalScore == 0` and a mutator triggers accrual after several blocks, `lastAccrualBlock` advances to the current block but `accRewardPerScoreUnit` stays at zero (no divide-by-zero, no scaled emission accrued pre-Stage-J).
+    function test_Accrual_EmptyTotalScoreGuardAdvancesBlockOnly() public {
+        vm.roll(GENESIS_BLOCK_ + 5);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(distributor.accRewardPerScoreUnit(), 0);
+        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_ + 5);
+        assertEq(distributor.totalScore(), 0);
+    }
+
+    /// @notice Confirms the H-D21 empty-interval guard in `_accrueGlobal` — a second mutating call at the same block returns immediately without re-reading rate or re-writing the accumulator; `accRewardPerScoreUnit` does not double-charge.
+    function test_Accrual_EmptyIntervalGuardShortCircuits() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.accRewardPerScoreUnit(), 0);
+        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_);
+    }
+
+    /// @notice Confirms `_settlePool` pushes `(pool, poolAllocation)` to `_efficiencyOracle.recordEmissions` when allocation > 0 — H-D23 push: callsLength increments by exactly one, payload equals `(POOL_A, 1e18)` for the (1e16 - 0).mulDown(100e18) allocation.
+    function test_Settle_PushesAllocationToEfficiencyOracle() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        uint256 priorCalls = effOracle.callsLength();
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(effOracle.callsLength(), priorCalls + 1);
+        (address poolPushed, uint256 amountPushed) = effOracle.callAt(effOracle.callsLength() - 1);
+        assertEq(poolPushed, POOL_A);
+        assertEq(amountPushed, 1e18);
+    }
+
+    /// @notice Confirms `_settlePool` zero-skip path (H-D23) — when `poolAllocation == 0` (first settle, same-block re-settle), the `recordEmissions` external push is elided; cumulative `callsLength` stays at zero across recordScore + recordDeposit + recordScore at the same block.
+    function test_Settle_ZeroAllocationSkipsPushToEfficiencyOracle() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        distributor.recordScore(POOL_A);
+        assertEq(effOracle.callsLength(), 0);
+    }
+
+    /// @notice Confirms `_settlePool` increments `poolAccRewardPerLP[pool]` by `poolAllocation.divDown(poolTotalLP[pool])` — H-D24 per-LP-unit accumulator: 1e18 allocation over 100e18 LP yields 1e16 per-LP-unit increment.
+    function test_Settle_PerLPUnitAccrualMatchesAllocationDivLP() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 1e16);
+    }
+
+    /// @notice Confirms `_settlePool` rebases `poolAccDebt[pool]` to the current `accRewardPerScoreUnit` snapshot — H-D15: subsequent settles compute incremental allocation against the rebased debt baseline, preventing double-allocation.
+    function test_Settle_PoolAccDebtRebasesToCurrentAcc() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolAccDebt(POOL_A), 1e16);
+    }
+
+    /// @notice Confirms H-D24 zero-LP stranded path — `poolScore > 0` AND `poolTotalLP == 0`: the allocation still pushes to EfficiencyOracle (F-10 denominator obligation), but `poolAccRewardPerLP` stays at zero because there are no LP holders to distribute to. Stranded allocation matches standard MasterChef semantic.
+    function test_Settle_ZeroLPStrandedAllocationStillPushesToEffOracle() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(effOracle.callsLength(), 1);
+        (address poolPushed, uint256 amountPushed) = effOracle.callAt(0);
+        assertEq(poolPushed, POOL_A);
+        assertEq(amountPushed, 1e18);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
+    }
 }
