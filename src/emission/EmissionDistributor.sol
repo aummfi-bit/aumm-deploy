@@ -248,4 +248,27 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         emit ScoreUpdated(pool, oldScore, newScore);
     }
 
+    /* ---------- Recorder mutators (H-D16 / H-D21 / H-D25) ---------- */
+
+    /**
+     * @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated per H-D16.
+     * @dev H-D16 / H-D21 / H-D25 single-snapshot MasterChef variant — (a) `onlyAuMTContract` gate reverts `NotAuMTContract(msg.sender)` on non-recorder callers (pre-Stage-I `auMTContract == address(0)` posture causes all callers to revert because `msg.sender` cannot equal zero); (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)` BEFORE any user-state mutation, ensuring `poolAccRewardPerLP[pool]` is fresh against `block.number`; (c) cache `acc = poolAccRewardPerLP[pool]` (the H-D24 per-LP-unit accumulator); (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-deposit user state per H-D25 — FixedPoint mulDown converts (FixedPoint per-LP-unit AuMM × LP-unit count) into AuMM-wei; (e) H-D25 zero-skip — when `pending > 0` crystallize via `pendingBalance[pool][user] += pending` (no separate event — single `DepositRecorded` per call per H-D16); (f) increment user stake `userLP[pool][user] += amount` and pool aggregate `poolTotalLP[pool] += amount` AFTER the pending math so the snapshot is computed against pre-deposit `userLP`; (g) rebase `userRewardDebt[pool][user] = acc` per H-D16 / H-D25 — subsequent `pendingClaim` derivations start the live-delta clock from the fresh accumulator; (h) emit `DepositRecorded(pool, user, amount)`. First-deposit behavior: when `userLP[pool][user] == 0` pre-deposit, `pending = (acc - 0).mulDown(0) = 0` regardless of `acc` magnitude — the zero-skip elides the no-op `pendingBalance` write; the debt rebase `userRewardDebt[pool][user] = acc` correctly initializes the per-user snapshot. No-underflow invariant on `acc - userRewardDebt[pool][user]`: `userRewardDebt[pool][user]` is only ever written as a snapshot of `poolAccRewardPerLP[pool]` (here and at `recordWithdrawal` / `claim`), which is monotonically non-decreasing per H-D24; so `userRewardDebt[pool][user] <= acc` always holds. Zero-amount deposits are permitted — the interface does not declare an `amount > 0` guard and the H-D16 prose does not impose one (AuMT recorder filters upstream); the function still runs the full accrue/settle/pending-crystallization sequence and emits the event. The `pendingBalance` crystallization step is the load-bearing departure from the Sushi MasterChef V2 auto-claim-at-deposit pattern: H-D20 fixes `IAuMM.mint` at the `claim` site only, so the pre-deposit allocation cannot transfer here — it accumulates in `pendingBalance` until the user calls `claim` (H4.7). Local cache `acc` (poolAccRewardPerLP SLOAD) eliminates the redundant read between the pending math and the debt rebase. No reentrancy guard — no external calls between the gate and the event (the EfficiencyOracle push in `_settlePool` per H-D23 happens before any user-state mutation).
+     * @param pool The Balancer V3 pool address — caller-supplied; no `isGaugeApproved` gate here per H-D16 (deposit/withdrawal must always settle even on revoked-gauge pools so existing stake can exit cleanly; `recordScore` is the producer that filters on gauge approval per H-D17).
+     * @param user The AuMT holder receiving the stake credit — caller-supplied; ZeroAddress not guarded (H-D16 trusts the AuMT recorder to filter).
+     * @param amount The AuMT amount deposited (same scale as `userLP`); zero permitted.
+     */
+    function recordDeposit(address pool, address user, uint256 amount) external override onlyAuMTContract {
+        _accrueGlobal();
+        _settlePool(pool);
+        uint256 acc = poolAccRewardPerLP[pool];
+        uint256 pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
+        if (pending > 0) {
+            pendingBalance[pool][user] += pending;
+        }
+        userLP[pool][user] += amount;
+        poolTotalLP[pool] += amount;
+        userRewardDebt[pool][user] = acc;
+        emit DepositRecorded(pool, user, amount);
+    }
+
 }
