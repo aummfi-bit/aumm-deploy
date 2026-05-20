@@ -292,4 +292,38 @@ abstract contract EmissionDistributor is IEmissionDistributor {
         emit WithdrawalRecorded(pool, user, amount);
     }
 
+    /* ---------- User claim & pending view (H-D20 / H-D25) ---------- */
+
+    /**
+     * @notice Claims accrued AuMM rewards for `msg.sender` in `pool`, minting to `to` per H-D20 / H-D25.
+     * @dev H-D20 / H-D21 / H-D25 sole mint site — the only `AuMM.mint` call in the distributor. (a) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)` BEFORE any user-state read, ensuring `poolAccRewardPerLP[pool]` is fresh against `block.number`; (b) `user = msg.sender` — claim is permissionless (no gauge-approval gate; stranded allocations on revoked-gauge pools must remain claimable so existing stakers can exit cleanly, mirroring the H-D16 `recordDeposit` / `recordWithdrawal` posture at L256); `to` parameter supports delegated claims per IEmissionDistributor L130; (c) cache `acc = poolAccRewardPerLP[pool]` (the H-D24 per-LP-unit accumulator); (d) compute the H-D25 additive form `amount = pendingBalance[pool][user] + (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` — crystallized-pending plus live delta against current `userLP`; (e) zero-amount short-circuit per IEmissionDistributor L124 — `if (amount == 0) return;` skips the mint and the event (no `Claimed` emit on zero claims) and skips the `pendingBalance` zero / `userRewardDebt` rebase because they would be no-ops (`pendingBalance == 0` and `userRewardDebt == acc` are the only conditions producing `amount == 0` when `userLP > 0`); (f) effects per CEI — `pendingBalance[pool][user] = 0` zeros the crystallized balance per H-D25 + `userRewardDebt[pool][user] = acc` rebases the per-user snapshot so subsequent `pendingClaim` reads start the live-delta clock from this acc; (g) interaction — `AuMM.mint(to, amount)` per H-D20 / H-D7 (OPEN: requires `IAuMM.setMinter(address(this))` pre-deploy handoff per constructor @dev L90); (h) emit `Claimed(pool, user, to, amount)`. No H-D23 second push — `recordEmissions` happens at `_settlePool` boundary only (allocation-side F-10 semantics per IEmissionDistributor L127). No-underflow invariant on `acc - userRewardDebt[pool][user]` identical to `recordDeposit` / `recordWithdrawal` — `userRewardDebt` is only ever written as a snapshot of the monotonically non-decreasing `poolAccRewardPerLP[pool]`. No reentrancy guard — `AuMM` is the project's own ERC-20 (no callback hooks per Stage C AuMM contract), state mutations precede the mint per CEI, and `to == address(0)` reverts naturally at `AuMM.mint` via OpenZeppelin ERC-20 zero-recipient check.
+     * @param pool The Balancer V3 pool address from which rewards are claimed.
+     * @param to The AuMM mint recipient — supports delegated claims; `address(0)` reverts at `AuMM.mint` per OpenZeppelin ERC-20 (no explicit guard added).
+     */
+    function claim(address pool, address to) external override {
+        _accrueGlobal();
+        _settlePool(pool);
+        address user = msg.sender;
+        uint256 acc = poolAccRewardPerLP[pool];
+        uint256 amount = pendingBalance[pool][user] + (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
+        if (amount == 0) {
+            return;
+        }
+        pendingBalance[pool][user] = 0;
+        userRewardDebt[pool][user] = acc;
+        AuMM.mint(to, amount);
+        emit Claimed(pool, user, to, amount);
+    }
+
+    /**
+     * @notice Returns the unclaimed AuMM reward balance for `user` in `pool` per H-D25 additive form.
+     * @dev H-D16 / H-D24 / H-D25 single-snapshot view — derives `pendingBalance[pool][user] + (poolAccRewardPerLP[pool] - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` per the H-D25 binding and IEmissionDistributor L217. Uses the STORED `poolAccRewardPerLP[pool]` (not a live-simulated value against `block.number`); the view returns a snapshot as of the most recent `_accrueGlobal` + `_settlePool` invocation. Callers needing a fresh value should trigger any mutating entry first (`recordScore` / `recordDeposit` / `recordWithdrawal` / `claim` all invoke `_accrueGlobal` + `_settlePool` per H-D21). The FixedPoint mulDown form matches the AuMM-wei output unit per H-D24 — `pendingBalance` is already AuMM-wei (crystallized at `recordDeposit` / `recordWithdrawal`), and `(acc - userRewardDebt).mulDown(userLP)` converts (FixedPoint AuMM-per-LP-unit × LP-unit count) into AuMM-wei. No-underflow invariant on `poolAccRewardPerLP[pool] - userRewardDebt[pool][user]` identical to `claim` / `recordDeposit` / `recordWithdrawal` — `userRewardDebt` is only ever written as a snapshot of the monotonically non-decreasing `poolAccRewardPerLP[pool]`. Consumed by Stage I AuMT for pre-claim balance display per IEmissionDistributor L219.
+     * @param pool The Balancer V3 pool address.
+     * @param user The AuMT holder address.
+     * @return The pending AuMM claim amount (18-decimal fixed-point).
+     */
+    function pendingClaim(address pool, address user) external view override returns (uint256) {
+        return pendingBalance[pool][user] + (poolAccRewardPerLP[pool] - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
+    }
+
 }
