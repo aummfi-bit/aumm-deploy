@@ -297,4 +297,72 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.accRewardPerScoreUnit(), 0);
         assertEq(distributor.totalScore(), 0);
     }
+
+    /* ---------- Governance setter tests (H-D14 / H-D16) ---------- */
+
+    /// @notice Rejects `setGovernanceContract` when the caller is not the current governance address — guards the onlyGovernance modifier.
+    function test_RevertWhen_SetGovernanceContractCallerNotGovernance() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        distributor.setGovernanceContract(address(0x1234));
+    }
+
+    /// @notice Rejects `setGovernanceContract(address(0))` — new governance must be non-zero per H-D14 invariant.
+    function test_RevertWhen_SetGovernanceContractZeroAddress() public {
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        distributor.setGovernanceContract(address(0));
+    }
+
+    /// @notice Confirms `setGovernanceContract` writes the new address to the governance storage slot.
+    function test_SetGovernanceContract_UpdatesSlot() public {
+        vm.prank(GOV);
+        distributor.setGovernanceContract(address(0xC0DE));
+        assertEq(distributor.governance(), address(0xC0DE));
+    }
+
+    /// @notice Confirms `setGovernanceContract` emits `GovernanceTransferred` with the correct old and new governance indexed topics.
+    function test_SetGovernanceContract_EmitsGovernanceTransferred() public {
+        vm.expectEmit(true, true, false, false);
+        emit IEmissionDistributor.GovernanceTransferred(GOV, address(0xC0DE));
+        vm.prank(GOV);
+        distributor.setGovernanceContract(address(0xC0DE));
+    }
+
+    /// @notice Rejects `setAuMTContract` when the caller is not the current governance address — confirms the setter is onlyGovernance-gated, not onlyAuMTContract-gated.
+    function test_RevertWhen_SetAuMTContractCallerNotGovernance() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        distributor.setAuMTContract(address(0x1234));
+    }
+
+    /// @notice Confirms a freshly-constructed EmissionDistributor — before any `setAuMTContract` call — holds `auMTContract == address(0)`, the H-D16 pre-Stage-I default-zero posture.
+    function test_Constructor_AuMTContractDefaultsZero() public {
+        EmissionDistributor freshDistributor = new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+        assertEq(freshDistributor.auMTContract(), address(0));
+    }
+
+    /// @notice Confirms `setAuMTContract(address(0))` is accepted — zero is the H-D16 deliberate deprecation safety valve, asymmetric to `setGovernanceContract`.
+    function test_SetAuMTContract_AcceptsZeroAddress() public {
+        vm.prank(GOV);
+        distributor.setAuMTContract(address(0));
+        assertEq(distributor.auMTContract(), address(0));
+    }
+
+    /// @notice Confirms `setAuMTContract` writes the new address to the auMTContract slot and emits `AuMTContractSet` with the setUp-wired old recorder and the new address as indexed topics.
+    function test_SetAuMTContract_UpdatesSlotAndEmits() public {
+        vm.expectEmit(true, true, false, false);
+        emit IEmissionDistributor.AuMTContractSet(AUMT_REC, address(0xC0DE));
+        vm.prank(GOV);
+        distributor.setAuMTContract(address(0xC0DE));
+        assertEq(distributor.auMTContract(), address(0xC0DE));
+    }
 }
