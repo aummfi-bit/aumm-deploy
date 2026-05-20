@@ -365,4 +365,98 @@ contract EmissionDistributorTest is Test {
         distributor.setAuMTContract(address(0xC0DE));
         assertEq(distributor.auMTContract(), address(0xC0DE));
     }
+
+    /* ---------- Score producer tests (H-D17 / H-D19) ---------- */
+
+    /// @notice Reverts `NotApproved` when `recordScore` is called for a pool that has never been gauge-approved — guards the H-D17 (a) gate on initial state.
+    function test_RevertWhen_RecordScoreGaugeNotApproved() public {
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotApproved.selector, POOL_A));
+        distributor.recordScore(POOL_A);
+    }
+
+    /// @notice Reverts `NotApproved` when `recordScore` is called after gauge approval is revoked — confirms the H-D17 (a) gate fires on post-revoke attempts, not only on never-approved pools.
+    function test_RevertWhen_RecordScoreRevokedGaugeAfterApproval() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        gauges.setApproved(POOL_A, false);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotApproved.selector, POOL_A));
+        distributor.recordScore(POOL_A);
+    }
+
+    /// @notice Confirms the first `recordScore` call writes `poolScore`, sets `totalScore`, and emits `ScoreUpdated` with oldScore == 0 and newScore == tvlEMA — happy-path H-D17 state-and-event in one pass.
+    function test_RecordScore_FirstWriteUpdatesStateAndEmits() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 100e18);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+    }
+
+    /// @notice Confirms `recordScore` succeeds when called by an arbitrary non-governance address — verifies the H-D17 permissionless entry point.
+    function test_RecordScore_PermissionlessCallerSucceeds() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.prank(address(0xBADC0DE));
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+    }
+
+    /// @notice Confirms a second `recordScore` call with a higher tvlEMA increases both `poolScore` and `totalScore` by the positive signed delta — H-D19 upward adjustment path.
+    function test_RecordScore_SecondWriteIncreaseAdjustsTotalScoreUp() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        ema.setTVLEMA(POOL_A, 150e18);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolScore(POOL_A), 150e18);
+        assertEq(distributor.totalScore(), 150e18);
+    }
+
+    /// @notice Confirms a second `recordScore` call with a lower tvlEMA decreases both `poolScore` and `totalScore` by the negative signed delta — H-D19 downward adjustment path.
+    function test_RecordScore_SecondWriteDecreaseAdjustsTotalScoreDown() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 150e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        ema.setTVLEMA(POOL_A, 30e18);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolScore(POOL_A), 30e18);
+        assertEq(distributor.totalScore(), 30e18);
+    }
+
+    /// @notice Confirms a second `recordScore` call with an unchanged tvlEMA emits `ScoreUpdated` with equal oldScore and newScore and leaves `totalScore` unchanged — H-D19 no-op delta path.
+    function test_RecordScore_NoOpEmitsEventWithEqualOldAndNew() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        distributor.recordScore(POOL_A);
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 100e18, 100e18);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+    }
+
+    /// @notice Confirms `recordScore` on two distinct pools accumulates both pool scores into `totalScore` independently — H-D19 multi-pool signed-delta aggregation.
+    function test_RecordScore_TwoPoolsAccumulateInTotalScore() public {
+        gauges.setApproved(POOL_A, true);
+        gauges.setApproved(POOL_B, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        ema.setTVLEMA(POOL_B, 200e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        mult.setMultiplier(POOL_B, 1e18);
+        distributor.recordScore(POOL_A);
+        distributor.recordScore(POOL_B);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.poolScore(POOL_B), 200e18);
+        assertEq(distributor.totalScore(), 300e18);
+    }
 }
