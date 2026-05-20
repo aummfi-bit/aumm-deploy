@@ -83,6 +83,17 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Mutable AuMT recorder authority per H-D16 — `address(0)` pre-Stage-I and as deprecation safety valve (mirrors EfficiencyOracle's H-D10 recorder slots). Gates `recordDeposit` / `recordWithdrawal` via `onlyAuMTContract` modifier (lands at H4.5).
     address public override auMTContract;
 
+    /* ---------- Incendiary registry slot (H-D29) ---------- */
+
+    /// @notice Governance-settable Stage L Incendiary registry address per H-D29 — `address(0)` at deploy (pre-Stage-L posture and deprecation safety valve); read inside `_phaseAwareBody`'s continuous-leg sub-interval body of `_lpTrancheIntegral` per H-D29; `address(0)` short-circuits the F-7 Step 1 skim subtraction returning `rate × n` (zero skim); semantics mirror H-D16 `auMTContract` and H-D10 `feeRecorder` / `emissionsRecorder` recorder-slot precedent (governance-settable, `address(0)` clears).
+    address public incendiaryRegistry;
+
+    /// @notice Emitted when the `incendiaryRegistry` slot is rebound by governance per H-D29.
+    /// @dev Indexed-old-indexed-new shape mirrors `AuMTContractSet` (H-D16) and `GovernanceTransferred` (H-D14) precedent. Zero address is permitted as H-D29 deprecation safety valve — `address(0)` in `newRegistry` signals the deprecation posture (skim subtraction disabled, returning `rate × n`).
+    /// @param oldRegistry The prior `incendiaryRegistry` address (zero pre-Stage-L deployment).
+    /// @param newRegistry The new `incendiaryRegistry` address. Zero address permitted as H-D29 deprecation safety valve.
+    event IncendiaryRegistrySet(address indexed oldRegistry, address indexed newRegistry);
+
     /* ---------- Constructor ---------- */
 
     /**
@@ -161,6 +172,17 @@ contract EmissionDistributor is IEmissionDistributor {
         address oldAuMTContract = auMTContract;
         auMTContract = newAuMTContract;
         emit AuMTContractSet(oldAuMTContract, newAuMTContract);
+    }
+
+    /**
+     * @notice Rebinds the `incendiaryRegistry` slot per H-D29 — `onlyGovernance`-gated.
+     * @dev Zero address is acceptable per H-D29 deprecation safety valve — mirrors H-D16 `setAuMTContract` / H-D10 recorder-slot zero-permitted precedent (deliberate asymmetry with H-D14 `setGovernanceContract` mandatory-non-zero). Body sequence: cache `oldRegistry = incendiaryRegistry` → write `incendiaryRegistry = newRegistry` → emit `IncendiaryRegistrySet(oldRegistry, newRegistry)`. When `incendiaryRegistry == address(0)` the `_phaseAwareBody` continuous-leg sub-interval body of `_lpTrancheIntegral` short-circuits the F-7 Step 1 skim subtraction, returning `rate × n` per H-D29 (H5.1c). Stage L deployment hand-off: governance calls this setter once post-Stage-L deploy with the deployed `IIncendiaryRegistry` registry address; H10 deployment script defaults the slot to `address(0)`.
+     * @param newRegistry The new Stage L Incendiary registry address. Zero address permitted as H-D29 deprecation safety valve.
+     */
+    function setIncendiaryRegistry(address newRegistry) external onlyGovernance {
+        address oldRegistry = incendiaryRegistry;
+        incendiaryRegistry = newRegistry;
+        emit IncendiaryRegistrySet(oldRegistry, newRegistry);
     }
 
     /* ---------- Emission rate stub (H-D21) ---------- */
