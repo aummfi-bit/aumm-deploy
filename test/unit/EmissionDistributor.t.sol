@@ -12,6 +12,7 @@ import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
+import {AureumTime} from "../../src/lib/AureumTime.sol";
 
 contract MockAuMM is ERC20, IAuMM {
     address private _minter;
@@ -424,78 +425,94 @@ contract EmissionDistributorTest is Test {
         distributor.recordScore(POOL_A);
     }
 
-    /// @notice Reverts `NotApproved` when `recordScore` is called after gauge approval is revoked — confirms the H-D17 (a) gate fires on post-revoke attempts, not only on never-approved pools.
+    /// @notice Reverts `NotApproved` when `recordScore` is called after gauge approval is revoked — confirms the H-D17 / H-D31 (a) gate fires on post-revoke attempts, not only on never-approved pools; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RevertWhen_RecordScoreRevokedGaugeAfterApproval() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         gauges.setApproved(POOL_A, false);
         vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotApproved.selector, POOL_A));
         distributor.recordScore(POOL_A);
     }
 
-    /// @notice Confirms the first `recordScore` call writes `poolScore`, sets `totalScore`, and emits `ScoreUpdated` with oldScore == 0 and newScore == tvlEMA — happy-path H-D17 state-and-event in one pass.
+    /// @notice Confirms the first `recordScore` call writes `poolScore`, sets `totalScore`, and emits `ScoreUpdated` with oldScore == 0 and newScore == tvlEMA — happy-path H-D17 / H-D31 state-and-event in one pass; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_FirstWriteUpdatesStateAndEmits() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         vm.expectEmit(true, false, false, true);
         emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 100e18);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolScore(POOL_A), 100e18);
         assertEq(distributor.totalScore(), 100e18);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
     }
 
-    /// @notice Confirms `recordScore` succeeds when called by an arbitrary non-governance address — verifies the H-D17 permissionless entry point.
+    /// @notice Confirms `recordScore` succeeds when called by an arbitrary non-governance address — verifies the H-D17 / H-D31 permissionless entry point; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_PermissionlessCallerSucceeds() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         vm.prank(address(0xBADC0DE));
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolScore(POOL_A), 100e18);
         assertEq(distributor.totalScore(), 100e18);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
     }
 
-    /// @notice Confirms a second `recordScore` call with a higher tvlEMA increases both `poolScore` and `totalScore` by the positive signed delta — H-D19 upward adjustment path.
+    /// @notice Confirms a second `recordScore` call with a higher tvlEMA increases both `poolScore` and `totalScore` by the positive signed delta — H-D19 / H-D31 upward adjustment path; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_SecondWriteIncreaseAdjustsTotalScoreUp() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         ema.setTVLEMA(POOL_A, 150e18);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolScore(POOL_A), 150e18);
         assertEq(distributor.totalScore(), 150e18);
+        assertEq(distributor.f5Score(POOL_A), 150e18);
+        assertEq(distributor.f5Total(), 150e18);
     }
 
-    /// @notice Confirms a second `recordScore` call with a lower tvlEMA decreases both `poolScore` and `totalScore` by the negative signed delta — H-D19 downward adjustment path.
+    /// @notice Confirms a second `recordScore` call with a lower tvlEMA decreases both `poolScore` and `totalScore` by the negative signed delta — H-D19 / H-D31 downward adjustment path; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_SecondWriteDecreaseAdjustsTotalScoreDown() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 150e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         ema.setTVLEMA(POOL_A, 30e18);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolScore(POOL_A), 30e18);
         assertEq(distributor.totalScore(), 30e18);
+        assertEq(distributor.f5Score(POOL_A), 30e18);
+        assertEq(distributor.f5Total(), 30e18);
     }
 
-    /// @notice Confirms a second `recordScore` call with an unchanged tvlEMA emits `ScoreUpdated` with equal oldScore and newScore and leaves `totalScore` unchanged — H-D19 no-op delta path.
+    /// @notice Confirms a second `recordScore` call with an unchanged tvlEMA emits `ScoreUpdated` with equal oldScore and newScore and leaves `totalScore` unchanged — H-D19 / H-D31 no-op delta path; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_NoOpEmitsEventWithEqualOldAndNew() public {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.expectEmit(true, false, false, true);
         emit IEmissionDistributor.ScoreUpdated(POOL_A, 100e18, 100e18);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolScore(POOL_A), 100e18);
         assertEq(distributor.totalScore(), 100e18);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
     }
 
-    /// @notice Confirms `recordScore` on two distinct pools accumulates both pool scores into `totalScore` independently — H-D19 multi-pool signed-delta aggregation.
+    /// @notice Confirms `recordScore` on two distinct pools accumulates both pool scores into `totalScore` independently — H-D19 / H-D31 multi-pool signed-delta aggregation; vm.roll past year1EndBlock — enters α=1e18 continuous regime per H-D32 / H-D33.
     function test_RecordScore_TwoPoolsAccumulateInTotalScore() public {
         gauges.setApproved(POOL_A, true);
         gauges.setApproved(POOL_B, true);
@@ -503,11 +520,44 @@ contract EmissionDistributorTest is Test {
         ema.setTVLEMA(POOL_B, 200e18);
         mult.setMultiplier(POOL_A, 1e18);
         mult.setMultiplier(POOL_B, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         distributor.recordScore(POOL_B);
         assertEq(distributor.poolScore(POOL_A), 100e18);
         assertEq(distributor.poolScore(POOL_B), 200e18);
         assertEq(distributor.totalScore(), 300e18);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Score(POOL_B), 200e18);
+        assertEq(distributor.f5Total(), 300e18);
+    }
+
+    /// @notice Confirms the H-D33 Miliarium branch at α=0 (default block ≤ month10EndBlock) reshapes effective to `f5Total / 28` per H-D6 1/28 literal supply-deflationary share — canonical F-1 equal-split baseline.
+    function test_RecordScore_BootstrapAlphaZeroMiliarium_EffectiveEqualsF5TotalOver28() public {
+        miliReg.setMiliarium(POOL_A, true);
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 100e18 / 28);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
+        assertEq(distributor.poolScore(POOL_A), 100e18 / 28);
+        assertEq(distributor.totalScore(), 100e18 / 28);
+    }
+
+    /// @notice Confirms the H-D33 non-Miliarium Option A branch at α=0 (default block ≤ month10EndBlock) reshapes effective to 0 per `10_constitution.md §xxviii` — non-Miliarium pools carry zero weight during F-1 bootstrap regime.
+    function test_RecordScore_BootstrapAlphaZeroNonMiliarium_EffectiveEqualsZero() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 0);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
+        assertEq(distributor.poolScore(POOL_A), 0);
+        assertEq(distributor.totalScore(), 0);
     }
 
     /* ---------- recordDeposit tests (H-D16 / H-D21 / H-D25) ---------- */
