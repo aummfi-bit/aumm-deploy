@@ -282,6 +282,31 @@ contract EmissionDistributor is IEmissionDistributor {
         return contribution;
     }
 
+    /* ---------- Phase-aware interval integral (H-D26 / H-D30) ---------- */
+
+    /**
+     * @notice Integrates the AuMM LP-tranche emission over `[from, to]` inclusive per the H-D26 conservation invariant, splitting at every spanned era boundary per H-D30 and delegating each era sub-interval to `_phaseAwareBody`.
+     * @dev Caller is `_accrueGlobal` (H5.1e) which guarantees `from = lastAccrualBlock + 1` and `to = block.number` after the empty-interval + empty-`totalScore` short-circuits. Supersedes H-D21's H4 single-block sample (which remains LOCKED for H4 historical posture per H-D26 prose). Algorithm is a cursor walk — each iteration reads `era = AureumTime.eraIndex(GENESIS_BLOCK, cursor)` then `eraEnd = AureumTime.nthHalvingBlock(GENESIS_BLOCK, era + 1) - 1` (last block of the current era; `Era 0 = [genesis, genesis + BLOCKS_PER_ERA)` per `AureumTime.eraIndex` L45 doc), clamps `subTo = min(eraEnd, to)`, snapshots a constant `rate = AuMM.blockEmissionRate(cursor)` valid across the entire era sub-interval per H-D30 (`blockEmissionRate(b) = GENESIS_RATE >> eraIndex(b, GENESIS_BLOCK)` is piecewise-constant within an era per OQ-5 / §xxix), dispatches to `_phaseAwareBody(cursor, subTo, rate)` for the inner phase split (H-D27 bootstrap A/B + H-D28 transition + H-D29 continuous), and advances `cursor = subTo + 1`. Loop termination is monotonic because `subTo >= cursor` always (era end is the last block of the current era so always `>= cursor`, and `to >= cursor` by loop precondition). Era 0 fully encloses both the bootstrap window (`month10End ≈ 2.19M < 10.5M = BLOCKS_PER_ERA`) and the transition window (`year1End ≈ 2.628M`) per OQ-3 / OQ-5, so for the first ~4 years post-genesis the era loop executes exactly 1 iteration per call and era-splitting is a no-op gas-wise — all phase splitting happens inside `_phaseAwareBody`. From Era 1 onward the loop is unbounded in principle but bounded in practice by user-activity cadence (active pools keep `lastAccrualBlock` close to `block.number`; fully dormant pools accumulate at most O(eras_since_genesis) = O(years/4) iterations over the protocol lifetime). Conservation invariant `LP_integral(from, to) + Σ Bodensee_apsum(sub) + Σ Incendiary_integral(sub) = Σ blockEmissionRate(sub_from) × n_sub` enforced piecewise by `_phaseAwareBody` per H-D26 (the era split preserves this because `blockEmissionRate` is constant within each era sub-interval). `internal view` per H-D26 verbatim — function reads `GENESIS_BLOCK` immutable, the `incendiaryRegistry` storage slot (transitively via `_phaseAwareBody`), and may make an external view call into `IIncendiaryRegistry.integratedSkim` (transitively via `_phaseAwareBody`). No caching layer, no memoisation — accrual cadence and the H-D21 lazy-tick discipline at every mutating entry bound the per-call work. `_lpTrancheEmission(block_)` view at L196-L198 is RETAINED unchanged per H-D26 as the single-block external view for tests / UI but is no longer read in the production accrual path (the wiring of `_accrueGlobal` to call `_lpTrancheIntegral` instead of `_lpTrancheEmission` lands at H5.1e).
+     * @param from Inclusive start block of the integration interval; caller guarantees `from <= to` and `from >= GENESIS_BLOCK + 1` per H-D21's `_accrueGlobal` short-circuit invariants.
+     * @param to Inclusive end block of the integration interval; caller passes `block.number` per H-D21.
+     * @return AuMM-wei LP-tranche emission integrated over `[from, to]` per H-D26 conservation invariant; aggregates per-era sub-interval contributions from `_phaseAwareBody`.
+     */
+    function _lpTrancheIntegral(uint256 from, uint256 to) internal view returns (uint256) {
+        uint256 cursor = from;
+        uint256 contribution = 0;
+
+        while (cursor <= to) {
+            uint256 era = AureumTime.eraIndex(GENESIS_BLOCK, cursor);
+            uint256 eraEnd = AureumTime.nthHalvingBlock(GENESIS_BLOCK, era + 1) - 1;
+            uint256 subTo = eraEnd < to ? eraEnd : to;
+            uint256 rate = AuMM.blockEmissionRate(cursor);
+            contribution += _phaseAwareBody(cursor, subTo, rate);
+            cursor = subTo + 1;
+        }
+
+        return contribution;
+    }
+
     /* ---------- Accrual (H-D15 / H-D21) ---------- */
 
     /**
