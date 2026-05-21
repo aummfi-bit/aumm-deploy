@@ -1205,4 +1205,87 @@ contract EmissionDistributorTest is Test {
         uint256 expected = 5 * 1e18 + (era1End - era1Start + 1) * 5e17 + 5 * 25e16;
         assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
     }
+
+    /* ---------- Phase-boundary nesting tests (H5 / H-D27 / H-D28 / H-D29) ---------- */
+
+    /// @notice Asserts extLpTrancheIntegral crossing the A-leg to B-leg boundary at m6 aggregates both leg contributions independently per H-D27.
+    function test_LpTrancheIntegral_CrossM6_ALegToBLeg_AggregatesBothLegs() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 - 4;
+        uint256 to_ = m6 + 5;
+        uint256 aLegContribution = 1e18 * 5 - _apSumFixture(m6 - 4, m6, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        uint256 bLegContribution = 1e18 * 5 - _apSumFixture(m6 + 1, m6 + 5, m6, m10, 5e17, 5e17, 1e18);
+        uint256 expected = aLegContribution + bLegContribution;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral crossing the B-leg to transition boundary at m10 adds the B-leg AP deduction plus full-rate transition blocks per H-D28.
+    function test_LpTrancheIntegral_CrossM10_BLegToTransition_AddsBLegPlusRateTimesN() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m10 - 4;
+        uint256 to_ = m10 + 5;
+        uint256 bLegContribution = 1e18 * 5 - _apSumFixture(m10 - 4, m10, m6, m10, 5e17, 5e17, 1e18);
+        uint256 transitionContribution = 1e18 * 5;
+        uint256 expected = bLegContribution + transitionContribution;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral crossing the transition to continuous boundary at y1 yields full rate for both phases — no AP deduction, no Incendiary skim at default address(0) registry per H-D29.
+    function test_LpTrancheIntegral_CrossY1_TransitionToContinuous_AddsRateTimesN() public {
+        aumm.setRate(1e18);
+        uint256 y1 = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = y1 - 4;
+        uint256 to_ = y1 + 5;
+        uint256 expected = 1e18 * 10;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral crossing A-leg, B-leg, and transition (three phases within Era 0) aggregates each phase independently per H-D27 + H-D28.
+    function test_LpTrancheIntegral_CrossM6AndM10_ALegToTransition_ThreePhases() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 - 4;
+        uint256 to_ = m10 + 5;
+        uint256 aLegContribution = 1e18 * 5 - _apSumFixture(m6 - 4, m6, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        uint256 bLegContribution = 1e18 * (m10 - m6) - _apSumFixture(m6 + 1, m10, m6, m10, 5e17, 5e17, 1e18);
+        uint256 transitionContribution = 1e18 * 5;
+        uint256 expected = aLegContribution + bLegContribution + transitionContribution;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral crossing B-leg, transition, and continuous (three phases within Era 0) aggregates each phase independently per H-D28 + H-D29.
+    function test_LpTrancheIntegral_CrossM10AndY1_BLegToContinuous_ThreePhases() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 y1 = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m10 - 4;
+        uint256 to_ = y1 + 5;
+        uint256 bLegContribution = 1e18 * 5 - _apSumFixture(m10 - 4, m10, m6, m10, 5e17, 5e17, 1e18);
+        uint256 transitionContribution = 1e18 * (y1 - m10);
+        uint256 continuousContribution = 1e18 * 5;
+        uint256 expected = bLegContribution + transitionContribution + continuousContribution;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral spanning all four phases (A-leg, B-leg, transition, continuous) within Era 0 aggregates per-phase contributions independently per H-D27 + H-D28 + H-D29.
+    function test_LpTrancheIntegral_FullSweep_AllFourPhases() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 y1 = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 - 4;
+        uint256 to_ = y1 + 5;
+        uint256 aLegContribution = 1e18 * 5 - _apSumFixture(m6 - 4, m6, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        uint256 bLegContribution = 1e18 * (m10 - m6) - _apSumFixture(m6 + 1, m10, m6, m10, 5e17, 5e17, 1e18);
+        uint256 transitionContribution = 1e18 * (y1 - m10);
+        uint256 continuousContribution = 1e18 * 5;
+        uint256 expected = aLegContribution + bLegContribution + transitionContribution + continuousContribution;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
 }
