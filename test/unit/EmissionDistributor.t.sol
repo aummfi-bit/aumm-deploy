@@ -1059,4 +1059,86 @@ contract EmissionDistributorTest is Test {
         assertEq(amountPushed, 1e18);
         assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
     }
+
+    /* ---------- LP tranche integral observation tests (H5 / H-D34 / H-D27) ---------- */
+
+    /// @notice Closed-form AP fixture mirroring _bootstrapApSum at src/emission/EmissionDistributor.sol L239-L243 — integer arithmetic identity per H-D27; used to compute expected Bodensee deduction for extLpTrancheIntegral assertions.
+    function _apSumFixture(
+        uint256 from_,
+        uint256 to_,
+        uint256 anchorStart,
+        uint256 anchorEnd,
+        uint256 startShare,
+        uint256 dropShare,
+        uint256 rate
+    ) internal pure returns (uint256) {
+        uint256 width = anchorEnd - anchorStart;
+        uint256 first = startShare - (dropShare * (from_ - anchorStart)) / width;
+        uint256 last = startShare - (dropShare * (to_ - anchorStart)) / width;
+        uint256 n = to_ - from_ + 1;
+        return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral over an interior A-leg range matches naive block-by-block AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_ALegInterior_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = GENESIS_BLOCK_ + 1;
+        uint256 to_ = GENESIS_BLOCK_ + 10;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral at the A-leg anchor-start boundary (genesis block) matches naive AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_ALegAnchorStart_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = GENESIS_BLOCK_;
+        uint256 to_ = GENESIS_BLOCK_ + 100;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral at the A-leg anchor-end boundary (month6EndBlock) matches naive AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_ALegAnchorEnd_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 - 100;
+        uint256 to_ = m6;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral over an interior B-leg range matches naive block-by-block AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_BLegInterior_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 + 100;
+        uint256 to_ = m6 + 200;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, m6, m10, 5e17, 5e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral at the B-leg anchor-start boundary (month6EndBlock + 1) matches naive AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_BLegAnchorStart_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 + 1;
+        uint256 to_ = m6 + 100;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, m6, m10, 5e17, 5e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral at the B-leg anchor-end boundary (month10EndBlock) matches naive AP deduction per H-D27 identity.
+    function test_LpTrancheIntegral_BLegAnchorEnd_MatchesNaiveApSum() public {
+        aumm.setRate(1e18);
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m10 - 100;
+        uint256 to_ = m10;
+        uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, m6, m10, 5e17, 5e17, 1e18);
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
 }
