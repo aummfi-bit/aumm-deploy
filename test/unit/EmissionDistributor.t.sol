@@ -12,6 +12,7 @@ import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
+import {IIncendiaryRegistry} from "../../src/incendiary/IIncendiaryRegistry.sol";
 import {AureumTime} from "../../src/lib/AureumTime.sol";
 import {EmissionDistributorHarness} from "./harness/EmissionDistributorHarness.sol";
 
@@ -1287,5 +1288,81 @@ contract EmissionDistributorTest is Test {
         uint256 continuousContribution = 1e18 * 5;
         uint256 expected = aLegContribution + bLegContribution + transitionContribution + continuousContribution;
         assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
+
+    /* ---------- Continuous-phase Incendiary skim tests (H5 / H-D29) ---------- */
+
+    function test_ExtLpTrancheIntegral_DefaultRegistry_NoCall_RateTimesN() public {
+        // incendiaryRegistry == address(0) — no external call, result is rate * n
+        aumm.setRate(1e18);
+        uint256 from_ = 5_000_000;
+        uint256 to_   = 5_000_009;
+        uint256 n     = to_ - from_ + 1; // 10
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
+    }
+
+    function test_ExtLpTrancheIntegral_NonZeroRegistry_ZeroSkim_RateTimesN() public {
+        // registry deployed but returns 0 skim — result still rate * n
+        aumm.setRate(1e18);
+        uint256 from_    = 5_000_000;
+        uint256 to_      = 5_000_009;
+        uint256 n        = to_ - from_ + 1;
+        address registry = address(0xBEEF);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
+            abi.encode(uint256(0))
+        );
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
+    }
+
+    function test_ExtLpTrancheIntegral_NonZeroRegistry_PositiveSkim_Subtracts() public {
+        // registry returns a positive skim — result is rate * n - skim
+        aumm.setRate(1e18);
+        uint256 from_    = 5_000_000;
+        uint256 to_      = 5_000_009;
+        uint256 n        = to_ - from_ + 1;
+        uint256 skim     = 3e17;
+        address registry = address(0xBEEF);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
+            abi.encode(skim)
+        );
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n - skim);
+    }
+
+    function test_ExtLpTrancheIntegral_RevertWhen_IncendiaryRegistryReverts() public {
+        // registry call reverts — distributor must propagate (no try/catch per H-D29)
+        aumm.setRate(1e18);
+        uint256 from_    = 5_000_000;
+        uint256 to_      = 5_000_009;
+        address registry = address(0xBEEF);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.mockCallRevert(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
+            abi.encodeWithSignature("Error(string)", "skim_unavailable")
+        );
+        vm.expectRevert();
+        distributor.extLpTrancheIntegral(from_, to_);
+    }
+
+    function test_ExtLpTrancheIntegral_RegistryRebindToZero_DeprecationValve() public {
+        // set registry then rebind to address(0) — falls back to rate * n (no external call)
+        aumm.setRate(1e18);
+        uint256 from_ = 5_000_000;
+        uint256 to_   = 5_000_009;
+        uint256 n     = to_ - from_ + 1;
+        vm.startPrank(GOV);
+        distributor.setIncendiaryRegistry(address(0xBEEF));
+        distributor.setIncendiaryRegistry(address(0));
+        vm.stopPrank();
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
     }
 }
