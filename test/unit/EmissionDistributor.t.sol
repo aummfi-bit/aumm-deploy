@@ -1141,4 +1141,68 @@ contract EmissionDistributorTest is Test {
         uint256 expected = (to_ - from_ + 1) * 1e18 - _apSumFixture(from_, to_, m6, m10, 5e17, 5e17, 1e18);
         assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
     }
+
+    /* ---------- Era-boundary cursor walk tests (H5 / H-D30) ---------- */
+
+    /// @notice Asserts extLpTrancheIntegral over a 10-block continuous-phase range within Era 0 equals rate times block count — single-iteration cursor walk, no boundary.
+    function test_LpTrancheIntegral_Era0ContinuousNoBoundary_MatchesRateTimesN() public {
+        aumm.setRate(1e18);
+        uint256 from_ = 5_000_000;
+        uint256 to_ = 5_000_009;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 10 * 1e18);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral straddling the Era 0 → Era 1 boundary with constant rate equals rate times total block count — two-iteration cursor walk, boundary split, no rate change.
+    function test_LpTrancheIntegral_StraddleEra0End_ConstantRate_MatchesRateTimesN() public {
+        aumm.setRate(1e18);
+        uint256 era1Start = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 1);
+        uint256 era0End = era1Start - 1;
+        uint256 from_ = era0End - 4;
+        uint256 to_ = era1Start + 5;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 11 * 1e18);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral straddling the Era 0 → Era 1 boundary with halved rate in Era 1 splits contributions correctly at the era boundary per H-D30 snapshot-once semantics.
+    function test_LpTrancheIntegral_StraddleEra0End_HalvedRate_SplitsAtBoundary() public {
+        uint256 era1Start = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 1);
+        uint256 era0End = era1Start - 1;
+        uint256 from_ = era0End - 4;
+        uint256 to_ = era1Start + 5;
+        vm.mockCall(address(aumm), abi.encodeWithSelector(IAuMM.blockEmissionRate.selector, from_), abi.encode(uint256(1e18)));
+        vm.mockCall(address(aumm), abi.encodeWithSelector(IAuMM.blockEmissionRate.selector, era1Start), abi.encode(uint256(5e17)));
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 5 * 1e18 + 6 * 5e17);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral over a range whose upper bound equals the Era 0 end block clamps subTo correctly and produces a single-iteration result.
+    function test_LpTrancheIntegral_ExactAtEra0End_SingleIteration() public {
+        aumm.setRate(1e18);
+        uint256 era0End = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 1) - 1;
+        uint256 from_ = era0End - 9;
+        uint256 to_ = era0End;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 10 * 1e18);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral starting exactly at Era 1 start produces a single-iteration result using Era 1 rate snapshot per H-D30.
+    function test_LpTrancheIntegral_StartsAtEra1_SingleIteration() public {
+        aumm.setRate(1e18);
+        uint256 era1Start = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 1);
+        uint256 from_ = era1Start;
+        uint256 to_ = era1Start + 9;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 10 * 1e18);
+    }
+
+    /// @notice Asserts extLpTrancheIntegral spanning three eras with distinct halved rates aggregates per-era contributions independently per H-D30 cursor walk.
+    function test_LpTrancheIntegral_ThreeErasWithHalving_AggregatesPerEra() public {
+        uint256 era1Start = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 1);
+        uint256 era1End = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 2) - 1;
+        uint256 era2Start = AureumTime.nthHalvingBlock(GENESIS_BLOCK_, 2);
+        uint256 era0End = era1Start - 1;
+        uint256 from_ = era0End - 4;
+        uint256 to_ = era2Start + 4;
+        vm.mockCall(address(aumm), abi.encodeWithSelector(IAuMM.blockEmissionRate.selector, from_), abi.encode(uint256(1e18)));
+        vm.mockCall(address(aumm), abi.encodeWithSelector(IAuMM.blockEmissionRate.selector, era1Start), abi.encode(uint256(5e17)));
+        vm.mockCall(address(aumm), abi.encodeWithSelector(IAuMM.blockEmissionRate.selector, era2Start), abi.encode(uint256(25e16)));
+        uint256 expected = 5 * 1e18 + (era1End - era1Start + 1) * 5e17 + 5 * 25e16;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), expected);
+    }
 }
