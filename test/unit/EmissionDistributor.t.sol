@@ -13,6 +13,7 @@ import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
 import {AureumTime} from "../../src/lib/AureumTime.sol";
+import {EmissionDistributorHarness} from "./harness/EmissionDistributorHarness.sol";
 
 contract MockAuMM is ERC20, IAuMM {
     address private _minter;
@@ -187,7 +188,7 @@ contract EmissionDistributorTest is Test {
     MockCCBMultiplier internal mult;
     MockEfficiencyOracle internal effOracle;
     MockMiliariumRegistry internal miliReg;
-    EmissionDistributor internal distributor;
+    EmissionDistributorHarness internal distributor;
 
     function setUp() public virtual {
         aumm = new MockAuMM();
@@ -196,7 +197,7 @@ contract EmissionDistributorTest is Test {
         mult = new MockCCBMultiplier();
         effOracle = new MockEfficiencyOracle();
         miliReg = new MockMiliariumRegistry();
-        distributor = new EmissionDistributor(
+        distributor = new EmissionDistributorHarness(
             IAuMM(address(aumm)),
             IGaugeRegistry(address(gauges)),
             IEMASampler(address(ema)),
