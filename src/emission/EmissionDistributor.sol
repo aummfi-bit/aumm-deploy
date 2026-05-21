@@ -396,23 +396,31 @@ contract EmissionDistributor is IEmissionDistributor {
         return (block_ - m10 - 1) * 1e18 / (y1 - m10 - 1);
     }
 
-    /* ---------- Score producer (H-D17) ---------- */
+    /* ---------- Score producer (H-D17 / H-D31) ---------- */
 
     /**
-     * @notice Permissionlessly records the current F-5 score for `pool` and updates `totalScore`.
-     * @dev H-D17 6-step sequence — (a) gauge gate via `_gaugeRegistry.isGaugeApproved(pool)` revert `NotApproved(pool)` per H-D5 / H-D17 (a); (b) H-D21 lazy accrual tick via `_accrueGlobal()` then per-pool settle via `_settlePool(pool)` BEFORE any score mutation; (c) F-5 recomputation via `CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool))` per H-D17 (c) — `IEMASampler.tvlEMA` is read-only (F-D22 separation; never invokes `updateEMA`), `ICCBMultiplier.getMultiplier` returns `INITIAL_MULTIPLIER = 1e18` for non-Miliarium pools per OQ-23 / F-D16; (d) H-D19 F12 signed-delta middleware: cache `oldScore = poolScore[pool]`, compute `delta = newScore.toInt256() - oldScore.toInt256()`, apply `totalScore = _applySignedDelta(totalScore, delta)` (the H4.5d helper); (e) `poolScore[pool] = newScore`; (f) emit `ScoreUpdated(pool, oldScore, newScore)`. Calling `recordScore` against a pool whose `newScore == oldScore` still applies the no-op delta (signed-delta yields zero, `_applySignedDelta` returns `totalScore` unchanged) and emits the event with identical old/new values — intentional per H-D17 (permissionless idempotent producer; off-chain consumers can detect no-op via event payload equality).
+     * @notice Permissionlessly records the reshaped effective score for `pool` under H-D31 / H-D33 and updates `totalScore` and `f5Total`.
+     * @dev H-D17 / H-D31 10-step flow — (1) gauge gate `_gaugeRegistry.isGaugeApproved(pool)` revert `NotApproved(pool)` per H-D5 / H-D17 (a); (2) H-D21 lazy accrual tick `_accrueGlobal()`; (3) per-pool settle `_settlePool(pool)` BEFORE any score mutation per H-D21 / H-D23; (4) F-5 recompute `score_F5_new = CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool))` — `ICCBMultiplier.getMultiplier` returns `INITIAL_MULTIPLIER = 1e18` for non-Miliarium pools per OQ-23 / F-D16; (5) signed-delta on `f5Total` against old `f5Score[pool]` BEFORE overwrite at step (6) — `f5Total = _applySignedDelta(f5Total, score_F5_new.toInt256() - f5Score[pool].toInt256())` per H-D31 / H-D33 / F12; (6) write `f5Score[pool] = score_F5_new`; (7) snapshot `alpha = _alphaF3(block.number)` per H-D32 — 0 in bootstrap (Month 0—10, F-1 equal-split regime), 1e18 in continuous (Year 1+, F-7 CCB-only regime), linear interior in F-3 transition window; (8) H-D33 reshape — Miliarium branch `effective_new = (1e18 - alpha).mulDown(f5Total / 28) + alpha.mulDown(score_F5_new)` per H-D6 1/28 literal supply-deflationary share (α=0 collapses to protocol-aggregate F-5 mean, α=1e18 collapses to pool-own F-5 per §xxviii); non-Miliarium Option A `effective_new = alpha.mulDown(score_F5_new)` per `10_constitution.md §xxviii` (α=0 yields zero weight in bootstrap, α=1e18 yields full F-5 in continuous; F-D9 Miliarium-only multiplier scope); (9) capture `oldEffective = poolScore[pool]`, apply signed-delta `totalScore = _applySignedDelta(totalScore, effective_new.toInt256() - oldEffective.toInt256())` per H-D19 / F12 — `poolScore[pool]` stores reshaped effective score from H5.3 onward (H4 stored raw F-5; semantic repurpose at H5.3; downstream `_settlePool` + `totalScore` signed-delta reads unchanged per H-D31 Q2); (10) write `poolScore[pool] = effective_new` and emit `ScoreUpdated(pool, oldEffective, effective_new)` — no-op delta path (equal old/new effective) preserved per H-D17 permissionless idempotent producer; cross-pool α staleness accepted per H-D31 Q2 bot-poke cadence + H-D3 epoch-step descriptive. Anchors: H-D17, H-D31, H-D32, H-D33, H-D5, H-D6, H-D19, H-D21, H-D23, F-3, F-5, F-7, F-D9, F-D16, OQ-23, F12.
      * @param pool The Balancer V3 pool address whose score is being recorded.
      */
     function recordScore(address pool) external override {
         if (!_gaugeRegistry.isGaugeApproved(pool)) revert NotApproved(pool);
         _accrueGlobal();
         _settlePool(pool);
-        uint256 newScore = CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool));
-        uint256 oldScore = poolScore[pool];
-        int256 delta = newScore.toInt256() - oldScore.toInt256();
-        totalScore = _applySignedDelta(totalScore, delta);
-        poolScore[pool] = newScore;
-        emit ScoreUpdated(pool, oldScore, newScore);
+        uint256 score_F5_new = CCBScore.score(_emaSampler.tvlEMA(pool), _ccbMultiplier.getMultiplier(pool));
+        f5Total = _applySignedDelta(f5Total, score_F5_new.toInt256() - f5Score[pool].toInt256());
+        f5Score[pool] = score_F5_new;
+        uint256 alpha = _alphaF3(block.number);
+        uint256 effective_new;
+        if (_miliariumRegistry.isMiliarium(pool)) {
+            effective_new = (1e18 - alpha).mulDown(f5Total / 28) + alpha.mulDown(score_F5_new);
+        } else {
+            effective_new = alpha.mulDown(score_F5_new);
+        }
+        uint256 oldEffective = poolScore[pool];
+        totalScore = _applySignedDelta(totalScore, effective_new.toInt256() - oldEffective.toInt256());
+        poolScore[pool] = effective_new;
+        emit ScoreUpdated(pool, oldEffective, effective_new);
     }
 
     /* ---------- Recorder mutators (H-D16 / H-D21 / H-D25) ---------- */
