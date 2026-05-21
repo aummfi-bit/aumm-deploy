@@ -374,6 +374,28 @@ contract EmissionDistributor is IEmissionDistributor {
         return (base.toInt256() + delta).toUint256();
     }
 
+    /* ---------- F-3 α-blend helper (H-D32) ---------- */
+
+    /**
+     * @notice Linear F-3 α blend across the transition window `(month10EndBlock, year1EndBlock]`, clamped to 0 below and 1e18 above.
+     * @dev H-D32 anchor — F-3 defines a linear interpolation across the `(month10EndBlock, year1EndBlock]` transition window per F-3:
+     *      lower clamp — returns 0 at `block_ <= m10` (canonical F-1 equal-split regime; Bodensee bootstrap channel active at full F-0 rate);
+     *      upper clamp — returns 1e18 at `block_ >= y1` (canonical F-7 CCB-only regime; bootstrap channel closed);
+     *      linear interior — `(block_ - m10 - 1) * 1e18 / (y1 - m10 - 1)` yields the FixedPoint 18-decimal α ∈ (0, 1e18) exclusive.
+     *      Numerator `block_ - m10 - 1` is zero at `block_ == m10 + 1` (first interior block) and `y1 - m10 - 2` at `block_ == y1 - 1` (last interior block before upper clamp).
+     *      Denominator `y1 - m10 - 1 = BLOCKS_PER_YEAR - 10 * BLOCKS_PER_MONTH - 1 = 2_628_000 - 2_190_000 - 1 = 437_999` (OQ-3 + OQ-5 block-count constants; `y1 > m10 + 1` by construction — no divide-by-zero).
+     *      Plain integer arithmetic — multiplying by 1e18 before integer-dividing by the 437_999-block integer denominator yields the FixedPoint 18-decimal result directly; no `.divDown` / `.mulDown` / FixedPoint library call needed (H-D32 closing prose). Anchors: H-D32, H-D33, F-3, OQ-3, OQ-5. Consumed by `recordScore` at H5.3e per H-D33.
+     * @param block_ The block-number input — typically `block.number` at the H-D31 step (7) `recordScore` call site; this helper does not read the `block` global.
+     * @return α — FixedPoint 18-decimal value in `[0, 1e18]` representing the F-3 linear blend coefficient.
+     */
+    function _alphaF3(uint256 block_) private view returns (uint256) {
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK);
+        uint256 y1 = AureumTime.year1EndBlock(GENESIS_BLOCK);
+        if (block_ <= m10) return 0;
+        if (block_ >= y1) return 1e18;
+        return (block_ - m10 - 1) * 1e18 / (y1 - m10 - 1);
+    }
+
     /* ---------- Score producer (H-D17) ---------- */
 
     /**
