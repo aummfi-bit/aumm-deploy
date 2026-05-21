@@ -1365,4 +1365,87 @@ contract EmissionDistributorTest is Test {
         vm.stopPrank();
         assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
     }
+
+    /* ---------- Conservation invariant (H-D26): LP + bootstrap_sum + skim = rate × n ---------- */
+
+    function test_Conservation_ALegInterior_LPPlusBootstrapEqualsTotal() public {
+        // Within A-leg: LP_integral + bootstrap_ap_sum_A = rate × n
+        aumm.setRate(1e18);
+        uint256 m6    = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = GENESIS_BLOCK_ + 1000;
+        uint256 to_   = GENESIS_BLOCK_ + 2000;
+        uint256 n     = to_ - from_ + 1;
+        uint256 lpIntegral   = distributor.extLpTrancheIntegral(from_, to_);
+        uint256 bootstrapSum = _apSumFixture(from_, to_, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        assertEq(lpIntegral + bootstrapSum, 1e18 * n);
+    }
+
+    function test_Conservation_BLegInterior_LPPlusBootstrapEqualsTotal() public {
+        // Within B-leg: LP_integral + bootstrap_ap_sum_B = rate × n
+        aumm.setRate(1e18);
+        uint256 m6    = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10   = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m6 + 100;
+        uint256 to_   = m6 + 1000;
+        uint256 n     = to_ - from_ + 1;
+        uint256 lpIntegral   = distributor.extLpTrancheIntegral(from_, to_);
+        uint256 bootstrapSum = _apSumFixture(from_, to_, m6, m10, 5e17, 5e17, 1e18);
+        assertEq(lpIntegral + bootstrapSum, 1e18 * n);
+    }
+
+    function test_Conservation_TransitionInterior_LPEqualsTotal() public {
+        // Within transition phase: LP_integral = rate × n (no subtractions)
+        aumm.setRate(1e18);
+        uint256 m10   = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = m10 + 100;
+        uint256 to_   = m10 + 1000;
+        uint256 n     = to_ - from_ + 1;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
+    }
+
+    function test_Conservation_ContinuousDefaultRegistry_LPEqualsTotal() public {
+        // Continuous phase with default registry (skim = 0): LP_integral = rate × n
+        aumm.setRate(1e18);
+        uint256 y1    = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = y1 + 100;
+        uint256 to_   = y1 + 1000;
+        uint256 n     = to_ - from_ + 1;
+        assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
+    }
+
+    function test_Conservation_ContinuousWithSkim_LPPlusSkimEqualsTotal() public {
+        // Continuous phase with non-zero skim: LP_integral + skim = rate × n
+        aumm.setRate(1e18);
+        uint256 y1    = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = y1 + 100;
+        uint256 to_   = y1 + 1000;
+        uint256 n     = to_ - from_ + 1;
+        uint256 skim  = 2e17;
+        address registry = address(0xBEEF);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
+            abi.encode(skim)
+        );
+        uint256 lpIntegral = distributor.extLpTrancheIntegral(from_, to_);
+        assertEq(lpIntegral + skim, 1e18 * n);
+    }
+
+    function test_Conservation_FullSweep_LPPlusBootstrapsEqualsTotal() public {
+        // Full sweep across all 4 phases with default registry (skim = 0):
+        // LP_integral + bootstrap_A + bootstrap_B = rate × n
+        aumm.setRate(1e18);
+        uint256 m6    = AureumTime.month6EndBlock(GENESIS_BLOCK_);
+        uint256 m10   = AureumTime.month10EndBlock(GENESIS_BLOCK_);
+        uint256 y1    = AureumTime.year1EndBlock(GENESIS_BLOCK_);
+        uint256 from_ = GENESIS_BLOCK_ + 1000;
+        uint256 to_   = y1 + 1000;
+        uint256 n     = to_ - from_ + 1;
+        uint256 aLegSum     = _apSumFixture(from_, m6, GENESIS_BLOCK_, m6, 8e17, 3e17, 1e18);
+        uint256 bLegSum     = _apSumFixture(m6 + 1, m10, m6, m10, 5e17, 5e17, 1e18);
+        uint256 lpIntegral  = distributor.extLpTrancheIntegral(from_, to_);
+        assertEq(lpIntegral + aLegSum + bLegSum, 1e18 * n);
+    }
 }
