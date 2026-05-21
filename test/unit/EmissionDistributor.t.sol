@@ -538,12 +538,12 @@ contract EmissionDistributorTest is Test {
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
         vm.expectEmit(true, false, false, true);
-        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 100e18 / 28);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, uint256(100e18) / 28);
         distributor.recordScore(POOL_A);
         assertEq(distributor.f5Score(POOL_A), 100e18);
         assertEq(distributor.f5Total(), 100e18);
-        assertEq(distributor.poolScore(POOL_A), 100e18 / 28);
-        assertEq(distributor.totalScore(), 100e18 / 28);
+        assertEq(distributor.poolScore(POOL_A), uint256(100e18) / 28);
+        assertEq(distributor.totalScore(), uint256(100e18) / 28);
     }
 
     /// @notice Confirms the H-D33 non-Miliarium Option A branch at α=0 (default block ≤ month10EndBlock) reshapes effective to 0 per `10_constitution.md §xxviii` — non-Miliarium pools carry zero weight during F-1 bootstrap regime.
@@ -627,10 +627,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 50e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 150e18);
@@ -710,10 +711,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 70e18);
@@ -749,10 +751,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(USER_1);
         distributor.claim(POOL_A, USER_1);
         assertEq(aumm.balanceOf(USER_1), 1e18);
@@ -765,10 +768,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(USER_1);
         distributor.claim(POOL_A, USER_2);
         assertEq(aumm.balanceOf(USER_2), 1e18);
@@ -780,10 +784,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
         vm.prank(USER_1);
@@ -797,10 +802,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.expectEmit(true, true, true, true);
         emit IEmissionDistributor.Claimed(POOL_A, USER_1, USER_1, 1e18);
         vm.prank(USER_1);
@@ -812,10 +818,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(USER_1);
         distributor.claim(POOL_A, USER_1);
         assertEq(aumm.balanceOf(USER_1), 1e18);
@@ -829,10 +836,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(USER_1);
         vm.expectRevert();
         distributor.claim(POOL_A, address(0));
@@ -861,10 +869,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
         assertEq(distributor.pendingClaim(POOL_A, USER_1), 1e18);
@@ -887,10 +896,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         distributor.recordScore(POOL_A);
         assertEq(distributor.pendingClaim(POOL_A, USER_1), 1e18);
     }
@@ -914,13 +924,14 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 90e18);
-        vm.roll(GENESIS_BLOCK_ + 2);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 2);
         distributor.recordScore(POOL_A);
         assertEq(distributor.pendingClaim(POOL_A, USER_1), 2e18);
     }
@@ -945,11 +956,12 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
-        vm.roll(GENESIS_BLOCK_ + 5);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 5);
         distributor.recordScore(POOL_A);
         assertEq(distributor.accRewardPerScoreUnit(), 5e16);
-        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_ + 5);
+        assertEq(distributor.lastAccrualBlock(), AureumTime.year1EndBlock(GENESIS_BLOCK_) + 5);
     }
 
     /// @notice Confirms the H-D15 empty-totalScore guard in `_accrueGlobal` — when `totalScore == 0` and a mutator triggers accrual after several blocks, `lastAccrualBlock` advances to the current block but `accRewardPerScoreUnit` stays at zero (no divide-by-zero, no scaled emission accrued pre-Stage-J).
@@ -978,11 +990,12 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
         uint256 priorCalls = effOracle.callsLength();
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         distributor.recordScore(POOL_A);
         assertEq(effOracle.callsLength(), priorCalls + 1);
         (address poolPushed, uint256 amountPushed) = effOracle.callAt(effOracle.callsLength() - 1);
@@ -1007,10 +1020,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolAccRewardPerLP(POOL_A), 1e16);
     }
@@ -1020,10 +1034,11 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         distributor.recordScore(POOL_A);
         assertEq(distributor.poolAccDebt(POOL_A), 1e16);
     }
@@ -1033,8 +1048,9 @@ contract EmissionDistributorTest is Test {
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
         distributor.recordScore(POOL_A);
-        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
         distributor.recordScore(POOL_A);
         assertEq(effOracle.callsLength(), 1);
         (address poolPushed, uint256 amountPushed) = effOracle.callAt(0);
