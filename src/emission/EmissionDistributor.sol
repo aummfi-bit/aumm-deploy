@@ -10,6 +10,8 @@ import {IEMASampler} from "../ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../ccb/ICCBMultiplier.sol";
 import {IEfficiencyOracle} from "../gauge/IEfficiencyOracle.sol";
 import {CCBScore} from "../ccb/CCBScore.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
+import {IIncendiaryRegistry} from "../incendiary/IIncendiaryRegistry.sol";
 
 /// @title EmissionDistributor — Aureum Stage H pool-scoped emission distributor per H-D4—H-D5 + H-D15—H-D23
 /// @notice Two-tier MasterChef / Synthetix accumulator topology: global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy-settle per H-D15. Permissionless `recordScore(pool)` writes the F-5 absolute score per H-D17 with F12 signed-delta `totalScore` middleware per H-D19. AuMT recorder (Stage I) drives `recordDeposit` / `recordWithdrawal`; user-facing `claim(pool, to)` is the sole `IAuMM.mint` entry per H-D20.
@@ -225,6 +227,59 @@ contract EmissionDistributor is IEmissionDistributor {
         uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
         uint256 n = to - from + 1;
         return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
+    /* ---------- Phase-aware sub-interval body (H-D27 / H-D28 / H-D29) ---------- */
+
+    /**
+     * @notice Dispatches the AuMM emission integral over `[from, to]` to the F-0 bootstrap, F-3 transition, or F-7 continuous sub-interval body per H-D27 / H-D28 / H-D29, walking forward across phase boundaries within a single era.
+     * @dev Caller is `_lpTrancheIntegral` (H5.1d) which guarantees `[from, to]` lies within a single era so `rate` is constant across the interval per H-D30. Three phase boundaries `m6 = AureumTime.month6EndBlock(GENESIS_BLOCK)`, `m10 = AureumTime.month10EndBlock(GENESIS_BLOCK)`, `y1 = AureumTime.year1EndBlock(GENESIS_BLOCK)` cached once at function entry. Bootstrap phase (`cursor <= m10`) further splits at `m6` into A-leg `[cursor, min(m6, phaseEnd)]` with anchor `[GENESIS_BLOCK, m6]` and shares `8e17 → 5e17` (drop `3e17`) per F-0, and B-leg `[m6+1, phaseEnd]` with anchor `[m6, m10]` and shares `5e17 → 0` (drop `5e17`) per F-0, each leg using the conservation identity `rate × n − _bootstrapApSum(...)` per H-D27 (one fewer rounding-mode divergence risk than direct LP-share AP per H-D27 prose). Transition phase (`m10 < cursor <= y1`) returns `rate × n` with no LP-tranche subtraction per H-D28 + canonical F-3 domain note (the F-3 α-blend `(1 − α) × 1/28 + α × CCB_share_i` lives in `recordScore` middleware at H5.3, NOT in this global integral). Continuous phase (`cursor > y1`) returns `rate × n − skim` where `skim = 0` when `incendiaryRegistry == address(0)` (Stage H ship default + deprecation safety valve per H-D29) and `skim = IIncendiaryRegistry(incendiaryRegistry).integratedSkim(cursor, to)` otherwise — NO `try/catch` wrap per H-D29 (a reverting registry reverts accrual; conservative against silent skim-suppression past the 21M cap). `private view` because the function reads the `incendiaryRegistry` storage slot and the `GENESIS_BLOCK` immutable and may make an external view call into `IIncendiaryRegistry`. Cursor never written back at the terminal continuous-phase branch (write is dead — no successor branch reads it). Local cache `phaseEnd` reused per phase block, distinct scope each time so no solc shadow.
+     * @param from Inclusive start block of the integration interval; caller guarantees `from <= to` and `[from, to]` lies entirely within a single AuMM era per H-D30.
+     * @param to Inclusive end block of the integration interval; caller guarantees `to >= from`.
+     * @param rate AuMM tokens-per-block emission rate `IAuMM.blockEmissionRate(from)` snapshotted by the caller — constant across `[from, to]` per H-D30 era-splitting; 18-decimal wei scale.
+     * @return AuMM-wei LP-tranche emission allocated over `[from, to]` after F-0 Bodensee subtraction (bootstrap) / F-7 Incendiary skim subtraction (continuous), or `rate × n` unchanged (transition) per H-D26 conservation invariant.
+     */
+    function _phaseAwareBody(uint256 from, uint256 to, uint256 rate) private view returns (uint256) {
+        uint256 m6 = AureumTime.month6EndBlock(GENESIS_BLOCK);
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS_BLOCK);
+        uint256 y1 = AureumTime.year1EndBlock(GENESIS_BLOCK);
+
+        uint256 contribution = 0;
+        uint256 cursor = from;
+
+        if (cursor <= m10) {
+            uint256 phaseEnd = m10 < to ? m10 : to;
+            if (cursor <= m6) {
+                uint256 aLegEnd = m6 < phaseEnd ? m6 : phaseEnd;
+                uint256 nA = aLegEnd - cursor + 1;
+                contribution += rate * nA - _bootstrapApSum(cursor, aLegEnd, GENESIS_BLOCK, m6, 8e17, 3e17, rate);
+                cursor = aLegEnd + 1;
+            }
+            if (cursor <= phaseEnd) {
+                uint256 nB = phaseEnd - cursor + 1;
+                contribution += rate * nB - _bootstrapApSum(cursor, phaseEnd, m6, m10, 5e17, 5e17, rate);
+                cursor = phaseEnd + 1;
+            }
+        }
+
+        if (cursor <= to && cursor <= y1) {
+            uint256 phaseEnd = y1 < to ? y1 : to;
+            uint256 n = phaseEnd - cursor + 1;
+            contribution += rate * n;
+            cursor = phaseEnd + 1;
+        }
+
+        if (cursor <= to) {
+            uint256 n = to - cursor + 1;
+            uint256 skim = 0;
+            address registry = incendiaryRegistry;
+            if (registry != address(0)) {
+                skim = IIncendiaryRegistry(registry).integratedSkim(cursor, to);
+            }
+            contribution += rate * n - skim;
+        }
+
+        return contribution;
     }
 
     /* ---------- Accrual (H-D15 / H-D21) ---------- */
