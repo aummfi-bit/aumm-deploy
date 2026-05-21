@@ -197,6 +197,36 @@ contract EmissionDistributor is IEmissionDistributor {
         return AuMM.blockEmissionRate(block_);
     }
 
+    /* ---------- Bootstrap leg AP integration helper (H-D27) ---------- */
+
+    /**
+     * @notice Computes the AP closed-form sum of AuMM emissions over `[from, to]` inclusive for a single F-0 bootstrap leg per H-D27 + F-0.
+     * @dev H-D27 lock — bit-for-bit mirror of `BodenseeBootstrapChannel._apSum` at L218-L226 (function declaration L212-L220, body L221-L225). H-D2 channel-distributor separation: the formula is duplicated here, not called from the channel contract — upstream-call coupling would defeat the H5.4 arithmetic-identity unit test discipline and violate H-D2's clean separation of channel accrual from LP distribution math. The share at block `b` follows a linear arithmetic progression: `bodensee_share(b) = startShare − dropShare × (b − anchorStart) / (anchorEnd − anchorStart)`, which justifies the closed form `n × (first + last) / 2 × rate / 1e18` (standard AP partial sum). Both `from` and `to` are inclusive; `n = to − from + 1` is the count of blocks. `startShare` and `dropShare` are FixedPoint 1e18-base fractions (e.g. `8e17` = 80%, `3e17` = 30%). Overflow analysis identical to BodenseeBootstrapChannel L202: `(first + last) ≤ 1.6e18`, `n ≤ 2.2e6` (max bootstrap window per OQ-3), `rate ≤ ~1e18` (Era 0 max per OQ-5) — product ≤ 3.5e42 fits in uint256. Caller (`_phaseAwareBody` at H5.1c) guarantees `to >= from` and that the entire `[from, to]` sub-interval lies within a single bootstrap leg (A-leg: `[genesis, month6End]`; B-leg: `[month6End + 1, month10End]`) — `_lpTrancheIntegral` (H5.1d) is the site of the cross-`month6End` split.
+     * @param from Inclusive start block of the integration interval; caller guarantees `from <= to`.
+     * @param to Inclusive end block of the integration interval; caller guarantees `to >= from`.
+     * @param anchorStart First block of this bootstrap leg's share-decay range (A-leg: `GENESIS_BLOCK`; B-leg: `month6End + 1`).
+     * @param anchorEnd Last block of this bootstrap leg's share-decay range (A-leg: `month6End`; B-leg: `month10End`); denominator of the AP slope per H-D27.
+     * @param startShare FixedPoint 1e18-base share at `anchorStart` (A-leg: `8e17` = 80%; B-leg: `5e17` = 50%) per F-0 + H-D27.
+     * @param dropShare FixedPoint 1e18-base total share drop across the leg (A-leg: `3e17` = 30%; B-leg: `5e17` = 50%) per F-0 + H-D27.
+     * @param rate AuMM tokens-per-block emission rate at the representative block of this interval (from `IAuMM.blockEmissionRate`); 18-decimal wei scale.
+     * @return AuMM-wei emission allocated to the Bodensee bootstrap channel over `[from, to]` per H-D27.
+     */
+    function _bootstrapApSum(
+        uint256 from,
+        uint256 to,
+        uint256 anchorStart,
+        uint256 anchorEnd,
+        uint256 startShare,
+        uint256 dropShare,
+        uint256 rate
+    ) private pure returns (uint256) {
+        uint256 width = anchorEnd - anchorStart;
+        uint256 first = startShare - (dropShare * (from - anchorStart)) / width;
+        uint256 last = startShare - (dropShare * (to - anchorStart)) / width;
+        uint256 n = to - from + 1;
+        return ((first + last) * n * rate) / (2 * 1e18);
+    }
+
     /* ---------- Accrual (H-D15 / H-D21) ---------- */
 
     /**
