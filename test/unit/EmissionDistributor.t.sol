@@ -10,6 +10,7 @@ import {IAuMM} from "../../src/token/IAuMM.sol";
 import {IGaugeRegistry} from "../../src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
+import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
 
 contract MockAuMM is ERC20, IAuMM {
@@ -147,6 +148,28 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
     }
 }
 
+contract MockMiliariumRegistry is IMiliariumRegistry {
+    mapping(address => bool) public miliariumFlag;
+    address[] internal _miliariumPools;
+
+    function setMiliarium(address pool, bool flag) external {
+        if (flag && !miliariumFlag[pool]) { _miliariumPools.push(pool); }
+        miliariumFlag[pool] = flag;
+    }
+
+    function isMiliarium(address pool) external view override returns (bool) {
+        return miliariumFlag[pool];
+    }
+
+    function miliariumPoolsCount() external view override returns (uint256) {
+        return _miliariumPools.length;
+    }
+
+    function miliariumPoolAt(uint256 index) external view override returns (address) {
+        return _miliariumPools[index];
+    }
+}
+
 /// @notice Unit tests for EmissionDistributor (concrete H-D15—H-D25 implementation landed at H4.1—H4.7c) — scaffold only at H4.8.1; test functions land at H4.8.2 onward.
 contract EmissionDistributorTest is Test {
     uint256 internal constant GENESIS_BLOCK_ = 1_000_000;
@@ -162,6 +185,7 @@ contract EmissionDistributorTest is Test {
     MockEMASampler internal ema;
     MockCCBMultiplier internal mult;
     MockEfficiencyOracle internal effOracle;
+    MockMiliariumRegistry internal miliReg;
     EmissionDistributor internal distributor;
 
     function setUp() public virtual {
@@ -170,12 +194,14 @@ contract EmissionDistributorTest is Test {
         ema = new MockEMASampler();
         mult = new MockCCBMultiplier();
         effOracle = new MockEfficiencyOracle();
+        miliReg = new MockMiliariumRegistry();
         distributor = new EmissionDistributor(
             IAuMM(address(aumm)),
             IGaugeRegistry(address(gauges)),
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -205,6 +231,7 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -219,6 +246,7 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -233,6 +261,7 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(0)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -247,6 +276,7 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(0)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -261,6 +291,22 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(0)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK_,
+            GOV
+        );
+    }
+
+    /// @notice Reverts `ZeroAddress` when the Miliarium registry constructor parameter is zero.
+    function test_RevertWhen_ConstructedWithZeroMiliariumRegistry() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(0)),
             GENESIS_BLOCK_,
             GOV
         );
@@ -275,27 +321,30 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             address(0)
         );
     }
 
-    /// @notice Asserts the setUp-deployed distributor wires all six immutables to the mock dependencies and genesis block constant.
+    /// @notice Asserts the setUp-deployed distributor wires all seven immutables to the mock dependencies and genesis block constant.
     function test_Constructor_WiresImmutables() public {
         assertEq(address(distributor.AuMM()), address(aumm));
         assertEq(address(distributor._gaugeRegistry()), address(gauges));
         assertEq(address(distributor._emaSampler()), address(ema));
         assertEq(address(distributor._ccbMultiplier()), address(mult));
         assertEq(address(distributor._efficiencyOracle()), address(effOracle));
+        assertEq(address(distributor._miliariumRegistry()), address(miliReg));
         assertEq(distributor.GENESIS_BLOCK(), GENESIS_BLOCK_);
     }
 
-    /// @notice Asserts the setUp-deployed distributor initializes governance, lastAccrualBlock, and both global accumulators to their constructor defaults.
+    /// @notice Asserts the setUp-deployed distributor initializes governance, lastAccrualBlock, and all three global accumulators to their constructor defaults.
     function test_Constructor_InitsStorageSlots() public {
         assertEq(distributor.governance(), GOV);
         assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_);
         assertEq(distributor.accRewardPerScoreUnit(), 0);
         assertEq(distributor.totalScore(), 0);
+        assertEq(distributor.f5Total(), 0);
     }
 
     /* ---------- Governance setter tests (H-D14 / H-D16) ---------- */
@@ -344,6 +393,7 @@ contract EmissionDistributorTest is Test {
             IEMASampler(address(ema)),
             ICCBMultiplier(address(mult)),
             IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV
         );
