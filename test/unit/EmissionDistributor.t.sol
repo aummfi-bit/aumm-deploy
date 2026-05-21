@@ -1448,4 +1448,35 @@ contract EmissionDistributorTest is Test {
         uint256 lpIntegral  = distributor.extLpTrancheIntegral(from_, to_);
         assertEq(lpIntegral + aLegSum + bLegSum, 1e18 * n);
     }
+
+    /* ---------- setIncendiaryRegistry governance setter tests (H5 / H-D29) ---------- */
+
+    /// @notice Reverts `NotGovernance` when `setIncendiaryRegistry` is called by a non-governance address — confirms the setter is onlyGovernance-gated.
+    function test_RevertWhen_SetIncendiaryRegistryCallerNotGovernance() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        distributor.setIncendiaryRegistry(address(0x1234));
+    }
+
+    /// @notice Confirms `setIncendiaryRegistry(address(0))` is accepted — zero is the H-D29 deliberate deprecation safety valve, asymmetric to `setGovernanceContract`.
+    function test_SetIncendiaryRegistry_AcceptsZeroAddress() public {
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(address(0));
+        assertEq(distributor.incendiaryRegistry(), address(0));
+    }
+
+    /// @notice Confirms `setIncendiaryRegistry` writes the new address to the incendiaryRegistry slot.
+    function test_SetIncendiaryRegistry_UpdatesSlot() public {
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(address(0xBEEF));
+        assertEq(distributor.incendiaryRegistry(), address(0xBEEF));
+    }
+
+    /// @notice Confirms `setIncendiaryRegistry` emits `IncendiaryRegistrySet` with old and new address as indexed topics.
+    function test_SetIncendiaryRegistry_EmitsIncendiaryRegistrySet() public {
+        vm.expectEmit(true, true, false, false);
+        emit IEmissionDistributor.IncendiaryRegistrySet(address(0), address(0xBEEF));
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(address(0xBEEF));
+    }
 }
