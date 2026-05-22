@@ -79,4 +79,35 @@ contract AuMMDistributorIntegrationTest is Test {
         vm.expectRevert(AuMM.NotMinterAdmin.selector);
         aumm.setMinter(address(0xBEEF));
     }
+
+    /// @notice claim — real AuMM mint path executes end-to-end; USER_1 receives minted AuMM after single-pool deposit + advance.
+    function test_ClaimMintsRealAuMM_SinglePool() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 1e18);
+    }
+
+    /// @notice claim — H-D30 era-boundary cursor walk: 20-block straddle of firstHalvingBlock yields 14.5e18 — not 20e18 flat-rate.
+    function test_ClaimAcrossHalvingBoundary_UsesRealBlockEmissionRate() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        uint256 firstHalving = AureumTime.firstHalvingBlock(GENESIS_BLOCK_);
+        vm.roll(firstHalving - 10);
+        distributor.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(firstHalving + 10);
+        vm.prank(USER_1);
+        distributor.claim(POOL_A, USER_1);
+        assertEq(aumm.balanceOf(USER_1), 14.5e18);
+    }
 }
