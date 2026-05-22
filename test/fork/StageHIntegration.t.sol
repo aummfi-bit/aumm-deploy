@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { IVaultExplorer } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { StageGIntegrationFixture } from "./StageGIntegration.t.sol";
 import { MockMiliariumRegistry } from "./mocks/CCBMocks.sol";
@@ -16,6 +17,7 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
 import { TVLOracle } from "../../src/emission/TVLOracle.sol";
 import { EfficiencyOracle } from "../../src/emission/EfficiencyOracle.sol";
 import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapChannel.sol";
+import { IBodenseeBootstrapChannel } from "../../src/emission/IBodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 
 /**
@@ -115,6 +117,8 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
     function setUp() public override {
         super.setUp();
         aumm.setMinter(address(bootstrapChannel));
+        // H-D14 — transfer to multisig per H-D39 production-deploy semantics
+        bootstrapChannel.setGovernanceContract(GOVERNANCE_MULTISIG);
     }
 
     /// @notice Test-side mirror of BodenseeBootstrapChannel._apSum for expected-value assertions — bit-for-bit port of test/unit/BodenseeBootstrapChannel.t.sol L333-L348.
@@ -204,5 +208,50 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
         cumulative += _expectedApSum(prevTo + 1, g + 3_000, g, m6, 8e17, 3e17, 1e18);
         assertEq(bootstrapChannel.pendingAccrual(), cumulative, "pendingAccrual step3");
         assertEq(bootstrapChannel.totalDistributed(), 0, "totalDistributed step3");
+    }
+
+    // H-D39 — happy-path distribute() arc: IVault.unlock → _distributeCallback → safeTransfer → settle → DONATION; asserts reserve delta + BPT supply + state mutations
+    function test_Distribute_RealVaultDonationArc_MutatesReserveAndEmitsDistributed() public {
+        uint256 g = aumm.GENESIS_BLOCK();
+        vm.roll(g + 1_000);
+        bootstrapChannel.accrue();
+        uint256 expected = bootstrapChannel.pendingAccrual();
+        uint256 bptSupplyPre = IERC20(bodenseePool).totalSupply();
+        IERC20[] memory tokens = vault.getPoolTokens(bodenseePool);
+        uint256 aummIdx = type(uint256).max;
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (address(tokens[i]) == address(aumm)) { aummIdx = i; break; }
+        }
+        require(aummIdx != type(uint256).max, "AuMM not in Bodensee roster");
+        (, , uint256[] memory balancesPre, ) = vault.getPoolTokenInfo(bodenseePool);
+        uint256 preReserve = balancesPre[aummIdx];
+        vm.expectEmit(true, false, false, true);
+        emit IBodenseeBootstrapChannel.Distributed(GOVERNANCE_MULTISIG, expected);
+        vm.prank(GOVERNANCE_MULTISIG);
+        bootstrapChannel.distribute();
+        (, , uint256[] memory balancesPost, ) = vault.getPoolTokenInfo(bodenseePool);
+        uint256 postReserve = balancesPost[aummIdx];
+        assertEq(postReserve - preReserve, expected, "Bodensee AuMM reserve delta");
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyPre, "BPT total supply unchanged on DONATION");
+        assertEq(bootstrapChannel.pendingAccrual(), 0, "pendingAccrual cleared");
+        assertEq(bootstrapChannel.totalDistributed(), expected, "totalDistributed");
+    }
+
+    // H-D39 — NotGovernance sad-path: non-governance caller is rejected even when pendingAccrual > 0
+    function test_RevertWhen_DistributeCalledByNonGovernance() public {
+        uint256 g = aumm.GENESIS_BLOCK();
+        vm.roll(g + 1_000);
+        bootstrapChannel.accrue();
+        address attacker = address(uint160(uint256(keccak256("attacker"))));
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, attacker));
+        vm.prank(attacker);
+        bootstrapChannel.distribute();
+    }
+
+    // H-D39 — NoPendingAccrual sad-path: governance caller is rejected when pendingAccrual == 0
+    function test_RevertWhen_DistributeWithNoPendingAccrual() public {
+        vm.expectRevert(BodenseeBootstrapChannel.NoPendingAccrual.selector);
+        vm.prank(GOVERNANCE_MULTISIG);
+        bootstrapChannel.distribute();
     }
 }
