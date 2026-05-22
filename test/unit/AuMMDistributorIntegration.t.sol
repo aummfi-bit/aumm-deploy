@@ -64,4 +64,19 @@ contract AuMMDistributorIntegrationTest is Test {
         distributor.setAuMTContract(AUMT_REC);
         vm.roll(GENESIS_BLOCK_);
     }
+
+    /// @notice setMinter — first call by minter admin succeeds and emits MinterSet with new minter address.
+    function test_SetMinterHandoff_EmitsMinterSet() public {
+        AuMM fresh = new AuMM(GENESIS_BLOCK_, address(this));
+        vm.expectEmit(true, false, false, false);
+        emit IAuMM.MinterSet(address(distributor));
+        fresh.setMinter(address(distributor));
+        assertEq(fresh.minter(), address(distributor));
+    }
+
+    /// @notice setMinter — second call reverts NotMinterAdmin (C-D11: _minterAdmin zeroed on first success).
+    function test_RevertWhen_SetMinterCalledTwice() public {
+        vm.expectRevert(AuMM.NotMinterAdmin.selector);
+        aumm.setMinter(address(0xBEEF));
+    }
 }
