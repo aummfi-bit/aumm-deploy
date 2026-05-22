@@ -71,4 +71,16 @@ contract MockAuMT is IAuMT {
     function transferFrom(address, address, uint256) external pure returns (bool) {
         return false;
     }
+
+    function mint(address, uint256) external {}
+
+    function burn(address, uint256) external {}
+
+    function distributor() external view returns (address) {
+        return address(0);
+    }
+
+    function pool() external view returns (address) {
+        return address(0);
+    }
 }
