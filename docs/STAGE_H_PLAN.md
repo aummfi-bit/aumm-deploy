@@ -1,10 +1,10 @@
 # Stage H — Emission Distributor
 
-> **Status:** H10 family complete on `stage-h` at HEAD `8da816e` (H6.2a-fix). H-D7 LOCKED Option C; H-D42 LOCKED; 1/1 fork green at H10.2-revised. **H-D locks:** H-D1—H-D6 + H-D8—H-D42 LOCKED (39 total). Next: H8 — unit-test confirmation pass (reordered post-H9; `forge test` regression audit, no code changes expected), then H11 — final Completion Log + cross-doc backfill, then H12 — Stage close.
+> **Status:** H8 unit-test confirmation pass complete (612/612 green, 22 suites, 19.17s, no code changes). H11 family in progress: H11.0a NOTES H13 Findings entry at `fb2d9b1`. **H-D locks:** H-D1—H-D6 + H-D8—H-D42 LOCKED (39 total). Next: H11.0b — PLAN Completion Log catch-up (this commit); H11.0c — CLAUDE.md §11 resume-anchor refresh; H12 — Stage close.
 >
-> **Last update:** 2026-05-23 — H10 family complete: H10.1-fix1 script/DeployStageH.s.sol H-D42 revision at `c04ee0d` + H10.2-revised test/fork/DeployStageH.t.sol 1/1 fork green at `2112f09` + H6.2a-fix StageGMocks.sol pure-mutability cleanup at `8da816e`; H10.3 PLAN close-of-family sweep this commit.
+> **Last update:** 2026-05-23 — H8 unit-test confirmation pass 612/612 green (22 suites, 19.17s, no code changes); H11.0a docs/STAGE_H_NOTES.md H13 Findings entry at `fb2d9b1`; H11.0b PLAN Completion Log catch-up this commit.
 >
-> **Mode:** Sonnet for H10.3 — PLAN close-of-family sweep (this commit); Sonnet for H8 — `forge test` regression-check audit (no code changes expected); Opus high for H11 — final Completion Log + cross-doc backfill; Sonnet for H12 — Stage close fast-forward merge + `stage-h-complete` tag + snapshot push.
+> **Mode:** Sonnet for H11.0b — PLAN Completion Log catch-up (this commit); Opus high for H11.0c — CLAUDE.md §11 resume-anchor refresh; Sonnet for H12 — Stage close fast-forward merge + `stage-h-complete` tag + snapshot push.
 
 ## Goal
 
@@ -261,4 +261,7 @@ H12 — Stage close — fast-forward merge, stage-h-complete tag, preserved stag
 | H10.1-fix1 | c04ee0d | 2026-05-23 | script/DeployStageH.s.sol — H-D42 revision: AuMM consumed via AUMM env var (not deployed in-script); genesisBlock derives from aumm.GENESIS_BLOCK(); MinterNotZero invariant reframed as input-precondition check; NatSpec env-list drops GENESIS_BLOCK, adds AUMM (191 → 224 lines) |
 | H10.2-revised | 2112f09 | 2026-05-23 | test/fork/DeployStageH.t.sol — fork-test validates DeployStageH.s.sol (H10.1-fix1) via StageGIntegrationFixture inheritance: real Vault + AuMM + Bodensee; 11 assertions (H-D7 Option C minter slot + Step 7 handoffs + Step 6 wiring + BODENSEE_POOL + GENESIS_BLOCK derivation) + positive setMinter proof; 1/1 fork green (219 lines) |
 | H6.2a-fix | 8da816e | 2026-05-23 | test/fork/mocks/StageGMocks.sol — MockAuMT distributor()/pool() view → pure (both return address(0) constants; Solc 0.8.26 Warning(2018) cleanup surfaced at H10.2-revised forge build; -2 warnings) |
-| H10.3 | <pending> | 2026-05-23 | docs/STAGE_H_PLAN.md — H10.0d-fix hash backfill (<pending> → 11bf56d; 256 → 260 lines correction) + H10.1-fix1/H10.2-revised/H6.2a-fix Completion Log rows + status header + Last update + Mode refresh (this commit; 260 → 264 lines) |
+| H10.3 | e19b737 | 2026-05-23 | docs/STAGE_H_PLAN.md — H10.0d-fix hash backfill (<pending> → 11bf56d; 256 → 260 lines correction) + H10.1-fix1/H10.2-revised/H6.2a-fix Completion Log rows + status header + Last update + Mode refresh (this commit; 260 → 264 lines) |
+| H8 | n/a | 2026-05-23 | unit-test confirmation pass (reordered post-H9): `forge test --no-match-path "test/fork/**"`; 612/612 green across 22 suites (19.17s); no code changes — pre-existing clean baseline carried through H9/H10; no commit |
+| H11.0a | fb2d9b1 | 2026-05-23 | docs/STAGE_H_NOTES.md — H13 Findings entry: deploy-script fork tests cannot stub env vars whose receivers make external calls in their constructors; StageGIntegrationFixture inheritance is the resolution (H10.2 first-attempt revert + H-D42 chicken-and-egg; 318 → 338 lines) |
+| H11.0b | <pending> | 2026-05-23 | docs/STAGE_H_PLAN.md — H10.3 hash backfill (<pending> → e19b737) + H8/H11.0a Completion Log rows + H11.0b self-row + status header + Last update + Mode refresh (this commit; 264 → 267 lines) |
