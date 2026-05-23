@@ -1,10 +1,10 @@
 # Stage I — Notes & Design Freeze
 
-> **Status:** I0.0a NOTES design freeze landed on `stage-i` (branched from `stage-h-complete` at `2a33649`) — I-D1—I-D8 LOCKED + I-D9 OPEN. No code surface landed yet. Companion to STAGE_I_PLAN.md (lands at I0.0b).
+> **Status:** I0.0b NOTES amendment landed on `stage-i` — I-D9 LOCKED Option A (per-pool mapping in EmissionDistributor) + I-D10 LOCKED (AureumTime extension QUALIFICATION_PERIOD_BLOCKS + ON_RAMP_PERIOD_BLOCKS); I-D1—I-D10 all LOCKED; no code surface landed yet. Companion to STAGE_I_PLAN.md (lands at I0.0c).
 >
-> **Last update:** 2026-05-23 — I0.0a NOTES design freeze (I-D1—I-D8 LOCKED + I-D9 OPEN via Opus-high entry pre-flight: §ix spec read + IAuMT.sol H6.0c skeleton survey + AureumFeeRoutingHook Stage D architectural read + EmissionDistributor single-slot `auMTContract` gap surfaced; this commit).
+> **Last update:** 2026-05-23 — I0.0b NOTES amendment (I-D9 LOCKED Option A per-pool mapping in EmissionDistributor mirroring H-D10 per-pool recorder pattern + I-D10 LOCKED AureumTime extension declaring QUALIFICATION_PERIOD_BLOCKS as BLOCKS_PER_EPOCH semantic alias + ON_RAMP_PERIOD_BLOCKS as 180 × BLOCKS_PER_DAY new declaration; this commit).
 >
-> **Mode:** Opus high entry per §13 stage-level defaults — AuMT interface design + soulbound ERC-20 state machine + governanceWeight root-curve formula + I-D9 multi-AuMT routing resolution. Drops to mostly Sonnet after I1 design closes (test writing + plan-row updates). I0.0b PLAN sub-step skeleton + I-D9 LOCK next.
+> **Mode:** Opus high entry per §13 stage-level defaults — AuMT interface design + soulbound ERC-20 state machine + governanceWeight root-curve formula. Drops to mostly Sonnet after I3 design closes (test writing + plan-row updates). I0.0c PLAN sub-step skeleton next.
 >
 > **Audience:** Sagix plus any future Claude session that needs the running log of decisions resolved during implementation and the incidents caught at audit.
 
@@ -20,7 +20,7 @@
 
 ## Design decisions
 
-The I-D rows below carry the design freeze locked at I0.0a from a pre-flight Opus beat reading `04_tokenomics.md` §ix + `IAuMT.sol` H6.0c skeleton + `AureumFeeRoutingHook.sol` Stage D architectural survey + `EmissionDistributor.sol` H-D16 recorder-slot gap analysis. Entries I-D1—I-D8 LOCKED at I0.0a, 2026-05-23. Entry I-D9 OPEN — locks at I0.0b PLAN drafting after Option A vs B analysis of multi-AuMT routing through the distributor's single-slot `auMTContract` per H-D16. Future entries I-D10 onward attach to specific sub-step locks during I1—I7 implementation.
+The I-D rows below carry the design freeze locked across I0.0a—I0.0b. I-D1—I-D8 LOCKED at I0.0a from a pre-flight Opus beat reading `04_tokenomics.md` §ix + `IAuMT.sol` H6.0c skeleton + `AureumFeeRoutingHook.sol` Stage D architectural survey + `EmissionDistributor.sol` H-D16 recorder-slot gap analysis; I-D9 + I-D10 LOCKED at I0.0b from Opus-high analysis of multi-AuMT routing pattern (Option A per-pool mapping selected over Option B AuMTRouter multiplexer per H-D10 per-pool recorder precedent) and AureumTime constant extension (both declared in `src/lib/AureumTime.sol` per C-D3 canonical convention). Future entries I-D11 onward attach to specific sub-step locks during I1—I7 implementation.
 
 | # | Status | Decision | Anchor | Locked at |
 | --- | --- | --- | --- | --- |
@@ -32,7 +32,8 @@ The I-D rows below carry the design freeze locked at I0.0a from a pre-flight Opu
 | I-D6 | LOCKED | Qualification clock: starts on first deposit (`qualificationBlock` slot set); top-up deposits don't reset; only withdrawal (burn) resets to 0 | §ix verbatim "Remove any amount... time_in_pool resets" | I0.0a |
 | I-D7 | LOCKED | `governanceWeight(holder)` = `(balanceOf × min(time_in_pool, ON_RAMP_PERIOD_BLOCKS))^(1/4)` Era 0, `^(1/3)` Era 1+; ZERO if `time_in_pool < QUALIFICATION_PERIOD_BLOCKS` OR `!gaugeRegistry.isGaugeApproved(pool())` | §ix verbatim formula; F-9 dampening; AureumTime C-D3 era boundary; FINDINGS OQ-7 gauge-revoked rule | I0.0a |
 | I-D8 | LOCKED | Stage I deployment scope: 3 AuMT instances for pilot pools at slots 02/03/07 + `AureumFeeRoutingHook` extension; Stage M/N rollout deferred | Stage E pilot pools; out-of-scope rollout per STAGES_OVERVIEW | I0.0a |
-| I-D9 | OPEN | Multi-AuMT routing through `EmissionDistributor` per H-D16 single-slot `auMTContract` gap — Option A (per-pool mapping in distributor; Stage H amendment) vs Option B (Stage I AuMTRouter multiplexer; no Stage H change) | EmissionDistributor.sol L96 + L155-158 + L181-183; H-D16; H-D10 per-recorder precedent | I0.0b |
+| I-D9 | LOCKED | Multi-AuMT routing: per-pool mapping in EmissionDistributor (Option A) — `auMTContract` → `auMTContractByPool` mapping; `onlyAuMTContract(pool)` modifier; `setAuMTContractForPool(pool, addr)` one-shot setter | H-D16 single-slot baseline; H-D10 per-pool recorder precedent; I-D2 per-pool topology | I0.0b |
+| I-D10 | LOCKED | `AureumTime.sol` extension: `QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH` (100_800) + `ON_RAMP_PERIOD_BLOCKS = 180 * BLOCKS_PER_DAY` (1_296_000) | C-D3 canonical time library; §ix verbatim "14 days" + "day 180" | I0.0b |
 
 ### I-D1 — AuMT is soulbound; transfer / transferFrom / approve revert `NotTransferable` — status LOCKED
 
@@ -65,6 +66,22 @@ AuMT tracks `qualificationBlock[holder]` (the block at which the holder's curren
 ### I-D8 — Stage I deployment scope: 3 pilot pool AuMT instances + FeeRoutingHook extension — status LOCKED
 
 Stage I deploys 3 AuMT contracts wired to the 3 Stage E pilot Miliarium pools at slots 02/03/07; each AuMT instance is constructor-immutable to its bound pool + the shared `EmissionDistributor` per H-D35. The `AureumFeeRoutingHook` extension at I2 lands once per the existing hook deployment; per-pool wiring happens via 3 calls to `setAuMTForPool(pool, auMT)` (one-shot per pool, governance-gated). The shared `EmissionDistributor` wiring depends on the I-D9 resolution: under Option A the distributor's per-pool `auMTContractByPool` mapping is set 3 times; under Option B a single AuMTRouter address is set via the existing `setAuMTContract`. Stage M/N rollout (remaining 25 AuMT deployments at slots 01/04/05/06/08—28) is out of Stage I scope. Anchors: Stage E pilot pools at slots 02/03/07; H-D35 distributor binding; I-D9 routing-pattern resolution.
+
+### I-D9 — Multi-AuMT routing via per-pool mapping in EmissionDistributor (Option A) — status LOCKED
+
+EmissionDistributor's recorder slot extends from a single `address public auMTContract` per H-D16 to `mapping(address pool => address) public auMTContractByPool` to support the 3 (and ultimately 28) Stage I AuMT instances per I-D2. The `onlyAuMTContract` modifier takes the pool address as parameter and gates against `auMTContractByPool[pool]`; both `recordDeposit(pool, user, amount)` and `recordWithdrawal(pool, user, amount)` already carry pool as their first argument per H-D16, so the gate-tightening is a localized signature change. The `setAuMTContract(addr)` governance setter becomes `setAuMTContractForPool(pool, addr)` — one-shot per pool, reverting `AuMTAlreadyBound(pool)` on second call to that pool (mirrors I-D5's `setAuMTForPool` setter on the hook). The `NotAuMTContract(address)` error extends to `NotAuMTContract(address pool, address sender)` to preserve the (pool, sender) shape at revert sites.
+
+Option A mirrors H-D10's per-pool authorized recorder pattern (`EfficiencyOracle.recordScore` gated by `onlyAuthorizedRecorder(pool)`) — the distributor owns the (pool → AuMT) routing table directly rather than delegating to a router multiplexer. This avoids the ~50-line AuMTRouter contract that Option B would have introduced, the extra external call per mint/burn that the router hop would have added, and the architectural drift from H-D10's per-pool recorder convention. The cost is mechanical signature updates to ~115 Stage H tests (`EmissionDistributor.t.sol` 100 unit tests + `AuMMDistributorIntegration.t.sol` 4 unit tests + StageHIntegration fork suites 10 tests + `DeployStageH.t.sol` 1 test) — landed at I1 as the foundation sub-step before any AuMT.sol implementation begins, keeping the regression cohort green throughout Stage I.
+
+Anchors: H-D16 single-slot baseline; H-D10 per-pool recorder precedent; I-D2 per-pool topology; I0.0b LOCK.
+
+### I-D10 — AureumTime extension: QUALIFICATION_PERIOD_BLOCKS + ON_RAMP_PERIOD_BLOCKS — status LOCKED
+
+`src/lib/AureumTime.sol` extends with two new `internal constant` declarations consumed by AuMT.sol's `governanceWeight` formula per I-D7. `QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH` (= 100_800; 14 days × 7200 blocks/day; semantic alias preserving single source of truth for the 14-day cliff value — equal to `BLOCKS_PER_EPOCH` by coincidence since 14 days is exactly 1 epoch per OQ-3/OQ-4). `ON_RAMP_PERIOD_BLOCKS = 180 * BLOCKS_PER_DAY` (= 1_296_000; 180 days × 7200 blocks/day; new declaration per §ix "By month 6 (day 180), they reach full voting weight" — derived from `BLOCKS_PER_DAY` rather than the calendar-month-average `BLOCKS_PER_MONTH` because §ix specifies exact 180-day not 6-calendar-month duration).
+
+Decision: declare both in `AureumTime.sol` per C-D3 (canonical block-number time library) rather than as locally-declared constants in `AuMT.sol`. `AuMT.sol` reads via `AureumTime.QUALIFICATION_PERIOD_BLOCKS` and `AureumTime.ON_RAMP_PERIOD_BLOCKS` — preserves the project-wide convention that block-number constants live in AureumTime and only AureumTime, established at C-D3 and respected across Stages C—H. Lands at I2 sub-step (after I1 EmissionDistributor refactor, before I3 AuMT.sol implementation that consumes these constants).
+
+Anchors: C-D3 canonical time library; §ix verbatim "14 days" + "By month 6 (day 180)"; OQ-3/OQ-4 `BLOCKS_PER_EPOCH` / `BLOCKS_PER_DAY` canonical values; I-D7 governanceWeight formula.
 
 ---
 
@@ -109,6 +126,4 @@ Entries labeled I10+ accumulate once Stage I exits pure documentation scaffoldin
 
 Documented ambiguity here disappears only after translation into FINDINGS.md rows whenever resolution carries protocol-wide implication; until then NOTES remain provisional scratch space.
 
-- I0.0b `AureumTime` library extension — `QUALIFICATION_PERIOD_BLOCKS` (= 14 × 7200 = 100_800; equal to `BLOCKS_PER_EPOCH` per OQ-3/OQ-4) and `ON_RAMP_PERIOD_BLOCKS` (= 180 × 7200 = 1_296_000; new). Decision deferred to I0.0b PLAN drafting: alias existing constant vs declare new named constant; new `ON_RAMP_PERIOD_BLOCKS` declaration unambiguous.
-- I-D9 (locks at I0.0b PLAN drafting) — `EmissionDistributor.auMTContract` is a single-slot `address` per H-D16 (EmissionDistributor.sol L96 + L155-158 + L181-183 + `NotAuMTContract(msg.sender)` revert in `onlyAuMTContract` modifier). With I-D2's 3 AuMT instances, only ONE can occupy the slot — the other 2 revert. Option A extends `auMTContract` to `mapping(pool => address)` with amended `setAuMTContract(pool, addr)` signature (Stage H amendment; mirrors H-D10 per-recorder mapping precedent). Option B introduces a Stage I AuMTRouter multiplexer contract (no Stage H bytecode change; adds a hop). Option A leaning per architectural cleanliness; LOCK after I0.0b PLAN drafting analyzes blast radius.
 - OQ-I10 (deferred to Stage M/N) — Rollout of remaining 25 AuMT instances (slots 01/04/05/06/08—28). Out of Stage I scope per STAGES_OVERVIEW.md dependency graph.
