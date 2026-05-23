@@ -325,3 +325,42 @@ contract StageHContinuousPhaseTest is StageHIntegrationFixture {
         assertLe(diff, 3, "bounded conservation N_gauged=3");
     }
 }
+
+/**
+ * @title StageHHalvingBoundaryTest
+ * @notice Fork-level 20-block straddle of `AureumTime.firstHalvingBlock` exercising the H-D30 era cursor walk
+ *         against real AuMM `blockEmissionRate` halved-rate response + real `_lpTrancheIntegral`. Single pilot
+ *         (pilotPools[0]) / single user / 100% LP share so all 14.5e18 wei flow to one address — mirrors the
+ *         H6.3c unit-test arithmetic `9 × 1e18 + 11 × 5e17 = 14.5e18` exact against the production
+ *         EmissionDistributor stack. Zero-stub `incendiaryRegistry == address(0)` per H-D29 short-circuits F-7
+ *         Step 1 Incendiary skim so `_lpTrancheIntegral` returns `rate × n` per era sub-interval — `9 × 1e18`
+ *         from Era 0 sub-interval `[firstHalving-9, firstHalving-1]` plus `11 × 5e17` from Era 1 sub-interval
+ *         `[firstHalving, firstHalving+10]` = `14.5e18` exact. Strategy A white-box state seed: `seedFoundingPool`
+ *         for gauge approval; `vm.store` for `emaSampler.tvlEMA[pilot]` slot 0.
+ *         Anchors: H-D17, H-D20, H-D26, H-D29, H-D30, H-D31, H-D32, H-D33, H-D37, H-D38(3), H6.3c, F-7, OQ-5.
+ */
+contract StageHHalvingBoundaryTest is StageHIntegrationFixture {
+    function setUp() public override {
+        super.setUp();
+        aumm.setMinter(address(emissionDistributor));
+        gaugeRegistry.seedFoundingPool(pilotPools[0]);
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
+    }
+
+    /// @notice H-D30 era cursor walk across firstHalvingBlock: `_lpTrancheIntegral` splits into Era 0 sub-interval (9 blocks × 1e18) + Era 1 sub-interval (11 blocks × 5e17) = 14.5e18; real AuMM `blockEmissionRate` halved-rate sanity asserts confirm OQ-5 piecewise-constant schedule.
+    function test_ClaimAcrossHalvingBoundary_UsesRealBlockEmissionRate() public {
+        uint256 firstHalving = AureumTime.firstHalvingBlock(aumm.GENESIS_BLOCK());
+        assertEq(aumm.blockEmissionRate(firstHalving - 1), 1e18, "pre-halving Era 0 rate");
+        assertEq(aumm.blockEmissionRate(firstHalving), 5e17, "post-halving Era 1 rate");
+        vm.roll(firstHalving - 10);
+        address user = makeAddr("h95_user");
+        emissionDistributor.recordScore(pilotPools[0]);
+        emissionDistributor.recordDeposit(pilotPools[0], user, 100e18);
+        vm.roll(firstHalving + 10);
+        vm.expectEmit(true, true, true, true);
+        emit IEmissionDistributor.Claimed(pilotPools[0], user, user, 14.5e18);
+        vm.prank(user);
+        emissionDistributor.claim(pilotPools[0], user);
+        assertEq(aumm.balanceOf(user), 14.5e18, "halving boundary mint = 9 x 1e18 + 11 x 5e17");
+    }
+}
