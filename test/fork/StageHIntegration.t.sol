@@ -364,3 +364,51 @@ contract StageHHalvingBoundaryTest is StageHIntegrationFixture {
         assertEq(aumm.balanceOf(user), 14.5e18, "halving boundary mint = 9 x 1e18 + 11 x 5e17");
     }
 }
+
+/**
+ * @title StageHCrossStackTest
+ * @notice End-to-end cross-stack validation per H-D38(4): real gauge approval chain (VaultClassRegistry /
+ *         GaugeEligibility / GaugeRegistry) → real TVLOracle / EMASampler push → continuous-phase
+ *         recordScore / recordDeposit / claim → aumm.balanceOf(user) > 0.
+ * @dev Strategy B TVL seed — `setTokenUnderlying` self-maps each pilot token to svZCHF in setUp so the
+ *      _constellationRatio identity yields tvl(pilot) = sum of balancesLiveScaled18. Side-effect-only
+ *      SwapAndDepositToBodensee invocation via `_approveAndActivate` ANTI_SPAM_FEE routing from the
+ *      inherited StageGIntegrationFixture helper. F-D15 EMASampler cold-start seed via `emaSampler.updateEMA`
+ *      (no vm.store bypass). Alpha = 1e18 continuous regime via vm.roll past year1EndBlock. Binary
+ *      positive-balance assertion — not a numeric identity per H-D38(4).
+ *      Anchors: H-D29, H-D33, H-D37, H-D38(4), F-D15.
+ */
+contract StageHCrossStackTest is StageHIntegrationFixture {
+    function setUp() public override {
+        super.setUp();
+        aumm.setMinter(address(emissionDistributor));
+        IERC20[] memory ptokens = vault.getPoolTokens(pilotPools[0]);
+        for (uint256 i = 0; i < ptokens.length; ++i) {
+            tvlOracle.setTokenUnderlying(address(ptokens[i]), address(svZchf));
+        }
+    }
+
+    /// @notice H-D38(4) cross-stack: real gauge approval chain → F-D15 EMASampler cold-start seed → continuous-phase claim → binary positive-balance assertion confirms end-to-end emission flow without numeric identity pinning.
+    function test_CrossStack_GaugeApprovalToClaim_MintsAuMM() public {
+        _makePoolEligible(pilotPools[0], 50_000e18);
+        address[] memory pools = new address[](1);
+        pools[0] = pilotPools[0];
+        _warmupTournament(pools);
+        _approveAndActivate(address(this), pilotPools[0], gaugeRegistry.ANTI_SPAM_FEE());
+        assertTrue(gaugeRegistry.isGaugeApproved(pilotPools[0]), "gauge approved post-activate");
+
+        emaSampler.updateEMA(pilotPools[0]);
+        assertGt(emaSampler.tvlEMA(pilotPools[0]), 0, "tvlEMA seeded > 0 from real TVLOracle");
+
+        vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
+
+        address user = makeAddr("h96_user");
+        emissionDistributor.recordScore(pilotPools[0]);
+        emissionDistributor.recordDeposit(pilotPools[0], user, 100e18);
+        vm.roll(block.number + 300);
+        vm.prank(user);
+        emissionDistributor.claim(pilotPools[0], user);
+
+        assertGt(aumm.balanceOf(user), 0, "cross-stack mint > 0");
+    }
+}
