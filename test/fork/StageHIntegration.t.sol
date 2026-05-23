@@ -19,6 +19,7 @@ import { EfficiencyOracle } from "../../src/emission/EfficiencyOracle.sol";
 import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapChannel.sol";
 import { IBodenseeBootstrapChannel } from "../../src/emission/IBodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
+import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.sol";
 
 /**
  * @title StageHIntegrationFixture
@@ -253,5 +254,74 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
         vm.expectRevert(BodenseeBootstrapChannel.NoPendingAccrual.selector);
         vm.prank(GOVERNANCE_MULTISIG);
         bootstrapChannel.distribute();
+    }
+}
+
+/**
+ * @title StageHContinuousPhaseTest
+ * @notice Fork-level exercise of the F-7 continuous-phase 3-pilot claim arc against real EmissionDistributor + real AuMM.
+ *         Strategy A white-box state seed: `seedFoundingPool` for gauge approval (onlyGovernance founding-seed shortcut
+ *         per G-D16b bypassing eligibility + anti-spam fee); `vm.store` for `emaSampler.tvlEMA[pilot]` slot 0
+ *         (bypasses TVLOracle constellation + EMASampler.updateEMA — cross-stack swap-driven path reserved for H9.6).
+ *         Zero-stub `incendiaryRegistry == address(0)` per H-D29 short-circuits F-7 Step 1 Incendiary skim, returning
+ *         `rate × n` as the full continuous-leg output. Bounded conservation invariant
+ *         `|Σ aumm.balanceOf(userN) − lpTrancheEmission(span)| ≤ N_gauged wei` with N_gauged = 3; chosen numerics
+ *         (tvlEMA = 1e18, multiplier = 1e18 default, span = 300 blocks at Era 0 continuous) make every
+ *         divDown / mulDown step exact so diff = 0 in practice.
+ *         Anchors: H-D17, H-D20, H-D26, H-D29, H-D30, H-D31, H-D32, H-D33, H-D37, H-D38(2), F-7.
+ */
+contract StageHContinuousPhaseTest is StageHIntegrationFixture {
+    function setUp() public override {
+        super.setUp();
+        aumm.setMinter(address(emissionDistributor));
+        vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
+        gaugeRegistry.seedFoundingPool(pilotPools[0]);
+        gaugeRegistry.seedFoundingPool(pilotPools[1]);
+        gaugeRegistry.seedFoundingPool(pilotPools[2]);
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[1], uint256(0))), bytes32(uint256(1e18)));
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[2], uint256(0))), bytes32(uint256(1e18)));
+    }
+
+    /// @notice F-7 continuous-phase 3-pilot claim arc: recordScore + recordDeposit drive per-pool LP share state; claim mints AuMM via real IAuMM.mint and the bounded Σ conservation invariant confirms no wei leak across 3 gauged pools.
+    function test_Claim_F7Phase_ThreePilotsMint_BoundedConservation() public {
+        address user0 = makeAddr("h94_user0");
+        address user1 = makeAddr("h94_user1");
+        address user2 = makeAddr("h94_user2");
+
+        emissionDistributor.recordScore(pilotPools[0]);
+        emissionDistributor.recordScore(pilotPools[1]);
+        emissionDistributor.recordScore(pilotPools[2]);
+
+        emissionDistributor.recordDeposit(pilotPools[0], user0, 100e18);
+        emissionDistributor.recordDeposit(pilotPools[1], user1, 100e18);
+        emissionDistributor.recordDeposit(pilotPools[2], user2, 100e18);
+
+        uint256 span = 300;
+        vm.roll(block.number + span);
+
+        vm.expectEmit(true, true, true, true);
+        emit IEmissionDistributor.Claimed(pilotPools[0], user0, user0, 100e18);
+        vm.prank(user0);
+        emissionDistributor.claim(pilotPools[0], user0);
+
+        vm.expectEmit(true, true, true, true);
+        emit IEmissionDistributor.Claimed(pilotPools[1], user1, user1, 100e18);
+        vm.prank(user1);
+        emissionDistributor.claim(pilotPools[1], user1);
+
+        vm.expectEmit(true, true, true, true);
+        emit IEmissionDistributor.Claimed(pilotPools[2], user2, user2, 100e18);
+        vm.prank(user2);
+        emissionDistributor.claim(pilotPools[2], user2);
+
+        assertEq(aumm.balanceOf(user0), 100e18, "user0 mint");
+        assertEq(aumm.balanceOf(user1), 100e18, "user1 mint");
+        assertEq(aumm.balanceOf(user2), 100e18, "user2 mint");
+
+        uint256 total = aumm.balanceOf(user0) + aumm.balanceOf(user1) + aumm.balanceOf(user2);
+        uint256 expected = 300e18; // lpTrancheEmission(span) = rate × n = 1e18 × 300 in Era 0 continuous with zero-stub incendiary
+        uint256 diff = expected > total ? expected - total : total - expected;
+        assertLe(diff, 3, "bounded conservation N_gauged=3");
     }
 }
