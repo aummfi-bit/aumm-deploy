@@ -76,11 +76,11 @@ contract MockAuMT is IAuMT {
 
     function burn(address, uint256) external {}
 
-    function distributor() external view returns (address) {
+    function distributor() external pure returns (address) {
         return address(0);
     }
 
-    function pool() external view returns (address) {
+    function pool() external pure returns (address) {
         return address(0);
     }
 }
