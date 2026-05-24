@@ -10,7 +10,7 @@ pragma solidity ^0.8.26;
 /// @dev Per H-D4 pull / lazy-accrual via MasterChef-style `accRewardPerScoreUnit`. Per H-D5 incremental
 ///      `totalScore` aggregate with `isGaugeApproved` per-call gate. Per H-D15 two-tier accumulator
 ///      topology — solitary global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy settle. Per
-///      H-D16 per-user maps shipped at H4 plus governance-settable `auMTContract` recorder slot. Per H-D17
+///      H-D16 per-user maps shipped at H4 plus per-pool `auMTContractByPool` recorder mapping (one-shot per pool per I-D9 Option A; mirrors I-D5 hook setAuMTForPool semantic and H-D10 per-recorder mapping precedent). Per H-D17
 ///      permissionless `recordScore` with `CCBScore` library delegation and revoked-gauge revert. Per H-D19
 ///      absolute `newScore` external ABI with F12 signed-delta middleware on `totalScore`. Per H-D20
 ///      `IAuMM.mint` at claim time only — not at `_settlePool`. Per H-D21 lazy accrual tick on every
@@ -60,12 +60,13 @@ interface IEmissionDistributor {
     /// @param newGovernance The new governance address (must be non-zero per H-D14).
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
 
-    /// @notice Emitted when governance rebinds the `auMTContract` recorder slot.
-    /// @dev Per H-D16 recorder-slot pattern — mirrors H-D10 EfficiencyOracle `setEmissionsRecorder` /
-    ///      `setFeeRecorder` analogue. Zero address is acceptable as deprecation safety valve.
-    /// @param oldAuMTContract The prior AuMT recorder address.
-    /// @param newAuMTContract The new AuMT recorder address (zero address permitted).
-    event AuMTContractSet(address indexed oldAuMTContract, address indexed newAuMTContract);
+    /// @notice Emitted when governance binds an AuMT recorder to `pool` per I-D9.
+    /// @dev Per I-D9 Option A per-pool mapping (mirrors H-D10 per-recorder mapping) + one-shot per-pool
+    ///      binding semantic (mirrors I-D5 `AureumFeeRoutingHook.setAuMTForPool`). The binding is
+    ///      immutable once set — see `AuMTAlreadyBound` revert in `setAuMTContractForPool`.
+    /// @param pool The Balancer V3 pool address bound to the AuMT recorder.
+    /// @param auMTContract The bound Stage I AuMT contract address.
+    event AuMTContractBound(address indexed pool, address indexed auMTContract);
 
     /// @notice Emitted when governance rebinds the `incendiaryRegistry` slot per H-D29.
     /// @dev Per H-D29 Incendiary registry recorder-slot pattern — indexed-old-indexed-new shape mirrors
@@ -81,11 +82,21 @@ interface IEmissionDistributor {
     /// @param pool The pool address that failed the approval check.
     error NotApproved(address pool);
 
-    /// @notice Thrown when `recordDeposit` or `recordWithdrawal` is invoked by a non-recorder caller.
-    /// @dev Per H-D16 recorder-slot gate — pre-Stage-I posture with `auMTContract == address(0)` causes
-    ///      all callers to revert because `msg.sender` cannot equal zero in external-call contexts.
-    /// @param caller The address that failed the `auMTContract` equality check.
-    error NotAuMTContract(address caller);
+    /// @notice Thrown when `recordDeposit` or `recordWithdrawal` is invoked by a non-recorder caller for `pool`.
+    /// @dev Per I-D9 per-pool recorder gate — `msg.sender` must equal `auMTContractByPool[pool]`.
+    ///      Pre-binding posture: `auMTContractByPool[pool] == address(0)` means all callers revert because
+    ///      `msg.sender` cannot equal zero in external-call contexts.
+    /// @param pool The Balancer V3 pool address for which the recorder gate failed.
+    /// @param caller The address that failed the `auMTContractByPool[pool]` equality check.
+    error NotAuMTContract(address pool, address caller);
+
+    /// @notice Thrown when `setAuMTContractForPool` is invoked for a pool that already has a bound recorder.
+    /// @dev Per I-D9 one-shot per-pool binding — once `auMTContractByPool[pool]` is non-zero, the slot is
+    ///      immutable. Mirrors I-D5 `AureumFeeRoutingHook.setAuMTForPool` one-shot semantic. Governance
+    ///      cannot rebind or zero-out a once-bound pool recorder — the H-D16 deprecation safety valve is
+    ///      removed under I-D9.
+    /// @param pool The Balancer V3 pool address for which a recorder is already bound.
+    error AuMTAlreadyBound(address pool);
 
     /// @notice Thrown when a governance-only entry is invoked by a non-governance caller.
     /// @dev Per H-D14 / H-D10 governance setter precedent.
@@ -93,8 +104,9 @@ interface IEmissionDistributor {
     error NotGovernance(address caller);
 
     /// @notice Thrown when a zero address is supplied where it is forbidden.
-    /// @dev Used by `setGovernanceContract` — new governance must be non-zero per H-D14 precedent.
-    ///      `setAuMTContract` does NOT revert on zero because zero is the H-D16 deprecation safety valve.
+    /// @dev Used by `setGovernanceContract` per H-D14 (new governance must be non-zero) and by
+    ///      `setAuMTContractForPool` per I-D9 (new AuMT recorder must be non-zero; the H-D16 deprecation
+    ///      safety valve does not apply under one-shot per-pool semantic).
     error ZeroAddress();
 
     /// @notice Permissionlessly records the current F-5 score for `pool` and updates `totalScore`.
@@ -107,7 +119,7 @@ interface IEmissionDistributor {
     function recordScore(address pool) external;
 
     /// @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated.
-    /// @dev Per H-D16 single-snapshot MasterChef variant: revert if `msg.sender != auMTContract`; run
+    /// @dev Per H-D16 single-snapshot MasterChef variant: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; run
     ///      `_accrueGlobal` then `_settlePool` then settle the user's pending claim against pre-deposit
     ///      `userLP`; increment `userLP[pool][user]` and `poolTotalLP[pool]` by `amount`; update
     ///      `userRewardDebt[pool][user]` to the new pool-effective accumulator; emit `DepositRecorded`.
@@ -118,7 +130,7 @@ interface IEmissionDistributor {
     function recordDeposit(address pool, address user, uint256 amount) external;
 
     /// @notice Records a withdrawal of `amount` AuMT for `user` in `pool` — AuMT-recorder gated.
-    /// @dev Symmetric to `recordDeposit` per H-D16: revert if `msg.sender != auMTContract`; settle user
+    /// @dev Symmetric to `recordDeposit` per H-D16: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; settle user
     ///      pending against pre-withdrawal `userLP`; decrement `userLP[pool][user]` and
     ///      `poolTotalLP[pool]` by `amount`; update `userRewardDebt`; emit `WithdrawalRecorded`. Cross-refs
     ///      H-D4, H-D16, H-D21.
@@ -144,12 +156,16 @@ interface IEmissionDistributor {
     /// @param newGovernance The new governance contract address (must be non-zero).
     function setGovernanceContract(address newGovernance) external;
 
-    /// @notice Rebinds the `auMTContract` recorder slot — governance-only.
-    /// @dev Zero address is acceptable per H-D16 deprecation safety valve — mirrors EfficiencyOracle
-    ///      `setEmissionsRecorder`. Swaps old/new, emits `AuMTContractSet`. Cross-refs H-D16, H-D10
-    ///      recorder-slot pattern.
-    /// @param newAuMTContract The new Stage I AuMT contract address (zero permitted).
-    function setAuMTContract(address newAuMTContract) external;
+    /// @notice Binds an AuMT recorder to `pool` — governance-only, one-shot per pool per I-D9.
+    /// @dev Sequence per I-D9: (a) revert `NotGovernance(msg.sender)` if non-governance; (b) revert
+    ///      `ZeroAddress` if `newAuMTContract == address(0)`; (c) revert `AuMTAlreadyBound(pool)` if
+    ///      `auMTContractByPool[pool]` is already non-zero; (d) write `auMTContractByPool[pool] = newAuMTContract`;
+    ///      (e) emit `AuMTContractBound(pool, newAuMTContract)`. The H-D16 mutable deprecation safety valve
+    ///      is REMOVED under I-D9 — once bound, the slot is immutable. Cross-refs I-D9, I-D5 hook one-shot
+    ///      setter, H-D10 per-pool recorder pattern.
+    /// @param pool The Balancer V3 pool address to bind.
+    /// @param newAuMTContract The new Stage I AuMT contract address (must be non-zero).
+    function setAuMTContractForPool(address pool, address newAuMTContract) external;
 
     /// @notice Returns the global `accRewardPerScoreUnit` accumulator.
     /// @dev Global tier per H-D22 — FixedPoint 18-decimal accumulator advancing on every `_accrueGlobal`
@@ -181,7 +197,7 @@ interface IEmissionDistributor {
     /// @return The `poolAccDebt[pool]` snapshot value.
     function poolAccDebt(address pool) external view returns (uint256);
 
-    
+
     /// @notice Returns the per-pool acc-reward-per-LP-unit accumulator for `pool`.
     /// @dev Per-pool tier per H-D22 / H-D24 — FixedPoint 18-decimal AuMM-wei-per-LP-unit accumulator advanced by `_settlePool` after the H-D23 EfficiencyOracle push (skip-on-zero-LP semantic per H-D24). Source for `userRewardDebt` snapshot at user-settle time (H4.6) and `pendingClaim` derivation (H4.7).
     /// @param pool The Balancer V3 pool address.
@@ -236,9 +252,12 @@ interface IEmissionDistributor {
     /// @return The governance contract address.
     function governance() external view returns (address);
 
-    /// @notice Returns the current AuMT recorder contract address.
-    /// @dev Recorder slot per H-D22 / H-D16 — `address(0)` is the pre-Stage-I and deprecated-recorder
-    ///      safety-valve posture per H-D16.
-    /// @return The AuMT contract address authorized to call `recordDeposit` / `recordWithdrawal`.
-    function auMTContract() external view returns (address);
+    /// @notice Returns the AuMT recorder bound to `pool`, or `address(0)` if unbound.
+    /// @dev Per I-D9 per-pool recorder mapping — the AuMT contract authorized to call `recordDeposit` /
+    ///      `recordWithdrawal` for `pool`. `address(0)` means the pool's recorder is unbound (pre-Stage-I
+    ///      or pool not yet wired). Replaces the Stage H single-slot `auMTContract()` view per the I-D9
+    ///      refactor.
+    /// @param pool The Balancer V3 pool address.
+    /// @return The bound AuMT contract address for `pool` (zero if unbound).
+    function auMTContractByPool(address pool) external view returns (address);
 }
