@@ -92,8 +92,8 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Mutable governance authority per H-D14 — Stage A—K Authorizer Safe at deploy; rebound via `setGovernanceContract` at Stage K (mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel governance-slot pattern).
     address public override governance;
 
-    /// @notice Mutable AuMT recorder authority per H-D16 — `address(0)` pre-Stage-I and as deprecation safety valve (mirrors EfficiencyOracle's H-D10 recorder slots). Gates `recordDeposit` / `recordWithdrawal` via `onlyAuMTContract` modifier (lands at H4.5).
-    address public override auMTContract;
+    /// @notice Per-pool AuMT recorder authority per I-D9 — one-shot per pool; no deprecation safety valve per I-D9 (mandatory-non-zero at bind time). `auMTContractByPool[pool] == address(0)` pre-binding posture causes all callers for that pool to revert via `onlyAuMTContract(pool)` modifier because `msg.sender` cannot equal zero in external-call contexts.
+    mapping(address => address) public override auMTContractByPool;
 
     /* ---------- Incendiary registry slot (H-D29) ---------- */
 
@@ -152,10 +152,10 @@ contract EmissionDistributor is IEmissionDistributor {
         _;
     }
 
-    /// @notice Restricts execution to the current `auMTContract` recorder; reverts `NotAuMTContract(msg.sender)` otherwise.
-    /// @dev H-D16 recorder-slot gate — `setAuMTContract`-pivoting `auMTContract` slot per H-D16; pre-Stage-I posture has `auMTContract == address(0)` which causes all callers to revert because `msg.sender` cannot equal zero in external-call contexts (H-D16 deprecation safety-valve semantic). Mirrors `onlyGovernance` structure at L126-L129.
-    modifier onlyAuMTContract() {
-        if (msg.sender != auMTContract) revert NotAuMTContract(msg.sender);
+    /// @notice Restricts execution to the per-pool AuMT recorder; reverts `NotAuMTContract(pool, msg.sender)` otherwise.
+    /// @dev I-D9 per-pool recorder gate — `setAuMTContractForPool`-pivoting `auMTContractByPool` mapping per I-D9; one-shot per pool, no deprecation safety valve (mandatory-non-zero at bind time per I-D9). Pre-binding posture has `auMTContractByPool[pool] == address(0)` which causes all callers for that pool to revert because `msg.sender` cannot equal zero in external-call contexts. Mirrors `onlyGovernance` structure.
+    modifier onlyAuMTContract(address pool) {
+        if (msg.sender != auMTContractByPool[pool]) revert NotAuMTContract(pool, msg.sender);
         _;
     }
 
@@ -174,14 +174,16 @@ contract EmissionDistributor is IEmissionDistributor {
     }
 
     /**
-     * @notice Rebinds the `auMTContract` recorder slot per H-D16 — `onlyGovernance`-gated.
-     * @dev Zero address is acceptable per H-D16 deprecation safety valve — mirrors EfficiencyOracle's H-D10 `setEmissionsRecorder` / `setFeeRecorder` recorder-slot pattern where `address(0)` permanently bricks the producer entry (pre-Stage-I posture; `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(msg.sender)` because `msg.sender` cannot equal zero in external-call contexts, so the gate stays closed). Captures `oldAuMTContract` before overwrite; emits `AuMTContractSet(oldAuMTContract, newAuMTContract)`. The setter does NOT revert `ZeroAddress` (deliberate asymmetry with `setGovernanceContract` per H-D14 / H-D16 + IEmissionDistributor L89-L90 documented contract).
-     * @param newAuMTContract The new Stage I AuMT contract address. Zero address permitted as H-D16 deprecation safety valve.
+     * @notice Binds the AuMT recorder for `pool` per I-D9 — one-shot per pool, `onlyGovernance`-gated.
+     * @dev I-D9 per-pool recorder mapping — `setAuMTContractForPool`-pivoting `auMTContractByPool` mapping; one-shot per pool, no rebinding support (deliberate departure from H-D16 mutable). `ZeroAddress` guard mandatory-non-zero rationale: mirrors `setGovernanceContract` H-D14 (non-zero recipient is the load-bearing handoff invariant); H-D16 zero-address deprecation safety valve removed because asymmetric rebind between hook `auMTByPool` and distributor `auMTContractByPool` would break per-pool topology. `AuMTAlreadyBound(pool)` one-shot rationale: mirrors H-D5 hook `setAuMTForPool` per I-D5 (one-shot binding prevents topology divergence). Emits `AuMTContractBound(pool, newAuMTContract)`.
+     * @param pool The Balancer V3 pool address to bind the recorder for.
+     * @param newAuMTContract The Stage I AuMT contract address for `pool`. Reverts `ZeroAddress` on zero input; reverts `AuMTAlreadyBound(pool)` if already bound.
      */
-    function setAuMTContract(address newAuMTContract) external override onlyGovernance {
-        address oldAuMTContract = auMTContract;
-        auMTContract = newAuMTContract;
-        emit AuMTContractSet(oldAuMTContract, newAuMTContract);
+    function setAuMTContractForPool(address pool, address newAuMTContract) external override onlyGovernance {
+        if (newAuMTContract == address(0)) revert ZeroAddress();
+        if (auMTContractByPool[pool] != address(0)) revert AuMTAlreadyBound(pool);
+        auMTContractByPool[pool] = newAuMTContract;
+        emit AuMTContractBound(pool, newAuMTContract);
     }
 
     /**
@@ -421,12 +423,12 @@ contract EmissionDistributor is IEmissionDistributor {
 
     /**
      * @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated per H-D16.
-     * @dev H-D16 / H-D21 / H-D25 single-snapshot MasterChef variant — (a) `onlyAuMTContract` gate reverts `NotAuMTContract(msg.sender)` on non-recorder callers (pre-Stage-I `auMTContract == address(0)` posture causes all callers to revert because `msg.sender` cannot equal zero); (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)` BEFORE any user-state mutation, ensuring `poolAccRewardPerLP[pool]` is fresh against `block.number`; (c) cache `acc = poolAccRewardPerLP[pool]` (the H-D24 per-LP-unit accumulator); (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-deposit user state per H-D25 — FixedPoint mulDown converts (FixedPoint per-LP-unit AuMM × LP-unit count) into AuMM-wei; (e) H-D25 zero-skip — when `pending > 0` crystallize via `pendingBalance[pool][user] += pending` (no separate event — single `DepositRecorded` per call per H-D16); (f) increment user stake `userLP[pool][user] += amount` and pool aggregate `poolTotalLP[pool] += amount` AFTER the pending math so the snapshot is computed against pre-deposit `userLP`; (g) rebase `userRewardDebt[pool][user] = acc` per H-D16 / H-D25 — subsequent `pendingClaim` derivations start the live-delta clock from the fresh accumulator; (h) emit `DepositRecorded(pool, user, amount)`. First-deposit behavior: when `userLP[pool][user] == 0` pre-deposit, `pending = (acc - 0).mulDown(0) = 0` regardless of `acc` magnitude — the zero-skip elides the no-op `pendingBalance` write; the debt rebase `userRewardDebt[pool][user] = acc` correctly initializes the per-user snapshot. No-underflow invariant on `acc - userRewardDebt[pool][user]`: `userRewardDebt[pool][user]` is only ever written as a snapshot of `poolAccRewardPerLP[pool]` (here and at `recordWithdrawal` / `claim`), which is monotonically non-decreasing per H-D24; so `userRewardDebt[pool][user] <= acc` always holds. Zero-amount deposits are permitted — the interface does not declare an `amount > 0` guard and the H-D16 prose does not impose one (AuMT recorder filters upstream); the function still runs the full accrue/settle/pending-crystallization sequence and emits the event. The `pendingBalance` crystallization step is the load-bearing departure from the Sushi MasterChef V2 auto-claim-at-deposit pattern: H-D20 fixes `IAuMM.mint` at the `claim` site only, so the pre-deposit allocation cannot transfer here — it accumulates in `pendingBalance` until the user calls `claim` (H4.7). Local cache `acc` (poolAccRewardPerLP SLOAD) eliminates the redundant read between the pending math and the debt rebase. No reentrancy guard — no external calls between the gate and the event (the EfficiencyOracle push in `_settlePool` per H-D23 happens before any user-state mutation).
+     * @dev I-D9 / H-D21 / H-D25 single-snapshot MasterChef variant — (a) `onlyAuMTContract(pool)` gate reverts `NotAuMTContract(pool, msg.sender)` on non-recorder callers (pre-binding `auMTContractByPool[pool] == address(0)` posture causes all callers to revert because `msg.sender` cannot equal zero); (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)` BEFORE any user-state mutation, ensuring `poolAccRewardPerLP[pool]` is fresh against `block.number`; (c) cache `acc = poolAccRewardPerLP[pool]` (the H-D24 per-LP-unit accumulator); (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-deposit user state per H-D25 — FixedPoint mulDown converts (FixedPoint per-LP-unit AuMM × LP-unit count) into AuMM-wei; (e) H-D25 zero-skip — when `pending > 0` crystallize via `pendingBalance[pool][user] += pending` (no separate event — single `DepositRecorded` per call per H-D16); (f) increment user stake `userLP[pool][user] += amount` and pool aggregate `poolTotalLP[pool] += amount` AFTER the pending math so the snapshot is computed against pre-deposit `userLP`; (g) rebase `userRewardDebt[pool][user] = acc` per H-D16 / H-D25 — subsequent `pendingClaim` derivations start the live-delta clock from the fresh accumulator; (h) emit `DepositRecorded(pool, user, amount)`. First-deposit behavior: when `userLP[pool][user] == 0` pre-deposit, `pending = (acc - 0).mulDown(0) = 0` regardless of `acc` magnitude — the zero-skip elides the no-op `pendingBalance` write; the debt rebase `userRewardDebt[pool][user] = acc` correctly initializes the per-user snapshot. No-underflow invariant on `acc - userRewardDebt[pool][user]`: `userRewardDebt[pool][user]` is only ever written as a snapshot of `poolAccRewardPerLP[pool]` (here and at `recordWithdrawal` / `claim`), which is monotonically non-decreasing per H-D24; so `userRewardDebt[pool][user] <= acc` always holds. Zero-amount deposits are permitted — the interface does not declare an `amount > 0` guard and the H-D16 prose does not impose one (AuMT recorder filters upstream); the function still runs the full accrue/settle/pending-crystallization sequence and emits the event. The `pendingBalance` crystallization step is the load-bearing departure from the Sushi MasterChef V2 auto-claim-at-deposit pattern: H-D20 fixes `IAuMM.mint` at the `claim` site only, so the pre-deposit allocation cannot transfer here — it accumulates in `pendingBalance` until the user calls `claim` (H4.7). Local cache `acc` (poolAccRewardPerLP SLOAD) eliminates the redundant read between the pending math and the debt rebase. No reentrancy guard — no external calls between the gate and the event (the EfficiencyOracle push in `_settlePool` per H-D23 happens before any user-state mutation).
      * @param pool The Balancer V3 pool address — caller-supplied; no `isGaugeApproved` gate here per H-D16 (deposit/withdrawal must always settle even on revoked-gauge pools so existing stake can exit cleanly; `recordScore` is the producer that filters on gauge approval per H-D17).
      * @param user The AuMT holder receiving the stake credit — caller-supplied; ZeroAddress not guarded (H-D16 trusts the AuMT recorder to filter).
      * @param amount The AuMT amount deposited (same scale as `userLP`); zero permitted.
      */
-    function recordDeposit(address pool, address user, uint256 amount) external override onlyAuMTContract {
+    function recordDeposit(address pool, address user, uint256 amount) external override onlyAuMTContract(pool) {
         _accrueGlobal();
         _settlePool(pool);
         uint256 acc = poolAccRewardPerLP[pool];
@@ -442,12 +444,12 @@ contract EmissionDistributor is IEmissionDistributor {
 
     /**
      * @notice Records a withdrawal of `amount` AuMT for `user` in `pool` — AuMT-recorder gated per H-D16.
-     * @dev H-D16 / H-D21 / H-D25 symmetric settle pattern — mirrors `recordDeposit` with decrement instead of increment: (a) `onlyAuMTContract` gate; (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)`; (c) cache `acc = poolAccRewardPerLP[pool]`; (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-withdrawal `userLP` per H-D25 — crystallize via `pendingBalance[pool][user] += pending` when `pending > 0` (zero-skip); (e) decrement `userLP[pool][user] -= amount` and `poolTotalLP[pool] -= amount` AFTER the pending math so the snapshot uses pre-withdrawal `userLP`; (f) rebase `userRewardDebt[pool][user] = acc`; (g) emit `WithdrawalRecorded(pool, user, amount)`. Underflow at step (e) reverts on over-withdrawal — AuMT recorder is responsible for balance checks; no explicit guard added per H-D16 trust-the-recorder posture. No-underflow invariant on `acc - userRewardDebt[pool][user]` identical to `recordDeposit` — `userRewardDebt` is only ever written as a snapshot of the monotonically non-decreasing `poolAccRewardPerLP[pool]`. Zero-amount withdrawals are permitted.
+     * @dev I-D9 / H-D21 / H-D25 symmetric settle pattern — mirrors `recordDeposit` with decrement instead of increment: (a) `onlyAuMTContract(pool)` gate; (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)`; (c) cache `acc = poolAccRewardPerLP[pool]`; (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-withdrawal `userLP` per H-D25 — crystallize via `pendingBalance[pool][user] += pending` when `pending > 0` (zero-skip); (e) decrement `userLP[pool][user] -= amount` and `poolTotalLP[pool] -= amount` AFTER the pending math so the snapshot uses pre-withdrawal `userLP`; (f) rebase `userRewardDebt[pool][user] = acc`; (g) emit `WithdrawalRecorded(pool, user, amount)`. Underflow at step (e) reverts on over-withdrawal — AuMT recorder is responsible for balance checks; no explicit guard added per H-D16 trust-the-recorder posture. No-underflow invariant on `acc - userRewardDebt[pool][user]` identical to `recordDeposit` — `userRewardDebt` is only ever written as a snapshot of the monotonically non-decreasing `poolAccRewardPerLP[pool]`. Zero-amount withdrawals are permitted.
      * @param pool The Balancer V3 pool address.
      * @param user The AuMT holder losing the stake credit.
      * @param amount The AuMT amount withdrawn; zero permitted.
      */
-    function recordWithdrawal(address pool, address user, uint256 amount) external override onlyAuMTContract {
+    function recordWithdrawal(address pool, address user, uint256 amount) external override onlyAuMTContract(pool) {
         _accrueGlobal();
         _settlePool(pool);
         uint256 acc = poolAccRewardPerLP[pool];
