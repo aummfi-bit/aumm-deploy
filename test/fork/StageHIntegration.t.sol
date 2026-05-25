@@ -29,7 +29,7 @@ import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.so
  *      production stack: TVLOracle + EMASampler + CCBMultiplier + EfficiencyOracle + BodenseeBootstrapChannel +
  *      EmissionDistributor + MockMiliariumRegistry. Post-construction wiring: H-D23
  *      `setEmissionsRecorder(address(emissionDistributor))` on efficiencyOracle + H6.3
- *      `setAuMTContract(address(this))` on emissionDistributor (test contract impersonates the Stage I AuMT
+ *      `setAuMTContractForPool(pilotPools[0..2], address(this))` on emissionDistributor (test contract impersonates the Stage I AuMT
  *      recorder for `recordDeposit` / `recordWithdrawal` calls). `aumm.setMinter(...)` is deferred to each
  *      derived contract's setUp override per H-D37 amended at H9.0c (Option A — avoids Bodensee-pool AuMM
  *      token conflict: `StageHBootstrapPhaseTest` needs `bootstrapChannel` as minter for H-D39 DONATION
@@ -97,7 +97,9 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
         );
 
         efficiencyOracle.setEmissionsRecorder(address(emissionDistributor)); // H-D23 — distributor pushes recordEmissions; oracle must whitelist
-        emissionDistributor.setAuMTContract(address(this)); // H6.3 — recorder impersonation; test contract drives recordDeposit/recordWithdrawal
+        emissionDistributor.setAuMTContractForPool(pilotPools[0], address(this)); // H6.3 + I-D9 — recorder impersonation; test contract drives recordDeposit/recordWithdrawal across all 3 pilot pools
+        emissionDistributor.setAuMTContractForPool(pilotPools[1], address(this));
+        emissionDistributor.setAuMTContractForPool(pilotPools[2], address(this));
 
         // aumm.setMinter(...) deferred to each derived contract's setUp override per H-D37 amended at H9.0c (Option A — Bodensee-pool AuMM token shared between bootstrapChannel and emissionDistributor minter paths; one-shot C-D11 _minterAdmin disallows fixture-level wiring)
         // incendiaryRegistry stays address(0) per H-D29 zero-stub (slot default — no setter call required; F-7 Step 1 Incendiary skim collapses to 0 per H5.1c continuous-leg short-circuit)
