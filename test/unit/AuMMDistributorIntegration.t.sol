@@ -61,7 +61,7 @@ contract AuMMDistributorIntegrationTest is Test {
         aumm.setMinter(address(distributor));
         effOracle.setEmissionsRecorder(address(distributor));
         vm.prank(GOV);
-        distributor.setAuMTContract(AUMT_REC);
+        distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
         vm.roll(GENESIS_BLOCK_);
     }
 
