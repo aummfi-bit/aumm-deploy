@@ -167,6 +167,10 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I1.6 | `401f047` | test/fork/DeployStageH.t.sol | +7 / 0 | Add (3b-bis) assertion auMTContractByPool(bodenseePool)==address(0) post-deploy per H-D7 Option C + I-D9 deferred binding |
 | I1.7 | (no commit — regression run) | — | — | Regression: 613/613 unit (+1 from I1.3 AuMTAlreadyBound test, was 612) + 10/10 fork integration (StageHBootstrapPhaseTest 7 + Continuous 1 + CrossStack 1 + HalvingBoundary 1) + 1/1 deploy fork; all green under D35 split-form + D36 --threads 1 + H-D40 canonical invocation |
 | I1.8a | `44a94bb` | docs/STAGE_I_NOTES.md | +10 / -1 | I10 Findings entry: multi-file rename refactor NatSpec drift (I1.1-fix1 + I1.2-fix1 lessons; intra-file old-symbol grep rule) |
+| I1.8b | `c33ea30` | docs/STAGE_I_PLAN.md | +11 / -1 | Completion Log catch-up — I0.0c hash backfill (`<pending>` → `984456a`; `+N` → `+182`) + 10 new rows I1.1—I1.8a (182 → 192 lines) |
+| I1.8c | `6cf219f` | docs/STAGE_I_PLAN.md | +3 / -3 | Status header + Last update + Mode refresh (L3/L5/L7 in-place replacements; I1 family complete, I2/I3 ahead; 192 lines unchanged) |
+| I1.8d | `be09f35` | CLAUDE.md | +33 / -29 | §11 refresh — Stage H→Stage I transition (Stage I in progress; I1 family COMPLETE 624/624 green; I1.8 sweep in flight; I10 housekeeping bullet after H13; 14 Stage I commit bullets) |
+| I1.8e | `<pending>` | docs/STAGE_I_PLAN.md | +4 / 0 | Completion Log tail — append I1.8b/I1.8c/I1.8d rows + self-row to close I1 family Completion Log enumeration (192 → 196 lines) |
 
 ---
 
