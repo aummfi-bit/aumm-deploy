@@ -118,7 +118,16 @@ Stage I assumes every upstream ABI in this roster remains fixed for its duration
 
 Entries labeled I10+ accumulate once Stage I exits pure documentation scaffolding and Solidity surfaces stabilize; numbering stays decoupled from I-D planners per the conventions above until incidents surface.
 
-(empty)
+### I10 — Multi-file rename refactor: §8e.1 Must-match must enumerate NatSpec cross-references to the OLD symbol, not just the renamed declaration site
+
+When a §8e.1 renames a function / event / error / storage slot — e.g., `setAuMTContract` → `setAuMTContractForPool`, `AuMTContractSet` → `AuMTContractBound` per I-D9 — the original Must-match enumerates the new symbols at their declaration sites but typically misses NatSpec `@notice` / `@dev` paragraphs elsewhere in the same file that cross-reference the OLD symbol by name. Both I1.1 and I1.2 surfaced isolated stale NatSpec lines requiring `*-fix1` sub-steps:
+
+- I1.1-fix1 (`46a93c7`): `IEmissionDistributor.sol` L73 — `AuMTContractSet (H-D16)` cross-reference in `IncendiaryRegistrySet` event NatSpec.
+- I1.2-fix1 (`1f9c74f`): `EmissionDistributor.sol` L19 / L81 / L100 / L107 / L191 — five stale `H-D16` + `auMTContract` + `setAuMTContract` cross-references in contract-level @dev + per-function @dev paragraphs.
+
+Default rule for any rename §8e.1 drafted in the Opus beat: run `grep -n "<old-symbol>" <target-file>` first, enumerate every occurrence, and add a Must-match bullet asserting `Zero hits anywhere in the file for the standalone `<old-symbol>\b` token`. Each surviving NatSpec hit must be resolved per-line (update with new symbol + new anchor, or remove the cross-reference). This is intra-file NatSpec scope, distinct from G16's cross-file interface-inheritor scope (`grep -rn "is I<Interface>" src/ test/ script/`); the two rules complement.
+
+Anchors: I1.1-fix1 (commit `46a93c7`), I1.2-fix1 (commit `1f9c74f`), G16 (interface-inheritor enumeration).
 
 ---
 
