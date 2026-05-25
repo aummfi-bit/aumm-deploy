@@ -1,10 +1,10 @@
 # Stage I — Plan & Sub-Step Roadmap
 
-> **Status:** I0.0c PLAN creation on `stage-i` (branched from `stage-h-complete` at `2a33649`; HEAD `1404b2d`) — initial sub-step skeleton I0—I7 + I-D1—I-D10 Decisions table mirror of NOTES + Completion Log seeded with I0.0a/I0.0b/I0.0c. Companion to STAGE_I_NOTES.md (I-D1—I-D10 LOCKED at I0.0b).
+> **Status:** I1 — EmissionDistributor per-pool refactor (per I-D9; foundation) complete on `stage-i` (branched from `stage-h-complete` at `2a33649`; HEAD `c33ea30`) — interface signature updates + per-pool mapping implementation + 4 test files refactored across I1.1—I1.6; I1.7 regression 624/624 green (613/613 unit + 10/10 fork integration + 1/1 deploy fork) under D35 split-form + D36 --threads 1 + H-D40 canonical invocation; I1.8a—I1.8b close-of-family sweep landed (NOTES I10 Findings + PLAN Completion Log catch-up). I-D1—I-D10 Decisions LOCKED at I0.0b; I10 Findings entry landed at I1.8a (multi-file rename NatSpec-drift rule, intra-file old-symbol grep complement to G16). Companion to STAGE_I_NOTES.md.
 >
-> **Last update:** 2026-05-23 — I0.0c PLAN creation (initial sub-step skeleton + Decisions table + Pre-flight checklist + Completion Log + Open questions + Anchors; this commit).
+> **Last update:** 2026-05-25 — I1.8c PLAN status header + Last update + Mode refresh (this commit). I1 close-of-family sweep in flight: I1.8a NOTES I10 Findings (`44a94bb`) + I1.8b PLAN Completion Log catch-up (`c33ea30`) + I1.8c PLAN status/mode refresh this commit; I1.8d CLAUDE.md §11 refresh + I1.8e PLAN Completion Log tail pending.
 >
-> **Mode:** Opus high entry per §13 stage-level defaults — AuMT interface design + soulbound ERC-20 state machine + governanceWeight root-curve formula + AureumFeeRoutingHook extension. Drops to mostly Sonnet after I3 design closes (test writing + plan-row updates). I1.1 IEmissionDistributor.sol interface signature updates next.
+> **Mode:** Opus high continues per §13 stage-level defaults. Next family is I2 — AureumTime constants extension (QUALIFICATION_PERIOD_BLOCKS + ON_RAMP_PERIOD_BLOCKS per I-D10); mechanical (lib constant addition + test assertions mirroring existing AureumTime.t.sol patterns), Sonnet-suitable after Opus drafts the I2.1 §8e.1. I3 — AuMT.sol concrete implementation — is the next Opus-high focus block (soulbound ERC-20 state machine + I-D7 root-curve formula + I-D6 qualification clock + I-D4 onlyLiquidityHook access).
 >
 > **Audience:** Sagix plus any future Claude session that needs the operational roadmap for Stage I sub-step execution. NOTES (STAGE_I_NOTES.md) is the running design-decision log; this file is the sub-step sequence + Completion Log + grep-verifiable checkpoint catalog.
 
