@@ -156,7 +156,17 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | --- | --- | --- | --- | --- |
 | I0.0a | `9409d76` | docs/STAGE_I_NOTES.md | +114 / 0 | Stage I design freeze (I-D1—I-D8 LOCKED + I-D9 OPEN); 114-line file landed (Cursor condensed; structural anchors verified) |
 | I0.0b | `1404b2d` | docs/STAGE_I_NOTES.md | +22 / -7 | I-D9 LOCKED Option A (per-pool mapping in EmissionDistributor) + I-D10 LOCKED (AureumTime extension) |
-| I0.0c | `<pending>` | docs/STAGE_I_PLAN.md | +N / 0 | This commit — PLAN creation: sub-step roadmap I0—I7 + Decisions table (I-D1—I-D10 LOCKED mirror) + Pre-flight checklist + Completion Log + Open questions + Anchors |
+| I0.0c | `984456a` | docs/STAGE_I_PLAN.md | +182 / 0 | PLAN creation: sub-step roadmap I0—I7 + Decisions table (I-D1—I-D10 LOCKED mirror) + Pre-flight checklist + Completion Log + Open questions + Anchors |
+| I1.1 | `5ff9072` | src/emission/IEmissionDistributor.sol | +47 / -28 | Interface signature updates per I-D9: rename AuMTContractSet→AuMTContractBound event + amend NotAuMTContract(pool, caller) error + add AuMTAlreadyBound(pool) error + rename setAuMTContract→setAuMTContractForPool + rename auMTContract()→auMTContractByPool(pool) view; H-D16 zero-address safety valve removed |
+| I1.1-fix1 | `46a93c7` | src/emission/IEmissionDistributor.sol | +1 / -1 | Stale L73 NatSpec cross-ref (AuMTContractSet → AuMTContractBound per I1.1 rename) — surfaced I10 default rule for rename §8e.1 NatSpec sweep |
+| I1.2 | `c3147c1` | src/emission/EmissionDistributor.sol | +19 / -17 | Per-pool auMTContractByPool mapping per I-D9: storage slot + onlyAuMTContract(pool) modifier + setAuMTContractForPool one-shot setter (ZeroAddress + AuMTAlreadyBound guards) + recordDeposit/recordWithdrawal modifier annotation update |
+| I1.2-fix1 | `1f9c74f` | src/emission/EmissionDistributor.sol | +5 / -5 | Stale NatSpec cross-refs at L19/L81/L100/L107/L191 (auMTContract single-slot → auMTContractByPool per I-D9) — five fixes; I10 default rule applied |
+| I1.3 | `887b656` | test/unit/EmissionDistributor.t.sol | +27 / -20 | Update 8 tests + add AuMTAlreadyBound test per I-D9 (setUp binds POOL_A via setAuMTContractForPool; rename governance-gate/constructor-default/bind+emit tests; zero-address test inverts to ZeroAddress revert; new test_RevertWhen_SetAuMTContractForPoolAlreadyBound; NotAuMTContract reverts add POOL_A first arg; 100→101 tests) |
+| I1.4 | `a20245a` | test/unit/AuMMDistributorIntegration.t.sol | +1 / -1 | setUp setAuMTContractForPool(POOL_A, AUMT_REC) per I-D9 |
+| I1.5 | `009e591` | test/fork/StageHIntegration.t.sol | +4 / -2 | setAuMTContractForPool(pilotPools[0..2], address(this)) per I-D9 — expand single fixture recorder binding to all 3 pilot pools |
+| I1.6 | `401f047` | test/fork/DeployStageH.t.sol | +7 / 0 | Add (3b-bis) assertion auMTContractByPool(bodenseePool)==address(0) post-deploy per H-D7 Option C + I-D9 deferred binding |
+| I1.7 | (no commit — regression run) | — | — | Regression: 613/613 unit (+1 from I1.3 AuMTAlreadyBound test, was 612) + 10/10 fork integration (StageHBootstrapPhaseTest 7 + Continuous 1 + CrossStack 1 + HalvingBoundary 1) + 1/1 deploy fork; all green under D35 split-form + D36 --threads 1 + H-D40 canonical invocation |
+| I1.8a | `44a94bb` | docs/STAGE_I_NOTES.md | +10 / -1 | I10 Findings entry: multi-file rename refactor NatSpec drift (I1.1-fix1 + I1.2-fix1 lessons; intra-file old-symbol grep rule) |
 
 ---
 
