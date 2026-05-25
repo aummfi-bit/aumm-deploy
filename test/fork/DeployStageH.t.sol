@@ -145,6 +145,13 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
             "aumm.minter() must be address(0) post-deploy per H-D7 Option C"
         );
 
+        // (3b-bis) H-D7 Option C + I-D9 invariant: setAuMTContractForPool not called by script.
+        assertEq(
+            emissionDistributor.auMTContractByPool(bodenseePool),
+            address(0),
+            "emissionDistributor.auMTContractByPool(bodenseePool) must be address(0) post-deploy per H-D7 Option C + I-D9 deferred binding"
+        );
+
         // (3c)-(3f) Step 7 governance handoffs — all four emission-stack contracts.
         assertEq(
             deployStageHScript.tvlOracle().governance(),
