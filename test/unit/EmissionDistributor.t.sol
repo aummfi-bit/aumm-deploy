@@ -211,7 +211,7 @@ contract EmissionDistributorTest is Test {
         aumm.setMinter(address(distributor));
         effOracle.setEmissionsRecorder(address(distributor));
         vm.prank(GOV);
-        distributor.setAuMTContract(AUMT_REC);
+        distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
         vm.roll(GENESIS_BLOCK_);
     }
 
@@ -381,15 +381,15 @@ contract EmissionDistributorTest is Test {
         distributor.setGovernanceContract(address(0xC0DE));
     }
 
-    /// @notice Rejects `setAuMTContract` when the caller is not the current governance address — confirms the setter is onlyGovernance-gated, not onlyAuMTContract-gated.
-    function test_RevertWhen_SetAuMTContractCallerNotGovernance() public {
+    /// @notice Rejects `setAuMTContractForPool` when the caller is not the current governance address — confirms the setter is onlyGovernance-gated, not onlyAuMTContract-gated.
+    function test_RevertWhen_SetAuMTContractForPoolCallerNotGovernance() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
-        distributor.setAuMTContract(address(0x1234));
+        distributor.setAuMTContractForPool(POOL_A, address(0x1234));
     }
 
-    /// @notice Confirms a freshly-constructed EmissionDistributor — before any `setAuMTContract` call — holds `auMTContract == address(0)`, the H-D16 pre-Stage-I default-zero posture.
-    function test_Constructor_AuMTContractDefaultsZero() public {
+    /// @notice Confirms a freshly-constructed EmissionDistributor — before any `setAuMTContractForPool` call — holds `auMTContractByPool[POOL_A] == address(0)`, the I-D9 pre-binding default-zero posture.
+    function test_Constructor_AuMTContractByPoolDefaultsZero() public {
         EmissionDistributor freshDistributor = new EmissionDistributor(
             IAuMM(address(aumm)),
             IGaugeRegistry(address(gauges)),
@@ -400,23 +400,30 @@ contract EmissionDistributorTest is Test {
             GENESIS_BLOCK_,
             GOV
         );
-        assertEq(freshDistributor.auMTContract(), address(0));
+        assertEq(freshDistributor.auMTContractByPool(POOL_A), address(0));
     }
 
-    /// @notice Confirms `setAuMTContract(address(0))` is accepted — zero is the H-D16 deliberate deprecation safety valve, asymmetric to `setGovernanceContract`.
-    function test_SetAuMTContract_AcceptsZeroAddress() public {
+    /// @notice Reverts ZeroAddress when setAuMTContractForPool is called with newAuMTContract == address(0) — confirms I-D9 removed the H-D16 zero-address safety valve in favor of mandatory-non-zero binding (mirrors setGovernanceContract H-D14).
+    function test_RevertWhen_SetAuMTContractForPoolZeroAuMT() public {
         vm.prank(GOV);
-        distributor.setAuMTContract(address(0));
-        assertEq(distributor.auMTContract(), address(0));
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        distributor.setAuMTContractForPool(POOL_A, address(0));
     }
 
-    /// @notice Confirms `setAuMTContract` writes the new address to the auMTContract slot and emits `AuMTContractSet` with the setUp-wired old recorder and the new address as indexed topics.
-    function test_SetAuMTContract_UpdatesSlotAndEmits() public {
+    /// @notice Confirms `setAuMTContractForPool` writes the new address to the auMTContractByPool[pool] slot and emits `AuMTContractBound` with the pool and newAuMTContract addresses as indexed topics. Uses POOL_B (unbound in setUp) since POOL_A is one-shot-locked to AUMT_REC.
+    function test_SetAuMTContractForPool_BindsSlotAndEmits() public {
         vm.expectEmit(true, true, false, false);
-        emit IEmissionDistributor.AuMTContractSet(AUMT_REC, address(0xC0DE));
+        emit IEmissionDistributor.AuMTContractBound(POOL_B, address(0xC0DE));
         vm.prank(GOV);
-        distributor.setAuMTContract(address(0xC0DE));
-        assertEq(distributor.auMTContract(), address(0xC0DE));
+        distributor.setAuMTContractForPool(POOL_B, address(0xC0DE));
+        assertEq(distributor.auMTContractByPool(POOL_B), address(0xC0DE));
+    }
+
+    /// @notice Reverts AuMTAlreadyBound when setAuMTContractForPool is called for a pool that already has a non-zero auMTContractByPool[pool] binding — guards the I-D9 one-shot semantic (mirrors H-D5 hook setAuMTForPool one-shot per I-D5).
+    function test_RevertWhen_SetAuMTContractForPoolAlreadyBound() public {
+        vm.prank(GOV);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.AuMTAlreadyBound.selector, POOL_A));
+        distributor.setAuMTContractForPool(POOL_A, address(0xC0DE));
     }
 
     /* ---------- Score producer tests (H-D17 / H-D19) ---------- */
@@ -564,10 +571,10 @@ contract EmissionDistributorTest is Test {
 
     /* ---------- recordDeposit tests (H-D16 / H-D21 / H-D25) ---------- */
 
-    /// @notice Reverts `NotAuMTContract` when `recordDeposit` is called by an address other than the current `auMTContract` recorder — guards the H-D16 onlyAuMTContract gate.
+    /// @notice Reverts `NotAuMTContract` when `recordDeposit` is called by an address other than the current `auMTContractByPool[pool]` recorder — guards the I-D9 onlyAuMTContract(pool) gate.
     function test_RevertWhen_RecordDepositCallerNotAuMTContract() public {
         vm.prank(address(0xBADC0DE));
-        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, address(0xBADC0DE)));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, POOL_A, address(0xBADC0DE)));
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
     }
 
@@ -644,10 +651,10 @@ contract EmissionDistributorTest is Test {
 
     /* ---------- recordWithdrawal tests (H-D16 / H-D21 / H-D25) ---------- */
 
-    /// @notice Reverts `NotAuMTContract` when `recordWithdrawal` is called by an address other than the current `auMTContract` recorder — guards the H-D16 onlyAuMTContract gate, symmetric to `recordDeposit`.
+    /// @notice Reverts `NotAuMTContract` when `recordWithdrawal` is called by an address other than the current `auMTContractByPool[pool]` recorder — guards the I-D9 onlyAuMTContract(pool) gate, symmetric to `recordDeposit`.
     function test_RevertWhen_RecordWithdrawalCallerNotAuMTContract() public {
         vm.prank(address(0xBADC0DE));
-        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, address(0xBADC0DE)));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, POOL_A, address(0xBADC0DE)));
         distributor.recordWithdrawal(POOL_A, USER_1, 100e18);
     }
 
