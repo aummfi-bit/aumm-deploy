@@ -70,7 +70,7 @@ interface IEmissionDistributor {
 
     /// @notice Emitted when governance rebinds the `incendiaryRegistry` slot per H-D29.
     /// @dev Per H-D29 Incendiary registry recorder-slot pattern — indexed-old-indexed-new shape mirrors
-    ///      `AuMTContractSet` (H-D16) and `GovernanceTransferred` (H-D14) precedent. Zero address is
+    ///      `AuMTContractBound` (H-D16 + I-D9) and `GovernanceTransferred` (H-D14) precedent. Zero address is
     ///      permitted as deprecation safety valve (skim subtraction disabled, returning `rate × n`).
     /// @param oldRegistry The prior `incendiaryRegistry` address.
     /// @param newRegistry The new `incendiaryRegistry` address (zero address permitted).
