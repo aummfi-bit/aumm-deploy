@@ -37,6 +37,24 @@ contract AureumTimeTest is Test {
         assertEq(AureumTime.BLOCKS_PER_ERA, 10_512_000);
     }
 
+    // --- I-D10 governance time periods ---
+
+    function test_qualificationPeriodBlocks_equals_100800() public pure {
+        assertEq(AureumTime.QUALIFICATION_PERIOD_BLOCKS, 100_800);
+    }
+
+    function test_qualificationPeriodBlocks_equalsBlocksPerEpoch() public pure {
+        assertEq(AureumTime.QUALIFICATION_PERIOD_BLOCKS, AureumTime.BLOCKS_PER_EPOCH);
+    }
+
+    function test_onRampPeriodBlocks_equals_1296000() public pure {
+        assertEq(AureumTime.ON_RAMP_PERIOD_BLOCKS, 1_296_000);
+    }
+
+    function test_onRampPeriodBlocks_equals180TimesBlocksPerDay() public pure {
+        assertEq(AureumTime.ON_RAMP_PERIOD_BLOCKS, 180 * AureumTime.BLOCKS_PER_DAY);
+    }
+
     // index tests at boundaries
 
     // --- monthIndex ---
