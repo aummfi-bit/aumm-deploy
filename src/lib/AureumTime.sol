@@ -27,6 +27,14 @@ library AureumTime {
     /// @notice Halving interval = 4 × BLOCKS_PER_YEAR. OQ-5 / §xxix.
     uint256 internal constant BLOCKS_PER_ERA      = 10_512_000;
 
+    // governance time periods (I-D10)
+
+    /// @notice 14-day qualification cliff per §ix. = BLOCKS_PER_EPOCH (OQ-3 / OQ-4). Used by AuMT.governanceWeight (I-D7).
+    uint256 internal constant QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH;
+    /// @notice 180-day on-ramp cap per §ix. = 180 × BLOCKS_PER_DAY. Used by AuMT.governanceWeight (I-D7).
+    /// @dev Derived from BLOCKS_PER_DAY (not BLOCKS_PER_MONTH) because §ix specifies an exact 180-day duration, not 6 calendar months.
+    uint256 internal constant ON_RAMP_PERIOD_BLOCKS       = 180 * BLOCKS_PER_DAY;
+
     // index helpers
 
     /// @notice Zero-indexed month since genesis. Month 0 is [genesis, genesis + BLOCKS_PER_MONTH).
