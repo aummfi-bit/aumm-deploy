@@ -129,6 +129,14 @@ Default rule for any rename §8e.1 drafted in the Opus beat: run `grep -n "<old-
 
 Anchors: I1.1-fix1 (commit `46a93c7`), I1.2-fix1 (commit `1f9c74f`), G16 (interface-inheritor enumeration).
 
+### I11 — Foundry `forge test --match-test` uses Rust regex; `\|` is literal pipe, not alternation
+
+`forge test --match-test "<regex>"` evaluates `<regex>` as a Rust regex (the `regex` crate), not POSIX BRE/ERE or PCRE. The escape `\|` is the literal pipe character, not an alternation operator. At I2.2 USER VERIFY, the filter `--match-test "qualificationPeriodBlocks\|onRampPeriodBlocks"` matched zero tests (Foundry reported "No tests found in project!") because no test name contains a literal `|` character. The unescaped pipe `|` is the Rust regex alternation operator.
+
+Default rule for §8e.1 USER VERIFY blocks that filter by test name: use the bare pipe `|` (unescaped) inside bash double-quoted strings — e.g., `--match-test "(testA|testB)"`. When the §8e.1 only adds tests to a single test file, prefer `--match-path "test/unit/<File>.t.sol"` alone over `--match-test` — the path filter is unambiguous and avoids regex pitfalls entirely. Pair with `forge clean &&` if a prior `forge build` reported "No files changed, compilation skipped" per F14 incremental-cache behavior.
+
+Anchors: I2.2 USER VERIFY (commit `552300c`), F14 (Foundry incremental cache).
+
 ---
 
 ## Open questions
