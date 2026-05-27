@@ -43,6 +43,9 @@ contract AuMT is IAuMT, ERC20 {
     /// @notice Reverted by `transfer` / `transferFrom` / `approve` per I-D1 — AuMT is soulbound.
     error NotTransferable();
 
+    /// @notice Reverted by `mint` / `burn` when `msg.sender` is not the bound `liquidityHook` per I-D4.
+    error NotLiquidityHook(address caller);
+
     /* ---------- Immutables (I-D11) ---------- */
 
     /// @notice Bound Miliarium pool address — I-D2 per-pool topology; satisfies `IAuMT.pool()` interface.
@@ -95,6 +98,15 @@ contract AuMT is IAuMT, ERC20 {
         GENESIS_BLOCK = genesisBlock_;
     }
 
+    /* ---------- Modifiers (I-D4) ---------- */
+
+    /// @notice Restricts execution to the bound `liquidityHook` (the per-pool `AureumFeeRoutingHook` extension per I-D5).
+    /// @dev Reverts `NotLiquidityHook(msg.sender)` if `msg.sender != liquidityHook`. Applied to `mint` and `burn` per I-D4 access semantics.
+    modifier onlyLiquidityHook() {
+        if (msg.sender != liquidityHook) revert NotLiquidityHook(msg.sender);
+        _;
+    }
+
     /* ---------- Soulbound overrides (I-D1) ---------- */
 
     /// @inheritdoc IERC20
@@ -118,15 +130,17 @@ contract AuMT is IAuMT, ERC20 {
     /* ---------- IAuMT placeholder bodies (I3.3 / I3.5) ---------- */
 
     /// @inheritdoc IAuMT
-    /// @dev I3.1 placeholder — `onlyLiquidityHook` gate + ERC20 `_mint` + I-D6 qualification clock +
-    ///      H-D35 `recordDeposit` dispatch land at I3.3 / I3.4 / I3.6.
-    function mint(address to, uint256 amount) external override {
+    /// @dev I-D4 `onlyLiquidityHook` gate + ERC20 `_mint(to, amount)`. I-D6 qualification clock state machine
+    ///      lands at I3.4; H-D35 `recordDeposit` dispatch lands at I3.6.
+    function mint(address to, uint256 amount) external override onlyLiquidityHook {
+        _mint(to, amount);
     }
 
     /// @inheritdoc IAuMT
-    /// @dev I3.1 placeholder — `onlyLiquidityHook` gate + ERC20 `_burn` + I-D6 qualification reset +
-    ///      H-D35 `recordWithdrawal` dispatch land at I3.3 / I3.4 / I3.6.
-    function burn(address from, uint256 amount) external override {
+    /// @dev I-D4 `onlyLiquidityHook` gate + ERC20 `_burn(from, amount)`. I-D6 qualification reset lands at
+    ///      I3.4; H-D35 `recordWithdrawal` dispatch lands at I3.6.
+    function burn(address from, uint256 amount) external override onlyLiquidityHook {
+        _burn(from, amount);
     }
 
     /// @inheritdoc IAuMT
