@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IAuMT} from "./IAuMT.sol";
 
 /**
@@ -38,6 +39,9 @@ contract AuMT is IAuMT, ERC20 {
 
     /// @notice Reverted by the constructor when `pool_`, `distributor_`, or `liquidityHook_` is `address(0)`.
     error ZeroAddress();
+
+    /// @notice Reverted by `transfer` / `transferFrom` / `approve` per I-D1 — AuMT is soulbound.
+    error NotTransferable();
 
     /* ---------- Immutables (I-D11) ---------- */
 
@@ -89,6 +93,26 @@ contract AuMT is IAuMT, ERC20 {
         distributor   = distributor_;
         liquidityHook = liquidityHook_;
         GENESIS_BLOCK = genesisBlock_;
+    }
+
+    /* ---------- Soulbound overrides (I-D1) ---------- */
+
+    /// @inheritdoc IERC20
+    /// @dev I-D1 — AuMT is soulbound; reverts `NotTransferable` unconditionally.
+    function transfer(address, uint256) public pure override(ERC20, IERC20) returns (bool) {
+        revert NotTransferable();
+    }
+
+    /// @inheritdoc IERC20
+    /// @dev I-D1 — AuMT is soulbound; reverts `NotTransferable` unconditionally.
+    function transferFrom(address, address, uint256) public pure override(ERC20, IERC20) returns (bool) {
+        revert NotTransferable();
+    }
+
+    /// @inheritdoc IERC20
+    /// @dev I-D1 — AuMT is soulbound; reverts `NotTransferable` unconditionally.
+    function approve(address, uint256) public pure override(ERC20, IERC20) returns (bool) {
+        revert NotTransferable();
     }
 
     /* ---------- IAuMT placeholder bodies (I3.3 / I3.5) ---------- */
