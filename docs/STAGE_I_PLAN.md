@@ -174,7 +174,10 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I2.1 | `783bdf6` | src/lib/AureumTime.sol | +8 / 0 | QUALIFICATION_PERIOD_BLOCKS (= BLOCKS_PER_EPOCH) + ON_RAMP_PERIOD_BLOCKS (= 180 * BLOCKS_PER_DAY) constants per I-D10 — new // governance time periods (I-D10) sub-section between BLOCKS_PER_ERA and // index helpers; RHS uses named constants per single-source-of-truth (no literal 100_800 / 1_296_000); 83 → 91 lines |
 | I2.2 | `552300c` | test/unit/AureumTime.t.sol | +18 / 0 | 4 I-D10 governance time period tests (2 value-assertion + 2 SSoT alias/derivation): test_qualificationPeriodBlocks_equals_100800, test_qualificationPeriodBlocks_equalsBlocksPerEpoch, test_onRampPeriodBlocks_equals_1296000, test_onRampPeriodBlocks_equals180TimesBlocksPerDay; new // --- I-D10 governance time periods --- sub-section between constant-value tests and index tests at boundaries; 178 → 196 lines; 37/37 AureumTime tests green via forge clean && forge test |
 | I2.3a | `f143b7a` | docs/STAGE_I_NOTES.md | +8 / 0 | I11 Findings entry: Foundry forge test --match-test uses Rust regex; escaped pipe is literal not alternation, bare pipe is the alternation operator; default rule prefers --match-path filter for single-file scope and pairs with forge clean for F14 incremental-cache miss; I2.2 USER VERIFY lesson (138 → 146 lines) |
-| I2.3b | `<pending>` | docs/STAGE_I_PLAN.md | +5 / -1 | Completion Log catch-up — I1.8e hash backfill (`<pending>` → `f978e58`) + 4 new rows I2.1 / I2.2 / I2.3a + self-row (196 → 200 lines) |
+| I2.3b | `b651676` | docs/STAGE_I_PLAN.md | +5 / -1 | Completion Log catch-up — I1.8e hash backfill (`<pending>` → `f978e58`) + 4 new rows I2.1 / I2.2 / I2.3a + self-row (196 → 200 lines) |
+| I2.3c | `bac5ff3` | docs/STAGE_I_PLAN.md | +3 / -3 | Status header + Last update + Mode refresh (L3/L5/L7 in-place replacements; I1+I2 families complete, I2.3d/e in flight, I3 ahead; 200 lines unchanged) |
+| I2.3d | `b4b4b48` | CLAUDE.md | +17 / -13 | §11 refresh — I1+I2 families complete (HEAD bac5ff3; 16 Stage I commit bullets; I11 housekeeping bullet after I10; 611 → 615 lines) |
+| I2.3e | `<pending>` | docs/STAGE_I_PLAN.md | +3 / 0 | Completion Log tail — I2.3b hash backfill (`<pending>` → `b651676`) + I2.3c/I2.3d rows + self-row; closes I2.3 close-of-family sweep (200 → 203 lines) |
 
 ---
 
