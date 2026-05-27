@@ -69,6 +69,15 @@ contract AuMT is IAuMT, ERC20 {
     ///         and `BodenseeBootstrapChannel.GENESIS_BLOCK` (L36). Not declared in `IAuMT`.
     uint256 public immutable GENESIS_BLOCK;
 
+    /* ---------- Storage (I-D6) ---------- */
+
+    /// @notice Block at which `holder`'s current qualification clock started; `0` means never deposited or
+    ///         reset by withdrawal per I-D6.
+    mapping(address holder => uint256) public qualificationBlock;
+
+    /// @notice Block of `holder`'s most recent mint, informational.
+    mapping(address holder => uint256) public lastDepositBlock;
+
     /* ---------- Constructor (I-D11) ---------- */
 
     /// @notice Deploy a per-pool AuMT instance with the given immutable bindings and ERC20 identity.
@@ -130,16 +139,20 @@ contract AuMT is IAuMT, ERC20 {
     /* ---------- IAuMT placeholder bodies (I3.3 / I3.5) ---------- */
 
     /// @inheritdoc IAuMT
-    /// @dev I-D4 `onlyLiquidityHook` gate + ERC20 `_mint(to, amount)`. I-D6 qualification clock state machine
-    ///      lands at I3.4; H-D35 `recordDeposit` dispatch lands at I3.6.
+    /// @dev I-D4 `onlyLiquidityHook` gate. I-D6 qualification clock — first deposit sets
+    ///      `qualificationBlock[to]`; subsequent top-ups leave it unchanged; `lastDepositBlock[to]` always
+    ///      updated. H-D35 `recordDeposit` dispatch lands at I3.6.
     function mint(address to, uint256 amount) external override onlyLiquidityHook {
+        if (qualificationBlock[to] == 0) { qualificationBlock[to] = block.number; }
+        lastDepositBlock[to] = block.number;
         _mint(to, amount);
     }
 
     /// @inheritdoc IAuMT
-    /// @dev I-D4 `onlyLiquidityHook` gate + ERC20 `_burn(from, amount)`. I-D6 qualification reset lands at
-    ///      I3.4; H-D35 `recordWithdrawal` dispatch lands at I3.6.
+    /// @dev I-D4 `onlyLiquidityHook` gate. I-D6 — any-amount withdrawal sets `qualificationBlock[from] = 0`
+    ///      per §ix verbatim (withdrawal-reset rule). H-D35 `recordWithdrawal` dispatch lands at I3.6.
     function burn(address from, uint256 amount) external override onlyLiquidityHook {
+        qualificationBlock[from] = 0;
         _burn(from, amount);
     }
 
