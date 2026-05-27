@@ -22,7 +22,7 @@ Stage I implements AuMT (Aureum Market Tessera) — the per-pool LP-receipt toke
 | `src/emission/EmissionDistributor.sol` | EDITED | I1.2 | +20 / -10 |
 | `src/lib/AureumTime.sol` | EDITED | I2.1 | +10 / 0 |
 | `src/token/AuMT.sol` | NEW | I3.1—I3.7 | ~250 |
-| `src/token/IAuMT.sol` | EDITED | I3.7 | +0 / -1 (NatSpec correction at L35) |
+| `src/token/IAuMT.sol` | EDITED | I3.7 | +0 / -2 (NatSpec correction at L35 + L47-L48) |
 | `src/fee_router/AureumFeeRoutingHook.sol` | EDITED | I4.1—I4.4 | +60 / 0 |
 | `test/unit/EmissionDistributor.t.sol` | EDITED | I1.3 | mechanical signature updates |
 | `test/unit/AuMMDistributorIntegration.t.sol` | EDITED | I1.4 | mechanical signature updates |
@@ -38,7 +38,7 @@ Stage I implements AuMT (Aureum Market Tessera) — the per-pool LP-receipt toke
 
 - Stage M/N AuMT rollout for remaining 25 pilot pools (slots 01/04/05/06/08—28) — out of Stage I scope per STAGES_OVERVIEW.
 - AuMM.setMinter handoff — deferred to Stage K per H-D7 Option C.
-- IAuMT.sol skeleton at H6.0c preserved verbatim except for the L35 NatSpec correction at I3.7 (re: I-D4 access control re-NatSpec'd from "callable by the bound distributor only" to "callable by the bound liquidity hook only").
+- IAuMT.sol skeleton at H6.0c preserved verbatim except for the L35 (mint) + L47-L48 (burn) NatSpec corrections at I3.7 (re: I-D4 access control re-NatSpec'd from "callable by the bound distributor only" to "callable by the bound liquidity hook only").
 
 ---
 
@@ -58,6 +58,7 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 | I-D8 | LOCKED | Stage I scope — 3 pilot AuMT + FeeRoutingHook extension; Stage M/N deferred | Stage E pilot pools; out-of-scope rollout per STAGES_OVERVIEW | I0.0a |
 | I-D9 | LOCKED | Multi-AuMT routing — per-pool mapping in EmissionDistributor (Option A); `auMTContractByPool` + `onlyAuMTContract(pool)` modifier + `setAuMTContractForPool(pool, addr)` | H-D16 single-slot baseline; H-D10 per-pool recorder precedent; I-D2 per-pool topology | I0.0b |
 | I-D10 | LOCKED | `AureumTime.sol` extension — `QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH` (100_800) + `ON_RAMP_PERIOD_BLOCKS = 180 * BLOCKS_PER_DAY` (1_296_000) | C-D3 canonical time library; §ix verbatim "14 days" + "day 180" | I0.0b |
+| I-D11 | LOCKED | AuMT constructor pattern — 6 args (pool_/distributor_/liquidityHook_/genesisBlock_/name_/symbol_); 4 immutables (pool/distributor/liquidityHook/GENESIS_BLOCK); name/symbol per-creator (Balancer BPT convention; ixXYZ for 28 Miliarium pools) | C-D3 canonical immutable convention; H13 NOTES (no constructor external calls); Balancer V3 BPT name-by-creator | I3.0a |
 
 ---
 
@@ -102,13 +103,13 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 
 ### I3 — `src/token/AuMT.sol` concrete implementation (per I-D1, I-D3, I-D4, I-D6, I-D7; 8 sub-steps)
 
-- **I3.1** AuMT.sol skeleton — pragma + imports + constructor + immutable slot bindings (pool address + distributor address + liquidityHook address) + IAuMT inheritance + ERC20 inheritance. Cursor §8e.1.
+- **I3.1** AuMT.sol skeleton — pragma + imports + constructor (6 params per I-D11: pool_ / distributor_ / liquidityHook_ / genesisBlock_ / name_ / symbol_) + 4 immutable slot bindings (pool + distributor + liquidityHook + GENESIS_BLOCK) + IAuMT inheritance + ERC20 inheritance (name/symbol forwarded). Cursor §8e.1.
 - **I3.2** Soulbound overrides — `transfer` / `transferFrom` / `approve` revert `NotTransferable` per I-D1. Cursor §8e.1.
 - **I3.3** mint() + burn() — `onlyLiquidityHook` gate (`NotLiquidityHook` revert per I-D4) + internal ERC20 `_mint` / `_burn`. Cursor §8e.1.
 - **I3.4** qualificationBlock + lastDepositBlock state machine per I-D6. On mint: set qualificationBlock if zero, always update lastDepositBlock. On burn: reset qualificationBlock to 0. Cursor §8e.1.
 - **I3.5** governanceWeight() — root-curve formula per I-D7 (qualification cliff + on-ramp cap + era transition + gauge check + FixedPoint 18-decimal arithmetic). Cursor §8e.1.
 - **I3.6** Distributor recorder integration — internal recordDeposit / recordWithdrawal calls post-mint/burn per H-D35 recorder semantics. Cursor §8e.1.
-- **I3.7** `src/token/IAuMT.sol` NatSpec correction at L35 — re: I-D4 access control. One-line targeted edit. Cursor §8e.1.
+- **I3.7** `src/token/IAuMT.sol` NatSpec correction at L35 (mint) + L47-L48 (burn) — re: I-D4 access control. Two-edit targeted correction. Cursor §8e.1.
 - **I3.8** Close-of-family sweep — PLAN Completion Log + status refresh.
 
 ### I4 — Extend `AureumFeeRoutingHook.sol` (per I-D5; 6 sub-steps)
