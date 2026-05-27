@@ -178,7 +178,10 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I2.3b | `b651676` | docs/STAGE_I_PLAN.md | +5 / -1 | Completion Log catch-up — I1.8e hash backfill (`<pending>` → `f978e58`) + 4 new rows I2.1 / I2.2 / I2.3a + self-row (196 → 200 lines) |
 | I2.3c | `bac5ff3` | docs/STAGE_I_PLAN.md | +3 / -3 | Status header + Last update + Mode refresh (L3/L5/L7 in-place replacements; I1+I2 families complete, I2.3d/e in flight, I3 ahead; 200 lines unchanged) |
 | I2.3d | `b4b4b48` | CLAUDE.md | +17 / -13 | §11 refresh — I1+I2 families complete (HEAD bac5ff3; 16 Stage I commit bullets; I11 housekeeping bullet after I10; 611 → 615 lines) |
-| I2.3e | `<pending>` | docs/STAGE_I_PLAN.md | +3 / 0 | Completion Log tail — I2.3b hash backfill (`<pending>` → `b651676`) + I2.3c/I2.3d rows + self-row; closes I2.3 close-of-family sweep (200 → 203 lines) |
+| I2.3e | `9ae7819` | docs/STAGE_I_PLAN.md | +3 / 0 | Completion Log tail — I2.3b hash backfill (`<pending>` → `b651676`) + I2.3c/I2.3d rows + self-row; closes I2.3 close-of-family sweep (200 → 203 lines) |
+| I3.0a | `ca2596e` | docs/STAGE_I_NOTES.md | +11 / -1 | I-D11 LOCKED (AuMT constructor pattern — 6 args / 4 immutables: pool_/distributor_/liquidityHook_/genesisBlock_/name_/symbol_; ZeroAddress guards on address params; H13 avoidance via GENESIS_BLOCK as constructor immutable, not constructor-time external call to EmissionDistributor; name/symbol per-creator per Balancer BPT convention with ixXYZ for the 28 Miliarium pools) + I-D4 amendment (L35 mint + L47-L48 burn dual NatSpec scope at I3.7) (146 → 156 lines) |
+| I3.0b | `efd8654` | docs/STAGE_I_PLAN.md | +5 / -4 | I-D11 row in Decisions table + 4 wording amendments (L25 IAuMT.sol +0/-2, L41 verbatim-preservation line L47-L48 mention, L106 I3.1 6-param constructor per I-D11, L112 I3.7 dual NatSpec scope) (203 → 204 lines) |
+| I3.0c | `<pending>` | docs/STAGE_I_PLAN.md | +6 / -3 | Completion Log catch-up — I2.3e hash backfill (`<pending>` → `9ae7819`) + 3 new rows I3.0a/I3.0b/self + Anchors refresh (L195 I-D1—I-D11 + L201 L47-L48 mention); status/mode header refresh defers to I3.0d (204 → 207 lines) |
 
 ---
 
@@ -192,13 +195,13 @@ Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK
 
 ## Anchors
 
-- `docs/STAGE_I_NOTES.md` — Stage I design freeze (I-D1—I-D10 LOCKED).
+- `docs/STAGE_I_NOTES.md` — Stage I design freeze (I-D1—I-D11 LOCKED).
 - `docs/STAGE_H_NOTES.md` — H-D7 / H-D10 / H-D16 / H-D35 / H-D42 anchors for Stage I.
 - `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 anchors for AureumTime constants + governance weight + qualification semantics.
 - `04_tokenomics.md` §ix — AuMT spec (verbatim): 14-day qualification cliff, 6-month on-ramp, withdrawal-reset rule, F-9 dampening exponent transition.
 - `11_formulas.md` F-9 — Dampening exponent (4th → 3rd root at first halving block).
 - `src/lib/AureumTime.sol` — block-number constants per C-D3.
-- `src/token/IAuMT.sol` — H6.0c-locked interface (NatSpec correction at L35 lands at I3.7).
+- `src/token/IAuMT.sol` — H6.0c-locked interface (NatSpec corrections at L35 mint + L47-L48 burn land at I3.7).
 - `src/fee_router/AureumFeeRoutingHook.sol` — Stage D-locked surface (extended in-place per I-D5 at I4).
 - `src/emission/EmissionDistributor.sol` — Stage H-locked surface (per-pool mapping refactor per I-D9 at I1).
 - `src/ccb/IGaugeRegistry.sol` — `isGaugeApproved(pool)` consumed at I-D7 governanceWeight zero-rule.
