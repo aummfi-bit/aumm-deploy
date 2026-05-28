@@ -32,7 +32,7 @@ interface IAuMT is IERC20 {
      * @notice Mint `amount` AuMT receipt tokens to `to`.
      * @dev Called by the per-pool LP deposit hook at Stage I — the concrete AuMT implementation internally
      *      calls `EmissionDistributor.recordDeposit` after minting per H-D35 recorder semantics.
-     *      Stage I access-control gate: callable by the bound distributor only (`NotDistributor` revert).
+     *      Stage I access-control gate: callable by the bound liquidity hook only (`NotLiquidityHook` revert).
      *      Pre-Stage-I mock stubs expose this signature for compile-time compatibility; stub bodies are
      *      no-ops (return without minting).
      * @param to Recipient of the newly minted AuMT tokens.
@@ -44,8 +44,8 @@ interface IAuMT is IERC20 {
      * @notice Burn `amount` AuMT receipt tokens from `from`.
      * @dev Called by the per-pool LP withdrawal hook at Stage I — the concrete AuMT implementation
      *      internally calls `EmissionDistributor.recordWithdrawal` after burning per H-D35 recorder
-     *      semantics. Stage I access-control gate: callable by the bound distributor only
-     *      (`NotDistributor` revert). Pre-Stage-I mock stubs expose this signature for compile-time
+     *      semantics. Stage I access-control gate: callable by the bound liquidity hook only
+     *      (`NotLiquidityHook` revert). Pre-Stage-I mock stubs expose this signature for compile-time
      *      compatibility; stub bodies are no-ops (return without burning).
      * @param from Address whose AuMT tokens are burned.
      * @param amount Token amount (18-decimal scaled) to burn.
