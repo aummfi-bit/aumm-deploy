@@ -14,28 +14,28 @@ import {FixedPoint} from "../../lib/balancer-v3-monorepo/pkg/solidity-utils/cont
  * @title AuMT
  * @notice Per-pool LP receipt token (Aureum Market Tessera) — one deployment per Miliarium pool at Stage I
  *         (3 pilot instances; 28 at full deployment per Stages M/N per OQ-I10). Soulbound per I-D1:
- *         `transfer` / `transferFrom` / `approve` revert `NotTransferable` (lands at I3.2). Mint and burn
- *         dispatched exclusively by the bound `AureumFeeRoutingHook` per I-D4; `onlyLiquidityHook` modifier
- *         and `NotLiquidityHook` revert land at I3.3. Governance weight per I-D7 root-curve:
+ *         `transfer` / `transferFrom` / `approve` revert `NotTransferable`. Mint and burn dispatched
+ *         exclusively by the bound `AureumFeeRoutingHook` per I-D4 via the `onlyLiquidityHook` modifier
+ *         (`NotLiquidityHook` revert). Governance weight per I-D7 root-curve:
  *         `(balance × qualified_time_capped)^(1/4)` in Era 0, `(balance × qualified_time_capped)^(1/3)`
  *         from Era 1 onward per F-9 era-boundary transition at `AureumTime.firstHalvingBlock(GENESIS_BLOCK)`;
- *         gauge-revoked holders → zero weight per OQ-7; full implementation lands at I3.5.
- * @dev I-D11 — 4 `public immutable` slots: `pool` (bound Miliarium pool address; satisfies `IAuMT.pool()`
+ *         gauge-revoked holders → zero weight per OQ-7.
+ * @dev I-D11 + I-D12 — 5 `public immutable` slots: `pool` (bound Miliarium pool address; satisfies `IAuMT.pool()`
  *      override), `distributor` (bound `EmissionDistributor` address; satisfies `IAuMT.distributor()` override;
  *      I-D9 per-pool mapping routes recorder calls from this AuMT instance via `auMTContractByPool`),
  *      `liquidityHook` (bound `AureumFeeRoutingHook` address per I-D4 + I-D5; concrete-only, not in `IAuMT`),
- *      `GENESIS_BLOCK` (protocol genesis block per H-D7 Option C precedent at `EmissionDistributor.GENESIS_BLOCK`
- *      L46 + `BodenseeBootstrapChannel.GENESIS_BLOCK` L36; concrete-only, not in `IAuMT`).
- *      6-arg constructor: `pool_` / `distributor_` / `liquidityHook_` / `genesisBlock_` / `name_` / `symbol_`.
- *      `name_` / `symbol_` per-creator per Balancer V3 BPT-naming convention; `ixXYZ` for 28 Miliarium pools
- *      per OQ-I10 / `miliarium_profiles/` in `aummfi-bit/aumm-site`. H13 avoidance: `GENESIS_BLOCK` is passed
- *      as a constructor immutable rather than read from `EmissionDistributor.GENESIS_BLOCK()` at construction —
- *      a constructor external call to a constructor arg is the H13 failure pattern (H10.2-revised lesson);
- *      fork tests with keccak-placeholder env stubs would break `setUp()`. Stage I5 invariant test asserts
- *      `AuMT.GENESIS_BLOCK() == IEmissionDistributor(distributor).GENESIS_BLOCK()` for deploy-side
- *      consistency. I-D1 soulbound state machine + I-D6 qualification clock + I-D7 root-curve + I-D4
- *      `onlyLiquidityHook` gate land across I3.2—I3.6; `IAuMT` NatSpec dual correction (L35 mint +
- *      L47-L48 burn stale "callable by the bound distributor only") at I3.7.
+ *      `gaugeRegistry` (Stage G `GaugeRegistry` consumed by `governanceWeight` per I-D7; direct binding per
+ *      I-D12 Option A mirrors `EmissionDistributor.sol:L31` precedent; concrete-only, not in `IAuMT`),
+ *      `GENESIS_BLOCK` (protocol genesis block per H-D7 Option C precedent at
+ *      `EmissionDistributor.GENESIS_BLOCK` L46 + `BodenseeBootstrapChannel.GENESIS_BLOCK` L36; concrete-only,
+ *      not in `IAuMT`). 7-arg constructor: `pool_` / `distributor_` / `liquidityHook_` / `gaugeRegistry_` /
+ *      `genesisBlock_` / `name_` / `symbol_`. `name_` / `symbol_` per-creator per Balancer V3 BPT-naming
+ *      convention; `ixXYZ` for 28 Miliarium pools per OQ-I10 / `miliarium_profiles/` in `aummfi-bit/aumm-site`.
+ *      H13 avoidance: `GENESIS_BLOCK` is passed as a constructor immutable rather than read from
+ *      `EmissionDistributor.GENESIS_BLOCK()` at construction — a constructor external call to a constructor
+ *      arg is the H13 failure pattern (H10.2-revised lesson); fork tests with keccak-placeholder env stubs
+ *      would break `setUp()`. Stage I5 invariant tests assert deploy-time consistency between AuMT and the
+ *      bound `EmissionDistributor` for both `GENESIS_BLOCK` and `gaugeRegistry`.
  */
 contract AuMT is IAuMT, ERC20 {
 
