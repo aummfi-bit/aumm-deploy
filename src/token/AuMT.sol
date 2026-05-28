@@ -6,6 +6,8 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IAuMT} from "./IAuMT.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
+import {FixedPoint} from "../../lib/balancer-v3-monorepo/pkg/solidity-utils/contracts/math/FixedPoint.sol";
 
 /**
  * @title AuMT
@@ -46,6 +48,17 @@ contract AuMT is IAuMT, ERC20 {
 
     /// @notice Reverted by `mint` / `burn` when `msg.sender` is not the bound `liquidityHook` per I-D4.
     error NotLiquidityHook(address caller);
+
+    /* ---------- Constants (I-D7) ---------- */
+
+    /// @notice FixedPoint exponent for the Era 0 fourth-root branch of I-D7 `governanceWeight`:
+    ///         `pow(x, 0.25)` matches §ix's "fourth root" dampening per F-9 pre-halving regime.
+    uint256 internal constant FOURTH_ROOT_EXP = 0.25e18;
+
+    /// @notice FixedPoint exponent for the Era 1+ cube-root branch of I-D7 `governanceWeight`:
+    ///         `pow(x, 1/3)` matches §ix's "cube root" dampening per F-9 post-first-halving regime.
+    ///         Value is `FixedPoint.ONE / 3` truncated to 18 decimals (irrational 1/3 → finite FP18).
+    uint256 internal constant CUBE_ROOT_EXP = 333_333_333_333_333_333;
 
     /* ---------- Immutables (I-D11 / I-D12) ---------- */
 
@@ -169,10 +182,34 @@ contract AuMT is IAuMT, ERC20 {
     }
 
     /// @inheritdoc IAuMT
-    /// @dev I3.1 placeholder — returns zero (matches H6.0c `IAuMT` stub semantic at `IAuMT.sol` L25).
-    ///      Full I-D7 root-curve formula (4th/3rd root + qualification cliff + on-ramp cap +
-    ///      gauge-revoked guard) lands at I3.5.
+    /// @dev I-D7 root-curve voting weight. Returns ZERO unless ALL three conditions hold:
+    ///      (1) `qualificationBlock[holder] != 0` — holder has deposited and not been reset by withdrawal;
+    ///      (2) `block.number - qualificationBlock[holder] >= QUALIFICATION_PERIOD_BLOCKS` — 14-day cliff crossed per §ix verbatim;
+    ///      (3) `gaugeRegistry.isGaugeApproved(pool)` — bound pool's gauge is currently approved per FINDINGS OQ-7.
+    ///      Active formula: `(balanceOf(holder) × time_in_pool_capped)^exp` via `FixedPoint.powDown`,
+    ///      where `time_in_pool_capped = min(block.number - qualificationBlock[holder], ON_RAMP_PERIOD_BLOCKS)`
+    ///      (6-month on-ramp cap per §ix "day 180"); exponent is `FOURTH_ROOT_EXP` in Era 0
+    ///      (`block.number < AureumTime.firstHalvingBlock(GENESIS_BLOCK)`) else `CUBE_ROOT_EXP` per F-9 / §ix.
     function governanceWeight(address holder) external view override returns (uint256) {
-        return 0;
+        // I-D7 ZERO branch 1 — never deposited or reset by withdrawal per I-D6.
+        uint256 qualBlock = qualificationBlock[holder];
+        if (qualBlock == 0) return 0;
+
+        // I-D7 ZERO branch 2 — qualification cliff not yet crossed (14 days = 1 epoch per OQ-3 / I-D10).
+        uint256 timeInPool = block.number - qualBlock;
+        if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return 0;
+
+        // I-D7 ZERO branch 3 — bound pool's gauge revoked or never approved per FINDINGS OQ-7.
+        if (!gaugeRegistry.isGaugeApproved(pool)) return 0;
+
+        // I-D7 active branch — cap time at 180 days; multiply by balance; take root.
+        uint256 timeInPoolCapped = timeInPool > AureumTime.ON_RAMP_PERIOD_BLOCKS
+            ? AureumTime.ON_RAMP_PERIOD_BLOCKS
+            : timeInPool;
+        uint256 weightInput = balanceOf(holder) * timeInPoolCapped;
+        uint256 exponent = block.number < AureumTime.firstHalvingBlock(GENESIS_BLOCK)
+            ? FOURTH_ROOT_EXP
+            : CUBE_ROOT_EXP;
+        return FixedPoint.powDown(weightInput, exponent);
     }
 }
