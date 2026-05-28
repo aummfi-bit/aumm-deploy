@@ -159,6 +159,16 @@ Default rule for §8e.1 USER VERIFY blocks that filter by test name: use the bar
 
 Anchors: I2.2 USER VERIFY (commit `552300c`), F14 (Foundry incremental cache).
 
+### I12 — Container-shape design decisions must cross-check prior LOCKs that consume their members
+
+I-D11 LOCK at I3.0a (`ca2596e`) enumerated the AuMT immutables as `pool`, `distributor`, `liquidityHook`, `GENESIS_BLOCK` — four slots — without cross-checking against I-D7 (locked at I0.0a `9409d76`) which required `gaugeRegistry.isGaugeApproved(pool)` inside `governanceWeight`. The gap surfaced at the I3.5 §8e.1 pre-flight (Opus beat reading I-D7 against the I3.1-landed constructor pattern); §12 ambiguity-gate fired and blocked the I3.5 `governanceWeight` body from landing without a gaugeRegistry binding. Resolution: I-D12 LOCK at I3.5-pre1 (`4a595e8`) extending I-D11's four immutables to five, with three options evaluated and Option A (direct `IGaugeRegistry` immutable) chosen per `EmissionDistributor.sol:L31` precedent. I3.5-pre2 (`feab19d`) mirrored the LOCK into PLAN; I3.5-pre3 (`4178fd9`) landed the code (constructor 6 → 7 args, immutables 4 → 5).
+
+The §12 ambiguity-gate worked exactly as designed — caught the gap at the next §8e.1 entry, before any code landed. The cost of the resolution was three sub-step round-trips (I3.5-pre1 / pre2 / pre3) plus one chat-level decision (Option A vs B vs C). The cost of NOT catching it would have been a code-side fix to add a fifth immutable to a published constructor signature, retroactive updates to any test fixtures already using the four-arg form, and a NOTES retro-amendment to I-D11 — strictly more cost in every dimension.
+
+Default rule for the Opus beat that locks a "container" design decision (an enumeration of immutables, storage slots, function signatures, hook callbacks, or any N-tuple where the cardinality is contract-design-load-bearing): before declaring the LOCK, enumerate ALL prior `-D*` LOCK bodies that consume members of the new tuple and verify the enumeration covers them. For an immutables tuple, the cross-check is: grep prior `-D*` bodies for external calls, library reads, or address arguments that would need a binding slot. The enumeration is provisional until that cross-check completes; LOCK only after. Distinct scope from the §12 ambiguity-gate (which catches typed-domain ambiguity at the next §8e.1 entry); this is a pre-LOCK preventive check, the §12 gate is the post-LOCK structural backstop.
+
+Anchors: I-D7 (I0.0a `9409d76`), I-D11 (I3.0a `ca2596e`), I-D12 (I3.5-pre1 `4a595e8`), I3.5-pre2 PLAN mirror (`feab19d`), I3.5-pre3 code (`4178fd9`), §12 ambiguity-gate (CLAUDE.md).
+
 ---
 
 ## Open questions
