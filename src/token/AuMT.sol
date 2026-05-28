@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IAuMT} from "./IAuMT.sol";
 
 /**
@@ -37,7 +38,7 @@ contract AuMT is IAuMT, ERC20 {
 
     /* ---------- Errors ---------- */
 
-    /// @notice Reverted by the constructor when `pool_`, `distributor_`, or `liquidityHook_` is `address(0)`.
+    /// @notice Reverted by the constructor when `pool_`, `distributor_`, `liquidityHook_`, or `gaugeRegistry_` is `address(0)`.
     error ZeroAddress();
 
     /// @notice Reverted by `transfer` / `transferFrom` / `approve` per I-D1 — AuMT is soulbound.
@@ -46,7 +47,7 @@ contract AuMT is IAuMT, ERC20 {
     /// @notice Reverted by `mint` / `burn` when `msg.sender` is not the bound `liquidityHook` per I-D4.
     error NotLiquidityHook(address caller);
 
-    /* ---------- Immutables (I-D11) ---------- */
+    /* ---------- Immutables (I-D11 / I-D12) ---------- */
 
     /// @notice Bound Miliarium pool address — I-D2 per-pool topology; satisfies `IAuMT.pool()` interface.
     address public immutable override pool;
@@ -61,6 +62,13 @@ contract AuMT is IAuMT, ERC20 {
     ///         hook extension wires `onAfterAddLiquidity` / `onAfterRemoveLiquidity` to dispatch `mint` /
     ///         `burn`. Not declared in `IAuMT` — concrete-contract-only immutable.
     address public immutable liquidityHook;
+
+    /// @notice Gauge registry binding — I-D12 5th immutable extending I-D11. Consumed by
+    ///         `governanceWeight` ZERO branch per I-D7 (`!gaugeRegistry.isGaugeApproved(pool())`).
+    ///         Direct binding (Option A) mirrors `EmissionDistributor.sol:L31` precedent per I-D12;
+    ///         alternatives B (distributor-chained) and C (interface widening) explicitly NOT chosen.
+    ///         Not declared in `IAuMT` — concrete-contract-only immutable.
+    IGaugeRegistry public immutable gaugeRegistry;
 
     /// @notice Protocol genesis block — anchors `governanceWeight` era-transition at
     ///         `AureumTime.firstHalvingBlock(GENESIS_BLOCK)` per I-D7 / F-9 (4th root → 3rd root crossing).
@@ -78,12 +86,13 @@ contract AuMT is IAuMT, ERC20 {
     /// @notice Block of `holder`'s most recent mint, informational.
     mapping(address holder => uint256) public lastDepositBlock;
 
-    /* ---------- Constructor (I-D11) ---------- */
+    /* ---------- Constructor (I-D11 / I-D12) ---------- */
 
     /// @notice Deploy a per-pool AuMT instance with the given immutable bindings and ERC20 identity.
     /// @param pool_          Miliarium pool address; `ZeroAddress` revert on zero.
     /// @param distributor_   `EmissionDistributor` address (per-pool recorder per I-D9); `ZeroAddress` revert on zero.
     /// @param liquidityHook_ Bound `AureumFeeRoutingHook` address per I-D4 + I-D5; `ZeroAddress` revert on zero.
+    /// @param gaugeRegistry_ Stage G `GaugeRegistry` address (per I-D12 5th immutable); `ZeroAddress` revert on zero.
     /// @param genesisBlock_  Stage H genesis block (mirrors `EmissionDistributor.GENESIS_BLOCK` per H13 avoidance
     ///                       pattern); `uint256`, no zero-check (matches `EmissionDistributor` L114 +
     ///                       `BodenseeBootstrapChannel` constructor precedent).
@@ -94,6 +103,7 @@ contract AuMT is IAuMT, ERC20 {
         address pool_,
         address distributor_,
         address liquidityHook_,
+        address gaugeRegistry_,
         uint256 genesisBlock_,
         string memory name_,
         string memory symbol_
@@ -101,9 +111,11 @@ contract AuMT is IAuMT, ERC20 {
         if (pool_          == address(0)) revert ZeroAddress();
         if (distributor_   == address(0)) revert ZeroAddress();
         if (liquidityHook_ == address(0)) revert ZeroAddress();
+        if (gaugeRegistry_ == address(0)) revert ZeroAddress();
         pool          = pool_;
         distributor   = distributor_;
         liquidityHook = liquidityHook_;
+        gaugeRegistry = IGaugeRegistry(gaugeRegistry_);
         GENESIS_BLOCK = genesisBlock_;
     }
 
