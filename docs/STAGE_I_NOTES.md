@@ -93,6 +93,18 @@ Decision: `name_` / `symbol_` are per-pool constructor params with the pool crea
 
 Anchors: C-D3 canonical immutable convention (AuMM / EmissionDistributor pattern); H13 NOTES (constructor external-call risk); Balancer V3 BPT name-by-creator convention; OQ-I10 deferred 25-AuMT rollout where pool creators choose per-pool names; `04_tokenomics.md` §ix verbatim; `miliarium_profiles/` canonical 28-AuMT name list; I-D7 governanceWeight formula consumer of `GENESIS_BLOCK` via `AureumTime.firstHalvingBlock(GENESIS_BLOCK)`.
 
+Extended: I-D12 below — `gaugeRegistry` added as 5th AuMT immutable; constructor arg count 6 → 7. I-D11 body text preserved verbatim for audit trail.
+
+### I-D12 — AuMT 5th immutable: gaugeRegistry — extends I-D11 (6→7 args, 4→5 immutables) — status LOCKED
+
+I-D7 LOCKED `governanceWeight` to short-circuit ZERO when `!gaugeRegistry.isGaugeApproved(pool())`, but I-D11 LOCKED the AuMT constructor at 6 args / 4 immutables (`pool` / `distributor` / `liquidityHook` / `GENESIS_BLOCK`) without a path to a gauge-registry binding. The `governanceWeight` formula therefore requires a 5th immutable `IGaugeRegistry public immutable gaugeRegistry` to be added to AuMT.sol. A new constructor arg `address gaugeRegistry_` is slotted between `liquidityHook_` and `genesisBlock_` (addresses-first-then-scalars per EmissionDistributor L119-122 precedent), with a ZeroAddress guard mirroring the existing three address guards on `pool_` / `distributor_` / `liquidityHook_`.
+
+Decision: direct AuMT-side immutable (Option A) over distributor-chained read (Option B: `EmissionDistributor(distributor)._gaugeRegistry()` per `governanceWeight` call) or interface widening (Option C: extend `IEmissionDistributor` with a `gaugeRegistry()` view bridge). Option A justified by: (i) gas (~3 gas immutable read vs ~700-2600 for external view CALL), mirroring `EmissionDistributor.sol:L31` direct-binding precedent `IGaugeRegistry public immutable _gaugeRegistry`; (ii) honoring I-D11's stated "every other major Aureum contract carries its own immutable" principle. Option B critique: couples AuMT to EmissionDistributor's leading-underscore getter symbol `_gaugeRegistry()` as stable ABI. Option C critique: widens Stage H interface for a Stage I consumer.
+
+Constructor arg ordering: `pool_` / `distributor_` / `liquidityHook_` / `gaugeRegistry_` / `genesisBlock_` / `name_` / `symbol_` (7 args total). Rationale: addresses contiguous at positions 1-4, `uint256` scalar at 5, `string memory` pair at 6-7 — mirrors EmissionDistributor's address-block-then-scalars convention at L119-122. Immutable storage order: `pool` / `distributor` / `liquidityHook` / `gaugeRegistry` / `GENESIS_BLOCK` (5 slots); the section header in AuMT.sol updates to `/* ---------- Immutables (I-D11 / I-D12) ---------- */` at I3.5-pre3. The I5 deploy-time consistency invariant test `AuMT.gaugeRegistry() == IEmissionDistributor(AuMT.distributor())._gaugeRegistry()` mirrors the I-D11 `GENESIS_BLOCK` invariant test pattern.
+
+Anchors: I-D7 governanceWeight ZERO branch (`!gaugeRegistry.isGaugeApproved(pool())`); I-D11 constructor pattern (extended by this lock, body preserved verbatim for audit trail); EmissionDistributor.sol:L31 direct-binding precedent (`IGaugeRegistry public immutable _gaugeRegistry`); CCBMultiplier F-D23 mutable-with-one-shot-setter pattern NOT chosen (Stage I deploys after Stage G concrete registry exists); H13 no-constructor-external-call rule (no constructor-time `_gaugeRegistry()` call); I5 deploy-time consistency invariant test (`AuMT.gaugeRegistry() == IEmissionDistributor(AuMT.distributor())._gaugeRegistry()`).
+
 ---
 
 ## Interfaces
