@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
+import {IEmissionDistributor} from "../emission/IEmissionDistributor.sol";
 import {IAuMT} from "./IAuMT.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
 import {FixedPoint} from "../../lib/balancer-v3-monorepo/pkg/solidity-utils/contracts/math/FixedPoint.sol";
@@ -161,24 +162,26 @@ contract AuMT is IAuMT, ERC20 {
         revert NotTransferable();
     }
 
-    /* ---------- IAuMT placeholder bodies (I3.3 / I3.5) ---------- */
+    /* ---------- IAuMT implementations (I3.3 / I3.5 / I3.6) ---------- */
 
     /// @inheritdoc IAuMT
     /// @dev I-D4 `onlyLiquidityHook` gate. I-D6 qualification clock — first deposit sets
     ///      `qualificationBlock[to]`; subsequent top-ups leave it unchanged; `lastDepositBlock[to]` always
-    ///      updated. H-D35 `recordDeposit` dispatch lands at I3.6.
+    ///      updated. H-D35 `recordDeposit` dispatched into the bound distributor post-`_mint`.
     function mint(address to, uint256 amount) external override onlyLiquidityHook {
         if (qualificationBlock[to] == 0) { qualificationBlock[to] = block.number; }
         lastDepositBlock[to] = block.number;
         _mint(to, amount);
+        IEmissionDistributor(distributor).recordDeposit(pool, to, amount);
     }
 
     /// @inheritdoc IAuMT
     /// @dev I-D4 `onlyLiquidityHook` gate. I-D6 — any-amount withdrawal sets `qualificationBlock[from] = 0`
-    ///      per §ix verbatim (withdrawal-reset rule). H-D35 `recordWithdrawal` dispatch lands at I3.6.
+    ///      per §ix verbatim (withdrawal-reset rule). H-D35 `recordWithdrawal` dispatched into the bound distributor post-`_burn`.
     function burn(address from, uint256 amount) external override onlyLiquidityHook {
         qualificationBlock[from] = 0;
         _burn(from, amount);
+        IEmissionDistributor(distributor).recordWithdrawal(pool, from, amount);
     }
 
     /// @inheritdoc IAuMT
