@@ -59,6 +59,7 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 | I-D9 | LOCKED | Multi-AuMT routing — per-pool mapping in EmissionDistributor (Option A); `auMTContractByPool` + `onlyAuMTContract(pool)` modifier + `setAuMTContractForPool(pool, addr)` | H-D16 single-slot baseline; H-D10 per-pool recorder precedent; I-D2 per-pool topology | I0.0b |
 | I-D10 | LOCKED | `AureumTime.sol` extension — `QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH` (100_800) + `ON_RAMP_PERIOD_BLOCKS = 180 * BLOCKS_PER_DAY` (1_296_000) | C-D3 canonical time library; §ix verbatim "14 days" + "day 180" | I0.0b |
 | I-D11 | LOCKED | AuMT constructor pattern — 6 args (pool_/distributor_/liquidityHook_/genesisBlock_/name_/symbol_); 4 immutables (pool/distributor/liquidityHook/GENESIS_BLOCK); name/symbol per-creator (Balancer BPT convention; ixXYZ for 28 Miliarium pools) | C-D3 canonical immutable convention; H13 NOTES (no constructor external calls); Balancer V3 BPT name-by-creator | I3.0a |
+| I-D12 | LOCKED | AuMT 5th immutable `gaugeRegistry` — extends I-D11 (6→7 args, 4→5 immutables); new `address gaugeRegistry_` constructor arg slotted at position 4 (between `liquidityHook_` and `genesisBlock_`); Option A direct-binding (not B distributor-chained, not C interface widening) | I-D7 governanceWeight ZERO branch; EmissionDistributor.sol:L31 precedent; H13 no-constructor-external-call; I5 deploy-time consistency invariant | I3.5-pre1 |
 
 ---
 
@@ -101,13 +102,16 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 - **I2.2** `test/unit/AureumTime.t.sol` — add constant-existence + value-assertion tests. Cursor §8e.1.
 - **I2.3** Close-of-family sweep — PLAN Completion Log + status refresh.
 
-### I3 — `src/token/AuMT.sol` concrete implementation (per I-D1, I-D3, I-D4, I-D6, I-D7; 8 sub-steps)
+### I3 — `src/token/AuMT.sol` concrete implementation (per I-D1, I-D3, I-D4, I-D6, I-D7, I-D11, I-D12; 11 sub-steps)
 
-- **I3.1** AuMT.sol skeleton — pragma + imports + constructor (6 params per I-D11: pool_ / distributor_ / liquidityHook_ / genesisBlock_ / name_ / symbol_) + 4 immutable slot bindings (pool + distributor + liquidityHook + GENESIS_BLOCK) + IAuMT inheritance + ERC20 inheritance (name/symbol forwarded). Cursor §8e.1.
+- **I3.1** AuMT.sol skeleton — pragma + imports + constructor (6 params per I-D11: pool_ / distributor_ / liquidityHook_ / genesisBlock_ / name_ / symbol_) + 4 immutable slot bindings (pool + distributor + liquidityHook + GENESIS_BLOCK) + IAuMT inheritance + ERC20 inheritance (name/symbol forwarded). Amended to 7 params + 5 immutables at I3.5-pre3 per I-D12. Cursor §8e.1.
 - **I3.2** Soulbound overrides — `transfer` / `transferFrom` / `approve` revert `NotTransferable` per I-D1. Cursor §8e.1.
 - **I3.3** mint() + burn() — `onlyLiquidityHook` gate (`NotLiquidityHook` revert per I-D4) + internal ERC20 `_mint` / `_burn`. Cursor §8e.1.
 - **I3.4** qualificationBlock + lastDepositBlock state machine per I-D6. On mint: set qualificationBlock if zero, always update lastDepositBlock. On burn: reset qualificationBlock to 0. Cursor §8e.1.
-- **I3.5** governanceWeight() — root-curve formula per I-D7 (qualification cliff + on-ramp cap + era transition + gauge check + FixedPoint 18-decimal arithmetic). Cursor §8e.1.
+- **I3.5-pre1** `docs/STAGE_I_NOTES.md` — I-D12 LOCK (gaugeRegistry 5th AuMT immutable; extends I-D11 6→7 args / 4→5 immutables; Option A direct-binding per EmissionDistributor.sol:L31 precedent). Cursor §8e.1.
+- **I3.5-pre2** `docs/STAGE_I_PLAN.md` — Decisions table I-D12 row + §I3 header bump + I3.1 amendment pointer + I3.5-pre1/2/3 narrative insertion + anchors footer LOCKED-range refresh. Cursor §8e.1.
+- **I3.5-pre3** `src/token/AuMT.sol` — add `IGaugeRegistry` import + `gaugeRegistry_` constructor arg (position 4) + `gaugeRegistry` immutable (slot 4) + ZeroAddress guard + assignment; section header updates to `/* ---------- Immutables (I-D11 / I-D12) ---------- */`. Cursor §8e.1.
+- **I3.5** governanceWeight() — root-curve formula per I-D7 (qualification cliff + on-ramp cap + era transition + gauge check via I-D12 immutable `gaugeRegistry` + FixedPoint 18-decimal arithmetic). Cursor §8e.1.
 - **I3.6** Distributor recorder integration — internal recordDeposit / recordWithdrawal calls post-mint/burn per H-D35 recorder semantics. Cursor §8e.1.
 - **I3.7** `src/token/IAuMT.sol` NatSpec correction at L35 (mint) + L47-L48 (burn) — re: I-D4 access control. Two-edit targeted correction. Cursor §8e.1.
 - **I3.8** Close-of-family sweep — PLAN Completion Log + status refresh.
@@ -195,7 +199,7 @@ Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK
 
 ## Anchors
 
-- `docs/STAGE_I_NOTES.md` — Stage I design freeze (I-D1—I-D11 LOCKED).
+- `docs/STAGE_I_NOTES.md` — Stage I design freeze (I-D1—I-D12 LOCKED).
 - `docs/STAGE_H_NOTES.md` — H-D7 / H-D10 / H-D16 / H-D35 / H-D42 anchors for Stage I.
 - `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 anchors for AureumTime constants + governance weight + qualification semantics.
 - `04_tokenomics.md` §ix — AuMT spec (verbatim): 14-day qualification cliff, 6-month on-ramp, withdrawal-reset rule, F-9 dampening exponent transition.
