@@ -1285,6 +1285,20 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 - **`11_formulas.md` F-8** annotation pointing to the §xxix and §xxi amendments above. The formula `M_i(t) = clamp(M_i(t-1) + delta_global + delta_intra_i, 0.75, 1.25)` is unchanged; the discretization of `delta_global` / `delta_intra` and the boost composition are pinned in §xxix / §xxi as above.
 - **`03_theoretical_foundation.md`** prose amendment to clarify that the "two small steps" are per-channel `±0.05` discrete impulses with per-channel dead-zone gating — currently reads as design-intent prose without numerical detail.
 
+### OQ-24 (RESOLVED): Gauge eligibility requires the canonical Aureum fee-routing hook
+
+**Decision (2026-05-29):** A pool is gauge-eligible only if its Vault-registered `hooksContract` is the canonical `AureumFeeRoutingHook`. `GaugeEligibility._checkEligibilityCriteria` asserts `IVault(vault).getHooksConfig(pool).hooksContract == feeRoutingHook` (a new constructor immutable) and reverts `WrongFeeRoutingHook(pool, actualHook)` otherwise. Pool creation and gauge activation stay permissionless (F11, OQ-14, OQ-G1–G3) — anyone may deploy any pool with any hook or none; the requirement bites only at the emission-gating boundary, so only canonical-hook pools earn AuMM emissions.
+
+**Why the hook is load-bearing.** The `AureumFeeRoutingHook` is the sole mechanism that (a) settles the Vault's 50% protocol swap-fee share to der Bodensee on `onAfterSwap` and converts the ERC-4626 yield-fee skim to a one-sided Bodensee deposit via `routeYieldFee` (OQ-1 / OQ-2), and (b) mints AuMT on `onAfterAddLiquidity` so LPs can claim the pool's emission share (I-D5). A pool registered with no hook — or a competing hook — bypasses the value-to-Bodensee skim and cannot mint AuMT. The ERC-4626 yield skim, gated by the 52% Quality Gate (G-D8), is the primary value driver to der Bodensee; the hook is what performs it.
+
+**Why this is now a mechanical check, not an incentive.** OQ-1 (L388) already stated the hook "remains required infra once the pool clears permissionless gauge activation," but no eligibility criterion enforced it. A pool could clear the 52% / TVL / factory / efficiency gates and gauge while registering `protocolFeeExempt = true` to dodge the yield skim — the yield-fee leg honors the exempt flag (`AureumProtocolFeeController.registerPool`), unlike the swap-fee leg which is pinned to 50e16 unconditionally per D-D15. The hook-gate closes the gap: no canonical hook → not gaugeable → no emissions, enforced at `_checkEligibilityCriteria`.
+
+**Immutability makes the check evaluate-once-stable.** The hook contract address is fixed at deploy (Stage D, before gauges exist). A pool's `hooksContract` is set at registration and is immutable in Balancer V3 — it can never be added, swapped, or removed afterward. So a pool carries the canonical hook forever or never; the gate is a permanent property of the pool.
+
+**der Bodensee is unaffected** — it is the fee sink, not a gauged emission recipient; the hook's `onRegister` returns `false` for it, and it never enters `GaugeEligibility`.
+
+**Implementation.** Stage I add-on (`STAGE_I_PLAN.md` I8 family), recorded as decision **I-D13** in `STAGE_I_NOTES.md`. `GaugeEligibility` gains a 9th constructor immutable `feeRoutingHook` and the `WrongFeeRoutingHook` error; the eligibility check is one comparison in `_checkEligibilityCriteria`. The `stage-g-complete` tag (`384a40b`) is left untouched — the hardening lands fix-forward on `stage-i` per git-tag-immutability convention. Cross-refs: OQ-1 / OQ-1a (fee routing), OQ-2 (yield leg), OQ-G1–G4 (gauge admission), D-D15 (swap-fee pin), G-D8 (52% gate), I-D5 (AuMT mint via hook).
+
 ---
 
 ### Stage G addendum — OQ-G1 through OQ-G4 (gauge admission pivot)
