@@ -13,6 +13,7 @@ import {
     TokenType,
     PoolRoleAccounts,
     SwapKind,
+    HooksConfig,
     VaultSwapParams
 } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
@@ -208,7 +209,7 @@ abstract contract StageGIntegrationFixture is Test {
         IVaultClassRegistry.AdmissionType[] memory genesisTypes = new IVaultClassRegistry.AdmissionType[](1);
         genesisTypes[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
         vaultClassRegistry = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
-        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockAuMT), address(this), address(mockEfficiencyOracle));
+        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockAuMT), address(this), address(mockEfficiencyOracle), address(hook));
         gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf));
 
         swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));
@@ -576,6 +577,10 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
 
     function test_aummInPool_revertsForbiddenToken() external {
         // Bodensee pool contains AuMM by construction — T-I3 gate fires inside _compute52PctNumerator before factory/TVL checks
+        // I-D13: Bodensee is hookless; mock its getHooksConfig past the fail-fast hook-gate to preserve T-I3 coverage
+        HooksConfig memory _hc;
+        _hc.hooksContract = address(hook);
+        vm.mockCall(address(vault), abi.encodeWithSignature("getHooksConfig(address)", bodenseePool), abi.encode(_hc));
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, address(aumm)));
         gaugeEligibility.evaluateEligibility(bodenseePool);
     }
