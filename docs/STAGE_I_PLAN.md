@@ -24,6 +24,7 @@ Stage I implements AuMT (Aureum Market Tessera) — the per-pool LP-receipt toke
 | `src/token/AuMT.sol` | NEW | I3.1—I3.7 | ~250 |
 | `src/token/IAuMT.sol` | EDITED | I3.7 | +0 / -2 (NatSpec correction at L35 + L47-L48) |
 | `src/fee_router/AureumFeeRoutingHook.sol` | EDITED | I4.1—I4.4 | +60 / 0 |
+| `src/gauge/GaugeEligibility.sol` | EDITED | I8.1—I8.2 | +11 / -1 |
 | `test/unit/EmissionDistributor.t.sol` | EDITED | I1.3 | mechanical signature updates |
 | `test/unit/AuMMDistributorIntegration.t.sol` | EDITED | I1.4 | mechanical signature updates |
 | `test/fork/StageHIntegrationFixture.sol` + 4 derived suites | EDITED | I1.5 | mechanical signature updates |
@@ -33,6 +34,8 @@ Stage I implements AuMT (Aureum Market Tessera) — the per-pool LP-receipt toke
 | `test/fork/StageIIntegration.t.sol` | NEW | I6.1—I6.5 | ~400 |
 | `script/DeployStageI.s.sol` | NEW | I7.1 | ~150 |
 | `test/fork/DeployStageI.t.sol` | NEW | I7.2 | ~200 |
+| `test/unit/GaugeEligibility.t.sol` | EDITED | I8.3a—I8.4 | +66 / -10 |
+| `test/fork/StageGIntegration.t.sol` | EDITED | I8.3c | +6 / -1 |
 
 ### Surfaces NOT produced at Stage I
 
