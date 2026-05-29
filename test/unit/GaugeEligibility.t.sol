@@ -7,6 +7,8 @@ import {GaugeEligibility} from "src/gauge/GaugeEligibility.sol";
 import {IVaultClassRegistry} from "src/gauge/IVaultClassRegistry.sol";
 import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
+import {IVaultExtension} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
+import {HooksConfig} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 
 /// @notice Test double exposing configurable class admission bits for GaugeEligibility.
 contract MockVaultClassRegistry is IVaultClassRegistry {
@@ -150,6 +152,9 @@ abstract contract GaugeEligibilityFixture is Test {
         );
         vm.prank(gaugeRegistrySetter);
         eligibility.setGaugeRegistry(gaugeRegistry);
+        HooksConfig memory _hc;
+        _hc.hooksContract = feeRoutingHook;
+        vm.mockCall(vault, abi.encodeWithSelector(IVaultExtension.getHooksConfig.selector), abi.encode(_hc));
     }
 
     function _deployUnwiredEligibility() internal returns (GaugeEligibility freshEligibility, address freshSetter) {
