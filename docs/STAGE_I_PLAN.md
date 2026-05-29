@@ -218,7 +218,20 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I3.8c | `38ac23b` | docs/STAGE_I_PLAN.md | +15 / -1 | Completion Log catch-up — I3.0c hash backfill (`<pending>` → `58790ca`) + 14 new rows I3.0d / I3.1 / I3.2 / I3.3 / I3.4 / I3.5-pre1 / I3.5-pre2 / I3.5-pre3 / I3.5 / I3.6 / I3.7 / I3.8a / I3.8b + self-row; closes I3 close-of-family Completion Log enumeration up to and including I3.8b (211 → 225 lines) |
 | I3.8d | `6671a29` | docs/STAGE_I_PLAN.md | +3 / -3 | PLAN status header + Last update + Mode refresh (I3 family complete; I3.8 close-of-family sweep in flight; HEAD `38ac23b`; 3 in-place L3/L5/L7 replacements; 225 lines unchanged) |
 | I3.8e | `5892143` | CLAUDE.md | +26 / -4 | §11 refresh: I3 COMPLETE; I-D1—I-D12 LOCKED (12 total); 36-bullet commit stack; I12 housekeeping bullet (container-shape LOCK §12 cross-check rule); HEAD `6671a29`; 615 → 637 lines |
-| I3.8f | `<pending>` | docs/STAGE_I_PLAN.md | +4 / -1 | Completion Log tail: I3.8c hash backfill (`<pending>` → `38ac23b`) + 3 new rows I3.8d / I3.8e + self-row; closes I3 close-of-family Completion Log enumeration (225 → 228 lines) |
+| I3.8f | `0bafa19` | docs/STAGE_I_PLAN.md | +4 / -1 | Completion Log tail: I3.8c hash backfill (`<pending>` → `38ac23b`) + 3 new rows I3.8d / I3.8e + self-row; closes I3 close-of-family Completion Log enumeration (225 → 228 lines) |
+| I8.0a | `f2d9da4` | docs/FINDINGS.md | +14 / 0 | OQ-24 (RESOLVED) — gauge eligibility requires canonical AureumFeeRoutingHook; WrongFeeRoutingHook error + feeRoutingHook 9th immutable + I-D13 cross-ref (1418 → 1432 lines) |
+| I8.0b | `b09605c` | docs/STAGE_I_NOTES.md | +12 / 0 | I-D13 LOCKED — gauge eligibility hook-gate; 9th constructor immutable; AuMT scope correction (all gauged pools); fix-forward stage-i (178 → 190 lines) |
+| I8.0c | `2589788` | docs/STAGE_I_PLAN.md | +16 / 0 | Decisions I-D13 row + I8 family roadmap (10 sub-steps; I8.0a/0b DONE markers) (228 → 244 lines) |
+| I8.0d | `ac8ff94` | docs/STAGES_OVERVIEW.md | +1 / -1 | GaugeEligibility criteria bullet — canonical-hook gate (in-place L167 edit; 430 lines) |
+| I8.1 | `20ee4bc` | src/gauge/GaugeEligibility.sol | +9 / -1 | feeRoutingHook immutable + WrongFeeRoutingHook error + 9th constructor param/guard/assignment (363 → 371 lines) |
+| I8.2 | `189e949` | src/gauge/GaugeEligibility.sol | +2 / 0 | _checkEligibilityCriteria hook-gate — poolHook local + WrongFeeRoutingHook revert as fail-fast first check (371 → 373 lines) |
+| I8.3a | `aee6c2f` | test/unit/GaugeEligibility.t.sol | +23 / -10 | feeRoutingHook fixture var + setUp + 9th arg on all 10 GaugeEligibility constructions |
+| I8.3b | `a7b1bdd` | test/unit/GaugeEligibility.t.sol | +5 / 0 | IVaultExtension + HooksConfig imports + getHooksConfig vm.mockCall in setUp — all existing eligibility tests pass the gate (878 → 883 lines) |
+| I8.3c | `10689c7` | test/fork/StageGIntegration.t.sol | +6 / -1 | HooksConfig import + 9th ctor arg address(hook) + Bodensee ForbiddenToken mock; fix1 abi.encodeWithSignature; forge build GREEN |
+| I8.4 | `fc36d60` | test/unit/GaugeEligibility.t.sol | +38 / 0 | 3 hook-gate tests (wrong-hook + no-hook revert WrongFeeRoutingHook; correct-hook admits); 46 → 49 tests green |
+| I8.5 | (no commit) | — | — | Full regression: forge clean + split-form per D35/D36; 619/620 unit (lone failure pre-I8 I4.1 getHookFlags artifact, deferred I4.5) + 71/71 fork green |
+| I8.6a | `dcca7fe` | docs/STAGE_I_NOTES.md | +10 / 0 | I13 Findings — fail-fast gate blast-radius rule (size test retrofit at pre-flight; setUp-mock; Foundry longest-match) (190 → 200 lines) |
+| I8.6b | `<pending>` | docs/STAGE_I_PLAN.md | +13 / 0 | Completion Log catch-up — I3.8f hash backfill (`<pending>` → `0bafa19`) + 13 new rows I8.0a—I8.6a + I8.5 no-commit + self-row |
 
 ---
 
