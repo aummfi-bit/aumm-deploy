@@ -181,6 +181,16 @@ Default rule for the Opus beat that locks a "container" design decision (an enum
 
 Anchors: I-D7 (I0.0a `9409d76`), I-D11 (I3.0a `ca2596e`), I-D12 (I3.5-pre1 `4a595e8`), I3.5-pre2 PLAN mirror (`feab19d`), I3.5-pre3 code (`4178fd9`), §12 ambiguity-gate (CLAUDE.md).
 
+### I13 — A fail-fast validation gate added to a shared evaluator has a test blast radius; size the retrofit at pre-flight, not at regression
+
+I-D13 added a `feeRoutingHook` check as the fail-fast FIRST statement of `GaugeEligibility._checkEligibilityCriteria` (I8.2). Because it precedes every other criterion and runs on every `evaluateEligibility` call, it intercepted the entire existing eligibility test surface — ~15 unit `evaluateEligibility` tests against the `makeAddr` mock vault (which mocked `getPoolTokens` but not the new `getHooksConfig`, so they would revert on the unmocked call) plus the fork `StageGIntegration` suite (pilot pools pass because they carry the real hook; hookless der Bodensee's `ForbiddenToken` test would now revert `WrongFeeRoutingHook` first). The I8.0c roadmap initially scoped I8.3 as "construction-site updates" only; the blast radius surfaced at I8.3 pre-flight (Opus beat reading the test bodies) before any construction-site prompt was drafted, and I8.3 was decomposed into I8.3a (ctor args) / I8.3b (one `getHooksConfig` setUp mock) / I8.3c (fork ctor arg + Bodensee mock past the gate to preserve T-I3 coverage).
+
+The cheap fix was structural: a single selector-only `vm.mockCall(vault, getHooksConfig selector, hooksContract = feeRoutingHook)` in the base fixture setUp made all ~15 existing eligibility tests pass the gate by default — negative tests proceed to their intended downstream reverts, happy tests pass — rather than retrofitting each test individually. Per-pool full-calldata mocks override the selector-only base mock (Foundry longest-match precedence) for the dedicated wrong-hook / no-hook rejection tests at I8.4.
+
+Default rule for the Opus beat that designs a new validation gate inside an existing shared evaluator (especially a fail-fast first check): before drafting the implementation sub-step, grep every test that exercises the gated path (`grep -n "evaluateEligibility\|<entrypoint>"`) plus the existing mock surface, and size the retrofit. A fail-fast first check intercepts the whole path — its revert reason supersedes every downstream check, so existing tests asserting a specific downstream revert must be neutralized via a shared setUp mock that passes the gate, or re-pointed. Sizing this at pre-flight turns a coordinated change into a clean sub-step decomposition; discovering it at regression would mean reactive per-test patching after the fact.
+
+Anchors: I-D13 (I8.0b), I8.2 hook-gate fail-fast placement, I8.3a/b/c decomposition, I8.4 wrong-hook/no-hook tests, I8.5 regression (619/620 unit — the lone failure is the pre-I8 I4.1 `getHookFlags` artifact deferred to I4.5; 71/71 fork), G16 (cross-file interface-inheritor enumeration — sibling scoping rule).
+
 ---
 
 ## Open questions
