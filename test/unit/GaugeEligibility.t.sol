@@ -488,6 +488,44 @@ contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
         assertTrue(eligibility.isEligible(pool));
     }
 
+    function testHookGateWrongHookReverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        address wrongHook = makeAddr("wrongHook");
+        HooksConfig memory hc;
+        hc.hooksContract = wrongHook;
+        vm.mockCall(vault, abi.encodeWithSignature("getHooksConfig(address)", pool), abi.encode(hc));
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.WrongFeeRoutingHook.selector, pool, wrongHook));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testHookGateNoHookReverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        HooksConfig memory hc;
+        hc.hooksContract = address(0);
+        vm.mockCall(vault, abi.encodeWithSignature("getHooksConfig(address)", pool), abi.encode(hc));
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.WrongFeeRoutingHook.selector, pool, address(0)));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testHookGateCorrectHookPasses() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedFourSixTwoSix());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wirePool(tokens, weights);
+        // base setUp mock returns hooksContract == feeRoutingHook for any pool — the otherwise-eligible pool passes the gate
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
     function testQualityGateBelowFiftyTwoPercentReverts() public {
         address[] memory tokens = new address[](2);
         tokens[0] = address(_admittedFourSixTwoSix());
