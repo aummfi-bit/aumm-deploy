@@ -122,6 +122,8 @@ abstract contract GaugeEligibilityFixture is Test {
 
     address public gaugeRegistry;
 
+    address public feeRoutingHook;
+
     GaugeEligibility public eligibility;
 
     function setUp() public virtual {
@@ -134,6 +136,7 @@ abstract contract GaugeEligibilityFixture is Test {
         auMT = makeAddr("auMT");
         gaugeRegistrySetter = makeAddr("gaugeRegistrySetter");
         gaugeRegistry = makeAddr("gaugeRegistry");
+        feeRoutingHook = makeAddr("feeRoutingHook");
         eligibility = new GaugeEligibility(
             address(mockFactory),
             address(mockVaultClassRegistry),
@@ -142,7 +145,8 @@ abstract contract GaugeEligibilityFixture is Test {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
         vm.prank(gaugeRegistrySetter);
         eligibility.setGaugeRegistry(gaugeRegistry);
@@ -158,7 +162,8 @@ abstract contract GaugeEligibilityFixture is Test {
             auMM,
             auMT,
             freshSetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 }
@@ -177,7 +182,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -191,7 +197,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -205,7 +212,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -219,7 +227,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -233,7 +242,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(0),
             auMT,
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -247,7 +257,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             address(0),
             gaugeRegistrySetter,
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -261,7 +272,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             address(0),
-            address(mockEfficiencyOracle)
+            address(mockEfficiencyOracle),
+            feeRoutingHook
         );
     }
 
@@ -275,7 +287,8 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             auMM,
             auMT,
             gaugeRegistrySetter,
-            address(0)
+            address(0),
+            feeRoutingHook
         );
     }
 
