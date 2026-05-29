@@ -360,6 +360,8 @@ contract GaugeEligibility is IGaugeEligibility {
      * @param pool Balancer pool address under evaluation.
      */
     function _checkEligibilityCriteria(address pool) internal view {
+        address poolHook = IVault(vault).getHooksConfig(pool).hooksContract;
+        if (poolHook != feeRoutingHook) revert WrongFeeRoutingHook(pool, poolHook);
         IERC20[] memory tokens = IVault(vault).getPoolTokens(pool);
         uint256[] memory weights = IWeightedPool(pool).getNormalizedWeights();
         uint256 numerator = _compute52PctNumerator(tokens, weights);
