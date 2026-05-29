@@ -37,6 +37,9 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice Balancer V3 vault for pool token and factory reads at G2.3+.
     address public immutable vault;
 
+    /// @notice Canonical AureumFeeRoutingHook — the only hook a gauge-eligible pool may carry per **I-D13** / **OQ-24**; `_checkEligibilityCriteria` rejects any pool whose `IVault(vault).getHooksConfig(pool).hooksContract` differs. Set once at deploy; no setter.
+    address public immutable feeRoutingHook;
+
     /// @notice T-I3 forbidden-token block — AuMM; compared against every pool token in the 52% path.
     address internal immutable _auMM;
 
@@ -125,6 +128,8 @@ contract GaugeEligibility is IGaugeEligibility {
 
     error OnlyGaugeRegistrySetter();
 
+    error WrongFeeRoutingHook(address pool, address actualHook);
+
     // -------------------------------------------------------------------------
     // Modifiers
     // -------------------------------------------------------------------------
@@ -159,7 +164,8 @@ contract GaugeEligibility is IGaugeEligibility {
         address auMM_,
         address auMT_,
         address gaugeRegistrySetter_,
-        address efficiencyOracle_
+        address efficiencyOracle_,
+        address feeRoutingHook_
     ) {
         if (approvedFactory_ == address(0)) revert ZeroAddress();
         if (vaultClassRegistry_ == address(0)) revert ZeroAddress();
@@ -169,6 +175,7 @@ contract GaugeEligibility is IGaugeEligibility {
         if (auMT_ == address(0)) revert ZeroAddress();
         if (gaugeRegistrySetter_ == address(0)) revert ZeroAddress();
         if (efficiencyOracle_ == address(0)) revert ZeroAddress();
+        if (feeRoutingHook_ == address(0)) revert ZeroAddress();
 
         approvedFactory = approvedFactory_;
         vaultClassRegistry = vaultClassRegistry_;
@@ -178,6 +185,7 @@ contract GaugeEligibility is IGaugeEligibility {
         _auMT = auMT_;
         gaugeRegistrySetter = gaugeRegistrySetter_;
         efficiencyOracle = efficiencyOracle_;
+        feeRoutingHook = feeRoutingHook_;
     }
 
     // -------------------------------------------------------------------------
