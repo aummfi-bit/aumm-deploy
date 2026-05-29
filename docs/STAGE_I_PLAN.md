@@ -60,6 +60,7 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 | I-D10 | LOCKED | `AureumTime.sol` extension — `QUALIFICATION_PERIOD_BLOCKS = BLOCKS_PER_EPOCH` (100_800) + `ON_RAMP_PERIOD_BLOCKS = 180 * BLOCKS_PER_DAY` (1_296_000) | C-D3 canonical time library; §ix verbatim "14 days" + "day 180" | I0.0b |
 | I-D11 | LOCKED | AuMT constructor pattern — 6 args (pool_/distributor_/liquidityHook_/genesisBlock_/name_/symbol_); 4 immutables (pool/distributor/liquidityHook/GENESIS_BLOCK); name/symbol per-creator (Balancer BPT convention; ixXYZ for 28 Miliarium pools) | C-D3 canonical immutable convention; H13 NOTES (no constructor external calls); Balancer V3 BPT name-by-creator | I3.0a |
 | I-D12 | LOCKED | AuMT 5th immutable `gaugeRegistry` — extends I-D11 (6→7 args, 4→5 immutables); new `address gaugeRegistry_` constructor arg slotted at position 4 (between `liquidityHook_` and `genesisBlock_`); Option A direct-binding (not B distributor-chained, not C interface widening) | I-D7 governanceWeight ZERO branch; EmissionDistributor.sol:L31 precedent; H13 no-constructor-external-call; I5 deploy-time consistency invariant | I3.5-pre1 |
+| I-D13 | LOCKED | Gauge eligibility requires canonical `AureumFeeRoutingHook` — `GaugeEligibility._checkEligibilityCriteria` asserts `getHooksConfig(pool).hooksContract == feeRoutingHook` (9th ctor immutable) else `WrongFeeRoutingHook`; AuMT scope = all gauged pools (I-D5/I-D8 Miliarium-only = pilot cadence, not ceiling) | OQ-24; OQ-1/OQ-2; D-D15 swap-fee pin; G-D8 52% gate; I-D5 AuMT mint; G16 ctor-site enum | I8.0b |
 
 ---
 
@@ -150,6 +151,21 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 - **I7.2** `test/fork/DeployStageI.t.sol` (inherits StageIIntegrationFixture) — 9+ assertions on AuMT instances + hook wiring + distributor wiring + governance handoff. Cursor §8e.1.
 - **I7.3** Close-of-family sweep + CLAUDE.md §11 refresh — Stage I close-out summary, Completion Log tail rows, Findings queue final state.
 - **I7.4** Stage close — fast-forward merge stage-i → main + tag stage-i-complete + push. User runs in terminal.
+
+### I8 — Gauge eligibility hook-gate (per I-D13 / OQ-24; Stage I add-on; 10 sub-steps)
+
+Execution note: I8 runs now — before resuming the parked I4, and necessarily before I6, because it changes `GaugeEligibility`'s constructor (8 → 9 args) which the I6 `StageIIntegrationFixture` consumes transitively (G16 — land the ctor change before the fork fixtures are written). Numeric position is append-order; execution position is immediate. I7.4 stage-close gates on I8.
+
+- **I8.0a** (DONE — `f2d9da4`) `docs/FINDINGS.md` — OQ-24 RESOLVED. Cursor §8e.1.
+- **I8.0b** (DONE — `b09605c`) `docs/STAGE_I_NOTES.md` — I-D13 LOCKED. Cursor §8e.1.
+- **I8.0c** `docs/STAGE_I_PLAN.md` — Decisions I-D13 row + this I8 roadmap. Cursor §8e.1.
+- **I8.0d** `docs/STAGES_OVERVIEW.md` — gauge-eligibility criteria bullet adds the canonical-hook gate. Cursor §8e.1.
+- **I8.1** `src/gauge/GaugeEligibility.sol` — `WrongFeeRoutingHook(address pool, address actualHook)` error + `feeRoutingHook` immutable + 9th constructor param `feeRoutingHook_` + ZeroAddress guard. Cursor §8e.1.
+- **I8.2** `src/gauge/GaugeEligibility.sol` — `HooksConfig` import + hook check in `_checkEligibilityCriteria` (`IVault(vault).getHooksConfig(pool).hooksContract != feeRoutingHook` → revert `WrongFeeRoutingHook`). Cursor §8e.1.
+- **I8.3** Construction-site updates per G16 — `test/fork/StageGIntegration.t.sol:211` plus 10 sites in `test/unit/GaugeEligibility.t.sol` (add 9th arg). Cursor §8e.1.
+- **I8.4** `test/unit/GaugeEligibility.t.sol` — new tests: wrong-hook reject + no-hook reject + correct-hook admit (`vm.mockCall` on `getHooksConfig`). Cursor §8e.1.
+- **I8.5** Regression — `forge clean && forge build` + full Stage F/G/H/I cohort green (split-form per D35; `--threads 1` fork per D36). User runs in terminal. No commit.
+- **I8.6** Close-of-family sweep — Surfaces-produced rows (GaugeEligibility.sol + test files, actual diffs) + PLAN Completion Log + status refresh + CLAUDE.md §11. Cursor §8e.1.
 
 ---
 
