@@ -1299,6 +1299,24 @@ Simple arithmetic mean delivers strong intra correction when the constellation i
 
 **Implementation.** Stage I add-on (`STAGE_I_PLAN.md` I8 family), recorded as decision **I-D13** in `STAGE_I_NOTES.md`. `GaugeEligibility` gains a 9th constructor immutable `feeRoutingHook` and the `WrongFeeRoutingHook` error; the eligibility check is one comparison in `_checkEligibilityCriteria`. The `stage-g-complete` tag (`384a40b`) is left untouched — the hardening lands fix-forward on `stage-i` per git-tag-immutability convention. Cross-refs: OQ-1 / OQ-1a (fee routing), OQ-2 (yield leg), OQ-G1–G4 (gauge admission), D-D15 (swap-fee pin), G-D8 (52% gate), I-D5 (AuMT mint via hook).
 
+### OQ-25 (RESOLVED): AuMT is the pool's BPT (branded), not a separate token; governance voting is capital-VALUE-weighted at snapshot
+
+**Decision (2026-06-02):** AuMT (Aureum Market Tessera) is **not a separate ERC-20** — it is the pool's own Balancer V3 BPT (already an ERC-20), under the Aureum brand name. There is no new token contract, no soulbound mirror, no hook mint/burn of an AuMT token. This reverses the separate-soulbound-token premise that `STAGE_I_NOTES.md` I-D1 / I-D3 / I-D4 / I-D5 inferred and that `src/token/AuMT.sol` (Stage I I3) implemented; `AuMT.sol` is deprecated/deleted and those I-D bodies are amended (NOTES reckoning, I-D14).
+
+**Spec basis (`04_tokenomics.md` §viii "Governance: The 'LP = Power' Model", verbatim):** "Each tessera is a proportional claim on its pool's TVL"; `voting_power = (qualified_AuMT_value × time_in_pool)^(1/4)` [Era 0] / `^(1/3)` [Era 1+]; "qualified_AuMT_value is the USD-denominated value of the liquidity the tessera represents — not token count." The spec never describes a distinct AuMT contract, never mentions a minting hook, and calls AuMT "the governance-facing label for LP positions in qualified pools." It is the BPT.
+
+**Voting is capital-VALUE-weighted at snapshot, not token-count-weighted.** The built I-D7 `governanceWeight` used `balanceOf(holder)` (AuMT/BPT token count), which mis-weights across pools (100 BPT in pool A ≠ 100 BPT in pool B by value). Corrected: `voting_power = (qualified_AuMT_value × time_in_pool_capped)^(1/4 → 1/3)`, where `qualified_AuMT_value = recorded deposited BPT amount × per-unit USD value at snapshot` — re-valued each vote (the spec is silent on valuation timing; snapshot-time is the locked design choice, reflecting capital-at-stake now). Per-unit value comes from the TVL/value oracle already present for CCB.
+
+**The anti-flash-loan spine is persistent, hook-written time tracking — not the spot BPT balance.** Voting reads the hook-recorded deposited amount + qualification clock (start-on-first-deposit, reset-on-any-withdrawal per §viii "remove any amount — even 1% — governance power drops to zero immediately"), NOT the wallet's spot BPT balance. A market BPT purchase or flash-loan never calls the hook, so it never enters the record and confers zero power. The clock + amount live in the EmissionDistributor recorder (already hook-fed from I1, already gauge-aware from Stage H); voting weight is a pure view computed on the fly at snapshot.
+
+**Only gauged pools confer power.** The voting view iterates a wallet's positions and counts a pool only if `gaugeRegistry.isGaugeApproved(pool)` is true at the snapshot (the 52% ERC-4626 + eligibility bar, per OQ-7 / I-D13). The gauge requirement is a read-time gate, not a clock-linkage — the clock accrues independent of gauge status; power switches on when the pool is gauged.
+
+**Stage I impact.** `AuMT.sol` (I3) and the hook AuMT mint/burn (I4 as originally scoped) are dropped. Survives: I1 (per-pool recorder — extended with the qualification clock), I2 (AureumTime constants), I8 (hook-gate — the hook is still required infra for fee/yield routing + gauging), the cliff/on-ramp/withdrawal-reset rules, the root-curve + era transition. The hook's `onAfterAddLiquidity` / `onAfterRemoveLiquidity` (I4.1 `getHookFlags` bump stays correct) reroute to `recordDeposit` / `recordWithdrawal` on the EmissionDistributor instead of minting a token. `governanceWeight` becomes a value-weighted view (in the EmissionDistributor or a thin governance-side `VotingWeight` reader) computed at snapshot.
+
+**Open sub-points to lock in the NOTES reckoning (I-D14):** (a) whether a large top-up partially re-ages the qualification clock (weighted-average deposit time) vs. leaves it unchanged per the original I-D6; (b) whether the clock accrues before a pool is gauged / pauses on gauge-revocation vs. counts continuously with the gauge gate applied only at vote time.
+
+**Cross-refs:** `04_tokenomics.md` §viii; OQ-7 (gauge-required governance weight); I-D1 / I-D3 / I-D4 / I-D5 (reversed) + I-D6 / I-D7 (amended) → I-D14 NOTES reckoning; I1 recorder (clock host); I8 / I-D13 (hook required infra); the deprecated `src/token/AuMT.sol`.
+
 ---
 
 ### Stage G addendum — OQ-G1 through OQ-G4 (gauge admission pivot)
