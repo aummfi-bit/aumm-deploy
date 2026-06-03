@@ -175,6 +175,16 @@ Execution note: I8 runs now — before resuming the parked I4, and necessarily b
 - **I8.5** Regression — `forge clean && forge build` + full Stage F/G/H/I cohort green (split-form per D35; `--threads 1` fork per D36). User runs in terminal. No commit.
 - **I8.6** Close-of-family sweep — Surfaces-produced rows (GaugeEligibility.sol + test files, actual diffs) + PLAN Completion Log + status refresh + CLAUDE.md §11. Cursor §8e.1.
 
+### I9 — AuMT deprecation + `IVotingWeight` consumer migration (per I-D14 / I-D15 / I-D17; I-reframe code phase; 5 sub-steps)
+
+Execution note: I9 is the code-phase removal of the pre-reframe AuMT token. I3.1—I3.8f built a concrete soulbound `AuMT.sol` (115 → 218 lines) + `IAuMT.sol` NatSpec corrections; per I-D14 (AuMT = the pool's BPT) that token has no place, and per I-D15 the token-named interface goes with it. I-D17 found `IAuMT`'s one live consumer — Stage-G `VaultClassRegistry` (veto-weight per G-D9) — so the deletion is gated behind migrating that consumer to a correctly-named `IVotingWeight` reader (Stage-G fix-forward; Stage G tag untouched). I9 runs first in the code phase — the clean removal of the dead token before the I4 hook/recorder rewrite; the two are independent (post-reframe I4 calls the EmissionDistributor, not AuMT), so the order is a convenience, not a constraint. The concrete `AuMT.sol` is preserved in git history at the I3.1—I3.8f commits.
+
+- **I9.1** `src/governance/IVotingWeight.sol` (NEW) — minimal forward-stub interface: `governanceWeight(address holder) → uint256` + `totalSupply() → uint256`; NOT `is IERC20`; NatSpec marks it the voting-weight reader surface that the deferred `src/governance/VotingWeight.sol` (Stage K) implements per I-D15. First file under `src/governance/`. Cursor §8e.1.
+- **I9.2** `src/gauge/VaultClassRegistry.sol` (EDITED — Stage-G fix-forward) — full rename per I-D17: import `IVotingWeight` (drop `IAuMT`); `IAuMT auMT` → `IVotingWeight votingWeight` slot; `setAuMT` → `setVotingWeight`; `auMTSetter` → `votingWeightSetter`; `OnlyAuMTSetter` → `OnlyVotingWeightSetter`; constructor param + NatSpec; the two call sites (`votingWeight.governanceWeight(msg.sender)` / `votingWeight.totalSupply()`). Cursor §8e.1.
+- **I9.3** `test/fork/mocks/StageGMocks.sol` + `test/unit/VaultClassRegistry.t.sol` (EDITED) — rename both `MockAuMT is IAuMT` doubles → `MockVotingWeight is IVotingWeight`; drop the IERC20 boilerplate stubs (`balanceOf` / `allowance` / `transfer` / `approve` / `transferFrom`); update every `setAuMT` / `auMT` test-wiring reference to the renamed members. These two files are the only `is IAuMT` sites (G16 sweep). Cursor §8e.1 (may split I9.3a / I9.3b per file).
+- **I9.4** `git rm src/token/AuMT.sol src/token/IAuMT.sol` — remove both files; nothing references them after I9.1—I9.3. User stages + commits in terminal (git mutation per §8b); `forge clean && forge build` + full Stage F/G/H/I unit + fork cohort green confirms no dangling reference (split-form per D35; `--threads 1` fork per D36).
+- **I9.5** Close-of-family sweep — PLAN Completion Log rows (I9.1—I9.4) + an I3.1—I3.8f superseded-marker line + status/mode refresh + NOTES Findings if surfaced + CLAUDE.md §11. Cursor §8e.1.
+
 ---
 
 ## Completion log
