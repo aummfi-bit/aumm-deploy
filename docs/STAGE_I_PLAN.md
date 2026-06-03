@@ -149,8 +149,8 @@ The I-reframe reckoning supersedes that work: per I-D14 AuMT is the pool's own B
 
 ### I7 — Stage I deploy script + close-of-stage (4 sub-steps)
 
-- **I7.1** `script/DeployStageI.s.sol` — deploy 3 AuMT instances + setAuMTForPool ×3 on hook + setAuMTContractForPool ×3 on distributor + deployer→GOVERNANCE_MULTISIG handoff. Cursor §8e.1.
-- **I7.2** `test/fork/DeployStageI.t.sol` (inherits StageIIntegrationFixture) — 9+ assertions on AuMT instances + hook wiring + distributor wiring + governance handoff. Cursor §8e.1.
+- **I7.1** `script/DeployStageI.s.sol` — wire the recorder path (no AuMT deploys): `setEmissionRecorder(distributor)` ×1 on the canonical `AureumFeeRoutingHook` (I-D16) + `setAuMTContractForPool(pilotPool, hook)` ×3 on the EmissionDistributor (I-D9 amend) + deployer→GOVERNANCE_MULTISIG handoff. AuMM + hook + distributor are Stage inputs per H-D42, not deploy artifacts. Cursor §8e.1.
+- **I7.2** `test/fork/DeployStageI.t.sol` (inherits `StageIIntegrationFixture`) — assertions: `hook.emissionRecorder() == distributor`; `distributor.auMTContractByPool(pilotPool) == hook` ×3; one-shot setters revert on second call; deployer→GOVERNANCE_MULTISIG handoff; no AuMT-token assertions. Cursor §8e.1.
 - **I7.3** Close-of-family sweep + CLAUDE.md §11 refresh — Stage I close-out summary, Completion Log tail rows, Findings queue final state.
 - **I7.4** Stage close — fast-forward merge stage-i → main + tag stage-i-complete + push. User runs in terminal.
 
