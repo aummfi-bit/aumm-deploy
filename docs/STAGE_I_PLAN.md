@@ -121,14 +121,15 @@ I3.1—I3.8f built a concrete soulbound-ERC-20 `AuMT.sol` (skeleton → soulboun
 
 The I-reframe reckoning supersedes that work: per I-D14 AuMT is the pool's own Balancer V3 BPT, not a separate token, so the concrete `AuMT.sol` has no place; per I-D15 the token-named `IAuMT.sol` goes with it; per I-D17 `IAuMT`'s one live consumer (Stage-G `VaultClassRegistry`) migrates to a minimal `IVotingWeight` reader first. The deletion + migration is **I9**. The logic this section built is not lost — the qualification clock relocates to the EmissionDistributor recorder (I4) and the value-weighted governance view is deferred to a `src/governance/VotingWeight.sol` reader (I-D15), each on the oracle-appropriate side. No live sub-steps remain under I3.
 
-### I4 — Extend `AureumFeeRoutingHook.sol` (per I-D5; 6 sub-steps)
+### I4 — Recorder dispatch + clock (`AureumFeeRoutingHook` + `EmissionDistributor`; per I-D14 / I-D16; 7 sub-steps)
 
-- **I4.1** `getHookFlags()` bump — set `shouldCallAfterAddLiquidity = true` + `shouldCallAfterRemoveLiquidity = true`. Cursor §8e.1.
-- **I4.2** `auMTByPool` storage slot + `setAuMTForPool(pool, auMT)` one-shot governance-gated setter + `AuMTBound(pool, auMT)` event + `AuMTAlreadyBound(pool)` error. Cursor §8e.1.
-- **I4.3** `onAfterAddLiquidity` callback — dispatches `AuMT(auMTByPool[pool]).mint(sender, bptAmountOut)`. Returns true per BaseHooks signature. Cursor §8e.1.
-- **I4.4** `onAfterRemoveLiquidity` callback — dispatches `AuMT(auMTByPool[pool]).burn(sender, bptAmountIn)`. Returns true. Cursor §8e.1.
-- **I4.5** Stage D regression — full unit + fork cohort re-run green. User runs in terminal. No commit.
-- **I4.6** Close-of-family sweep — PLAN Completion Log + status refresh.
+- **I4.1** (DONE — `409f51a`) `getHookFlags()` bump — `shouldCallAfterAddLiquidity = true` + `shouldCallAfterRemoveLiquidity = true`. Cursor §8e.1.
+- **I4.2** `src/fee_router/AureumFeeRoutingHook.sol` — one-shot `emissionRecorder` reference per I-D16: `address public emissionRecorder` slot + `setEmissionRecorder(address)` setter (reverts on second call) + a set-event + an already-set error, all mirroring the hook's existing `setGovernanceModule` one-shot pattern (L100-112). No `auMTByPool` / `setAuMTForPool` (dropped per I-D16). Cursor §8e.1.
+- **I4.3** `src/emission/EmissionDistributor.sol` — `effectiveQualBlock` per-(pool, user) clock: weighted-average top-up inside `recordDeposit` + reset-on-any-withdrawal inside `recordWithdrawal`, alongside the existing `userLP[pool][user]` amount, per I-D14 (the I-D6 clock semantics relocated from the deleted `AuMT.sol`). Cursor §8e.1.
+- **I4.4** `onAfterAddLiquidity` callback — dispatches `recordDeposit(pool, lp, bptAmountOut)` on `emissionRecorder` (`lp` = the liquidity provider resolved from the add-liquidity context). Returns true per BaseHooks signature. Cursor §8e.1.
+- **I4.5** `onAfterRemoveLiquidity` callback — dispatches `recordWithdrawal(pool, lp, bptAmountIn)` on `emissionRecorder`. Returns true. Cursor §8e.1.
+- **I4.6** Stage D regression — full unit + fork cohort re-run green; also clears the pre-existing `test_getHookFlags_shouldCallAfterSwapOnly` failure left by the I4.1 flag bump. User runs in terminal. No commit.
+- **I4.7** Close-of-family sweep — PLAN Completion Log + status refresh.
 
 ### I5 — AuMT unit tests (`test/unit/AuMT.t.sol`; 7 sub-steps)
 
