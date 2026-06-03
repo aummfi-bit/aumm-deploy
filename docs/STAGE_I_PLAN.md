@@ -139,14 +139,13 @@ The I-reframe reckoning supersedes that work: per I-D14 AuMT is the pool's own B
 - **I5.4** Hook-gate access — `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(pool, caller)` when called by a non-bound address; happy-path admits the address bound via `setAuMTContractForPool(pool, hook)` (I-D9). Cursor §8e.1.
 - **I5.5** Close-of-family sweep — PLAN Completion Log + status refresh. Note: the value-weighted-view tests (qualification cliff, on-ramp cap, era transition, gauge-revoked) are deferred out of Stage I with `src/governance/VotingWeight.sol` per I-D15. Cursor §8e.1.
 
-### I6 — Stage I fork integration tests (`test/fork/StageIIntegration.t.sol`; 6 sub-steps)
+### I6 — Recorder-clock fork integration (`test/fork/StageIIntegration.t.sol`; 5 sub-steps)
 
-- **I6.1** StageIIntegrationFixture (inherits StageHIntegrationFixture per H13 lesson) — deploys 3 AuMT instances wired to 3 pilot pools at slots 02/03/07; binds hook extension; sets auMTByPool + auMTContractByPool. Cursor §8e.1.
-- **I6.2** Multi-AuMT scenario tests — 3 holders deposit into 3 different pools; per-pool balance accounting; governance weight isolated per pool. Cursor §8e.1.
-- **I6.3** Qualification clock tests — fork-state vm.roll past QUALIFICATION_PERIOD_BLOCKS. Cursor §8e.1.
-- **I6.4** Halving boundary tests — vm.roll past `AureumTime.firstHalvingBlock(GENESIS_BLOCK)`; governance weight uses 3rd-root after boundary. Cursor §8e.1.
-- **I6.5** Withdrawal-reset tests — partial 1% withdrawal triggers full clock reset; governance weight drops to zero immediately. Cursor §8e.1.
-- **I6.6** Close-of-family sweep — PLAN Completion Log + status refresh.
+- **I6.1** `StageIIntegrationFixture` (inherits `StageHIntegrationFixture` per H13) — `setEmissionRecorder(distributor)` on the canonical `AureumFeeRoutingHook` (I-D16) + `setAuMTContractForPool(pilotPool, hook)` ×3 binding the recorder gate to the hook (I-D9 amend); no AuMT deploys. Cursor §8e.1.
+- **I6.2** Deposit-dispatch — a real Balancer V3 add-liquidity to each of the 3 pilot pools routes through `onAfterAddLiquidity` → `recordDeposit`, setting `effectiveQualBlock` + accruing `userLP` on the EmissionDistributor; per-pilot-pool isolation (the 3 pools track independently). Cursor §8e.1.
+- **I6.3** Top-up — a second add-liquidity to a pool blends `effectiveQualBlock` by the deposit-weighted average per I-D14; assert the blended block. Cursor §8e.1.
+- **I6.4** Aging + withdrawal-reset — `vm.roll` past `QUALIFICATION_PERIOD_BLOCKS` after a deposit (assert `block.number − effectiveQualBlock ≥ QUALIFICATION_PERIOD_BLOCKS`, the raw input the deferred view will threshold), then a real remove-liquidity → `onAfterRemoveLiquidity` → `recordWithdrawal` resets `effectiveQualBlock` to 0 even on a fully-aged position. Cursor §8e.1.
+- **I6.5** Close-of-family sweep — PLAN Completion Log + status refresh.
 
 ### I7 — Stage I deploy script + close-of-stage (4 sub-steps)
 
