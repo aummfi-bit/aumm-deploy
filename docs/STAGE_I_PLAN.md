@@ -131,15 +131,13 @@ The I-reframe reckoning supersedes that work: per I-D14 AuMT is the pool's own B
 - **I4.6** Stage D regression — full unit + fork cohort re-run green; also clears the pre-existing `test_getHookFlags_shouldCallAfterSwapOnly` failure left by the I4.1 flag bump. User runs in terminal. No commit.
 - **I4.7** Close-of-family sweep — PLAN Completion Log + status refresh.
 
-### I5 — AuMT unit tests (`test/unit/AuMT.t.sol`; 7 sub-steps)
+### I5 — Recorder-clock unit tests (`test/unit/RecorderClock.t.sol`; 5 sub-steps)
 
-- **I5.1** Constructor + immutable slot tests — pool / distributor / liquidityHook binding; zero-address reverts. Cursor §8e.1.
-- **I5.2** Soulbound tests — `transfer` / `transferFrom` / `approve` revert `NotTransferable` regardless of caller. Cursor §8e.1.
-- **I5.3** mint/burn access tests — `NotLiquidityHook` revert on non-hook callers; happy-path from hook. Cursor §8e.1.
-- **I5.4** qualificationBlock state machine tests — first mint sets clock; top-up doesn't reset; partial burn resets; re-deposit fresh. Cursor §8e.1.
-- **I5.5** governanceWeight tests — qualification cliff; on-ramp cap; era transition (4th → 3rd root); gauge-revoked; zero balance. Cursor §8e.1.
-- **I5.6** Distributor recorder integration tests — mocked distributor; assert recordDeposit/recordWithdrawal called with (pool, holder, amount). Cursor §8e.1.
-- **I5.7** Close-of-family sweep — PLAN Completion Log + status refresh.
+- **I5.1** First-deposit clock-set — `recordDeposit(pool, lp, amount)` from the bound recorder sets `effectiveQualBlock[pool][lp]` to `block.number` when previously zero; `userLP[pool][lp]` accrues the amount. Cursor §8e.1.
+- **I5.2** Weighted-average top-up — a second `recordDeposit` blends `effectiveQualBlock` by the deposit-weighted average per I-D14 (a top-up advances the clock proportionally, not a full reset); assert the blended block + accrued `userLP`. Cursor §8e.1.
+- **I5.3** Reset-on-any-withdrawal — `recordWithdrawal(pool, lp, amount)` of any nonzero amount resets `effectiveQualBlock[pool][lp]` to 0 per I-D6 / I-D14 (qualification lost on any exit); assert reset + `userLP` decrement. Cursor §8e.1.
+- **I5.4** Hook-gate access — `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(pool, caller)` when called by a non-bound address; happy-path admits the address bound via `setAuMTContractForPool(pool, hook)` (I-D9). Cursor §8e.1.
+- **I5.5** Close-of-family sweep — PLAN Completion Log + status refresh. Note: the value-weighted-view tests (qualification cliff, on-ramp cap, era transition, gauge-revoked) are deferred out of Stage I with `src/governance/VotingWeight.sol` per I-D15. Cursor §8e.1.
 
 ### I6 — Stage I fork integration tests (`test/fork/StageIIntegration.t.sol`; 6 sub-steps)
 
