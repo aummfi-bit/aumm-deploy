@@ -23,9 +23,11 @@ Stage I implements the AuMT (Aureum Market Tessera) governance spine. Per OQ-25 
 | `src/emission/EmissionDistributor.sol` | EDITED again | I4 | +~25 / 0 — `effectiveQualBlock` per-(pool, user) clock: weighted-average top-up + reset-on-any-withdrawal inside `recordDeposit` / `recordWithdrawal`, alongside the existing `userLP` amount |
 | `src/lib/AureumTime.sol` | EDITED | I2.1 | +10 / 0 |
 | `src/token/AuMT.sol` | DELETED | I-reframe (deprecation) | — I3 scaffold `git rm`'d; AuMT is the BPT per OQ-25 / I-D14 |
-| `src/token/IAuMT.sol` | DELETED | I-reframe (deprecation) | — token-named interface with no implementor removed per I-D15 |
+| `src/token/IAuMT.sol` | DELETED | I-reframe (deprecation) | — removed per I-D15 (amended by I-D17 — `VaultClassRegistry` consumer migrated to `IVotingWeight`) |
 | `src/fee_router/AureumFeeRoutingHook.sol` | EDITED | I4.1—I4.5 | +~35 / 0 |
 | `src/gauge/GaugeEligibility.sol` | EDITED | I8.1—I8.2 | +11 / -1 |
+| `src/governance/IVotingWeight.sol` | NEW | I9.1 | ~20 |
+| `src/gauge/VaultClassRegistry.sol` | EDITED | I9.2 | +~8 / -~8 — full rename: `auMT`→`votingWeight` / `setAuMT`→`setVotingWeight` / `auMTSetter`→`votingWeightSetter` / `OnlyAuMTSetter`→`OnlyVotingWeightSetter` per I-D17 |
 | `test/unit/EmissionDistributor.t.sol` | EDITED | I1.3 | mechanical signature updates |
 | `test/unit/AuMMDistributorIntegration.t.sol` | EDITED | I1.4 | mechanical signature updates |
 | `test/fork/StageHIntegrationFixture.sol` + 4 derived suites | EDITED | I1.5 | mechanical signature updates |
@@ -37,6 +39,8 @@ Stage I implements the AuMT (Aureum Market Tessera) governance spine. Per OQ-25 
 | `test/fork/DeployStageI.t.sol` | NEW | I7.2 | ~120 |
 | `test/unit/GaugeEligibility.t.sol` | EDITED | I8.3a—I8.4 | +66 / -10 |
 | `test/fork/StageGIntegration.t.sol` | EDITED | I8.3c | +6 / -1 |
+| `test/fork/mocks/StageGMocks.sol` | EDITED | I9.3a | +0 / -~15 — `MockAuMT`→`MockVotingWeight is IVotingWeight`; drop IERC20 boilerplate stubs |
+| `test/unit/VaultClassRegistry.t.sol` | EDITED | I9.3b | +0 / -~15 — `MockAuMT`→`MockVotingWeight is IVotingWeight`; drop IERC20 boilerplate stubs; update `setAuMT` wiring |
 
 ### Surfaces NOT produced at Stage I
 
