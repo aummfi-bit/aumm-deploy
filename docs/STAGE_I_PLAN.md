@@ -20,28 +20,29 @@ Stage I implements the AuMT (Aureum Market Tessera) governance spine. Per OQ-25 
 | --- | --- | --- | --- |
 | `src/emission/IEmissionDistributor.sol` | EDITED | I1.1 | +5 / -3 |
 | `src/emission/EmissionDistributor.sol` | EDITED | I1.2 | +20 / -10 |
+| `src/emission/EmissionDistributor.sol` | EDITED again | I4 | +~25 / 0 — `effectiveQualBlock` per-(pool, user) clock: weighted-average top-up + reset-on-any-withdrawal inside `recordDeposit` / `recordWithdrawal`, alongside the existing `userLP` amount |
 | `src/lib/AureumTime.sol` | EDITED | I2.1 | +10 / 0 |
-| `src/token/AuMT.sol` | NEW | I3.1—I3.7 | ~250 |
-| `src/token/IAuMT.sol` | EDITED | I3.7 | +0 / -2 (NatSpec correction at L35 + L47-L48) |
-| `src/fee_router/AureumFeeRoutingHook.sol` | EDITED | I4.1—I4.4 | +60 / 0 |
+| `src/token/AuMT.sol` | DELETED | I-reframe (deprecation) | — I3 scaffold `git rm`'d; AuMT is the BPT per OQ-25 / I-D14 |
+| `src/token/IAuMT.sol` | DELETED | I-reframe (deprecation) | — token-named interface with no implementor removed per I-D15 |
+| `src/fee_router/AureumFeeRoutingHook.sol` | EDITED | I4.1—I4.5 | +~35 / 0 |
 | `src/gauge/GaugeEligibility.sol` | EDITED | I8.1—I8.2 | +11 / -1 |
 | `test/unit/EmissionDistributor.t.sol` | EDITED | I1.3 | mechanical signature updates |
 | `test/unit/AuMMDistributorIntegration.t.sol` | EDITED | I1.4 | mechanical signature updates |
 | `test/fork/StageHIntegrationFixture.sol` + 4 derived suites | EDITED | I1.5 | mechanical signature updates |
 | `test/fork/DeployStageH.t.sol` | EDITED | I1.6 | assertion update |
 | `test/unit/AureumTime.t.sol` | EDITED | I2.2 | +6 lines (constant assertions) |
-| `test/unit/AuMT.t.sol` | NEW | I5.1—I5.6 | ~600 |
-| `test/fork/StageIIntegration.t.sol` | NEW | I6.1—I6.5 | ~400 |
-| `script/DeployStageI.s.sol` | NEW | I7.1 | ~150 |
-| `test/fork/DeployStageI.t.sol` | NEW | I7.2 | ~200 |
+| `test/unit/RecorderClock.t.sol` | NEW | I5.1—I5.5 | ~400 |
+| `test/fork/StageIIntegration.t.sol` | NEW | I6.1—I6.5 | ~350 |
+| `script/DeployStageI.s.sol` | NEW | I7.1 | ~80 |
+| `test/fork/DeployStageI.t.sol` | NEW | I7.2 | ~120 |
 | `test/unit/GaugeEligibility.t.sol` | EDITED | I8.3a—I8.4 | +66 / -10 |
 | `test/fork/StageGIntegration.t.sol` | EDITED | I8.3c | +6 / -1 |
 
 ### Surfaces NOT produced at Stage I
 
-- Stage M/N AuMT rollout for remaining 25 pilot pools (slots 01/04/05/06/08—28) — out of Stage I scope per STAGES_OVERVIEW.
+- No AuMT token contracts deployed — AuMT is the pool's own Balancer V3 BPT per OQ-25 / I-D14; `src/token/AuMT.sol` + `src/token/IAuMT.sol` are deleted at the I-reframe deprecation sub-step (no soulbound mirror, no token mint/burn, no per-pool token rollout, no Stage M/N AuMT instances).
+- `src/governance/VotingWeight.sol` value-weighted voting view — deferred out of Stage I per I-D15 (its `ITVLOracle` value source is a forward stub until OQ-22 / F-D3; snapshot voting is a Stage K concern; the future reader carries its own interface).
 - AuMM.setMinter handoff — deferred to Stage K per H-D7 Option C.
-- IAuMT.sol skeleton at H6.0c preserved verbatim except for the L35 (mint) + L47-L48 (burn) NatSpec corrections at I3.7 (re: I-D4 access control re-NatSpec'd from "callable by the bound distributor only" to "callable by the bound liquidity hook only").
 
 ---
 
