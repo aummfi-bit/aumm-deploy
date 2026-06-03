@@ -111,19 +111,11 @@ Mirror of STAGE_I_NOTES.md Decisions table (LOCKED at I0.0a—I0.0b). Future I-D
 - **I2.2** `test/unit/AureumTime.t.sol` — add constant-existence + value-assertion tests. Cursor §8e.1.
 - **I2.3** Close-of-family sweep — PLAN Completion Log + status refresh.
 
-### I3 — `src/token/AuMT.sol` concrete implementation (per I-D1, I-D3, I-D4, I-D6, I-D7, I-D11, I-D12; 11 sub-steps)
+### I3 — `src/token/AuMT.sol` concrete implementation — SUPERSEDED by I-D14 / I-D15 / I-D17 (built pre-reframe; removed at I9)
 
-- **I3.1** AuMT.sol skeleton — pragma + imports + constructor (6 params per I-D11: pool_ / distributor_ / liquidityHook_ / genesisBlock_ / name_ / symbol_) + 4 immutable slot bindings (pool + distributor + liquidityHook + GENESIS_BLOCK) + IAuMT inheritance + ERC20 inheritance (name/symbol forwarded). Amended to 7 params + 5 immutables at I3.5-pre3 per I-D12. Cursor §8e.1.
-- **I3.2** Soulbound overrides — `transfer` / `transferFrom` / `approve` revert `NotTransferable` per I-D1. Cursor §8e.1.
-- **I3.3** mint() + burn() — `onlyLiquidityHook` gate (`NotLiquidityHook` revert per I-D4) + internal ERC20 `_mint` / `_burn`. Cursor §8e.1.
-- **I3.4** qualificationBlock + lastDepositBlock state machine per I-D6. On mint: set qualificationBlock if zero, always update lastDepositBlock. On burn: reset qualificationBlock to 0. Cursor §8e.1.
-- **I3.5-pre1** `docs/STAGE_I_NOTES.md` — I-D12 LOCK (gaugeRegistry 5th AuMT immutable; extends I-D11 6→7 args / 4→5 immutables; Option A direct-binding per EmissionDistributor.sol:L31 precedent). Cursor §8e.1.
-- **I3.5-pre2** `docs/STAGE_I_PLAN.md` — Decisions table I-D12 row + §I3 header bump + I3.1 amendment pointer + I3.5-pre1/2/3 narrative insertion + anchors footer LOCKED-range refresh. Cursor §8e.1.
-- **I3.5-pre3** `src/token/AuMT.sol` — add `IGaugeRegistry` import + `gaugeRegistry_` constructor arg (position 4) + `gaugeRegistry` immutable (slot 4) + ZeroAddress guard + assignment; section header updates to `/* ---------- Immutables (I-D11 / I-D12) ---------- */`. Cursor §8e.1.
-- **I3.5** governanceWeight() — root-curve formula per I-D7 (qualification cliff + on-ramp cap + era transition + gauge check via I-D12 immutable `gaugeRegistry` + FixedPoint 18-decimal arithmetic). Cursor §8e.1.
-- **I3.6** Distributor recorder integration — internal recordDeposit / recordWithdrawal calls post-mint/burn per H-D35 recorder semantics. Cursor §8e.1.
-- **I3.7** `src/token/IAuMT.sol` NatSpec correction at L35 (mint) + L47-L48 (burn) — re: I-D4 access control. Two-edit targeted correction. Cursor §8e.1.
-- **I3.8** Close-of-family sweep — PLAN Completion Log + status refresh.
+I3.1—I3.8f built a concrete soulbound-ERC-20 `AuMT.sol` (skeleton → soulbound overrides → `mint` / `burn` → qualification-block state machine → `governanceWeight` root curve → distributor recorder integration; 115 → 218 lines) plus targeted `IAuMT.sol` NatSpec corrections, per the pre-reframe design (I-D1 / I-D3 / I-D4 / I-D6 / I-D7 / I-D11 / I-D12). The full sub-step detail is preserved in the Completion Log below and in git history at the I3.1—I3.8f commits.
+
+The I-reframe reckoning supersedes that work: per I-D14 AuMT is the pool's own Balancer V3 BPT, not a separate token, so the concrete `AuMT.sol` has no place; per I-D15 the token-named `IAuMT.sol` goes with it; per I-D17 `IAuMT`'s one live consumer (Stage-G `VaultClassRegistry`) migrates to a minimal `IVotingWeight` reader first. The deletion + migration is **I9**. The logic this section built is not lost — the qualification clock relocates to the EmissionDistributor recorder (I4) and the value-weighted governance view is deferred to a `src/governance/VotingWeight.sol` reader (I-D15), each on the oracle-appropriate side. No live sub-steps remain under I3.
 
 ### I4 — Extend `AureumFeeRoutingHook.sol` (per I-D5; 6 sub-steps)
 
