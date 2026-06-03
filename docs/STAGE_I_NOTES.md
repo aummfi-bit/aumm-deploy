@@ -186,12 +186,13 @@ Anchors: I-D15 (IAuMT deletion — amended at I-reframe.3c2-pre1b); I-D14 (AuMT 
 
 ### Produced by Stage I
 
-These interfaces are authoritative once I1—I2 conclude; widening or renaming them afterward requires documenting a fresh I-D* lock and clearing the §12 ambiguity-gate before implementation edits proceed.
+These interfaces are authoritative once I1 / I4 / I9 conclude; widening or renaming them afterward requires documenting a fresh I-D* lock and clearing the §12 ambiguity-gate before implementation edits proceed.
 
 | Interface | File | Locked surface | Sub-step |
 | --- | --- | --- | --- |
-| IAuMT (concrete) | `src/token/AuMT.sol` (NEW) implementing `src/token/IAuMT.sol` (H6.0c-locked) | IERC20 base reverting `NotTransferable` on transfer/transferFrom/approve per I-D1; `governanceWeight(holder)` per I-D7; `mint(to, amount)` + `burn(from, amount)` gated `onlyLiquidityHook` per I-D4 with internal post-mint/burn `EmissionDistributor.recordDeposit` / `recordWithdrawal` per H-D35; `distributor()` / `pool()` views; `qualificationBlock(holder)` + `lastDepositBlock(holder)` views | I1 |
-| AuMT mint/burn hook callbacks | `src/fee_router/AureumFeeRoutingHook.sol` (EXTENDED in-place per I-D5) | New: `onAfterAddLiquidity(...)` + `onAfterRemoveLiquidity(...)` callbacks + `auMTByPool(address) → address` view + `setAuMTForPool(address pool, address auMT)` one-shot governance-gated setter + `AuMTBound(pool, auMT)` event; `getHookFlags()` returns true for `shouldCallAfterAddLiquidity` + `shouldCallAfterRemoveLiquidity` in addition to existing `shouldCallAfterSwap`; existing constructor + `onAfterSwap` + fee-routing semantics UNCHANGED | I2 |
+| `IVotingWeight` (NEW) | `src/governance/IVotingWeight.sol` | `governanceWeight(address) → uint256` + `totalSupply() → uint256`; NOT `is IERC20`; forward stub implemented by the deferred `src/governance/VotingWeight.sol` (Stage K) per I-D15; consumed by `VaultClassRegistry` per I-D17 | I9.1 |
+| AureumFeeRoutingHook recorder dispatch | `src/fee_router/AureumFeeRoutingHook.sol` (EXTENDED per I-D16) | `getHookFlags()` true for `shouldCallAfterAddLiquidity` + `shouldCallAfterRemoveLiquidity`; `address public emissionRecorder` + one-shot `setEmissionRecorder(address)` (mirrors `setGovernanceModule`); `onAfterAddLiquidity` / `onAfterRemoveLiquidity` dispatch `recordDeposit` / `recordWithdrawal` on `emissionRecorder`; constructor + `onAfterSwap` + fee-routing UNCHANGED; no `auMTByPool` / `setAuMTForPool` | I4 |
+| EmissionDistributor recorder clock + `IEmissionDistributor` | `src/emission/EmissionDistributor.sol` + `src/emission/IEmissionDistributor.sol` (AMENDED per I-D9 / I-D14) | per-pool `auMTContractByPool(address)` + `onlyAuMTContract(pool)` + `setAuMTContractForPool(pool, addr)` (I-D9, landed I1); `effectiveQualBlock[pool][user]` weighted-average top-up + reset-on-any-withdrawal inside `recordDeposit` / `recordWithdrawal`, alongside `userLP` (I-D14, I4) | I1 / I4 |
 
 ### Consumed — frozen by prior stages
 
