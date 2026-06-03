@@ -254,6 +254,16 @@ Default rule for the Opus beat that designs a new validation gate inside an exis
 
 Anchors: I-D13 (I8.0b), I8.2 hook-gate fail-fast placement, I8.3a/b/c decomposition, I8.4 wrong-hook/no-hook tests, I8.5 regression (619/620 unit — the lone failure is the pre-I8 I4.1 `getHookFlags` artifact deferred to I4.5; 71/71 fork), G16 (cross-file interface-inheritor enumeration — sibling scoping rule).
 
+### I14 — Interface-deletion / repurpose LOCKs must grep all consumers (importers + inheritors) at lock-time, not only at the later §8e.1 — the I-D15 "no implementor" miss
+
+I-D15 (I-reframe.3b) locked "`src/token/AuMT.sol` + `src/token/IAuMT.sol` deleted … a token-named interface with no implementor." The lock reasoned only about the AuMT *token* side — no concrete implementor survives under the BPT model (I-D14) — and never ran a consumer/inheritor grep on `IAuMT` itself. At the I3-deprecation pre-flight (I-reframe.3c2, Opus beat), `grep -rn "is IAuMT" / IAuMT / token/IAuMT src/ test/ script/` surfaced a live Stage-G consumer the lock had no awareness of: `VaultClassRegistry.sol` (`stage-g-complete`-tagged) holds `IAuMT public auMT` (L85) and reads `auMT.governanceWeight` + `auMT.totalSupply` in `vetoProposal` (L277/L279) per G-D9, plus two `MockAuMT is IAuMT` doubles. A bare `git rm src/token/IAuMT.sol` would have broken the Stage G build, and the false "no implementor" clause would otherwise have propagated into the PLAN deprecation section and the §8e.1 before surfacing at `forge build`.
+
+Resolved by I-D17 — introduce a minimal `src/governance/IVotingWeight.sol` forward stub (the two consumed members only), re-point `VaultClassRegistry` + the two mocks by full rename, then delete. Because the consumer surfaced one round-trip before the deprecation prompt was drafted, the cost was a NOTES lock (I-D17) + an I-D15 amendment — not a regression-time scramble. Had the grep waited until the §8e.1 (where G16 already mandates an inheritor sweep), the wrong "delete `IAuMT` entirely" framing would already have been mirrored into the PLAN.
+
+Default rule — any NOTES decision (`I-D*` / `*-D*`) that proposes to DELETE or repurpose an interface, error, event, or shared type must run `grep -rn "is I<Name>\|I<Name>\|<path>" src/ test/ script/` as part of the LOCK and enumerate every importer + inheritor in the decision body before the lock closes. This extends I12 (cross-check prior consumers before a container-shape LOCK) and G16 (enumerate inheritors before an interface-touching §8e.1) to interface *removal* at decision-time: a "delete X / X has no consumer" claim is itself a consumer-enumeration assertion and is a §12 ambiguity-gate blocker until the grep backs it. Notes-first means the grep is part of the notes, not deferred to the prompt that materializes the deletion.
+
+Anchors: I-D15 (I-reframe.3b — the incomplete lock); I-D17 (I-reframe.3c2-pre1 — resolution); I12 (container-shape consumer cross-check); G16 (interface-inheritor enumeration before §8e.1); §12 ambiguity-gate; `VaultClassRegistry.sol` L85 / L277 / L279; the I3-deprecation pre-flight `grep -rn "is IAuMT"` sweep.
+
 ---
 
 ## Open questions
