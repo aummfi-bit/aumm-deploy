@@ -3,11 +3,11 @@
 pragma solidity ^0.8.26;
 
 import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
-import {IAuMT} from "src/token/IAuMT.sol";
+import {IVotingWeight} from "src/governance/IVotingWeight.sol";
 
 /// @title StageGMocks
 /// @notice Fork-side mock contract home for Stage G integration tests (`test/fork/StageGIntegration.t.sol`) per **G-D25c**.
-/// @dev `MockEfficiencyOracle` mirrors verbatim from `test/unit/GaugeEligibility.t.sol:49`; `MockAuMT` mirrors verbatim from `test/unit/VaultClassRegistry.t.sol:29`. Unit-test embeds remain the ABI-stability source-of-truth per the §12 anchor at `test/unit/GaugeEligibility.t.sol:161`. Any future signature change to either mock MUST be propagated to the unit-test embed and this mirror in the same commit. `MockTVLOracle` triplet unification (canonical at `test/fork/mocks/CCBMocks.sol:10` + inline copies at `test/unit/GaugeEligibility.t.sol:34` + `test/unit/EMASampler.t.sol:325`) is out of scope per **G-D25c** Out-of-scope clause; deferred to a post-Stage-G housekeeping beat.
+/// @dev `MockEfficiencyOracle` mirrors verbatim from `test/unit/GaugeEligibility.t.sol:49`; `MockVotingWeight` mirrors verbatim from `test/unit/VaultClassRegistry.t.sol:29`. Unit-test embeds remain the ABI-stability source-of-truth per the §12 anchor at `test/unit/GaugeEligibility.t.sol:161`. Any future signature change to either mock MUST be propagated to the unit-test embed and this mirror in the same commit. `MockTVLOracle` triplet unification (canonical at `test/fork/mocks/CCBMocks.sol:10` + inline copies at `test/unit/GaugeEligibility.t.sol:34` + `test/unit/EMASampler.t.sol:325`) is out of scope per **G-D25c** Out-of-scope clause; deferred to a post-Stage-G housekeeping beat.
 
 /// @notice Minimal IEfficiencyOracle double storing SMA pair per pool.
 contract MockEfficiencyOracle is IEfficiencyOracle {
@@ -30,8 +30,8 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
     function recordEmissions(address, uint256) external override {}
 }
 
-/// @notice Minimal IAuMT double with configurable weights for VaultClassRegistry coverage.
-contract MockAuMT is IAuMT {
+/// @notice Minimal IVotingWeight double with configurable weights for VaultClassRegistry coverage.
+contract MockVotingWeight is IVotingWeight {
     mapping(address => uint256) public governanceWeights;
 
     uint256 private _totalSupply;
@@ -50,37 +50,5 @@ contract MockAuMT is IAuMT {
 
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
-    }
-
-    function balanceOf(address) external pure returns (uint256) {
-        return 0;
-    }
-
-    function allowance(address, address) external pure returns (uint256) {
-        return 0;
-    }
-
-    function transfer(address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function approve(address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function transferFrom(address, address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function mint(address, uint256) external {}
-
-    function burn(address, uint256) external {}
-
-    function distributor() external pure returns (address) {
-        return address(0);
-    }
-
-    function pool() external pure returns (address) {
-        return address(0);
     }
 }

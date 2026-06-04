@@ -6,7 +6,7 @@ import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {VaultClassRegistry} from "src/gauge/VaultClassRegistry.sol";
 import {IVaultClassRegistry} from "src/gauge/IVaultClassRegistry.sol";
-import {IAuMT} from "src/token/IAuMT.sol";
+import {IVotingWeight} from "src/governance/IVotingWeight.sol";
 import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -25,8 +25,8 @@ contract MockSwapAndDepositToBodensee {
     }
 }
 
-/// @notice Minimal IAuMT double with configurable weights for VaultClassRegistry coverage.
-contract MockAuMT is IAuMT {
+/// @notice Minimal IVotingWeight double with configurable weights for VaultClassRegistry coverage.
+contract MockVotingWeight is IVotingWeight {
     mapping(address => uint256) public governanceWeights;
 
     uint256 private _totalSupply;
@@ -46,38 +46,6 @@ contract MockAuMT is IAuMT {
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
     }
-
-    function balanceOf(address) external pure returns (uint256) {
-        return 0;
-    }
-
-    function allowance(address, address) external pure returns (uint256) {
-        return 0;
-    }
-
-    function transfer(address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function approve(address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function transferFrom(address, address, uint256) external pure returns (bool) {
-        return false;
-    }
-
-    function mint(address, uint256) external {}
-
-    function burn(address, uint256) external {}
-
-    function distributor() external view returns (address) {
-        return address(0);
-    }
-
-    function pool() external view returns (address) {
-        return address(0);
-    }
 }
 
 /// @notice Harness scaffold for VaultClassRegistry proposal-veto-finalize tests (G1.16 split).
@@ -86,7 +54,7 @@ contract VaultClassRegistryTest is Test {
 
     MockSwapAndDepositToBodensee internal mockHelper;
 
-    MockAuMT internal mockAuMT;
+    MockVotingWeight internal mockAuMT;
 
     VaultClassRegistry internal registry;
 
@@ -121,7 +89,7 @@ contract VaultClassRegistryTest is Test {
     function setUp() public {
         svZCHF = new MockERC20("svZCHF", "svZCHF", 18);
         mockHelper = new MockSwapAndDepositToBodensee();
-        mockAuMT = new MockAuMT();
+        mockAuMT = new MockVotingWeight();
         mockAuMT.setTotalSupply(INITIAL_AUMT_SUPPLY);
         auMTSetter = makeAddr("auMTSetter");
         governanceSetter = makeAddr("governanceSetter");
@@ -148,7 +116,7 @@ contract VaultClassRegistryTest is Test {
         );
 
         vm.prank(auMTSetter);
-        registry.setAuMT(address(mockAuMT));
+        registry.setVotingWeight(address(mockAuMT));
 
         vm.prank(governanceSetter);
         registry.setGovernanceContract(governance);
@@ -479,9 +447,9 @@ contract VaultClassRegistryTest is Test {
     }
 
     function testSetAuMT_ReCall_Reverts() public {
-        vm.expectRevert(VaultClassRegistry.OnlyAuMTSetter.selector);
+        vm.expectRevert(VaultClassRegistry.OnlyVotingWeightSetter.selector);
         vm.prank(auMTSetter);
-        registry.setAuMT(address(mockAuMT));
+        registry.setVotingWeight(address(mockAuMT));
     }
 
     function testSetGovernanceContract_ReCall_Reverts() public {
@@ -502,7 +470,7 @@ contract VaultClassRegistryTest is Test {
         );
         vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
         vm.prank(setter);
-        bare.setAuMT(address(0));
+        bare.setVotingWeight(address(0));
     }
 
     function testSetGovernanceContract_ZeroAddress_Reverts() public {
