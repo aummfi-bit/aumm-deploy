@@ -264,6 +264,17 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I-reframe.3c2a | `d16365d` | docs/STAGE_I_PLAN.md | +10 / 0 | I9 family roadmap — AuMT deprecation + IVotingWeight migration (5 sub-steps; 265 → 275 lines — commit msg's "278" was an inferred-count slip, corrected here) |
 | I-reframe.3c2b | `0bf7eef` | docs/STAGE_I_PLAN.md | +5 / -13 | I3 section tombstone — SUPERSEDED by I-D14/I-D15/I-D17; removed at I9; 2-para body (275 → 267 lines) |
 | I-reframe.3c2c | `1990479` | docs/STAGE_I_PLAN.md | +5 / -1 | Surfaces table — IAuMT.sol reason + 4 I9 rows (IVotingWeight.sol/VaultClassRegistry.sol/StageGMocks/VaultClassRegistry.t; 267 → 271 lines) |
+| I-reframe.3c3 | `c327d22` | docs/STAGE_I_PLAN.md | +9 / -8 | I4 section — recorder dispatch + clock header + bullets (emissionRecorder/effectiveQualBlock/recordDeposit/recordWithdrawal; 7 sub-steps; 271 → 272 lines) |
+| I-reframe.3c4 | `c8c24be` | docs/STAGE_I_PLAN.md | +7 / -9 | I5 section — AuMT-unit-tests → recorder-clock unit tests (RecorderClock.t.sol; set/top-up/reset/hook-gate; 5 sub-steps; view-tests deferred per I-D15; 272 → 270 lines) |
+| I-reframe.3c5 | `d338109` | docs/STAGE_I_PLAN.md | +7 / -8 | I6 section — AuMT-instance fork tests → recorder-clock fork integration (setEmissionRecorder/recordDeposit/effectiveQualBlock; 5 sub-steps; 270 → 269 lines) |
+| I-reframe.3c6 | `a1a1bbd` | docs/STAGE_I_PLAN.md | +2 / -2 | I7.1+I7.2 — recorder-wiring deploy script (setEmissionRecorder + setAuMTContractForPool; no AuMT deploys; 269 lines unchanged) |
+| I-reframe.3c7a | `784f6b0` | docs/STAGE_I_NOTES.md | +4 / -3 | Interfaces Produced table — 2 stale AuMT rows → 3 reframed (IVotingWeight/recorder-dispatch/recorder-clock; NOTES 273 → 274 lines) |
+| I-reframe.3c7b | `1e638bd` | docs/STAGE_I_NOTES.md | +4 / -5 | Interfaces Consumed table — 5 stale rows → 2 reframed (hook pre-I4/Balancer base) + Deferred-consumers note (NOTES 274 → 273 lines) |
+| I-reframe.3c8a | `c2a7964` | docs/STAGE_I_PLAN.md | +3 / -3 | Status/Last update/Mode headers — I-reframe doc sweep COMPLETE; I-D1—I-D17; code phase I9→I4→I5/I6→I7 next (269 lines unchanged) |
+| I-reframe.3c8b | `ac216f7` | docs/STAGE_I_PLAN.md | +10 / -9 | Anchors — 10 stale bullets → 11 reframed (IVotingWeight.sol + VaultClassRegistry added; IAuMT.sol removed; effectiveQualBlock; 269 → 270 lines) |
+| I-reframe.3c8c-1 | `db45a96` | docs/STAGE_I_PLAN.md | +12 / -1 | Completion Log — I8.6b hash backfill + 11 rows (I8.6c/d/e + I-reframe.2 through 3c-pre2; 270 → 281 lines) |
+| I-reframe.3c8c-2 | `5d1fda9` | docs/STAGE_I_PLAN.md | +9 / 0 | Completion Log — 9 rows (I-reframe.3c1a through 3c2c; 281 → 290 lines) |
+| I-reframe.3c8c-3 | `<pending>` | docs/STAGE_I_PLAN.md | +11 / 0 | Completion Log — 10 rows (I-reframe.3c3 through 3c8c-2) + self-row; closes the I-reframe Completion Log catch-up (290 → 301 lines) |
 
 ---
 
