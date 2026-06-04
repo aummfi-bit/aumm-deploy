@@ -6,7 +6,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
 import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
-import {IAuMT} from "../token/IAuMT.sol";
+import {IVotingWeight} from "../governance/IVotingWeight.sol";
 
 /**
  * @title VaultClassRegistry
@@ -33,7 +33,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     /// @notice svZCHF bond posted with each `proposeVaultClass` call (G-D9 / G-D19).
     uint256 public constant PROPOSAL_BOND_SVZCHF = 1_000e18;
 
-    /// @notice Minimum cumulative AuMT veto weight (basis points of `auMT.totalSupply()`) to kill a proposal (G-D9 / G-D19).
+    /// @notice Minimum cumulative voting weight (basis points of `votingWeight.totalSupply()`) to kill a proposal (G-D9 / G-D19).
     uint256 public constant VETO_THRESHOLD_BPS = 1000;
 
     /// @notice Length of the veto window in blocks, measured from `createdBlock` (G-D9 / G-D19).
@@ -57,7 +57,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
         bytes32 constraintsHash;
         /// @notice `block.number` snapshot when the proposal was created.
         uint256 createdBlock;
-        /// @notice Cumulative AuMT veto weight accrued across successive `vetoProposal` calls in the veto window (G-D9).
+        /// @notice Cumulative voting weight accrued across successive `vetoProposal` calls in the veto window (G-D9).
         uint256 vetoSupport;
         /// @notice Set when the proposal clears (successful veto ⇒ admitted+revoked, or finalize without veto).
         bool finalized;
@@ -81,14 +81,14 @@ contract VaultClassRegistry is IVaultClassRegistry {
     // Forward-dep placeholder + one-shot setter slots (F-D20–F-D23 pattern)
     // -------------------------------------------------------------------------
 
-    /// @notice wired post-deploy via `setAuMT` (G1.12)
-    IAuMT public auMT;
+    /// @notice wired post-deploy via `setVotingWeight` (G1.12)
+    IVotingWeight public votingWeight;
 
     /// @notice wired post-deploy via `setGovernanceContract` (G1.12)
     address public governanceContract;
 
     /// @notice one-shot, cleared on first set
-    address public auMTSetter;
+    address public votingWeightSetter;
 
     /// @notice one-shot, cleared on first set
     address public governanceSetter;
@@ -150,7 +150,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
 
     error DuplicateGenesisToken(address token);
 
-    error OnlyAuMTSetter();
+    error OnlyVotingWeightSetter();
 
     error OnlyGovernanceSetter();
 
@@ -172,19 +172,19 @@ contract VaultClassRegistry is IVaultClassRegistry {
     constructor(
         IERC20 svZCHF_,
         SwapAndDepositToBodensee helper_,
-        address auMTSetter_,
+        address votingWeightSetter_,
         address governanceSetter_,
         address[] memory genesisTokens,
         IVaultClassRegistry.AdmissionType[] memory genesisTypes
     ) {
         if (address(svZCHF_) == address(0)) revert ZeroAddress();
         if (address(helper_) == address(0)) revert ZeroAddress();
-        if (auMTSetter_ == address(0)) revert ZeroAddress();
+        if (votingWeightSetter_ == address(0)) revert ZeroAddress();
         if (governanceSetter_ == address(0)) revert ZeroAddress();
 
         svZCHF = svZCHF_;
         helper = helper_;
-        auMTSetter = auMTSetter_;
+        votingWeightSetter = votingWeightSetter_;
         governanceSetter = governanceSetter_;
 
         if (genesisTokens.length != genesisTypes.length) revert GenesisLengthMismatch(genesisTokens.length, genesisTypes.length);
@@ -204,12 +204,12 @@ contract VaultClassRegistry is IVaultClassRegistry {
     // One-shot setters (F-D23 pattern)
     // -------------------------------------------------------------------------
 
-    /// @notice Wires AuMT from the designated setter and seals the auMTSetter slot.
-    function setAuMT(address auMT_) external {
-        if (msg.sender != auMTSetter) revert OnlyAuMTSetter();
-        if (auMT_ == address(0)) revert ZeroAddress();
-        auMT = IAuMT(auMT_);
-        auMTSetter = address(0);
+    /// @notice Wires the voting-weight reader from the designated setter and seals the votingWeightSetter slot.
+    function setVotingWeight(address votingWeight_) external {
+        if (msg.sender != votingWeightSetter) revert OnlyVotingWeightSetter();
+        if (votingWeight_ == address(0)) revert ZeroAddress();
+        votingWeight = IVotingWeight(votingWeight_);
+        votingWeightSetter = address(0);
     }
 
     /// @notice Wires governance from the designated setter and seals the governanceSetter slot.
@@ -268,15 +268,15 @@ contract VaultClassRegistry is IVaultClassRegistry {
     // Veto + finalize entry points
     // -------------------------------------------------------------------------
 
-    /// @notice Records AuMT-weighted veto support during the window per G-D9 / G-D19; crossing threshold auto-revokes the proposal.
+    /// @notice Records voting-weight veto support during the window per G-D9 / G-D19; crossing threshold auto-revokes the proposal.
     /// @dev Emits `VaultClassVetoed` on every call; bond remains in Bodensee on successful veto per G-D9.
     function vetoProposal(uint256 proposalId) external {
         VaultClassProposal storage proposal = proposals[proposalId];
         if (proposal.finalized || proposal.revoked) revert ProposalAlreadyFinalized(proposalId);
         if (block.number > proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowExpired(proposalId);
-        uint256 weight = auMT.governanceWeight(msg.sender);
+        uint256 weight = votingWeight.governanceWeight(msg.sender);
         proposal.vetoSupport += weight;
-        if ((proposal.vetoSupport * 10_000) / auMT.totalSupply() >= VETO_THRESHOLD_BPS) {
+        if ((proposal.vetoSupport * 10_000) / votingWeight.totalSupply() >= VETO_THRESHOLD_BPS) {
             proposal.finalized = true;
             proposal.revoked = true;
         }
