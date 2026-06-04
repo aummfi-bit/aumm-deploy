@@ -414,64 +414,17 @@ This section is the resumption anchor. Update at the end of every completed sub-
 
 **Branch:** `stage-i` at the I-reframe.3c8d §11 refresh (HEAD this/next commits; prior `fe1a014` I-reframe.3c8c-3 closed the Completion Log catch-up). Branched from `stage-h-complete` (`2a33649`) per the **C0 / D0 / E-D8 / F9 / G9 / H12** convention; `main` is at `stage-h-complete` HEAD. `stage-i` snapshot push to `origin` deferred to I7.4 close-of-stage.
 
-Recent commit stack on `stage-i` (top of HEAD downward; full Completion Log in `docs/STAGE_I_PLAN.md`):
+Recent commit stack — the full per-sub-step catalog (every commit, hash, diff) now lives in the `docs/STAGE_I_PLAN.md` Completion Log, caught up through I-reframe.3c8c-3. §11 keeps only the phase summary:
 
-- `50f51d7` — I8.6e: CLAUDE.md §11 — Last update + Branch refresh (I3 COMPLETE; I4 PARKED at I4.2; I8 hook-gate COMPLETE; I-D1—I-D13 LOCKED; Findings 4; 637 lines unchanged)
-- `2d6fc8f` — I8.6d: docs/STAGE_I_PLAN.md — Status/Last update/Mode refresh (I8 COMPLETE; I4 PARKED at I4.2; 260 lines unchanged)
-- `0dc3798` — I8.6c: docs/STAGE_I_PLAN.md — Surfaces-produced rows: GaugeEligibility.sol + GaugeEligibility.t.sol + StageGIntegration.t.sol (257 → 260 lines)
-- `74b3add` — I8.6b: docs/STAGE_I_PLAN.md — Completion Log catch-up: I3.8f hash backfill + 13 new rows I8.0a—I8.6a + I8.5 no-commit + self (244 → 257 lines)
-- `dcca7fe` — I8.6a: docs/STAGE_I_NOTES.md — I13 Findings: fail-fast gate test blast-radius rule (size retrofit at pre-flight; setUp-mock; Foundry longest-match) (190 → 200 lines)
-- `fc36d60` — I8.4: test/unit/GaugeEligibility.t.sol — 3 hook-gate tests (wrong-hook + no-hook revert WrongFeeRoutingHook; correct-hook admits); 46 → 49 green (+38 lines)
-- `10689c7` — I8.3c: test/fork/StageGIntegration.t.sol — HooksConfig import + 9th ctor arg address(hook) + Bodensee ForbiddenToken mock; fix1 abi.encodeWithSignature; forge build GREEN (+6/-1)
-- `a7b1bdd` — I8.3b: test/unit/GaugeEligibility.t.sol — IVaultExtension + HooksConfig imports + getHooksConfig vm.mockCall in setUp (existing eligibility tests pass gate) (878 → 883 lines)
-- `aee6c2f` — I8.3a: test/unit/GaugeEligibility.t.sol — feeRoutingHook fixture var + setUp + 9th arg on all 10 GaugeEligibility constructions (+23/-10)
-- `189e949` — I8.2: src/gauge/GaugeEligibility.sol — _checkEligibilityCriteria hook-gate: poolHook local + WrongFeeRoutingHook revert as fail-fast first check (371 → 373 lines)
-- `20ee4bc` — I8.1: src/gauge/GaugeEligibility.sol — feeRoutingHook immutable + WrongFeeRoutingHook error + 9th constructor param/guard/assignment per I-D13 (363 → 371 lines)
-- `ac8ff94` — I8.0d: docs/STAGES_OVERVIEW.md — GaugeEligibility criteria bullet: canonical-hook gate (in-place L167; 430 lines)
-- `2589788` — I8.0c: docs/STAGE_I_PLAN.md — Decisions I-D13 row + I8 family roadmap (10 sub-steps) (228 → 244 lines)
-- `b09605c` — I8.0b: docs/STAGE_I_NOTES.md — I-D13 LOCKED: gauge eligibility requires canonical AureumFeeRoutingHook (9th immutable; AuMT scope correction; fix-forward stage-i) (178 → 190 lines)
-- `f2d9da4` — I8.0a: docs/FINDINGS.md — OQ-24 (RESOLVED): gauge eligibility requires canonical AureumFeeRoutingHook; WrongFeeRoutingHook + feeRoutingHook 9th immutable + I-D13 cross-ref (1418 → 1432 lines)
-- `409f51a` — I4.1: src/fee_router/AureumFeeRoutingHook.sol — getHookFlags() bump: shouldCallAfterAddLiquidity + shouldCallAfterRemoveLiquidity = true per I-D5 (568 → 570 lines)
-- `0bafa19` — I3.8f: docs/STAGE_I_PLAN.md — Completion Log tail: I3.8c hash backfill + 3 new rows I3.8d/I3.8e + self-row (225 → 228 lines)
-- `5892143` — I3.8e: CLAUDE.md §11 — I3 family COMPLETE (I3.1—I3.8c; I-D1—I-D12 LOCKED; 36-bullet commit stack; I12 housekeeping bullet) (615 → 637 lines)
-- `6671a29` — I3.8d: docs/STAGE_I_PLAN.md — status header + Last update + Mode refresh (I3 family COMPLETE; I3.8d/e/f close-of-family sweep tail in flight; I4 AureumFeeRoutingHook per I-D5 next; 225 lines unchanged)
-- `38ac23b` — I3.8c: docs/STAGE_I_PLAN.md — Completion Log catch-up: I3.0c hash backfill + 14 new rows I3.0d / I3.1—I3.4 / I3.5-pre1/pre2/pre3 / I3.5 / I3.6 / I3.7 / I3.8a / I3.8b + self-row (211 → 225 lines)
-- `c8360b9` — I3.8b: src/token/AuMT.sol — contract-level NatSpec refresh: I-D11+I-D12 5 immutables, gaugeRegistry entry, 7-arg constructor, strip scaffolding markers (218 → 218 lines; net 0; em-dash 24→23)
-- `d11dbb7` — I3.8a: docs/STAGE_I_NOTES.md — I12 Findings entry: container-shape LOCKs must cross-check prior D* consumers; I3.5-pre1/2/3 lesson (I-D11 gap + §12 ambiguity-gate; I-D12 resolution) (168 → 178 lines)
-- `c285738` — I3.7: src/token/IAuMT.sol — I-D4 NatSpec dual correction: mint L35 + burn L47-L48 — NotDistributor/distributor-only → NotLiquidityHook/liquidity-hook-only; trailing blank stripped (75 → 74 lines; forge build green)
-- `d96e7dd` — I3.6: src/token/AuMT.sol — IEmissionDistributor import + recordDeposit post-mint + recordWithdrawal post-burn per H-D35; section header updated to IAuMT implementations; NatSpec tails refreshed (215 → 218 lines)
-- `1daf212` — I3.5: src/token/AuMT.sol — governanceWeight I-D7 root-curve: AureumTime+FixedPoint imports + Constants(I-D7) section (FOURTH_ROOT_EXP/CUBE_ROOT_EXP) + 3-branch ZERO short-circuit + powDown active formula (178 → 215 lines; forge build clean, 0 warnings)
-- `4178fd9` — I3.5-pre3: src/token/AuMT.sol — I-D12: IGaugeRegistry import + gaugeRegistry 5th immutable (slot 4) + gaugeRegistry_ 7th constructor arg (pos 4) + ZeroAddress guard + cast-assignment (166 → 178 lines; forge build green)
-- `feab19d` — I3.5-pre2: docs/STAGE_I_PLAN.md — I-D12 mirrored: Decisions table row + §I3 11-sub-step header + I3.1 amendment pointer + I3.5-pre1/2/3 narrative + anchors I-D1—I-D12 (207 → 211 lines)
-- `4a595e8` — I3.5-pre1: docs/STAGE_I_NOTES.md — I-D12 LOCKED: gaugeRegistry 5th AuMT immutable, extends I-D11 (6→7 args, 4→5 immutables), Option A direct-binding per EmissionDistributor.sol:L31 precedent (156 → 168 lines)
-- `a2a11bc` — I3.4: src/token/AuMT.sol — I-D6 qualification clock: qualificationBlock + lastDepositBlock mappings + mint sets-if-zero + always-update lastDeposit + burn resets-on-any-withdrawal (153 → 166 lines; forge build green)
-- `7163c93` — I3.3: src/token/AuMT.sol — mint/burn activation: NotLiquidityHook error + onlyLiquidityHook modifier + _mint/_burn bodies per I-D4 (139 → 153 lines; forge build green)
-- `e068d4a` — I3.2: src/token/AuMT.sol — soulbound overrides: NotTransferable error + transfer/transferFrom/approve revert per I-D1 + IERC20 import (115 → 139 lines; forge build green)
-- `0bd199d` — I3.1: src/token/AuMT.sol — AuMT skeleton: constructor (6 params per I-D11, 4 immutables, 3 ZeroAddress guards) + IAuMT/ERC20 inheritance + stub mint/burn/governanceWeight (115 lines; forge build green)
-- `609d751` — I3.0d: docs/STAGE_I_PLAN.md — status header + Last update + Mode refresh (L3/L5/L7 in-place replacements; I3.0 prep family complete; I3.1 AuMT.sol skeleton next; 207 lines unchanged)
-- `58790ca` — I3.0c: docs/STAGE_I_PLAN.md — Completion Log catch-up: I2.3e hash backfill + I3.0a/I3.0b/self rows + Anchors refresh (I-D1—I-D11 + L35/L47-L48 dual NatSpec mention) (204 → 207 lines)
-- `efd8654` — I3.0b: docs/STAGE_I_PLAN.md — I-D11 row in Decisions table + 4 wording amendments (IAuMT.sol +0/-2, L41 verbatim-preservation line, I3.1 6-param constructor per I-D11, I3.7 dual NatSpec scope; 203 → 204 lines)
-- `ca2596e` — I3.0a: docs/STAGE_I_NOTES.md — I-D11 LOCKED (AuMT constructor pattern: 4 immutables + name/symbol params) + I-D4 amendment (L35+L47-L48 dual NatSpec scope; re-NatSpec'd at I3.7) (146 → 156 lines)
-- `9ae7819` — I2.3e: docs/STAGE_I_PLAN.md — Completion Log tail: append I2.3b/I2.3c/I2.3d rows + self-row (200 → 203 lines; I2 close-of-family sweep complete)
-- `b4b4b48` — I2.3d: CLAUDE.md §11 — I1+I2 families COMPLETE (HEAD bac5ff3; 16 Stage I commit bullets; I11 housekeeping bullet after I10; 611 → 615 lines)
-- `bac5ff3` — I2.3c: docs/STAGE_I_PLAN.md — status header + Last update + Mode refresh (I1+I2 families complete; I2.3d/e sweep in flight; I3 ahead; 200 lines unchanged, three in-place L3/L5/L7 replacements)
-- `b651676` — I2.3b: docs/STAGE_I_PLAN.md — Completion Log catch-up: I1.8e hash backfill + 4 new rows I2.1/I2.2/I2.3a/self (196 → 200 lines)
-- `f143b7a` — I2.3a: docs/STAGE_I_NOTES.md — I11 Findings entry: Foundry forge test --match-test Rust regex (I2.2 USER VERIFY lesson; escaped pipe is literal not alternation; bare pipe for alternation; prefer --match-path for single-file scope; F14 incremental-cache pairing) (138 → 146 lines)
-- `552300c` — I2.2: test/unit/AureumTime.t.sol — 4 I-D10 governance time period tests (178 → 196 lines; 37/37 AureumTime tests green via forge clean && forge test)
-- `783bdf6` — I2.1: src/lib/AureumTime.sol — `QUALIFICATION_PERIOD_BLOCKS` + `ON_RAMP_PERIOD_BLOCKS` constants per I-D10 (new // governance time periods (I-D10) sub-section between `BLOCKS_PER_ERA` and // index helpers; RHS uses named constants per single-source-of-truth; 83 → 91 lines)
-- `f978e58` — I1.8e: docs/STAGE_I_PLAN.md — Completion Log tail: append I1.8b/I1.8c/I1.8d rows + self-row (192 → 196 lines; I1 close-of-family sweep complete)
-- `be09f35` — I1.8d: CLAUDE.md §11 — Stage H→Stage I transition (Stage I in progress; I1 family COMPLETE 624/624 green; I1.8 sweep in flight; I10 housekeeping bullet; 14 Stage I commit bullets)
-- `6cf219f` — I1.8c: docs/STAGE_I_PLAN.md — status header + Last update + Mode refresh (I1 family complete; I2/I3 ahead; 192 lines unchanged, three in-place L3/L5/L7 replacements)
-- `c33ea30` — I1.8b: docs/STAGE_I_PLAN.md — Completion Log catch-up: I0.0c hash backfill (`<pending>` → `984456a`; `+N` → `+182`) + I1.1—I1.8a rows (182 → 192 lines)
-- `44a94bb` — I1.8a: docs/STAGE_I_NOTES.md — I10 Findings entry: multi-file rename refactor NatSpec drift (I1.1-fix1 + I1.2-fix1 lessons; intra-file old-symbol grep rule complement to G16) (129 → 138 lines)
-- `401f047` — I1.6: test/fork/DeployStageH.t.sol — add (3b-bis) assertion `auMTContractByPool(bodenseePool) == address(0)` post-deploy per H-D7 Option C + I-D9 deferred binding (219 → 226 lines)
-- `009e591` — I1.5: test/fork/StageHIntegration.t.sol — `setAuMTContractForPool(pilotPools[0..2], address(this))` per I-D9 — expand single fixture recorder binding to all 3 pilot pools (414 → 416 lines)
-- `a20245a` — I1.4: test/unit/AuMMDistributorIntegration.t.sol — setUp `setAuMTContractForPool(POOL_A, AUMT_REC)` per I-D9 (single L64 in-place replacement; 113 lines unchanged)
-- `887b656` — I1.3: test/unit/EmissionDistributor.t.sol — update 8 tests + add `AuMTAlreadyBound` test per I-D9 (100 → 101 tests; 1482 → 1489 lines)
-- `c3147c1` — I1.2: src/emission/EmissionDistributor.sol — per-pool `auMTContractByPool` mapping per I-D9 (500 lines)
-- `5ff9072` — I1.1: src/emission/IEmissionDistributor.sol — interface signature updates per I-D9 (rename `AuMTContractSet` → `AuMTContractBound` + `NotAuMTContract(pool, caller)` + new `AuMTAlreadyBound(pool)` + rename `setAuMTContract` → `setAuMTContractForPool` + rename `auMTContract()` → `auMTContractByPool(pool)`; 263 lines)
+- **I1—I2 (pre-reframe foundation):** EmissionDistributor per-pool refactor (I-D9) + AureumTime constants (I-D10). COMPLETE; unchanged by the reframe.
+- **I3 (pre-reframe, now tombstoned):** concrete soulbound `AuMT.sol` built at I3.1—I3.8f (`0bd199d`…`c8360b9`). Superseded by I-D14; removed at I9.
+- **I8 (gauge hook-gate add-on):** `GaugeEligibility` canonical-hook gate (I-D13 / OQ-24), I8.0a—I8.6 (`f2d9da4`…`50f51d7`). COMPLETE; unchanged.
+- **I-reframe.2—3a (I-D14 + Decisions flips):** I-D14 LOCKED + complete reckoning + Decisions-table flips across NOTES + PLAN (`60faad2`…`4156160`).
+- **I-reframe.3b—3c-pre2 (I-D15 + I-D16):** view-deferral + hook one-shot recorder-slot locks + PLAN mirrors (`dbcc92d`…`da70271`).
+- **I-reframe.3c1—3c2 (scope + I-D17 + roadmap):** Stage scope + Surfaces reframe; I-D17 lock + I-D15 amend + I14 Findings; I9 roadmap + I3 tombstone (`25f0cb8`…`1990479`).
+- **I-reframe.3c3—3c8 (section reframes + close-of-sweep):** I4—I7 roadmap reframe + Interfaces tables + status headers + Anchors + Completion Log catch-up + this §11 refresh (`c327d22`…HEAD).
 
-Earlier commits on prior branches: Stage H chain (H0—H12) lives in `git log stage-h-complete ^stage-g-complete`; full Stage H Completion Log in `docs/STAGE_H_PLAN.md`. Branched from `stage-g-complete` (`384a40b`) at the H0 entry per **C0 / D0 / E-D8 / F9 / G9** convention; Stage H closed with `stage-h-complete` tag at `2a33649` (fast-forward merge to `main`).
+`stage-i` snapshot push to `origin` deferred to I7.4 close-of-stage. Stage H chain (H0—H12) lives in `git log stage-h-complete ^stage-g-complete`; Stage H closed with `stage-h-complete` (`2a33649`, fast-forward merge to `main`).
 
 **Current tag:** `stage-h-complete` (commit `2a33649`, 2026-05-23 close) is the latest stage tag. Next expected tag: `stage-i-complete` at Stage I close-of-stage at I7.4. `stage-g-complete`, `stage-f-complete`, `stage-e-complete`, `stage-d-complete`, `stage-c-complete`, `stage-b-complete`, and `stage-a-complete` remain in place upstream.
 
