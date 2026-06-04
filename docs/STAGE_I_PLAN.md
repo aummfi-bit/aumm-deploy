@@ -257,13 +257,14 @@ Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK
 
 ## Anchors
 
-- `docs/STAGE_I_NOTES.md` — Stage I design freeze (I-D1—I-D12 LOCKED).
+- `docs/STAGE_I_NOTES.md` — Stage I design log (I-D1—I-D17; the I-reframe AuMT=BPT reckoning at I-D14—I-D17; Findings I10—I14).
 - `docs/STAGE_H_NOTES.md` — H-D7 / H-D10 / H-D16 / H-D35 / H-D42 anchors for Stage I.
-- `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 anchors for AureumTime constants + governance weight + qualification semantics.
-- `04_tokenomics.md` §ix — AuMT spec (verbatim): 14-day qualification cliff, 6-month on-ramp, withdrawal-reset rule, F-9 dampening exponent transition.
-- `11_formulas.md` F-9 — Dampening exponent (4th → 3rd root at first halving block).
-- `src/lib/AureumTime.sol` — block-number constants per C-D3.
-- `src/token/IAuMT.sol` — H6.0c-locked interface (NatSpec corrections at L35 mint + L47-L48 burn land at I3.7).
-- `src/fee_router/AureumFeeRoutingHook.sol` — Stage D-locked surface (extended in-place per I-D5 at I4).
-- `src/emission/EmissionDistributor.sol` — Stage H-locked surface (per-pool mapping refactor per I-D9 at I1).
-- `src/ccb/IGaugeRegistry.sol` — `isGaugeApproved(pool)` consumed at I-D7 governanceWeight zero-rule.
+- `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 (AureumTime constants + qualification semantics) + OQ-24 (gauge hook-gate) + OQ-25 (AuMT = BPT) anchors.
+- `04_tokenomics.md` §viii / §ix — AuMT-as-BPT + value-weighted voting (§viii, I-D14); withdrawal-reset + qualification clock (§ix); 14-day cliff + 6-month on-ramp + F-9 dampening consumed by the deferred view per I-D15.
+- `11_formulas.md` F-9 — Dampening exponent (4th → 3rd root at first halving block); consumed by the deferred `VotingWeight.sol` view, not the Stage I clock.
+- `src/lib/AureumTime.sol` — block-number constants per C-D3; `QUALIFICATION_PERIOD_BLOCKS` + `ON_RAMP_PERIOD_BLOCKS` per I-D10 (I2.1).
+- `src/governance/IVotingWeight.sol` — NEW forward-stub reader (`governanceWeight` + `totalSupply`) per I-D17 (I9.1); implemented by the deferred `VotingWeight.sol` (Stage K).
+- `src/gauge/VaultClassRegistry.sol` — Stage G veto consumer; full-rename `IAuMT` → `IVotingWeight` per I-D17 (I9.2).
+- `src/fee_router/AureumFeeRoutingHook.sol` — Stage D-locked surface; recorder dispatch extension (`emissionRecorder` + liquidity callbacks) per I-D16 at I4.
+- `src/emission/EmissionDistributor.sol` — Stage H-locked surface; per-pool mapping per I-D9 (I1) + `effectiveQualBlock` clock per I-D14 (I4).
+- `src/ccb/IGaugeRegistry.sol` — `isGaugeApproved(pool)`; the I-D7 governanceWeight gauge-gate is deferred with the `VotingWeight.sol` view per I-D15.
