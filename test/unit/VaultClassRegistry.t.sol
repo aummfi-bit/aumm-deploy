@@ -54,11 +54,11 @@ contract VaultClassRegistryTest is Test {
 
     MockSwapAndDepositToBodensee internal mockHelper;
 
-    MockVotingWeight internal mockAuMT;
+    MockVotingWeight internal mockVotingWeight;
 
     VaultClassRegistry internal registry;
 
-    address internal auMTSetter;
+    address internal votingWeightSetter;
 
     address internal governanceSetter;
 
@@ -70,7 +70,7 @@ contract VaultClassRegistryTest is Test {
 
     address internal genesisTokenB;
 
-    uint256 internal constant INITIAL_AUMT_SUPPLY = 1_000_000e18;
+    uint256 internal constant INITIAL_VOTING_WEIGHT_SUPPLY = 1_000_000e18;
 
     uint256 internal constant PROPOSER_SVZCHF_BALANCE = 100_000e18;
 
@@ -89,9 +89,9 @@ contract VaultClassRegistryTest is Test {
     function setUp() public {
         svZCHF = new MockERC20("svZCHF", "svZCHF", 18);
         mockHelper = new MockSwapAndDepositToBodensee();
-        mockAuMT = new MockVotingWeight();
-        mockAuMT.setTotalSupply(INITIAL_AUMT_SUPPLY);
-        auMTSetter = makeAddr("auMTSetter");
+        mockVotingWeight = new MockVotingWeight();
+        mockVotingWeight.setTotalSupply(INITIAL_VOTING_WEIGHT_SUPPLY);
+        votingWeightSetter = makeAddr("votingWeightSetter");
         governanceSetter = makeAddr("governanceSetter");
         governance = makeAddr("governance");
         proposer = makeAddr("proposer");
@@ -109,14 +109,14 @@ contract VaultClassRegistryTest is Test {
         registry = new VaultClassRegistry(
             IERC20(address(svZCHF)),
             SwapAndDepositToBodensee(address(mockHelper)),
-            auMTSetter,
+            votingWeightSetter,
             governanceSetter,
             tokens,
             types
         );
 
-        vm.prank(auMTSetter);
-        registry.setVotingWeight(address(mockAuMT));
+        vm.prank(votingWeightSetter);
+        registry.setVotingWeight(address(mockVotingWeight));
 
         vm.prank(governanceSetter);
         registry.setGovernanceContract(governance);
@@ -171,7 +171,7 @@ contract VaultClassRegistryTest is Test {
         );
     }
 
-    function testConstructorZeroAuMTSetter_Reverts() public {
+    function testConstructorZeroVotingWeightSetter_Reverts() public {
         vm.expectRevert(VaultClassRegistry.ZeroAddress.selector);
         new VaultClassRegistry(
             IERC20(address(svZCHF)),
@@ -321,7 +321,7 @@ contract VaultClassRegistryTest is Test {
         address admissionValue = makeAddr("vetoKillAdmission");
         _propose(admissionValue);
         address vetoer = makeAddr("vetoer");
-        mockAuMT.setGovernanceWeight(vetoer, 100_000e18);
+        mockVotingWeight.setGovernanceWeight(vetoer, 100_000e18);
         vm.prank(vetoer);
         registry.vetoProposal(0);
         (,,,,, bool finalized, bool revoked) = registry.proposals(0);
@@ -334,7 +334,7 @@ contract VaultClassRegistryTest is Test {
         address admissionValue = makeAddr("insufficientVetoAdmission");
         _propose(admissionValue);
         address vetoer = makeAddr("weakVetoer");
-        mockAuMT.setGovernanceWeight(vetoer, 99_999e18);
+        mockVotingWeight.setGovernanceWeight(vetoer, 99_999e18);
         vm.prank(vetoer);
         registry.vetoProposal(0);
         (,,,, uint256 vetoSupp, bool finalized, bool revoked) = registry.proposals(0);
@@ -348,8 +348,8 @@ contract VaultClassRegistryTest is Test {
         _propose(admissionValue);
         address vetoer1 = makeAddr("vetoer1");
         address vetoer2 = makeAddr("vetoer2");
-        mockAuMT.setGovernanceWeight(vetoer1, 50_000e18);
-        mockAuMT.setGovernanceWeight(vetoer2, 50_000e18);
+        mockVotingWeight.setGovernanceWeight(vetoer1, 50_000e18);
+        mockVotingWeight.setGovernanceWeight(vetoer2, 50_000e18);
         vm.prank(vetoer1);
         registry.vetoProposal(0);
         (,,,,, bool finalizedAfterFirst, bool revokedAfterFirst) = registry.proposals(0);
@@ -395,7 +395,7 @@ contract VaultClassRegistryTest is Test {
         address admissionValue = makeAddr("doubleVeto");
         uint256 proposalId = _propose(admissionValue);
         address vetoer = makeAddr("vetoerFinalize");
-        mockAuMT.setGovernanceWeight(vetoer, 100_000e18);
+        mockVotingWeight.setGovernanceWeight(vetoer, 100_000e18);
         vm.prank(vetoer);
         registry.vetoProposal(proposalId);
         vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.ProposalAlreadyFinalized.selector, proposalId));
@@ -446,10 +446,10 @@ contract VaultClassRegistryTest is Test {
         );
     }
 
-    function testSetAuMT_ReCall_Reverts() public {
+    function testSetVotingWeight_ReCall_Reverts() public {
         vm.expectRevert(VaultClassRegistry.OnlyVotingWeightSetter.selector);
-        vm.prank(auMTSetter);
-        registry.setVotingWeight(address(mockAuMT));
+        vm.prank(votingWeightSetter);
+        registry.setVotingWeight(address(mockVotingWeight));
     }
 
     function testSetGovernanceContract_ReCall_Reverts() public {
@@ -458,13 +458,13 @@ contract VaultClassRegistryTest is Test {
         registry.setGovernanceContract(governance);
     }
 
-    function testSetAuMT_ZeroAddress_Reverts() public {
-        address setter = makeAddr("bareAuMTSetter");
+    function testSetVotingWeight_ZeroAddress_Reverts() public {
+        address setter = makeAddr("bareVotingWeightSetter");
         VaultClassRegistry bare = new VaultClassRegistry(
             IERC20(address(svZCHF)),
             SwapAndDepositToBodensee(address(mockHelper)),
             setter,
-            makeAddr("bareGovSetterAuMT"),
+            makeAddr("bareGovSetterVotingWeight"),
             new address[](0),
             new IVaultClassRegistry.AdmissionType[](0)
         );
@@ -478,7 +478,7 @@ contract VaultClassRegistryTest is Test {
         VaultClassRegistry bare = new VaultClassRegistry(
             IERC20(address(svZCHF)),
             SwapAndDepositToBodensee(address(mockHelper)),
-            makeAddr("bareAuMTZeroGov"),
+            makeAddr("bareVotingWeightZeroGov"),
             setter,
             new address[](0),
             new IVaultClassRegistry.AdmissionType[](0)
@@ -488,11 +488,11 @@ contract VaultClassRegistryTest is Test {
         bare.setGovernanceContract(address(0));
     }
 
-    function testVeto_PreSetAuMT_Reverts() public {
+    function testVeto_PreSetVotingWeight_Reverts() public {
         VaultClassRegistry bare = new VaultClassRegistry(
             IERC20(address(svZCHF)),
             SwapAndDepositToBodensee(address(mockHelper)),
-            makeAddr("unusedAuMTSetter"),
+            makeAddr("unusedVotingWeightSetter"),
             makeAddr("unusedGovSetter"),
             new address[](0),
             new IVaultClassRegistry.AdmissionType[](0)
@@ -502,7 +502,7 @@ contract VaultClassRegistryTest is Test {
         vm.prank(proposer);
         bare.proposeVaultClass(
             IVaultClassRegistry.AdmissionType.ImplementationAddress,
-            makeAddr("preAuMTAdmission"),
+            makeAddr("preVotingWeightAdmission"),
             bytes32(0)
         );
         vm.expectRevert();
@@ -518,7 +518,7 @@ contract VaultClassRegistryTest is Test {
         VaultClassRegistry bare = new VaultClassRegistry(
             IERC20(address(svZCHF)),
             SwapAndDepositToBodensee(address(mockHelper)),
-            makeAddr("bareAuMTRevoke"),
+            makeAddr("bareVotingWeightRevoke"),
             makeAddr("bareGovSetterRevoke"),
             tokens,
             types
@@ -539,7 +539,7 @@ contract VaultClassRegistryTest is Test {
         uint256 proposalId = 0;
         _propose(admissionValue);
         address vetoer = makeAddr("emitVetoer");
-        mockAuMT.setGovernanceWeight(vetoer, 50_000e18);
+        mockVotingWeight.setGovernanceWeight(vetoer, 50_000e18);
         vm.expectEmit(true, true, false, true);
         emit VaultClassVetoed(proposalId, vetoer, 50_000e18);
         vm.prank(vetoer);

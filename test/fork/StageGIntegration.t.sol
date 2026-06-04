@@ -92,7 +92,7 @@ abstract contract StageGIntegrationFixture is Test {
     // State — Mocks (TVL from CCBMocks per OQ-22 carry-forward; Efficiency + AuMT from StageGMocks per G-D25c)
     MockTVLOracle internal mockTVLOracle;
     MockEfficiencyOracle internal mockEfficiencyOracle;
-    MockVotingWeight internal mockAuMT;
+    MockVotingWeight internal mockVotingWeight;
 
     function setUp() public virtual {
         svZchf = IERC20(vm.envAddress("SV_ZCHF"));
@@ -201,7 +201,7 @@ abstract contract StageGIntegrationFixture is Test {
 
         mockTVLOracle = new MockTVLOracle();
         mockEfficiencyOracle = new MockEfficiencyOracle();
-        mockAuMT = new MockVotingWeight();
+        mockVotingWeight = new MockVotingWeight();
 
         swapAndDeposit = new SwapAndDepositToBodensee(vault, bodenseePool, svZchf, IERC20(address(susds)), address(this), address(this));
         address[] memory genesisTokens = new address[](1);
@@ -209,12 +209,12 @@ abstract contract StageGIntegrationFixture is Test {
         IVaultClassRegistry.AdmissionType[] memory genesisTypes = new IVaultClassRegistry.AdmissionType[](1);
         genesisTypes[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
         vaultClassRegistry = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
-        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockAuMT), address(this), address(mockEfficiencyOracle), address(hook));
+        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockVotingWeight), address(this), address(mockEfficiencyOracle), address(hook));
         gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf));
 
         swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));
         swapAndDeposit.setGaugeRegistry(address(gaugeRegistry));
-        vaultClassRegistry.setVotingWeight(address(mockAuMT));
+        vaultClassRegistry.setVotingWeight(address(mockVotingWeight));
         vaultClassRegistry.setGovernanceContract(address(this));
         gaugeEligibility.setGaugeRegistry(address(gaugeRegistry));
 
@@ -467,8 +467,8 @@ contract StageGVaultClassRegistryTest is StageGIntegrationFixture {
         address proposer = makeAddr("vetoProposer");
         address target = makeAddr("vetoTarget");
         uint256 bondAmount = vaultClassRegistry.PROPOSAL_BOND_SVZCHF();
-        mockAuMT.setTotalSupply(100e18);
-        mockAuMT.setGovernanceWeight(voter, 11e18);
+        mockVotingWeight.setTotalSupply(100e18);
+        mockVotingWeight.setGovernanceWeight(voter, 11e18);
         uint256 svZchfReservePre = _bodenseeSvZchfBalance();
 
         deal(address(svZchf), proposer, bondAmount);
