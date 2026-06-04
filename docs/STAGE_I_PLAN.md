@@ -274,7 +274,12 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I-reframe.3c8b | `ac216f7` | docs/STAGE_I_PLAN.md | +10 / -9 | Anchors — 10 stale bullets → 11 reframed (IVotingWeight.sol + VaultClassRegistry added; IAuMT.sol removed; effectiveQualBlock; 269 → 270 lines) |
 | I-reframe.3c8c-1 | `db45a96` | docs/STAGE_I_PLAN.md | +12 / -1 | Completion Log — I8.6b hash backfill + 11 rows (I8.6c/d/e + I-reframe.2 through 3c-pre2; 270 → 281 lines) |
 | I-reframe.3c8c-2 | `5d1fda9` | docs/STAGE_I_PLAN.md | +9 / 0 | Completion Log — 9 rows (I-reframe.3c1a through 3c2c; 281 → 290 lines) |
-| I-reframe.3c8c-3 | `<pending>` | docs/STAGE_I_PLAN.md | +11 / 0 | Completion Log — 10 rows (I-reframe.3c3 through 3c8c-2) + self-row; closes the I-reframe Completion Log catch-up (290 → 301 lines) |
+| I-reframe.3c8c-3 | `fe1a014` | docs/STAGE_I_PLAN.md | +11 / 0 | Completion Log — 10 rows (I-reframe.3c3 through 3c8c-2) + self-row; closes the I-reframe Completion Log catch-up (290 → 301 lines) |
+| I-reframe.3c8d-1 | `f163d1c` | CLAUDE.md | +2 / -2 | §11 Last update + Branch paragraphs refreshed — I-reframe COMPLETE; I-D1—I-D17; recorder clock; code phase next (657 lines unchanged) |
+| I-reframe.3c8d-2 | `d7b6f51` | CLAUDE.md | +11 / -58 | §11 commit stack condensed to 7 phase-summary bullets + PLAN Completion Log pointer (657 → 610 lines) |
+| I-reframe.3c8d-3 | `cdcded8` | CLAUDE.md | +2 / -2 | §11 Stage I position + Next sub-step paragraphs refreshed — reframe COMPLETE; I9.1 code-phase opens (610 lines unchanged) |
+| I-reframe.3c8d-4 | `9d52ca6` | CLAUDE.md | +3 / -2 | §11 Deferred bullets — aumm-site (I-D14—I-D17) + OQ-I10 (BPT model) + new VotingWeight.sol view bullet (610 → 611 lines) |
+| I-reframe.3c8d-5 | `<pending>` | docs/STAGE_I_PLAN.md | +6 / -1 | Completion Log — I-reframe.3c8c-3 hash backfill + 4 CLAUDE.md §11 rows (3c8d-1—4) + self-row; closes the I-reframe doc-sweep record (301 → 306 lines) |
 
 ---
 
