@@ -243,7 +243,18 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I8.4 | `fc36d60` | test/unit/GaugeEligibility.t.sol | +38 / 0 | 3 hook-gate tests (wrong-hook + no-hook revert WrongFeeRoutingHook; correct-hook admits); 46 → 49 tests green |
 | I8.5 | (no commit) | — | — | Full regression: forge clean + split-form per D35/D36; 619/620 unit (lone failure pre-I8 I4.1 getHookFlags artifact, deferred I4.5) + 71/71 fork green |
 | I8.6a | `dcca7fe` | docs/STAGE_I_NOTES.md | +10 / 0 | I13 Findings — fail-fast gate blast-radius rule (size test retrofit at pre-flight; setUp-mock; Foundry longest-match) (190 → 200 lines) |
-| I8.6b | `<pending>` | docs/STAGE_I_PLAN.md | +13 / 0 | Completion Log catch-up — I3.8f hash backfill (`<pending>` → `0bafa19`) + 13 new rows I8.0a—I8.6a + I8.5 no-commit + self-row |
+| I8.6b | `74b3add` | docs/STAGE_I_PLAN.md | +13 / 0 | Completion Log catch-up — I3.8f hash backfill (`<pending>` → `0bafa19`) + 13 new rows I8.0a—I8.6a + I8.5 no-commit + self-row |
+| I8.6c | `0dc3798` | docs/STAGE_I_PLAN.md | +3 / 0 | Surfaces-produced rows — GaugeEligibility.sol + GaugeEligibility.t.sol + StageGIntegration.t.sol (257 → 260 lines) |
+| I8.6d | `2d6fc8f` | docs/STAGE_I_PLAN.md | +3 / -3 | Status / Last update / Mode refresh (I8 COMPLETE; I4 PARKED at I4.2; 260 lines unchanged) |
+| I8.6e | `50f51d7` | CLAUDE.md | +2 / -2 | §11 Last update + Branch refresh (I3 COMPLETE; I8 hook-gate COMPLETE; I-D1—I-D13 LOCKED; 637 lines unchanged) |
+| I-reframe.2 | `60faad2` | docs/STAGE_I_NOTES.md | +16 / 0 | I-D14 LOCKED — AuMT = branded BPT (no separate ERC-20); value-weighted snapshot voting; recorder clock; first reckoning (200 → 216 lines) |
+| I-reframe.2-fix1 | `8c58de6` | docs/STAGE_I_NOTES.md | +9 / -5 | I-D14 complete reckoning — add I-D2/I-D8/I-D9/I-D11/I-D12 + fix I-D5 header slip (6 superseded, 5 amended, 2 untouched; 216 → 220 lines) |
+| I-reframe.2-fix2 | `15c9a35` | docs/STAGE_I_NOTES.md | +13 / -9 | Decisions table — 9 status cells flipped (SUPERSEDED/AMENDED by I-D14) + I-D11—I-D14 rows; 14 rows (220 → 224 lines) |
+| I-reframe.3a | `4156160` | docs/STAGE_I_PLAN.md | +12 / -11 | Decisions table — 11 status cells flipped + I-D14 row; 14 rows; mirrors NOTES (260 → 261 lines) |
+| I-reframe.3b-pre1 | `dbcc92d` | docs/STAGE_I_NOTES.md | +13 / 0 | I-D15 LOCKED — voting-weight view deferred out of Stage I; clock-only; AuMT.sol/IAuMT.sol deletion; 15 I-D rows (224 → 237 lines) |
+| I-reframe.3b | `dc07257` | docs/STAGE_I_PLAN.md | +1 / 0 | Decisions table — I-D15 row; 15 rows; mirrors NOTES (261 → 262 lines) |
+| I-reframe.3c-pre1 | `9f33163` | docs/STAGE_I_NOTES.md | +13 / 0 | I-D16 LOCKED — hook→recorder one-shot `emissionRecorder` slot (not ctor immutable; H13/G16 avoided); auMTByPool/setAuMTForPool dropped; 16 I-D rows (237 → 250 lines) |
+| I-reframe.3c-pre2 | `da70271` | docs/STAGE_I_PLAN.md | +1 / 0 | Decisions table — I-D16 row; 16 rows; mirrors NOTES (262 → 263 lines) |
 
 ---
 
