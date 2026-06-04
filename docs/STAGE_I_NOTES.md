@@ -200,11 +200,10 @@ Stage I assumes every upstream ABI in this roster remains fixed for its duration
 
 | Interface | File | Frozen at | Surface used |
 | --- | --- | --- | --- |
-| IERC20 | OpenZeppelin v5.6.1 | Stage C | Standard ERC20 base for soulbound AuMT inheritance |
-| IGaugeRegistry | `src/ccb/IGaugeRegistry.sol` | Stage G G-D16a | `isGaugeApproved(address)` — gates `governanceWeight` to zero when bound pool ungauged per I-D7 |
-| IEmissionDistributor | `src/emission/IEmissionDistributor.sol` | Stage H H1 (subject to I-D9 amendment of `setAuMTContract` signature under Option A) | `recordDeposit(pool, holder, amount)` + `recordWithdrawal(pool, holder, amount)` — called internally by AuMT.mint / AuMT.burn per H-D35 recorder semantics |
-| AureumTime | `src/lib/AureumTime.sol` | Stage C | `firstHalvingBlock(GENESIS_BLOCK)` era boundary read by `governanceWeight` per I-D7; potential extension at I0.0b for `QUALIFICATION_PERIOD_BLOCKS` + `ON_RAMP_PERIOD_BLOCKS` constants (see Open questions) |
-| AureumFeeRoutingHook (pre-I2 surface) | `src/fee_router/AureumFeeRoutingHook.sol` | Stage D | Constructor + 6 immutables + `onRegister` + `onAfterSwap` + fee-routing semantics UNCHANGED at I2 (extension adds new callbacks + new storage slot + new setter only) |
+| AureumFeeRoutingHook (pre-I4 surface) | `src/fee_router/AureumFeeRoutingHook.sol` | Stage D | Constructor + immutables + `onRegister` + `onAfterSwap` + fee-routing semantics UNCHANGED at I4; the recorder extension adds the `emissionRecorder` slot + `setEmissionRecorder` setter + the two liquidity callbacks only |
+| Balancer V3 hook base | `lib/balancer-v3-monorepo` (`BaseHooks` / `IHooks`) | Stage D | `onAfterAddLiquidity` / `onAfterRemoveLiquidity` callback signatures + `bool` return consumed by the I4 recorder dispatch |
+
+Deferred consumers — the pre-reframe Stage I additionally consumed IERC20 (soulbound `AuMT` base), `IGaugeRegistry.isGaugeApproved` (gauge-revoked → zero `governanceWeight` per I-D7), and `AureumTime.firstHalvingBlock` + the I2.1 `QUALIFICATION_PERIOD_BLOCKS` / `ON_RAMP_PERIOD_BLOCKS` constants. Per I-D14 the soulbound token is gone (no IERC20 consumption); per I-D15 the gauge-gate + time-threshold reads belong to the deferred `src/governance/VotingWeight.sol` view, not the Stage I recorder clock — they re-enter when the view lands (Stage K). `AureumTime` is still *extended* at I2.1 (a Stage I produced change), just not *read* by the clock.
 
 ### Forward-dependency stubs
 
