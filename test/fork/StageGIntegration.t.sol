@@ -37,7 +37,7 @@ import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { IEfficiencyOracle } from "../../src/gauge/IEfficiencyOracle.sol";
 import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
-import { MockEfficiencyOracle, MockAuMT } from "./mocks/StageGMocks.sol";
+import { MockEfficiencyOracle, MockVotingWeight } from "./mocks/StageGMocks.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
@@ -92,7 +92,7 @@ abstract contract StageGIntegrationFixture is Test {
     // State — Mocks (TVL from CCBMocks per OQ-22 carry-forward; Efficiency + AuMT from StageGMocks per G-D25c)
     MockTVLOracle internal mockTVLOracle;
     MockEfficiencyOracle internal mockEfficiencyOracle;
-    MockAuMT internal mockAuMT;
+    MockVotingWeight internal mockAuMT;
 
     function setUp() public virtual {
         svZchf = IERC20(vm.envAddress("SV_ZCHF"));
@@ -201,7 +201,7 @@ abstract contract StageGIntegrationFixture is Test {
 
         mockTVLOracle = new MockTVLOracle();
         mockEfficiencyOracle = new MockEfficiencyOracle();
-        mockAuMT = new MockAuMT();
+        mockAuMT = new MockVotingWeight();
 
         swapAndDeposit = new SwapAndDepositToBodensee(vault, bodenseePool, svZchf, IERC20(address(susds)), address(this), address(this));
         address[] memory genesisTokens = new address[](1);
@@ -214,7 +214,7 @@ abstract contract StageGIntegrationFixture is Test {
 
         swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));
         swapAndDeposit.setGaugeRegistry(address(gaugeRegistry));
-        vaultClassRegistry.setAuMT(address(mockAuMT));
+        vaultClassRegistry.setVotingWeight(address(mockAuMT));
         vaultClassRegistry.setGovernanceContract(address(this));
         gaugeEligibility.setGaugeRegistry(address(gaugeRegistry));
 
