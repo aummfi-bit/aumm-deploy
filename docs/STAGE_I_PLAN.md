@@ -255,6 +255,15 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I-reframe.3b | `dc07257` | docs/STAGE_I_PLAN.md | +1 / 0 | Decisions table — I-D15 row; 15 rows; mirrors NOTES (261 → 262 lines) |
 | I-reframe.3c-pre1 | `9f33163` | docs/STAGE_I_NOTES.md | +13 / 0 | I-D16 LOCKED — hook→recorder one-shot `emissionRecorder` slot (not ctor immutable; H13/G16 avoided); auMTByPool/setAuMTForPool dropped; 16 I-D rows (237 → 250 lines) |
 | I-reframe.3c-pre2 | `da70271` | docs/STAGE_I_PLAN.md | +1 / 0 | Decisions table — I-D16 row; 16 rows; mirrors NOTES (262 → 263 lines) |
+| I-reframe.3c1a | `25f0cb8` | docs/STAGE_I_PLAN.md | +1 / -1 | Stage scope paragraph — clock-only AuMT-is-BPT framing (no AuMT.sol; effectiveQualBlock; emissionRecorder slot; VotingWeight view deferred; I1/I2/I8 unchanged; 263 lines unchanged) |
+| I-reframe.3c1b | `09bfc34` | docs/STAGE_I_PLAN.md | +10 / -9 | Surfaces produced/NOT produced tables rewritten — clock-only; AuMT.sol+IAuMT.sol DELETED; RecorderClock.t.sol; VotingWeight deferred (263 → 264 lines) |
+| I-reframe.3c2-pre1 | `118b8e7` | docs/STAGE_I_NOTES.md | +13 / 0 | I-D17 LOCKED — IVotingWeight forward stub + VaultClassRegistry full-rename fix-forward + IAuMT consumer-migration (NOTES 250 → 263 lines) |
+| I-reframe.3c2-pre1b | `4a4b1d8` | docs/STAGE_I_NOTES.md | +2 / -2 | I-D15 Status cell amended by I-D17 + "deletion is total" paragraph → IVotingWeight consumer-migration pointer (NOTES 263 lines unchanged) |
+| I-reframe.3c2-pre2 | `f894c82` | docs/STAGE_I_NOTES.md | +10 / 0 | I14 Findings — interface-deletion LOCKs must grep consumers at lock-time (I-D15 "no implementor" miss; extends I12+G16; NOTES 263 → 273 lines) |
+| I-reframe.3c2-pre3 | `5a4c66c` | docs/STAGE_I_PLAN.md | +2 / -1 | Decisions table — I-D15 Status amended by I-D17 + I-D17 row; 17 rows (264 → 265 lines) |
+| I-reframe.3c2a | `d16365d` | docs/STAGE_I_PLAN.md | +10 / 0 | I9 family roadmap — AuMT deprecation + IVotingWeight migration (5 sub-steps; 265 → 275 lines — commit msg's "278" was an inferred-count slip, corrected here) |
+| I-reframe.3c2b | `0bf7eef` | docs/STAGE_I_PLAN.md | +5 / -13 | I3 section tombstone — SUPERSEDED by I-D14/I-D15/I-D17; removed at I9; 2-para body (275 → 267 lines) |
+| I-reframe.3c2c | `1990479` | docs/STAGE_I_PLAN.md | +5 / -1 | Surfaces table — IAuMT.sol reason + 4 I9 rows (IVotingWeight.sol/VaultClassRegistry.sol/StageGMocks/VaultClassRegistry.t; 267 → 271 lines) |
 
 ---
 
