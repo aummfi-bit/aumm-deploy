@@ -291,7 +291,24 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I9.5c | `825f94a` | docs/STAGE_I_PLAN.md | +9 / -1 | Completion Log — I-reframe.3c8d-5 hash backfill + 8 rows I9.1—I9.5b + self-row (306 → 315 lines) |
 | I9.5d | `66afa4a` | docs/STAGE_I_PLAN.md + docs/STAGE_I_NOTES.md | +5 / -5 | PLAN status/mode headers (L3/L5/L7) + I9.5c self-row hash backfill; NOTES OQ-I10 recorder-binding reframe (both files line-count unchanged) |
 | I9.5e | `90a34f1` | CLAUDE.md | +8 / -7 | §11 resume-anchor refresh — I9 COMPLETE + I4.2 next; Last update / Branch / commit-stack (+ I9 bullet) / Stage-I-position / Next-sub-step (611 → 612 lines) |
-| I9.5f | `<pending>` | docs/STAGE_I_PLAN.md | +4 / -1 | Completion Log — I9.5d / I9.5e rows + self-row + Anchors `Findings I10—I14` → `I10—I15` fix; closes I9 family Completion Log (315 → 318 lines) |
+| I9.5f | `23cb192` | docs/STAGE_I_PLAN.md | +4 / -1 | Completion Log — I9.5d / I9.5e rows + self-row + Anchors `Findings I10—I14` → `I10—I15` fix; closes I9 family Completion Log (315 → 318 lines) |
+| I4.1 | `409f51a` | src/fee_router/AureumFeeRoutingHook.sol | +2 / 0 | getHookFlags() bump per I-D5 — shouldCallAfterAddLiquidity + shouldCallAfterRemoveLiquidity = true (568 → 570); landed early (ancestor of I9.5f), logged here to close the I4-family catalog gap; the resulting afterSwap-only test failure was the 619/620 artifact cleared at I4.6a |
+| docs §11 | `ba8b18c` | CLAUDE.md | +1 / -1 | §11 L447 AureumFeeRoutingHook path fix (src/gauge/ → src/fee_router/); ad-hoc housekeeping preceding the I4.2 resumption |
+| I4.2-pre | `cc10a40` | docs/STAGE_I_PLAN.md | +1 / -1 | I4.2 bullet — admin-gated two-flag emissionRecorder lock spelled out; resolves PLAN ambiguity (L127) |
+| I4.2 | `3f8e8d5` | src/fee_router/AureumFeeRoutingHook.sol | +45 / 0 | emissionRecorder one-shot slot + _emissionRecorderAdmin + setEmissionRecorder + 2 errors + event; mirrors setGovernanceModule two-flag lock per I-D16 (570 → 615) |
+| I4.2-post | `961af69` | src/fee_router/AureumFeeRoutingHook.sol | +7 / -5 | contract @dev invariant — two admin slots → three + emissionRecorder pair in the post-state invariant (615 → 617) |
+| I4.3-pre | `e756168` | docs/STAGE_I_PLAN.md | +1 / -1 | I4.3 bullet — exact effectiveQualBlock algorithm + fresh-start-on-zero rationale (L128; resolves the partial-withdrawal over-qualification vector) |
+| I4.3 | `5fb3c3f` | src/emission/EmissionDistributor.sol | +30 / 0 | effectiveQualBlock per-(pool, user) clock per I-D14 — mapping + fresh-start/weighted-average deposit + reset-on-any-withdrawal (500 → 530) |
+| I4.4-pre | `8af75b5` | docs/STAGE_I_PLAN.md | +1 / -1 | I4.4 bullet — lp = getSender() + IRouterCommon/IEmissionDistributor imports + recorder-unset guard rationale (L129) |
+| I4.4-pre2 | `9667586` | docs/STAGE_I_PLAN.md | +1 / -1 | I4.4 bullet — IRouterCommon → IRouterSender shim + D32/Permit2-avoidance rationale (L129; per I16) |
+| I4.4a | `62f7741` | src/fee_router/IRouterSender.sol | +20 / 0 | minimal getSender() shim — Permit2-free IRouterCommon substitute per D32 / I16 |
+| I4.4 | `c47e6df` | src/fee_router/AureumFeeRoutingHook.sol | +30 / 0 | onAfterAddLiquidity → emissionRecorder.recordDeposit(pool, lp, bptAmountOut) with recorder-unset guard + IRouterSender/IEmissionDistributor imports (617 → 647) |
+| I4.5 | `2b85263` | src/fee_router/AureumFeeRoutingHook.sol | +26 / -1 | onAfterRemoveLiquidity → emissionRecorder.recordWithdrawal(pool, lp, bptAmountIn) + RemoveLiquidityKind import (647 → 672) |
+| I4.6a | `5e63b3b` | test/unit/AureumFeeRoutingHook.t.sol | +3 / -3 | getHookFlags test rename → afterSwapAndLiquidityCallbacks + assertTrue for the add/remove-liq flags; clears the I4.1 619/620 artifact |
+| I4.6b | (no commit) | — | — | Stage D full regression — unit split-form + fork --threads 1 per D35/D36; surfaced the I4.2 storage-slot-shift setUp failure (→ I4.6c); the renamed flags test passes |
+| I4.6c | `56bc143` | test/unit/AureumFeeRoutingHook.t.sol | +11 / -6 | sync storage-slot constants to the post-I4.2 six-slot layout (SLOT_GOV_ADMIN 2→3, SLOT_INC_ADMIN 3→4) + messages + layout NatSpec; 620/620 unit + 71/71 fork green (per I17) |
+| I4.7a | `1bd2248` | docs/STAGE_I_NOTES.md | +20 / 0 | Findings I16 (Permit2 transitive import → IRouterSender shim) + I17 (storage slot shift breaks vm.load/store constants) (283 → 303) |
+| I4.7b | `<pending>` | docs/STAGE_I_PLAN.md | +18 / -1 | Completion Log — I9.5f hash backfill (23cb192) + 16 rows (I4.1 / docs §11 / I4.2-pre through I4.7a, incl. I4.6b no-commit) + self-row; closes I4 family Completion Log (318 → 335) |
 
 ---
 
