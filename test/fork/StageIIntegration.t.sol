@@ -178,4 +178,28 @@ contract StageIDepositTest is StageIIntegrationFixture {
         assertEq(emissionDistributor.effectiveQualBlock(pilotPools[1], lps[0]), 0, "lpA leaked to pool 1");
         assertEq(emissionDistributor.effectiveQualBlock(pilotPools[0], lps[1]), 0, "lpB leaked to pool 0");
     }
+
+    function test_topUp_weightedAverageBranchSameBlockClockNeutral() public {
+        address pool = pilotPools[0];
+        address lp = makeAddr("lpTopUp");
+
+        // First add-liquidity → fresh-start clock.
+        uint256 bpt1 = _depositOneSided(pool, lp, 100);
+        uint256 clock0 = emissionDistributor.effectiveQualBlock(pool, lp);
+        assertGt(clock0, 0, "first deposit fresh-started the clock");
+
+        // Second add-liquidity (top-up, same LP) routes through the hook to
+        // recordDeposit, which takes the I-D14 weighted-average branch (oldEqb > 0):
+        // it neither resets (reset is withdrawal-only) nor re-fresh-starts. At the
+        // same block the blend of (clock0, block.number == clock0) equals clock0, so
+        // the clock is unchanged while userLP accumulates. The cross-block clock
+        // ADVANCE arithmetic is verified deterministically in
+        // test/unit/RecorderClock.t.sol (I5.2); fork block.number does not respond to
+        // vm.roll inside the recorder clock read under via_ir (Finding I18).
+        uint256 bpt2 = _depositOneSided(pool, lp, 100);
+        uint256 clock1 = emissionDistributor.effectiveQualBlock(pool, lp);
+
+        assertEq(clock1, clock0, "same-block top-up is clock-neutral (weighted-average branch, not reset)");
+        assertEq(emissionDistributor.userLP(pool, lp), bpt1 + bpt2, "userLP summed across both deposits");
+    }
 }
