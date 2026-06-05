@@ -9,6 +9,7 @@ import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
+import {IEmissionDistributor} from "../../src/emission/IEmissionDistributor.sol";
 import {EmissionDistributorHarness} from "./harness/EmissionDistributorHarness.sol";
 import {
     MockAuMM,
@@ -119,5 +120,29 @@ contract RecorderClockTest is Test {
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), redepositBlock);
         assertEq(distributor.userLP(POOL_A, USER_1), 149e18);
         assertEq(block.number - distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+    }
+
+    /// @notice The per-pool recorder gate (I-D9) protects the qualification clock: a non-bound caller's `recordDeposit` / `recordWithdrawal` reverts `NotAuMTContract(pool, caller)` and leaves `effectiveQualBlock` at 0 — only an address bound via `setAuMTContractForPool` can advance the clock. Happy-path: binding `POOL_B` to a fresh recorder admits its `recordDeposit`, fresh-starting `POOL_B`'s clock.
+    function test_HookGate_NonBoundCallerCannotMutateClock_BoundCallerCan() public {
+        address attacker = address(0xBADC0DE);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, POOL_A, attacker));
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, POOL_A, attacker));
+        distributor.recordWithdrawal(POOL_A, USER_1, 1e18);
+
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+
+        address poolBRec = address(0xB0DC);
+        vm.prank(GOV);
+        distributor.setAuMTContractForPool(POOL_B, poolBRec);
+        vm.prank(poolBRec);
+        distributor.recordDeposit(POOL_B, USER_1, 100e18);
+        assertEq(distributor.effectiveQualBlock(POOL_B, USER_1), GENESIS_BLOCK_);
+        assertEq(distributor.userLP(POOL_B, USER_1), 100e18);
     }
 }
