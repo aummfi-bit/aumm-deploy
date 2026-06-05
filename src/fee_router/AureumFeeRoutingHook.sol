@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {AddLiquidityKind, AddLiquidityParams, AfterSwapParams, HookFlags, LiquidityManagement, SwapKind, TokenConfig, VaultSwapParams} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {AddLiquidityKind, AddLiquidityParams, AfterSwapParams, HookFlags, LiquidityManagement, RemoveLiquidityKind, SwapKind, TokenConfig, VaultSwapParams} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
 import {BaseHooks} from "@balancer-labs/v3-vault/contracts/BaseHooks.sol";
@@ -372,6 +372,31 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             IEmissionDistributor(recorder).recordDeposit(pool, lp, bptAmountOut);
         }
         return (true, amountsInRaw);
+    }
+
+    /// @inheritdoc BaseHooks
+    /// @dev I-D14 recorder dispatch — symmetric to `onAfterAddLiquidity`:
+    ///      resolves the liquidity provider via `IRouterSender(router).getSender()`
+    ///      and forwards `bptAmountIn` to the EmissionDistributor recorder
+    ///      clock as a withdrawal. Recorder-unset guard per I-D16 (see
+    ///      `onAfterAddLiquidity`). No amount adjustment — `amountsOutRaw`
+    ///      passes through.
+    function onAfterRemoveLiquidity(
+        address router,
+        address pool,
+        RemoveLiquidityKind,
+        uint256 bptAmountIn,
+        uint256[] memory,
+        uint256[] memory amountsOutRaw,
+        uint256[] memory,
+        bytes memory
+    ) public override onlyVault returns (bool, uint256[] memory) {
+        address recorder = emissionRecorder;
+        if (recorder != address(0)) {
+            address lp = IRouterSender(router).getSender();
+            IEmissionDistributor(recorder).recordWithdrawal(pool, lp, bptAmountIn);
+        }
+        return (true, amountsOutRaw);
     }
 
     // -------------------------------------------------------------------------
