@@ -62,12 +62,17 @@ contract AureumFeeRoutingHookTest is Test {
 
     /// @dev Storage layout for `AureumFeeRoutingHook`. `BaseHooks` is
     ///      stateless (abstract, all-virtual) and `VaultGuard` stores
-    ///      only an immutable `_vault`, so the four post-construction
-    ///      slots are contiguous from 0. `setUp` asserts the layout.
+    ///      only an immutable `_vault`, so the six post-construction
+    ///      slots are contiguous from 0: `governanceModule` (0),
+    ///      `incendiaryModule` (1), `emissionRecorder` (2),
+    ///      `_governanceAdmin` (3), `_incendiaryAdmin` (4),
+    ///      `_emissionRecorderAdmin` (5). The I4.2 `emissionRecorder`
+    ///      pair (slots 2, 5) shifted the admin slots down one. `setUp`
+    ///      asserts the admin slots the AlreadySet tests depend on.
     uint256 internal constant SLOT_GOV_MODULE = 0;
     uint256 internal constant SLOT_INC_MODULE = 1;
-    uint256 internal constant SLOT_GOV_ADMIN  = 2;
-    uint256 internal constant SLOT_INC_ADMIN  = 3;
+    uint256 internal constant SLOT_GOV_ADMIN  = 3;
+    uint256 internal constant SLOT_INC_ADMIN  = 4;
 
     // -------------------------------------------------------------------------
     // Event redeclarations (for vm.expectEmit)
@@ -141,12 +146,12 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(
             address(uint160(uint256(vm.load(address(hook), bytes32(SLOT_GOV_ADMIN))))),
             admin,
-            "slot 2 is not _governanceAdmin"
+            "slot 3 is not _governanceAdmin"
         );
         assertEq(
             address(uint160(uint256(vm.load(address(hook), bytes32(SLOT_INC_ADMIN))))),
             admin,
-            "slot 3 is not _incendiaryAdmin"
+            "slot 4 is not _incendiaryAdmin"
         );
     }
 
