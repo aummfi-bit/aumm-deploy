@@ -85,4 +85,18 @@ contract RecorderClockTest is Test {
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), GENESIS_BLOCK_ + 3_000);
         assertEq(distributor.userLP(POOL_A, USER_1), 400e18);
     }
+
+    /// @notice `recordWithdrawal` of any nonzero amount — even a partial 1% withdrawal that leaves `userLP > 0` — resets `effectiveQualBlock` to 0 per §viii / I-D14 ("remove any amount, even 1%, drops to zero"). The 99e18 remaining stake is un-qualified until a fresh deposit restarts the clock.
+    function test_RecordWithdrawal_PartialResetsEffectiveQualBlockToZero() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), GENESIS_BLOCK_);
+
+        vm.roll(GENESIS_BLOCK_ + 50_000);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 1e18);
+
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+        assertEq(distributor.userLP(POOL_A, USER_1), 99e18);
+    }
 }
