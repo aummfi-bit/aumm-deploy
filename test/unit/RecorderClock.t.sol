@@ -60,4 +60,15 @@ contract RecorderClockTest is Test {
         distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
         vm.roll(GENESIS_BLOCK_);
     }
+
+    /// @notice First `recordDeposit` for a (pool, user) whose `effectiveQualBlock` is zero fresh-starts the qualification clock to `block.number` (I4.3 / I-D14 fresh-start branch) and accrues `userLP`. Proven against a non-genesis block so the clock is shown to track the live block, not a constant.
+    function test_RecordDeposit_FirstDepositFreshStartsEffectiveQualBlock() public {
+        uint256 depositBlock = GENESIS_BLOCK_ + 5_000;
+        vm.roll(depositBlock);
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), depositBlock);
+        assertEq(distributor.userLP(POOL_A, USER_1), 100e18);
+    }
 }
