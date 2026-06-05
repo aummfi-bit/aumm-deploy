@@ -20,7 +20,7 @@ import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapCh
 import { IBodenseeBootstrapChannel } from "../../src/emission/IBodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.sol";
-import { AddLiquidityParams, AddLiquidityKind } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { AddLiquidityParams, AddLiquidityKind, RemoveLiquidityParams, RemoveLiquidityKind } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 
 /**
  * @title StageIIntegrationFixture
@@ -150,6 +150,40 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
             }
         }
     }
+
+    function _withdrawProportional(address pool, uint256 bptAmount)
+        internal
+        returns (uint256[] memory amountsOut)
+    {
+        bytes memory result = vault.unlock(abi.encodeCall(this._withdrawCallback, (pool, bptAmount)));
+        amountsOut = abi.decode(result, (uint256[]));
+    }
+
+    function _withdrawCallback(address pool, uint256 bptAmount)
+        external
+        returns (uint256[] memory amountsOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        uint256[] memory minAmountsOut = new uint256[](tokens.length);
+        // Vault burns BPT directly from address(this) inside removeLiquidity (no token delta) — no BPT transfer/settle; only the output-token credits are collected via sendTo.
+        (, amountsOut, ) = vault.removeLiquidity(
+            RemoveLiquidityParams({
+                pool: pool,
+                from: address(this),
+                maxBptAmountIn: bptAmount,
+                minAmountsOut: minAmountsOut,
+                kind: RemoveLiquidityKind.PROPORTIONAL,
+                userData: ""
+            })
+        );
+        // Retrieve each credited output token from vault.
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsOut[i] > 0) {
+                vault.sendTo(tokens[i], address(this), amountsOut[i]);
+            }
+        }
+    }
 }
 
 contract StageIWiringTest is StageIIntegrationFixture {
@@ -201,5 +235,41 @@ contract StageIDepositTest is StageIIntegrationFixture {
 
         assertEq(clock1, clock0, "same-block top-up is clock-neutral (weighted-average branch, not reset)");
         assertEq(emissionDistributor.userLP(pool, lp), bpt1 + bpt2, "userLP summed across both deposits");
+    }
+}
+
+contract StageIAgingWithdrawalTest is StageIIntegrationFixture {
+    function test_aging_blockDeltaExceedsQualificationPeriod_andWithdrawalResetsClockToZero() public {
+        address pool = pilotPools[0];
+        address lp = makeAddr("lpAge");
+
+        // Deposit to start the clock.
+        uint256 bptOut = _depositOneSided(pool, lp, 100);
+        uint256 clockAfterDeposit = emissionDistributor.effectiveQualBlock(pool, lp);
+        assertGt(clockAfterDeposit, 0, "clock fresh-started");
+
+        // Roll past the qualification period — from the test's block.number perspective
+        // (vm.roll advances the outer block.number reliably) the raw age gap is now
+        // >= QUALIFICATION_PERIOD_BLOCKS, which is the threshold the deferred
+        // VotingWeight.sol view will check (I-D15 / I6.4).
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        assertGe(
+            block.number - clockAfterDeposit,
+            AureumTime.QUALIFICATION_PERIOD_BLOCKS,
+            "age >= QPB"
+        );
+
+        // Real remove-liquidity through the hook: Vault fires onAfterRemoveLiquidity
+        // on the canonical AureumFeeRoutingHook, which calls recordWithdrawal on the
+        // emissionDistributor. Any nonzero withdrawal resets effectiveQualBlock to 0
+        // per I-D14 / §viii, regardless of how aged the position was.
+        _lpSender = lp;
+        _withdrawProportional(pool, bptOut);
+        assertEq(
+            emissionDistributor.effectiveQualBlock(pool, lp),
+            0,
+            "effectiveQualBlock reset to 0 on withdrawal"
+        );
+        assertEq(emissionDistributor.userLP(pool, lp), 0, "userLP zeroed on full withdrawal");
     }
 }
