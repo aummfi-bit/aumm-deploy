@@ -13,6 +13,8 @@ import {VaultGuard} from "@balancer-labs/v3-vault/contracts/VaultGuard.sol";
 
 import {IAureumFeeRoutingHook} from "src/fee_router/IAureumFeeRoutingHook.sol";
 import {IAureumProtocolFeeControllerHookExtension} from "src/fee_router/IAureumProtocolFeeControllerHookExtension.sol";
+import {IRouterSender} from "src/fee_router/IRouterSender.sol";
+import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 
 /**
  * @title AureumFeeRoutingHook
@@ -342,6 +344,34 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         }
 
         return (true, params.amountCalculatedRaw);
+    }
+
+    /// @inheritdoc BaseHooks
+    /// @dev I-D14 recorder dispatch — resolves the liquidity provider via
+    ///      `IRouterSender(router).getSender()` (the address that initiated
+    ///      the Router call) and forwards `bptAmountOut` to the
+    ///      EmissionDistributor recorder clock. Recorder-unset guard per
+    ///      I-D16: `emissionRecorder` is unbound through Stages D—H (bound at
+    ///      I6/I7) yet `getHookFlags` (I4.1) calls this on every add, so an
+    ///      unguarded dispatch into `address(0)` would revert all
+    ///      add-liquidity pre-binding. No amount adjustment — `amountsInRaw`
+    ///      passes through.
+    function onAfterAddLiquidity(
+        address router,
+        address pool,
+        AddLiquidityKind,
+        uint256[] memory,
+        uint256[] memory amountsInRaw,
+        uint256 bptAmountOut,
+        uint256[] memory,
+        bytes memory
+    ) public override onlyVault returns (bool, uint256[] memory) {
+        address recorder = emissionRecorder;
+        if (recorder != address(0)) {
+            address lp = IRouterSender(router).getSender();
+            IEmissionDistributor(recorder).recordDeposit(pool, lp, bptAmountOut);
+        }
+        return (true, amountsInRaw);
     }
 
     // -------------------------------------------------------------------------
