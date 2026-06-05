@@ -99,4 +99,25 @@ contract RecorderClockTest is Test {
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
         assertEq(distributor.userLP(POOL_A, USER_1), 99e18);
     }
+
+    /// @notice After a partial withdrawal has reset `effectiveQualBlock` to 0 while `userLP` stays positive, the next `recordDeposit` takes the FRESH-START branch — keyed on `effectiveQualBlock == 0`, NOT `oldAmount == 0` — and restarts the clock at `block.number`. This is the I4.3-pre over-qualification vector (PLAN L128): had the branch keyed on `oldAmount`, the re-deposit would compute a near-zero weighted average `(99e18 * 0 + 50e18 * redepositBlock) / 149e18` (~0.336 * redepositBlock, a block far in the past) that would instantly over-qualify the un-aged remaining capital. The fresh-start keeps the position correctly un-aged (`block.number - effectiveQualBlock == 0`).
+    function test_RecordDeposit_AfterPartialWithdrawalFreshStartsNotBlends() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+
+        vm.roll(GENESIS_BLOCK_ + 50_000);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 1e18);
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+        assertEq(distributor.userLP(POOL_A, USER_1), 99e18);
+
+        uint256 redepositBlock = GENESIS_BLOCK_ + 60_000;
+        vm.roll(redepositBlock);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 50e18);
+
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), redepositBlock);
+        assertEq(distributor.userLP(POOL_A, USER_1), 149e18);
+        assertEq(block.number - distributor.effectiveQualBlock(POOL_A, USER_1), 0);
+    }
 }
