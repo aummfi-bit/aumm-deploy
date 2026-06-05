@@ -279,7 +279,16 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I-reframe.3c8d-2 | `d7b6f51` | CLAUDE.md | +11 / -58 | §11 commit stack condensed to 7 phase-summary bullets + PLAN Completion Log pointer (657 → 610 lines) |
 | I-reframe.3c8d-3 | `cdcded8` | CLAUDE.md | +2 / -2 | §11 Stage I position + Next sub-step paragraphs refreshed — reframe COMPLETE; I9.1 code-phase opens (610 lines unchanged) |
 | I-reframe.3c8d-4 | `9d52ca6` | CLAUDE.md | +3 / -2 | §11 Deferred bullets — aumm-site (I-D14—I-D17) + OQ-I10 (BPT model) + new VotingWeight.sol view bullet (610 → 611 lines) |
-| I-reframe.3c8d-5 | `<pending>` | docs/STAGE_I_PLAN.md | +6 / -1 | Completion Log — I-reframe.3c8c-3 hash backfill + 4 CLAUDE.md §11 rows (3c8d-1—4) + self-row; closes the I-reframe doc-sweep record (301 → 306 lines) |
+| I-reframe.3c8d-5 | `6140c7f` | docs/STAGE_I_PLAN.md | +6 / -1 | Completion Log — I-reframe.3c8c-3 hash backfill + 4 CLAUDE.md §11 rows (3c8d-1—4) + self-row; closes the I-reframe doc-sweep record (301 → 306 lines) |
+| I9.1 | `16e1d5c` | src/governance/IVotingWeight.sol | +41 / 0 | NEW — forward-stub voting-weight reader interface (governanceWeight + totalSupply; NOT is IERC20) per I-D17; first file under src/governance/; forge build green |
+| I9.2 | `77a9164` | src/gauge/VaultClassRegistry.sol | +19 / -19 | Full rename IAuMT→IVotingWeight per I-D17 (13 sites; zero AuMT survivors); build red until I9.3 — the I15 mid-migration transient |
+| I9.3a | `25c4793` | test/fork/mocks/StageGMocks.sol + test/unit/VaultClassRegistry.t.sol | +13 / -77 | Both MockAuMT→MockVotingWeight mirror-synced (byte-identical; 4-member shrink) + VaultClassRegistry.t functional refs; mirror invariant per StageGMocks.sol:L10 |
+| I9.3b | `ad9783e` | test/fork/StageGIntegration.t.sol | +4 / -4 | The I15-missed consumer — import + var type + setVotingWeight; build GREEN |
+| I9.3c | `476e77e` | test/unit/VaultClassRegistry.t.sol + test/fork/StageGIntegration.t.sol | +33 / -33 | Cosmetic full rename — mockVotingWeight / votingWeightSetter / INITIAL_VOTING_WEIGHT_SUPPLY / 4 test methods / 7 makeAddr seeds; build green |
+| I9.4 | `0b5e572` | src/token/AuMT.sol + src/token/IAuMT.sol (deleted) | 0 / -292 | git rm both files (the I3.1—I3.8f concrete build) per I-D14/I-D15; tree-wide deletion pre-flight clean (I15 applied); 619/620 unit (pre-existing I4.1 artifact) + 71/71 fork green |
+| I9.5a | `6f3fa30` | docs/STAGE_I_NOTES.md | +10 / 0 | I15 Findings — rename/deletion pre-flight must grep whole tree (I9.2 StageGIntegration miss; extends G16+I10) (273 → 283 lines) |
+| I9.5b | `8d84adb` | docs/STAGE_I_PLAN.md | +1 / -1 | I9.3 bullet corrected — 3 files + a/b/c split + I15 reference (306 lines unchanged) |
+| I9.5c | `<pending>` | docs/STAGE_I_PLAN.md | +9 / -1 | Completion Log — I-reframe.3c8d-5 hash backfill + 8 rows I9.1—I9.5b + self-row (306 → 315 lines) |
 
 ---
 
