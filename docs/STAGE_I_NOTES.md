@@ -264,6 +264,16 @@ Default rule — any NOTES decision (`I-D*` / `*-D*`) that proposes to DELETE or
 
 Anchors: I-D15 (I-reframe.3b — the incomplete lock); I-D17 (I-reframe.3c2-pre1 — resolution); I12 (container-shape consumer cross-check); G16 (interface-inheritor enumeration before §8e.1); §12 ambiguity-gate; `VaultClassRegistry.sol` L85 / L277 / L279; the I3-deprecation pre-flight `grep -rn "is IAuMT"` sweep.
 
+### I15 — Rename / interface-deletion pre-flight enumeration must grep the WHOLE tree, not an assumed set of consumer files — the I9.2 StageGIntegration.t.sol miss
+
+The I9.2 `VaultClassRegistry.sol` rename (`IAuMT` → `IVotingWeight` per I-D17) was preceded by an I9 pre-flight that enumerated the consumer surface — but greped only the three files already identified (`VaultClassRegistry.sol` + the two `MockAuMT` doubles), not the whole tree. After I9.2 renamed `setAuMT` → `setVotingWeight`, `forge build` failed at `test/fork/StageGIntegration.t.sol:217` (`vaultClassRegistry.setAuMT(...)` plus an `import { MockAuMT }` and a `MockAuMT` var) — a fourth consumer the assumed-files pre-flight never saw. The I9.3 scope had to expand from "two mock files" to three (I9.3a mirror-synced mocks + `VaultClassRegistry.t` functional refs; I9.3b StageGIntegration; I9.3c cosmetic).
+
+Root cause: the pre-flight grep was scoped to `<known files>` instead of `src/ test/ script/`. Same failure class as G16 (interface-inheritor enumeration) and I10 (rename NatSpec cross-refs), applied to the consumer-enumeration step of a rename.
+
+Default rule: before drafting ANY rename or interface-deletion sub-step, run the enumeration grep against the whole tree — `grep -rnE "<old-symbol>|<old-method>|is I<Old>|I<Old>\b" src/ test/ script/` — and treat its full output (minus the file being renamed) as the consumer set; do not pre-filter to files you "expect" to be consumers. The token-rename verify must include a tree-wide `grep -rn "<old-symbol>" src/ test/ script/` returning zero (the completeness gate), not just a per-file grep on the assumed set. The mid-migration build-red that surfaced StageGIntegration.t.sol is the cheap version of this lesson; a missed consumer in a non-compiled path (a fork test behind an RPC gate, a deploy script) would be the expensive version. Corollary: the I9.4 deletion pre-flight DID grep tree-wide (`grep -rn "token/AuMT.sol|token/IAuMT.sol" src/ test/ script/`) and correctly found zero consumers — the lesson applied.
+
+Anchors: I9 pre-flight; I9.2 (`77a9164`) rename + the StageGIntegration build-red; I9.3a/b/c 3-file expansion; I9.4 (`0b5e572`) deletion (tree-wide pre-flight, clean); G16 (inheritor enumeration); I10 (rename NatSpec cross-refs); I-D17.
+
 ---
 
 ## Open questions
