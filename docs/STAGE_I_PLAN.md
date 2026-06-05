@@ -289,6 +289,9 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I9.5a | `6f3fa30` | docs/STAGE_I_NOTES.md | +10 / 0 | I15 Findings — rename/deletion pre-flight must grep whole tree (I9.2 StageGIntegration miss; extends G16+I10) (273 → 283 lines) |
 | I9.5b | `8d84adb` | docs/STAGE_I_PLAN.md | +1 / -1 | I9.3 bullet corrected — 3 files + a/b/c split + I15 reference (306 lines unchanged) |
 | I9.5c | `825f94a` | docs/STAGE_I_PLAN.md | +9 / -1 | Completion Log — I-reframe.3c8d-5 hash backfill + 8 rows I9.1—I9.5b + self-row (306 → 315 lines) |
+| I9.5d | `66afa4a` | docs/STAGE_I_PLAN.md + docs/STAGE_I_NOTES.md | +5 / -5 | PLAN status/mode headers (L3/L5/L7) + I9.5c self-row hash backfill; NOTES OQ-I10 recorder-binding reframe (both files line-count unchanged) |
+| I9.5e | `90a34f1` | CLAUDE.md | +8 / -7 | §11 resume-anchor refresh — I9 COMPLETE + I4.2 next; Last update / Branch / commit-stack (+ I9 bullet) / Stage-I-position / Next-sub-step (611 → 612 lines) |
+| I9.5f | `<pending>` | docs/STAGE_I_PLAN.md | +4 / -1 | Completion Log — I9.5d / I9.5e rows + self-row + Anchors `Findings I10—I14` → `I10—I15` fix; closes I9 family Completion Log (315 → 318 lines) |
 
 ---
 
@@ -302,7 +305,7 @@ Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK
 
 ## Anchors
 
-- `docs/STAGE_I_NOTES.md` — Stage I design log (I-D1—I-D17; the I-reframe AuMT=BPT reckoning at I-D14—I-D17; Findings I10—I14).
+- `docs/STAGE_I_NOTES.md` — Stage I design log (I-D1—I-D17; the I-reframe AuMT=BPT reckoning at I-D14—I-D17; Findings I10—I15).
 - `docs/STAGE_H_NOTES.md` — H-D7 / H-D10 / H-D16 / H-D35 / H-D42 anchors for Stage I.
 - `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 (AureumTime constants + qualification semantics) + OQ-24 (gauge hook-gate) + OQ-25 (AuMT = BPT) anchors.
 - `04_tokenomics.md` §viii / §ix — AuMT-as-BPT + value-weighted voting (§viii, I-D14); withdrawal-reset + qualification clock (§ix); 14-day cliff + 6-month on-ramp + F-9 dampening consumed by the deferred view per I-D15.
