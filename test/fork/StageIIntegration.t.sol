@@ -20,6 +20,7 @@ import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapCh
 import { IBodenseeBootstrapChannel } from "../../src/emission/IBodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.sol";
+import { AddLiquidityParams, AddLiquidityKind } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 
 /**
  * @title StageIIntegrationFixture
@@ -92,13 +93,89 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
 
         // setMinter not wired — I6 recorder-clock tests exercise recordDeposit/recordWithdrawal only (no mint path).
     }
+
+    // -------------------------------------------------------------------------
+    // I6 recorder-clock helpers — real add-liquidity through the hook
+    // -------------------------------------------------------------------------
+
+    /// @dev Recorded LP for the next liquidity op. The hook resolves the LP via
+    ///      IRouterSender(router).getSender(); this fixture IS the router (it
+    ///      calls Vault.addLiquidity directly inside unlock), so getSender()
+    ///      returns _lpSender. Decoupled from the BPT recipient (address(this)).
+    address internal _lpSender;
+
+    /// @notice IRouterSender shim — the hook calls this on every add/remove.
+    function getSender() external view returns (address) {
+        return _lpSender;
+    }
+
+    /// @dev One-sided UNBALANCED add of `fractionBps`/10000 of token[0]'s current
+    ///      pool balance, recording the deposit for `lp`. Mirrors StageG
+    ///      _initializePool (deal -> unlock -> settle) with addLiquidity in place
+    ///      of initialize.
+    function _depositOneSided(address pool, address lp, uint256 fractionBps)
+        internal
+        returns (uint256 bptOut)
+    {
+        _lpSender = lp;
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(pool);
+        uint256[] memory amountsIn = new uint256[](tokens.length);
+        amountsIn[0] = (balancesRaw[0] * fractionBps) / 10_000;
+        deal(address(tokens[0]), address(this), amountsIn[0]);
+        bytes memory result = vault.unlock(abi.encodeCall(this._depositCallback, (pool, amountsIn)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _depositCallback(address pool, uint256[] memory amountsIn)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, bptOut, ) = vault.addLiquidity(
+            AddLiquidityParams({
+                pool: pool,
+                to: address(this),
+                maxAmountsIn: amountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.UNBALANCED,
+                userData: ""
+            })
+        );
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsIn[i] > 0) {
+                tokens[i].transfer(address(vault), amountsIn[i]);
+                vault.settle(tokens[i], amountsIn[i]);
+            }
+        }
+    }
 }
 
 contract StageIWiringTest is StageIIntegrationFixture {
-    function test_recorderGateAndHookRecorderBound() public {
+    function test_recorderGateAndHookRecorderBound() public view {
         assertEq(emissionDistributor.auMTContractByPool(pilotPools[0]), address(hook));
         assertEq(emissionDistributor.auMTContractByPool(pilotPools[1]), address(hook));
         assertEq(emissionDistributor.auMTContractByPool(pilotPools[2]), address(hook));
         assertEq(hook.emissionRecorder(), address(emissionDistributor));
+    }
+}
+
+contract StageIDepositTest is StageIIntegrationFixture {
+    function test_deposit_dispatchSetsClockAndUserLPPerPool() public {
+        address[3] memory lps;
+        lps[0] = makeAddr("lpA");
+        lps[1] = makeAddr("lpB");
+        lps[2] = makeAddr("lpC");
+        uint256 atBlock = block.number;
+        for (uint256 i = 0; i < 3; ++i) {
+            uint256 bptOut = _depositOneSided(pilotPools[i], lps[i], 100); // 1% one-sided add
+            assertGt(bptOut, 0, "no BPT minted");
+            assertEq(emissionDistributor.effectiveQualBlock(pilotPools[i], lps[i]), atBlock, "clock not fresh-started");
+            assertEq(emissionDistributor.userLP(pilotPools[i], lps[i]), bptOut, "userLP not accrued");
+        }
+        // Per-pool isolation — each LP only deposited to its own pool.
+        assertEq(emissionDistributor.effectiveQualBlock(pilotPools[1], lps[0]), 0, "lpA leaked to pool 1");
+        assertEq(emissionDistributor.effectiveQualBlock(pilotPools[0], lps[1]), 0, "lpB leaked to pool 0");
     }
 }
