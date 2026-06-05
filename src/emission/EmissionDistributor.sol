@@ -87,6 +87,18 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Per-user crystallized-pending AuMM reward balance per H-D22 / H-D25 — third per-user tier slot; FixedPoint 18-decimal AuMM-wei accumulated by `recordDeposit` and `recordWithdrawal` at user-settle time per H-D25, zeroed by `claim` per H-D20 / H-D25; leading term in `pendingClaim` additive form.
     mapping(address => mapping(address => uint256)) public override pendingBalance;
 
+    /// @notice Per-user per-pool qualification clock per I-D14 / I-D6 — the
+    ///         block from which `time_in_pool` accrues for the deferred
+    ///         value-weighted voting view (Stage K `VotingWeight.sol` per
+    ///         I-D15). Fresh-started at `block.number` on the first qualified
+    ///         deposit (or the first deposit after a withdrawal reset);
+    ///         weighted-average top-up on later deposits; reset to 0 on any
+    ///         withdrawal (§viii "remove any amount — even 1% — drops to
+    ///         zero"). 0 means no qualified position — the deferred view
+    ///         treats 0 as zero weight. `public` with no interface getter;
+    ///         the view's typed access is deferred per I-D15.
+    mapping(address => mapping(address => uint256)) public effectiveQualBlock;
+
     /* ---------- Governance + recorder slots (H-D14 / H-D16) ---------- */
 
     /// @notice Mutable governance authority per H-D14 — Stage A—K Authorizer Safe at deploy; rebound via `setGovernanceContract` at Stage K (mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel governance-slot pattern).
@@ -436,6 +448,19 @@ contract EmissionDistributor is IEmissionDistributor {
         if (pending > 0) {
             pendingBalance[pool][user] += pending;
         }
+        // I-D14 effectiveQualBlock clock (see effectiveQualBlock NatSpec): fresh-start
+        // at block.number when the clock is reset/unset, else weighted-average top-up.
+        // amount > 0 guard keeps zero-amount deposits clock-neutral and ensures the
+        // weighted-average denominator (oldAmount + amount) is non-zero.
+        if (amount > 0) {
+            uint256 oldEqb = effectiveQualBlock[pool][user];
+            if (oldEqb == 0) {
+                effectiveQualBlock[pool][user] = block.number;
+            } else {
+                uint256 oldAmount = userLP[pool][user];
+                effectiveQualBlock[pool][user] = (oldAmount * oldEqb + amount * block.number) / (oldAmount + amount);
+            }
+        }
         userLP[pool][user] += amount;
         poolTotalLP[pool] += amount;
         userRewardDebt[pool][user] = acc;
@@ -456,6 +481,11 @@ contract EmissionDistributor is IEmissionDistributor {
         uint256 pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
         if (pending > 0) {
             pendingBalance[pool][user] += pending;
+        }
+        // I-D14 effectiveQualBlock clock: any withdrawal resets the qualification
+        // clock to 0 (§viii). amount > 0 guard keeps zero-amount calls clock-neutral.
+        if (amount > 0) {
+            effectiveQualBlock[pool][user] = 0;
         }
         userLP[pool][user] -= amount;
         poolTotalLP[pool] -= amount;
