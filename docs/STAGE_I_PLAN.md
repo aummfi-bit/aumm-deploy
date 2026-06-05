@@ -318,7 +318,17 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I5.3a | `370df5b` | test/unit/RecorderClock.t.sol | +14 / 0 | partial-withdrawal reset — a 1% recordWithdrawal zeros effectiveQualBlock while userLP stays positive (§viii "even 1% drops to zero") |
 | I5.3b | `1c9d638` | test/unit/RecorderClock.t.sol | +21 / 0 | over-qualification vector — re-deposit after partial withdrawal fresh-starts (branch keyed on effectiveQualBlock==0, not oldAmount==0), un-aged; distinguishes from the ~355_704 blend the wrong branch would give (PLAN L128 / I4.3-pre) |
 | I5.4 | `739a329` | test/unit/RecorderClock.t.sol | +25 / 0 | hook-gate — non-bound caller reverts NotAuMTContract(pool, caller) + leaves clock at 0; bound POOL_B recorder fresh-starts (I-D9); adds IEmissionDistributor import |
-| I5.5a | `<pending>` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I4.7b hash backfill (7fb2991) + 8 rows (I4.7c / I4.7d / I5.1a / I5.1b / I5.2 / I5.3a / I5.3b / I5.4) + self-row; closes I5 family Completion Log (336 → 345) |
+| I5.5a | `c147662` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I4.7b hash backfill (7fb2991) + 8 rows (I4.7c / I4.7d / I5.1a / I5.1b / I5.2 / I5.3a / I5.3b / I5.4) + self-row; closes I5 family Completion Log (336 → 345) |
+| I5.5b | `cb8c65e` | docs/STAGE_I_PLAN.md | +4 / -4 | status/mode refresh — I5 COMPLETE, I6 next; I5.5 deferred-view note F-9 era-transition fix (345 → 345) |
+| I5.5c | `a9afa1c` | CLAUDE.md | +6 / -5 | §11 — I5 COMPLETE + I6.1 next; Last-update / Branch / commit-stack / Stage-I-position / Next-sub-step refreshed |
+| I6.1 | `59ba9a3` | test/fork/StageIIntegration.t.sol | +104 / 0 | StageIIntegrationFixture (Option B own emission stack, recorder gate bound to hook + setEmissionRecorder) + StageIWiringTest; 1/1 fork |
+| I6.2 | `b3dd12c` | test/fork/StageIIntegration.t.sol | +78 / -1 | getSender shim + _depositOneSided helper + StageIDepositTest; onAfterAddLiquidity → recordDeposit sets effectiveQualBlock + userLP; 2/2 fork |
+| I6.3 | `22115ed` | test/fork/StageIIntegration.t.sol | +24 / 0 | top-up same-block clock-neutral + userLP accumulation; SUPERSEDED by I6.3-fix1 (its Finding-I18 fork-quirk claim disproved, I18); 3/3 fork |
+| I6.4 | `8a6394d` | test/fork/StageIIntegration.t.sol | +71 / -1 | _withdrawProportional helper + StageIAgingWithdrawalTest; aging delta >= QPB + withdrawal resets effectiveQualBlock to 0; _withdrawCallback burns BPT directly (no settle, Vault.sol L1018); 4/4 fork |
+| I6-DIAG | no-commit | test/fork/StageIClockDiagnostic.t.sol (deleted) | n/a | throwaway log-only bisection — Probe A direct-prank / Probe B vault across vm.roll; both blended exactly (g+1500 / g+1501), lastAccrualBlock g+3000; disproves the I6.3 fork-quirk; deleted after readout (Finding I18) |
+| I6.3-fix1 | `ee71fe7` | test/fork/StageIIntegration.t.sol | +16 / -12 | strengthen top-up to real cross-block blend assertion (vm.roll + deposit-weighted average via vault dispatch); drop disproved Finding-I18 comment; 4/4 fork |
+| I6.5a | `3d7f62d` | docs/STAGE_I_NOTES.md | +14 / 0 | Finding I18 process-lesson — reconstructed fork block.number quirk disproved by direct-prank bisection; recorder clock correct; extends G10 to runtime/tooling claims |
+| I6.5b | `<pending>` | docs/STAGE_I_PLAN.md | +11 / -1 | Completion Log — I5.5a hash backfill (c147662) + 9 rows (I5.5b / I5.5c / I6.1 / I6.2 / I6.3 / I6.4 / I6-DIAG no-commit / I6.3-fix1 / I6.5a) + self-row; closes I6 family Completion Log (345 → 355) |
 
 ---
 
