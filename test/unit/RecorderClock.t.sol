@@ -71,4 +71,18 @@ contract RecorderClockTest is Test {
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), depositBlock);
         assertEq(distributor.userLP(POOL_A, USER_1), 100e18);
     }
+
+    /// @notice A second `recordDeposit` (`effectiveQualBlock != 0`) blends the qualification clock by the deposit-weighted average per I4.3 / I-D14 — a top-up advances the clock proportionally toward the later block, it does not reset. With 100e18 at block G and 300e18 at block G+4000, the 3:1 weighting blends to (100·G + 300·(G+4000)) / 400 = G+3000 exactly (no truncation).
+    function test_RecordDeposit_TopUpBlendsEffectiveQualBlockByWeightedAverage() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), GENESIS_BLOCK_);
+
+        vm.roll(GENESIS_BLOCK_ + 4_000);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 300e18);
+
+        assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), GENESIS_BLOCK_ + 3_000);
+        assertEq(distributor.userLP(POOL_A, USER_1), 400e18);
+    }
 }
