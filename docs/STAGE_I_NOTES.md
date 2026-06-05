@@ -280,4 +280,4 @@ Anchors: I9 pre-flight; I9.2 (`77a9164`) rename + the StageGIntegration build-re
 
 Documented ambiguity here disappears only after translation into FINDINGS.md rows whenever resolution carries protocol-wide implication; until then NOTES remain provisional scratch space.
 
-- OQ-I10 (deferred to Stage M/N) — Rollout of remaining 25 AuMT instances (slots 01/04/05/06/08—28). Out of Stage I scope per STAGES_OVERVIEW.md dependency graph.
+- OQ-I10 (deferred to Stage M/N) — Remaining 25 gauged pools: recorder binding (`setAuMTContractForPool` + `auMTContractByPool[pool] = hook`) deferred per STAGES_OVERVIEW.md dependency graph (Stage M/N). Out of Stage I scope.
