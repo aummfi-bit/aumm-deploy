@@ -108,6 +108,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      time; same rationale as governanceModule.
     address public incendiaryModule;
 
+    /// @notice The Aureum emission recorder — the EmissionDistributor the
+    ///         hook calls recordDeposit / recordWithdrawal on from its
+    ///         liquidity callbacks. address(0) until set via
+    ///         setEmissionRecorder; set exactly once.
+    /// @dev Stage H's EmissionDistributor is deployed after this hook
+    ///      (Stage D < Stage H), so this cannot be a constructor immutable
+    ///      (H13-class). One-shot setter mirrors setGovernanceModule per
+    ///      I-D16.
+    address public emissionRecorder;
+
     /// @dev One-shot setter authority for governanceModule. Set in the
     ///      constructor; zeroed atomically in setGovernanceModule. Part
     ///      of the two-flag lock per C-D11.
@@ -116,6 +126,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @dev One-shot setter authority for incendiaryModule. Same
     ///      two-flag lock shape per C-D11.
     address private _incendiaryAdmin;
+
+    /// @dev One-shot setter authority for emissionRecorder. Set in the
+    ///      constructor; zeroed atomically in setEmissionRecorder. Same
+    ///      two-flag lock shape per I-D16.
+    address private _emissionRecorderAdmin;
 
     // -------------------------------------------------------------------------
     // Impl-side errors
@@ -137,6 +152,14 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         been set.
     error IncendiaryModuleAlreadySet();
 
+    /// @notice Reverts setEmissionRecorder when msg.sender is not the
+    ///         constructor-set module admin.
+    error NotEmissionRecorderAdmin();
+
+    /// @notice Reverts setEmissionRecorder when the recorder has already
+    ///         been set.
+    error EmissionRecorderAlreadySet();
+
     /// @notice Reverts the internal primitive when a non—ZCHF—family fee
     ///         token is supplied with no swap pool.
     error UnsupportedFeeToken(IERC20 feeToken);
@@ -154,6 +177,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         via the one-shot setter).
     /// @param module The Incendiary module address.
     event IncendiaryModuleSet(address indexed module);
+
+    /// @notice Emitted when the emission recorder is set (exactly once,
+    ///         via the one-shot setter).
+    /// @param recorder The emission recorder (EmissionDistributor) address.
+    event EmissionRecorderSet(address indexed recorder);
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -199,6 +227,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
 
         _governanceAdmin = moduleAdmin_;
         _incendiaryAdmin = moduleAdmin_;
+        _emissionRecorderAdmin = moduleAdmin_;
     }
 
     // -------------------------------------------------------------------------
@@ -235,6 +264,22 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         incendiaryModule = module;
         _incendiaryAdmin = address(0);
         emit IncendiaryModuleSet(module);
+    }
+
+    /// @notice Set the Aureum emission recorder exactly once. Callable
+    ///         only by the constructor-set moduleAdmin.
+    /// @dev Two-flag lock per I-D16: on success, emissionRecorder != 0
+    ///      AND _emissionRecorderAdmin == 0. Either flag alone rejects
+    ///      subsequent calls.
+    /// @param recorder The emission recorder address. Must be non-zero.
+    function setEmissionRecorder(address recorder) external {
+        if (msg.sender != _emissionRecorderAdmin) revert NotEmissionRecorderAdmin();
+        if (emissionRecorder != address(0))       revert EmissionRecorderAlreadySet();
+        if (recorder == address(0))               revert ZeroAddress();
+
+        emissionRecorder = recorder;
+        _emissionRecorderAdmin = address(0);
+        emit EmissionRecorderSet(recorder);
     }
 
     // -------------------------------------------------------------------------
