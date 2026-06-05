@@ -34,13 +34,15 @@ import {IAureumProtocolFeeControllerHookExtension} from "src/fee_router/IAureumP
  *      (routeYieldFee, routeGovernanceDeposit, routeIncendiaryDeposit)
  *      per D16 / D-D2 option A; detail in D3.4.
  *
- *      Governance and Incendiary module addresses are unknown at
- *      construction time (Stage K and Stage L don't exist yet); set
- *      post-deploy via one-shot setters mirroring Stage C's
- *      AuMM.setMinter per C-D11 — two independent admin slots, each
+ *      Governance, Incendiary, and emission-recorder addresses are
+ *      unknown at construction time (Stage K / Stage L modules and the
+ *      Stage H EmissionDistributor are all deployed after this Stage D
+ *      hook); set post-deploy via one-shot setters mirroring Stage C's
+ *      AuMM.setMinter per C-D11 — three independent admin slots, each
  *      zeroed atomically with its module-set. Post-state invariant:
  *      governanceModule != 0 AND _governanceAdmin == 0 AND
- *      incendiaryModule != 0 AND _incendiaryAdmin == 0 — no owner,
+ *      incendiaryModule != 0 AND _incendiaryAdmin == 0 AND
+ *      emissionRecorder != 0 AND _emissionRecorderAdmin == 0 — no owner,
  *      no upgrade path.
  */
 contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
