@@ -309,7 +309,16 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I4.6b | (no commit) | — | — | Stage D full regression — unit split-form + fork --threads 1 per D35/D36; surfaced the I4.2 storage-slot-shift setUp failure (→ I4.6c); the renamed flags test passes |
 | I4.6c | `56bc143` | test/unit/AureumFeeRoutingHook.t.sol | +11 / -6 | sync storage-slot constants to the post-I4.2 six-slot layout (SLOT_GOV_ADMIN 2→3, SLOT_INC_ADMIN 3→4) + messages + layout NatSpec; 620/620 unit + 71/71 fork green (per I17) |
 | I4.7a | `1bd2248` | docs/STAGE_I_NOTES.md | +20 / 0 | Findings I16 (Permit2 transitive import → IRouterSender shim) + I17 (storage slot shift breaks vm.load/store constants) (283 → 303) |
-| I4.7b | `<pending>` | docs/STAGE_I_PLAN.md | +18 / -1 | Completion Log — I9.5f hash backfill (23cb192) + 16 rows (I4.1 / docs §11 / I4.2-pre through I4.7a, incl. I4.6b no-commit) + self-row; closes I4 family Completion Log (318 → 335) |
+| I4.7b | `7fb2991` | docs/STAGE_I_PLAN.md | +18 / -1 | Completion Log — I9.5f hash backfill (23cb192) + 16 rows (I4.1 / docs §11 / I4.2-pre through I4.7a, incl. I4.6b no-commit) + self-row; closes I4 family Completion Log (318 → 335) |
+| I4.7c | `39fa3c9` | docs/STAGE_I_PLAN.md | +7 / -6 | status/mode/Anchors refresh — I4 COMPLETE, I5 next, Findings I10—I17 + I4.6 bullet a/b/c decomposition + Deferred-from-I4 coverage note (335 → 336) |
+| I4.7d | `c06c67d` | CLAUDE.md | +6 / -5 | §11 resume-anchor refresh — I4 COMPLETE + I5.1 next; Last-update / Branch / commit-stack (+I4 bullet) / Stage-I-position / Next-sub-step |
+| I5.1a | `766566a` | test/unit/RecorderClock.t.sol | +63 / 0 | RecorderClock scaffold — imports + 6-mock harness reuse from EmissionDistributor.t.sol + setUp mirroring EmissionDistributorTest (POOL_A bound to AUMT_REC); per the I5 layout decision (new file, import mocks) |
+| I5.1b | `198a935` | test/unit/RecorderClock.t.sol | +11 / 0 | first-deposit fresh-start — recordDeposit sets effectiveQualBlock to block.number (proven at a non-genesis block) + accrues userLP |
+| I5.2 | `9db3caa` | test/unit/RecorderClock.t.sol | +14 / 0 | weighted-average top-up — 100e18 @ G + 300e18 @ G+4000 blends to G+3000 exactly (no truncation; proportional advance, not reset) |
+| I5.3a | `370df5b` | test/unit/RecorderClock.t.sol | +14 / 0 | partial-withdrawal reset — a 1% recordWithdrawal zeros effectiveQualBlock while userLP stays positive (§viii "even 1% drops to zero") |
+| I5.3b | `1c9d638` | test/unit/RecorderClock.t.sol | +21 / 0 | over-qualification vector — re-deposit after partial withdrawal fresh-starts (branch keyed on effectiveQualBlock==0, not oldAmount==0), un-aged; distinguishes from the ~355_704 blend the wrong branch would give (PLAN L128 / I4.3-pre) |
+| I5.4 | `739a329` | test/unit/RecorderClock.t.sol | +25 / 0 | hook-gate — non-bound caller reverts NotAuMTContract(pool, caller) + leaves clock at 0; bound POOL_B recorder fresh-starts (I-D9); adds IEmissionDistributor import |
+| I5.5a | `<pending>` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I4.7b hash backfill (7fb2991) + 8 rows (I4.7c / I4.7d / I5.1a / I5.1b / I5.2 / I5.3a / I5.3b / I5.4) + self-row; closes I5 family Completion Log (336 → 345) |
 
 ---
 
