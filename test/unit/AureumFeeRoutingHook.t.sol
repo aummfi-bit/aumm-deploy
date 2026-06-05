@@ -311,7 +311,7 @@ contract AureumFeeRoutingHookTest is Test {
     // getHookFlags (1)
     // -------------------------------------------------------------------------
 
-    function test_getHookFlags_shouldCallAfterSwapOnly() public view {
+    function test_getHookFlags_afterSwapAndLiquidityCallbacks() public view {
         HookFlags memory f = hook.getHookFlags();
         assertFalse(f.enableHookAdjustedAmounts,       "enableHookAdjustedAmounts");
         assertFalse(f.shouldCallBeforeInitialize,      "shouldCallBeforeInitialize");
@@ -320,9 +320,9 @@ contract AureumFeeRoutingHookTest is Test {
         assertFalse(f.shouldCallBeforeSwap,            "shouldCallBeforeSwap");
         assertTrue (f.shouldCallAfterSwap,             "shouldCallAfterSwap");
         assertFalse(f.shouldCallBeforeAddLiquidity,    "shouldCallBeforeAddLiquidity");
-        assertFalse(f.shouldCallAfterAddLiquidity,     "shouldCallAfterAddLiquidity");
+        assertTrue (f.shouldCallAfterAddLiquidity,     "shouldCallAfterAddLiquidity");
         assertFalse(f.shouldCallBeforeRemoveLiquidity, "shouldCallBeforeRemoveLiquidity");
-        assertFalse(f.shouldCallAfterRemoveLiquidity,  "shouldCallAfterRemoveLiquidity");
+        assertTrue (f.shouldCallAfterRemoveLiquidity,  "shouldCallAfterRemoveLiquidity");
     }
 
     // -------------------------------------------------------------------------
