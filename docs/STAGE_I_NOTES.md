@@ -322,6 +322,18 @@ Default rule: before documenting a "the compiler / fork / cheatcode did X surpri
 
 Anchors: I6.3 original (`22115ed`) false-quirk comment + commit message; I6-DIAG throwaway probe (deleted — Probe A direct-prank `g + 1500`, Probe B vault `g + 1501`, `lastAccrualBlock = g + 3000` both); I6.3-fix1 (`ee71fe7`) corrective real-blend assertion; `EmissionDistributor.sol` L343/L348 (`_accrueGlobal` `block.number`) + L461 (clock-formula `block.number`); G10 (compile-probe-before-claim, `STAGE_G_NOTES.md`); F10 (genuine `block.number` / `vm.roll` loop-hoisting quirk, `STAGE_F_NOTES.md`).
 
+### I19 — A self-zeroing two-flag one-shot setter shadows its own "already-set" state-guard; the realistic second-call revert is the access-gate error, not the state-guard — name the access error in docs and tests
+
+`AureumFeeRoutingHook.setEmissionRecorder` (`src/fee_router/AureumFeeRoutingHook.sol` L279—286, mirroring `setGovernanceModule` per I-D16) is a two-flag one-shot lock: it checks the access gate `msg.sender != _emissionRecorderAdmin` FIRST (L280 → `NotEmissionRecorderAdmin`), then the state-guard `emissionRecorder != address(0)` (L281 → `EmissionRecorderAlreadySet`), and on the success path both sets the slot (L284) and self-zeroes its own admin `_emissionRecorderAdmin = address(0)` (L285) as the second flag.
+
+The consequence is that the state-guard at L281 is unreachable from any real caller post-bind. Once the first `setEmissionRecorder` succeeds the admin is zero, so every subsequent call — from the deployer, the multisig, or a test contract — fails the L280 access gate first with `NotEmissionRecorderAdmin` (`msg.sender != address(0)`). `EmissionRecorderAlreadySet` is reachable only by a contrived `vm.prank(address(0))`, which no production or honest-test path takes.
+
+The miss: I-D18's first draft (PLAN L76 + L155, NOTES L193) specified the I7.2 second-call assertion as `EmissionRecorderAlreadySet` — the semantically-tempting "already set" name lifted from the setter's error list — without tracing the gate ORDER against the self-zeroing success path. The §12 ambiguity-gate fired at I7.2 pre-flight (reading the actual setter body L279—286 before any test materialized); corrected fix-forward at I7.2-pre (`edd5f8d`) across all three doc spots. The landed `test/fork/DeployStageI.t.sol` L144 asserts `expectRevert(NotEmissionRecorderAdmin.selector)`, green (1/1 fork).
+
+Default rule: when a one-shot setter's success path MUTATES the variable its own access gate reads — self-zeroing an admin, renouncing ownership, revoking a role — the second-call revert from any real caller is the ACCESS-gate error, and the downstream state-guard is shadowed. Any doc or test asserting "the second call reverts X" must name the access-gate error and verify (a) the gate ORDER and (b) the success-path mutation in the setter body, not pick the "already set" guard from the error list by name. Applies to every self-zeroing one-shot on this project (`setGovernanceModule`, `setEmissionRecorder`, and any future renounce-style setter). Sibling of the §12 ambiguity-gate for typed-state semantics — a revert-error-identity ambiguity is a hard blocker on the test §8e.1.
+
+Anchors: `AureumFeeRoutingHook.sol` L279—286 (`setEmissionRecorder` two-flag lock — access gate L280 before state-guard L281; slot set L284 + self-zero L285; ctor seed `= moduleAdmin_` L234); I-D16 (two-flag-lock LOCK) + I-D18 (multisig-only wiring); I7.2-pre (`edd5f8d`) three-spot correction; `test/fork/DeployStageI.t.sol` L144 (`NotEmissionRecorderAdmin` second-call assertion); §12 ambiguity-gate (typed-state semantics).
+
 ---
 
 ## Open questions
