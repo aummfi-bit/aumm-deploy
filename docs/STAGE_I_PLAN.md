@@ -329,7 +329,16 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I6-DIAG | no-commit | test/fork/StageIClockDiagnostic.t.sol (deleted) | n/a | throwaway log-only bisection — Probe A direct-prank / Probe B vault across vm.roll; both blended exactly (g+1500 / g+1501), lastAccrualBlock g+3000; disproves the I6.3 fork-quirk; deleted after readout (Finding I18) |
 | I6.3-fix1 | `ee71fe7` | test/fork/StageIIntegration.t.sol | +16 / -12 | strengthen top-up to real cross-block blend assertion (vm.roll + deposit-weighted average via vault dispatch); drop disproved Finding-I18 comment; 4/4 fork |
 | I6.5a | `3d7f62d` | docs/STAGE_I_NOTES.md | +14 / 0 | Finding I18 process-lesson — reconstructed fork block.number quirk disproved by direct-prank bisection; recorder clock correct; extends G10 to runtime/tooling claims |
-| I6.5b | `<pending>` | docs/STAGE_I_PLAN.md | +11 / -1 | Completion Log — I5.5a hash backfill (c147662) + 9 rows (I5.5b / I5.5c / I6.1 / I6.2 / I6.3 / I6.4 / I6-DIAG no-commit / I6.3-fix1 / I6.5a) + self-row; closes I6 family Completion Log (345 → 355) |
+| I6.5b | `164b93b` | docs/STAGE_I_PLAN.md | +11 / -1 | Completion Log — I5.5a hash backfill (c147662) + 9 rows (I5.5b / I5.5c / I6.1 / I6.2 / I6.3 / I6.4 / I6-DIAG no-commit / I6.3-fix1 / I6.5a) + self-row; closes I6 family Completion Log (345 → 355) |
+| I6.5c | `9a0db2a` | docs/STAGE_I_PLAN.md | +3 / -3 | status/mode header refresh — I6 COMPLETE → I7 next; Findings I10—I18 |
+| I6.5d | `3f2429f` | CLAUDE.md | +7 / -6 | §11 resume-anchor refresh — I6 COMPLETE, Findings I10—I18, I6 commit-stack bullet, Next sub-step I7.1 |
+| I7.0a | `0347c1c` | docs/STAGE_I_NOTES.md | +14 / 0 | I-D18 LOCK — DeployStageI wiring authority GOVERNANCE_MULTISIG-only, no deployer→multisig handoff (Stage H Step 7 hard precondition) |
+| I7.0b | `73342af` | docs/STAGE_I_PLAN.md | +3 / -2 | I-D18 mirror — Decisions table row + I7.1/I7.2 roadmap rewrite (multisig-only wiring, StageGIntegrationFixture inheritance) |
+| I7.1 | `fe6f658` | script/DeployStageI.s.sol | +114 / 0 | recorder-path wiring — setEmissionRecorder ×1 (I-D16) + setAuMTContractForPool ×3 (I-D9), GOVERNANCE_MULTISIG-only per I-D18; run()/deploy()/_wire() mirror of DeployStageH; GovernanceNotMultisig fail-fast |
+| I7.2-pre | `edd5f8d` | docs/STAGE_I_PLAN.md + STAGE_I_NOTES.md | +3 / -3 | §12 correction — second-call revert EmissionRecorderAlreadySet → NotEmissionRecorderAdmin (admin self-zeroes on first bind, admin gate checked first); 3 doc spots (PLAN L76/L155 + NOTES L193) |
+| I7.2 | `08f8ee5` | test/fork/DeployStageI.t.sol | +147 / 0 | DeployStageI integration — inherits StageGIntegrationFixture (NOT StageIIntegrationFixture per I-D18) + DeployStageH.deploy() post-handoff distributor; asserts emissionRecorder bind + auMTContractByPool ×3 + governance + NotEmissionRecorderAdmin second-call; 1/1 fork |
+| I7.3a | `6dab465` | docs/STAGE_I_NOTES.md | +12 / 0 | Finding I19 — self-zeroing two-flag one-shot shadows its own state-guard; realistic second-call revert is the access-gate error (NotEmissionRecorderAdmin), not EmissionRecorderAlreadySet |
+| I7.3b | `<pending>` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I6.5b hash backfill (164b93b) + 8 rows (I6.5c / I6.5d / I7.0a / I7.0b / I7.1 / I7.2-pre / I7.2 / I7.3a) + self-row + Anchors range bump (I-D1—I-D18, Findings I10—I19); (356 → 365) |
 
 ---
 
@@ -343,7 +352,7 @@ Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK
 
 ## Anchors
 
-- `docs/STAGE_I_NOTES.md` — Stage I design log (I-D1—I-D17; the I-reframe AuMT=BPT reckoning at I-D14—I-D17; Findings I10—I17).
+- `docs/STAGE_I_NOTES.md` — Stage I design log (I-D1—I-D18; the I-reframe AuMT=BPT reckoning at I-D14—I-D17; Findings I10—I19).
 - `docs/STAGE_H_NOTES.md` — H-D7 / H-D10 / H-D16 / H-D35 / H-D42 anchors for Stage I.
 - `docs/FINDINGS.md` — OQ-3 / OQ-4 / OQ-5 / OQ-7 (AureumTime constants + qualification semantics) + OQ-24 (gauge hook-gate) + OQ-25 (AuMT = BPT) anchors.
 - `04_tokenomics.md` §viii / §ix — AuMT-as-BPT + value-weighted voting (§viii, I-D14); withdrawal-reset + qualification clock (§ix); 14-day cliff + 6-month on-ramp + F-9 dampening consumed by the deferred view per I-D15.
