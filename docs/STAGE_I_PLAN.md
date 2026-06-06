@@ -338,7 +338,12 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 | I7.2-pre | `edd5f8d` | docs/STAGE_I_PLAN.md + STAGE_I_NOTES.md | +3 / -3 | §12 correction — second-call revert EmissionRecorderAlreadySet → NotEmissionRecorderAdmin (admin self-zeroes on first bind, admin gate checked first); 3 doc spots (PLAN L76/L155 + NOTES L193) |
 | I7.2 | `08f8ee5` | test/fork/DeployStageI.t.sol | +147 / 0 | DeployStageI integration — inherits StageGIntegrationFixture (NOT StageIIntegrationFixture per I-D18) + DeployStageH.deploy() post-handoff distributor; asserts emissionRecorder bind + auMTContractByPool ×3 + governance + NotEmissionRecorderAdmin second-call; 1/1 fork |
 | I7.3a | `6dab465` | docs/STAGE_I_NOTES.md | +12 / 0 | Finding I19 — self-zeroing two-flag one-shot shadows its own state-guard; realistic second-call revert is the access-gate error (NotEmissionRecorderAdmin), not EmissionRecorderAlreadySet |
-| I7.3b | `<pending>` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I6.5b hash backfill (164b93b) + 8 rows (I6.5c / I6.5d / I7.0a / I7.0b / I7.1 / I7.2-pre / I7.2 / I7.3a) + self-row + Anchors range bump (I-D1—I-D18, Findings I10—I19); (356 → 365) |
+| I7.3b | `119e382` | docs/STAGE_I_PLAN.md | +10 / -1 | Completion Log — I6.5b hash backfill (164b93b) + 8 rows (I6.5c / I6.5d / I7.0a / I7.0b / I7.1 / I7.2-pre / I7.2 / I7.3a) + self-row + Anchors range bump (I-D1—I-D18, Findings I10—I19); (356 → 365) |
+| I7.3c | `5106aa0` | docs/STAGE_I_PLAN.md | +3 / -3 | status/mode header refresh — I7.1+I7.2 COMPLETE, I7.3 sweep in progress, I-D1—I-D18, Findings I10—I19, I7.4 next; (365 → 365) |
+| I7.3d | `61b3e6f` | CLAUDE.md | +11 / -10 | §11 resume-anchor refresh — I7.1+I7.2 COMPLETE, I7.3 sweep closed, I7.4 next; I7 phase bullet added; Next-sub-step paragraph replaced with I7.4 description; (615 → 616) |
+| I7.4a | no-commit | — | n/a | split-form regression: 625/625 unit (--no-match-path "test/fork/**") + 76/76 fork (--match-path "test/fork/**" --fork-url $MAINNET_RPC_URL --threads 1) green; D35/D36 split-form |
+| I7.4b-1 | `f2b6243` | docs/STAGE_I_PLAN.md | +7 / -7 | pre-flight L87—90 all checked ([x]×4) + Status/Last-update/Mode headers: Stage I COMPLETE (625/625 unit + 76/76 fork green); (365 → 365) |
+| I7.4b-2 | `<pending>` | docs/STAGE_I_PLAN.md | +6 / -1 | Completion Log — I7.3b hash backfill (119e382) + 5 rows (I7.3c / I7.3d / I7.4a / I7.4b-1) + self-row; (365 → 370) |
 
 ---
 
