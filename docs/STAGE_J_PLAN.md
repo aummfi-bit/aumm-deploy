@@ -58,10 +58,10 @@ Mirror of STAGE_J_NOTES.md Decisions table (LOCKED at J0.2). Future J-D8 onward 
 - [x] STAGE_J_NOTES.md design freeze (J-D1—J-D7 LOCKED) landed at J0.2 (`8270cc7`).
 - [x] No upstream tracking for `stage-j` yet — snapshot push deferred to J6 close-of-stage.
 - [x] Tagged Stage F `IMiliariumRegistry` identified as the dense-enumeration constraint (`CCBMultiplier.sol:249-251`); J-D1 dual structure reconciles it.
-- [ ] (resolves at J3) Stage J unit cohort green — `test/unit/MiliariumRegistry.t.sol`.
-- [ ] (resolves at J4) `StageJIntegration` fork green — real registry → `CCBMultiplier` dense-enumeration regression.
-- [ ] (resolves at J5) `DeployStageJ` fork green.
-- [ ] (resolves at J6) Full split-form regression green + `stage-j` fast-forward merge → `main` + `stage-j-complete` tag + push.
+- [x] (resolves at J3) Stage J unit cohort green — `test/unit/MiliariumRegistry.t.sol` — 24/24.
+- [x] (resolves at J4) `StageJIntegration` fork green — real registry → `CCBMultiplier` dense-enumeration regression — 5/5.
+- [x] (resolves at J5) `DeployStageJ` fork green — 1/1.
+- [x] (resolves at J6) Full split-form regression green + `stage-j` fast-forward merge → `main` + `stage-j-complete` tag + push — 731/731 (649 unit + 82 fork); ff-merge + tag + push pending at J6.3.
 
 ---
 
