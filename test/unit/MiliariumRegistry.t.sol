@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {MiliariumRegistry} from "src/registry/MiliariumRegistry.sol";
+import {IMiliariumSlotRegistry} from "src/registry/IMiliariumSlotRegistry.sol";
 
 contract MiliariumRegistryTest is Test {
     MiliariumRegistry internal registry;
@@ -12,6 +13,7 @@ contract MiliariumRegistryTest is Test {
     address internal constant POOL_SLOT3 = address(0x3333333333333333333333333333333333333333);
     address internal constant POOL_SLOT7 = address(0x7777777777777777777777777777777777777777);
     address internal constant UNREGISTERED = address(0x9999999999999999999999999999999999999999);
+    address internal constant NEW_POOL = address(0x4444444444444444444444444444444444444444);
 
     function setUp() public {
         (uint256[] memory slotNumbers, address[] memory pools) = _seedArrays();
@@ -63,6 +65,23 @@ contract MiliariumRegistryTest is Test {
         assertEq(registry.miliariumPoolAt(0), POOL_SLOT2);
         assertEq(registry.miliariumPoolAt(1), POOL_SLOT3);
         assertEq(registry.miliariumPoolAt(2), POOL_SLOT7);
+    }
+
+    function test_replaceSlot_populate_emitsSlotPopulated() public {
+        vm.expectEmit(true, true, false, true, address(registry));
+        emit IMiliariumSlotRegistry.SlotPopulated(5, NEW_POOL, block.number);
+        vm.prank(GOVERNANCE);
+        registry.replaceSlot(5, NEW_POOL);
+    }
+
+    function test_replaceSlot_populate_registersAndGrowsDenseEnumeration() public {
+        vm.prank(GOVERNANCE);
+        registry.replaceSlot(5, NEW_POOL);
+        assertEq(registry.poolAtSlot(5), NEW_POOL);
+        assertEq(registry.slotOf(NEW_POOL), 5);
+        assertTrue(registry.isMiliarium(NEW_POOL));
+        assertEq(registry.miliariumPoolsCount(), 4);
+        assertEq(registry.miliariumPoolAt(3), NEW_POOL);
     }
 
     function _seedArrays() internal pure returns (uint256[] memory slotNumbers, address[] memory pools) {
