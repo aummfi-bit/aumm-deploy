@@ -1,0 +1,103 @@
+# Stage J — Notes & Design Freeze
+
+> **Status:** J0.2 NOTES design freeze landed on `stage-j` — J-D1—J-D7 LOCKED from the Stage J pre-flight Opus beat (STAGES_OVERVIEW.md Stage J/K rows + `src/ccb/IMiliariumRegistry.sol` consumer survey + the `GaugeRegistry` governance-gate precedent). No code surface landed yet. Companion to STAGE_J_PLAN.md (lands at J0.3).
+>
+> **Last update:** 2026-06-06 — J0.2 NOTES design freeze (this commit): J-D1 dual-structure enumeration reconciliation, J-D2 new `IMiliariumSlotRegistry` interface, J-D3 1-based slot index, J-D4 constructor-injected genesis seeding, J-D5 `GaugeRegistry`-mirrored governance gate, J-D6 `SlotPopulated`-at-genesis, J-D7 ship deploy script at Stage J.
+>
+> **Mode:** Opus high entry per §13 stage-level defaults — slot↔pool registry design + the dense-vs-sparse enumeration reconciliation against tagged Stage F `CCBMultiplier`. Drops to mostly Sonnet after J2 design closes (unit/fork test writing + plan-row updates). J0.3 PLAN sub-step skeleton next.
+>
+> **Audience:** Sagix plus any future Claude session that needs the running log of decisions resolved during Stage J implementation and the incidents caught at audit.
+
+---
+
+## How this file is organized
+
+- Design decisions during implementation. J-D1—J-D7 mirror STAGE_J_PLAN.md's J-D Decisions table (lands at J0.3) — all seven LOCKED at J0.2 from the pre-flight Opus beat reading STAGES_OVERVIEW.md Stage J/K rows + `src/ccb/IMiliariumRegistry.sol` + the `CCBMultiplier` / `EmissionDistributor` / `TVLOracle` consumer survey + the `GaugeRegistry` governance-gate precedent. Any new decision resolved during implementation gets the next free J-D* number (J-D8 onward) and is recorded as a new entry — not retro-edited. Matches the C-D* / D-D* / E-D* / F-D* / G-D* / H-D* / I-D* convention.
+- Findings (J10 onward). Implementation incidents, drift caught at audit, scope-expansion catches, contract-interface gotchas — anything worth a numbered log entry. Numbered from J10 to avoid collision with J-D* planning codes (matches the C10 / D10 / E10 / F10 / G10 / H10 / I10 pattern).
+- Cross-reference convention (per CLAUDE.md §5): J-Dn = planning or implementation decision n; Jn (n ≥ 10) = implementation finding n; OQ-N = open question N from FINDINGS.md; F-n = formula n from `11_formulas.md`; §xxix = section in aumm-site numbered spec; I-Dn / H-Dn / G-Dn / … = prior-stage decisions; In / Hn / Gn / … = prior-stage findings (carry forward across stages).
+
+---
+
+## Design decisions
+
+The J-D rows below carry the design freeze locked at J0.2 from a pre-flight Opus beat. The headline constraint: `IMiliariumRegistry` (`src/ccb/IMiliariumRegistry.sol`) is a frozen Stage F surface — `CCBMultiplier.sol:249-251` iterates `0..miliariumPoolsCount()` summing `tvlEMA(miliariumPoolAt(i))`, so the Stage J concrete must feed it a DENSE enumeration of real pools (never `address(0)`), while the spec's 28-slot model is inherently SPARSE (25 `address(0)` placeholders at genesis). J-D1 reconciles the two. Future entries J-D8 onward attach to specific sub-step locks during J1—J6.
+
+| # | Status | Decision | Anchor | Locked at |
+| --- | --- | --- | --- | --- |
+| J-D1 | LOCKED | Enumeration reconciliation = dual structure: 28-entry slot store (`address[28] _slots`, governance layer) + dense packed `address[] _enumerated` (CCB view). `miliariumPoolsCount` = `_enumerated.length`; `miliariumPoolAt(i)` = `_enumerated[i]` — real pools only, never `address(0)`. `replaceSlot` keeps both in sync (swap-remove old + append new). Tagged Stage F `CCBMultiplier` untouched. | `CCBMultiplier.sol:249-251` dense iteration; `src/ccb/IMiliariumRegistry.sol` frozen; OQ-23 (iii.b) aggregate-EMA `tvlEMA(address(0))` hazard | J0.2 |
+| J-D2 | LOCKED | New `src/registry/IMiliariumSlotRegistry.sol` for the slot/governance surface (`replaceSlot`, `poolAtSlot`, `slotOf`, `setGovernanceContract`, `governanceContract`, slot events/errors); concrete `MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistry`. CCB read view `src/ccb/IMiliariumRegistry.sol` untouched. | G-D16a in-place extension rejected here — `IMiliariumRegistry` is the CCB read view; STAGES_OVERVIEW `src/registry/` layout | J0.2 |
+| J-D3 | LOCKED | Slot index 1-based external API `[1..28]` (matches `04_tokenomics.md` §vii + STAGES_OVERVIEW "slots 02/03/07"); 0-based internal `_slots[slotN - 1]`; `slotOf` returns `0` for non-members (`0` = sentinel, never a valid slot). Out-of-range slot reverts `InvalidSlot(slot)`. | STAGES_OVERVIEW Stage J "slots 02/03/07"; §vii 28-pool constellation; sentinel-0 reverse-lookup cleanliness | J0.2 |
+| J-D4 | LOCKED | Genesis seeding constructor-injected: `constructor(address governance_, uint256[] memory slotNumbers, address[] memory pools)` — validates `governance_ != 0`, equal lengths, each slot ∈ [1,28], each pool ≠ 0, no duplicate slot, no duplicate pool; seeds all four mirror structures + emits `SlotPopulated` per seed. No external calls in ctor (H13-safe). Stage J passes `[2,3,7]` + the 3 Stage E pilots. | G-D20 constructor-injected genesis arrays; H13 no-constructor-external-call; G14 ctor-param `memory`; Stage E pilots at slots 02/03/07 | J0.2 |
+| J-D5 | LOCKED | Governance gate mirrors `GaugeRegistry` (G-D16d / G3.3): `address public governanceContract` (not immutable) set to the placeholder authority (Stage A–K Authorizer Safe) at construction; `replaceSlot` is `onlyGovernance` (`revert NotGovernance(msg.sender)`); `setGovernanceContract(newGovernance) onlyGovernance` rebinds + emits `GovernanceTransferred(old, new)`. STAGES_OVERVIEW "one-shot setter" is loose wording for this governance-gated handoff — aligned to the precedent, not revert-on-second-call. | `GaugeRegistry.sol:46-47/59-60/87/98-101`; CLAUDE.md §1 Authorizer Safe; STAGES_OVERVIEW Stage K L254 | J0.2 |
+| J-D6 | LOCKED | `SlotPopulated(uint256 indexed slot, address indexed pool, uint256 blockNumber)` at genesis seeding + any zero→nonzero population; `SlotReplaced(uint256 indexed slot, address indexed oldPool, address indexed newPool, uint256 blockNumber)` on nonzero→nonzero. `blockNumber` = `block.number` per CLAUDE.md §5, passed as an explicit arg. | STAGES_OVERVIEW Stage J events; CLAUDE.md §5 block-number-as-time | J0.2 |
+| J-D7 | LOCKED | Ship `script/DeployStageJ.s.sol` + `test/fork/DeployStageJ.t.sol` at Stage J (mirrors DeployStageH/I) — registry independently deployable + fork-verified; Stage K wires `setGovernanceContract` later. H-D42 DeployAuMM deferral does NOT transfer (registry ctor takes only addresses, no Stage-K-only dependency). | DeployStageH/I precedent; STAGES_OVERVIEW deploy order L388; H-D42 contrast | J0.2 |
+
+### J-D1 — Enumeration reconciliation: dual structure (28-slot store + dense CCB array) — status LOCKED
+
+The frozen Stage F read view `IMiliariumRegistry` (`src/ccb/IMiliariumRegistry.sol`) exposes a DENSE enumeration: `CCBMultiplier.sol:249-251` reads `poolCount = miliariumRegistry.miliariumPoolsCount()` then loops `currentAgg += emaSampler.tvlEMA(miliariumRegistry.miliariumPoolAt(i))` over `i ∈ [0, poolCount)`. If `miliariumPoolAt(i)` ever returned `address(0)`, the OQ-23 (iii.b) protocol-aggregate-EMA would read `tvlEMA(address(0))` — a silent corruption of the CCB multiplier denominator. The spec's slot model is the opposite shape: 28 fixed slots, only 3 populated at genesis (slots 02/03/07), 25 holding `address(0)` placeholders until Stages M/N. The reconciliation is a dual internal structure: `address[28] private _slots` is the governance/slot layer (1-based external, 0-based internal per J-D3); `address[] private _enumerated` is the dense CCB view holding exactly the non-zero slot pools in insertion order. `miliariumPoolsCount()` returns `_enumerated.length`; `miliariumPoolAt(i)` returns `_enumerated[i]` — so the CCB layer only ever sees real pools and the tagged Stage F contract is byte-stable. Three mirror maps keep lookups O(1): `mapping(address => bool) _isMiliarium` (membership), `mapping(address => uint256) _slotOf` (reverse, 1-based, `0` = absent), `mapping(address => uint256) _enumIndex` (dense-array position for swap-remove). Invariants held across every mutation: (i) a pool occupies at most one slot (`_slotOf` is a function — enforced by the `PoolAlreadyRegistered` guard in J-D4 + `replaceSlot`); (ii) `_enumerated` contains exactly the set of non-zero entries of `_slots`, no duplicates, no zeros; (iii) `_isMiliarium[p] ⟺ _slotOf[p] != 0 ⟺ p ∈ _enumerated`. The full `replaceSlot` swap-remove mechanics land in the J2 PLAN Must-match. Anchors: `CCBMultiplier.sol:249-251`; `src/ccb/IMiliariumRegistry.sol`; OQ-23 (iii.b).
+
+### J-D2 — Slot/governance surface is a new `IMiliariumSlotRegistry` under `src/registry/` — status LOCKED
+
+The slot/governance surface — `replaceSlot`, the slot forward lookup `poolAtSlot`, the reverse lookup `slotOf`, `setGovernanceContract`, the `governanceContract` view, and the slot events/errors — lands in a NEW interface `src/registry/IMiliariumSlotRegistry.sol`, and the concrete is `MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistry`. Stage G's precedent of extending `IGaugeRegistry` in place (G-D16a) is deliberately NOT followed here: `IMiliariumRegistry` lives in `src/ccb/` and is semantically the CCB read view consumed by `CCBMultiplier` / `EmissionDistributor` / `TVLOracle`; folding governance write methods into it would (a) re-touch a `src/ccb/` file the CCB layer owns and (b) force the CCB consumers to import a surface carrying `replaceSlot`. Keeping the slot interface under `src/registry/` (per the STAGES_OVERVIEW layout) preserves the audit-inheritance boundary. Stage K imports `IMiliariumSlotRegistry` for composition-challenge execution. The slot forward lookup is named `poolAtSlot(uint256 slot)` — deliberately distinct from the CCB dense `miliariumPoolAt(uint256 index)` — to keep the two enumerations unambiguous at every call site. Anchors: G-D16a (contrast); STAGES_OVERVIEW `src/registry/` layout; Stage K composition-challenge consumer.
+
+### J-D3 — Slot index is 1-based external, 0-based internal — status LOCKED
+
+Slot numbers are 1-based `[1..28]` in the external API — matching `04_tokenomics.md` §vii's 28-pool constellation and the STAGES_OVERVIEW "slots 02/03/07" notation — and 0-based internally (`_slots[slotN - 1]`). The 1-based choice makes `slotOf(pool)` return `0` as a clean "not a Miliarium member" sentinel that can never collide with a valid slot number. `replaceSlot` and `poolAtSlot` revert `InvalidSlot(slot)` for `slot == 0` or `slot > 28`. Anchors: STAGES_OVERVIEW "slots 02/03/07"; §vii; sentinel-0 cleanliness.
+
+### J-D4 — Genesis seeding is constructor-injected (paired slot/pool arrays) — status LOCKED
+
+Genesis seeding is constructor-injected, mirroring G-D20: `constructor(address governance_, uint256[] memory slotNumbers, address[] memory pools)`. Validation before any state write: `governance_ != 0` (`ZeroAddress`), `slotNumbers.length == pools.length` (`LengthMismatch`), and per element `slot ∈ [1,28]` (`InvalidSlot`), `pool != 0` (`ZeroAddress`), no duplicate slot (`SlotAlreadyAssigned`), no duplicate pool (`PoolAlreadyRegistered`). Each valid pair seeds `_slots[slot-1]`, appends to `_enumerated`, sets `_isMiliarium` / `_slotOf` / `_enumIndex`, and emits `SlotPopulated`. `governanceContract = governance_`. The constructor makes NO external calls (it only stores addresses), so it is H13-safe — deploy-script fork tests may pass keccak-derived placeholder addresses for the pilots without a `call to non-contract` revert. Stage J passes `slotNumbers = [2, 3, 7]` and the three Stage E pilot pool addresses. Constructor data location is `memory` per G14 (solc 0.8.26 rejects `calldata` on constructor parameters). Anchors: G-D20; H13; G14; Stage E pilots.
+
+### J-D5 — Governance gate mirrors `GaugeRegistry` (`onlyGovernance` rebinding, not literal one-shot) — status LOCKED
+
+The governance gate mirrors the tagged `GaugeRegistry` pattern (G-D16d, G3.3) rather than the literal "one-shot setter" wording in the STAGES_OVERVIEW Stage J/K rows. `address public governanceContract` is a mutable slot (not `immutable`), set at construction to the placeholder authority (the Stage A–K Authorizer Safe per CLAUDE.md §1). `replaceSlot` carries `onlyGovernance` (`if (msg.sender != governanceContract) revert NotGovernance(msg.sender)`). `setGovernanceContract(address newGovernance) external onlyGovernance` rebinds the slot and emits `GovernanceTransferred(old, new)` (zero-address-checked). The STAGES_OVERVIEW "replaced via one-shot setter in Stage K's deployment script" (Stage J L227 + Stage K L254) describes the OPERATIONAL handoff — the placeholder Safe calling `setGovernanceContract` once during the Stage K deploy — not a revert-on-second-call semantic; aligning to `GaugeRegistry`'s `onlyGovernance` rebinding keeps the two registries' governance surfaces identical for the Stage K migration script. Anchors: `GaugeRegistry.sol:46-47/59-60/87/98-101`; CLAUDE.md §1 Authorizer Safe; STAGES_OVERVIEW Stage K L254.
+
+### J-D6 — Slot events carry an explicit `block.number` arg — status LOCKED
+
+`SlotPopulated(uint256 indexed slot, address indexed pool, uint256 blockNumber)` fires at genesis seeding (constructor, for each of the 3 pilots) and on any `replaceSlot` that fills a previously-empty (`address(0)`) slot. `SlotReplaced(uint256 indexed slot, address indexed oldPool, address indexed newPool, uint256 blockNumber)` fires on any `replaceSlot` that swaps one non-zero pool for another. `blockNumber` is `block.number`, the canonical protocol time unit per CLAUDE.md §5 — passed explicitly as an event argument (not relying on the log's block context) to match the STAGES_OVERVIEW event signatures. Anchors: STAGES_OVERVIEW Stage J events; CLAUDE.md §5.
+
+### J-D7 — Stage J ships its own deploy script + fork test — status LOCKED
+
+Stage J ships its own `script/DeployStageJ.s.sol` + `test/fork/DeployStageJ.t.sol`, mirroring the DeployStageH / DeployStageI precedent — the registry is independently deployable and fork-verifiable at stage close. The H-D42 deferral of `DeployAuMM.s.sol` to Stage K does NOT transfer: that deferral was forced by AuMM being reframed as a Stage-K deploy input (H13 chicken-and-egg with the Bodensee channel's constructor external call), whereas `MiliariumRegistry`'s constructor takes only addresses (J-D4) and has no Stage-K-only construction dependency. The deploy script seeds the 3 pilots at slots 02/03/07 with the placeholder Authorizer-Safe governance; Stage K's deploy script later calls `setGovernanceContract`. Per STAGES_OVERVIEW deploy order (L388) the registry deploys after AuMT (Stage I) and before governance (Stage K). Anchors: DeployStageH/I precedent; H-D42 contrast; STAGES_OVERVIEW L388.
+
+---
+
+## Interfaces
+
+### Produced by Stage J
+
+- `src/registry/IMiliariumSlotRegistry.sol` (NEW, J1) — slot/governance surface: `replaceSlot`, `poolAtSlot`, `slotOf`, `setGovernanceContract`, `governanceContract`; events `SlotPopulated` / `SlotReplaced` / `GovernanceTransferred`; errors `InvalidSlot` / `ZeroAddress` / `LengthMismatch` / `NotGovernance` / `PoolAlreadyRegistered` / `SlotAlreadyAssigned`.
+- `src/registry/MiliariumRegistry.sol` (NEW, J2) — `is IMiliariumRegistry, IMiliariumSlotRegistry`; dual-structure storage per J-D1.
+
+### Consumed — frozen by prior stages
+
+- `src/ccb/IMiliariumRegistry.sol` (Stage F) — DENSE read view (`isMiliarium`, `miliariumPoolsCount`, `miliariumPoolAt`). Consumers: `CCBMultiplier.sol:249-251` (dense enumeration — the J-D1 constraint), `EmissionDistributor.sol:423` (`isMiliarium` membership only), `TVLOracle.sol` (H-D8 roster — currently placeholder-collapsed per F-D9; does not yet enumerate — see Open questions).
+- Stage E pilot pool addresses (slots 02/03/07) — genesis seeds.
+
+### Forward-dependency stubs
+
+- `governanceContract` is the placeholder Authorizer Safe until the Stage K `setGovernanceContract` handoff.
+
+---
+
+## Findings queue
+
+(J10 onward — empty at design freeze. Implementation incidents land here as they surface during J1—J6.)
+
+---
+
+## Open questions
+
+- TVLOracle H-D8 roster re-wire. `TVLOracle.sol` documents its constellation roster as `{IMiliariumRegistry roster} ∪ {BODENSEE_POOL} ∪ {governanceAddedPools}` (H-D8) but currently does NOT enumerate the registry — the leg is placeholder-collapsed per F-D9. Does Stage J wire `TVLOracle` to consume the live dense enumeration, or is that deferred to a later stage? Resolve at J4 pre-flight; does not block J1—J3.
+- `replaceSlot` un-population. Locked NO (`newPool ≠ 0`) per J-D4 — Stages M/N only populate, never clear. Revisit if a Stage O composition-challenge ever needs to vacate a slot.
+
+---
+
+## Anchors
+
+- STAGES_OVERVIEW.md Stage J (L221-236) + Stage K (L240-262) + production deploy order (L388).
+- `src/ccb/IMiliariumRegistry.sol` — frozen Stage F read view.
+- `CCBMultiplier.sol:249-251` — dense aggregate-EMA consumer (the J-D1 constraint).
+- `EmissionDistributor.sol:423` — `isMiliarium` membership consumer.
+- `GaugeRegistry.sol:46-47/59-60/87/98-101` — governance-gate precedent (J-D5).
+- `04_tokenomics.md` §vii — fixed 28-pool Miliarium constellation.
