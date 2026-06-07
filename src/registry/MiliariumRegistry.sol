@@ -51,4 +51,49 @@ abstract contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistr
         if (msg.sender != governanceContract) revert NotGovernance(msg.sender);
         _;
     }
+
+    // ----------------------------------------------------------------------------
+    // Constructor
+    // ----------------------------------------------------------------------------
+
+    /**
+     * @notice Genesis-seeds the registry — binds the initial Miliarium pools to their constellation slots and sets the governance gate (**J-D4**).
+     * @dev Validates `governance_ != address(0)` (`ZeroAddress`) and `slotNumbers.length == pools.length` (`LengthMismatch`); then per pair validates slot ∈ [1, `SLOT_COUNT`] (`InvalidSlot`), pool != `address(0)` (`ZeroAddress`), no duplicate slot (`SlotAlreadyAssigned`), no duplicate pool (`PoolAlreadyRegistered`), binds the pair via `_assign`, and emits `SlotPopulated`. Makes no external calls — H13-safe, so deploy-script fork tests may pass placeholder pool addresses. Stage J seeds `slotNumbers = [2, 3, 7]` with the three Stage E pilot pools. Parameter data location is `memory` per G14.
+     * @param governance_ Initial governance contract — the Authorizer Safe during Stages A—K, rebound at Stage K via `setGovernanceContract`.
+     * @param slotNumbers 1-based constellation slot numbers to seed, each ∈ [1, `SLOT_COUNT`].
+     * @param pools Pool occupying each corresponding slot — parallel to `slotNumbers`.
+     */
+    constructor(address governance_, uint256[] memory slotNumbers, address[] memory pools) {
+        if (governance_ == address(0)) revert ZeroAddress();
+        if (slotNumbers.length != pools.length) revert LengthMismatch();
+
+        governanceContract = governance_;
+
+        uint256 len = slotNumbers.length;
+        for (uint256 i = 0; i < len; ++i) {
+            uint256 slot = slotNumbers[i];
+            address pool = pools[i];
+
+            if (slot == 0 || slot > SLOT_COUNT) revert InvalidSlot(slot);
+            if (pool == address(0)) revert ZeroAddress();
+            if (_slots[slot - 1] != address(0)) revert SlotAlreadyAssigned(slot);
+            if (_isMiliarium[pool]) revert PoolAlreadyRegistered(pool);
+
+            _assign(slot, pool);
+            emit SlotPopulated(slot, pool, block.number);
+        }
+    }
+
+    // ----------------------------------------------------------------------------
+    // Internal
+    // ----------------------------------------------------------------------------
+
+    /// @dev Binds `pool` into 1-based `slot` and the dense CCB enumeration — writes the slot store and all four mirror structures (`_slotOf`, `_isMiliarium`, `_enumIndex`, `_enumerated`). Emits no event; the caller emits `SlotPopulated` (genesis / fill) or `SlotReplaced` (swap). Shared by the constructor and `replaceSlot` per **J-D1**.
+    function _assign(uint256 slot, address pool) private {
+        _slots[slot - 1] = pool;
+        _slotOf[pool] = slot;
+        _isMiliarium[pool] = true;
+        _enumIndex[pool] = _enumerated.length;
+        _enumerated.push(pool);
+    }
 }
