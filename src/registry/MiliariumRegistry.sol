@@ -104,6 +104,21 @@ abstract contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistr
     }
 
     // ----------------------------------------------------------------------------
+    // IMiliariumSlotRegistry — slot views
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IMiliariumSlotRegistry
+    function poolAtSlot(uint256 slot) external view override returns (address) {
+        if (slot == 0 || slot > SLOT_COUNT) revert InvalidSlot(slot);
+        return _slots[slot - 1];
+    }
+
+    /// @inheritdoc IMiliariumSlotRegistry
+    function slotOf(address pool) external view override returns (uint256) {
+        return _slotOf[pool];
+    }
+
+    // ----------------------------------------------------------------------------
     // Internal
     // ----------------------------------------------------------------------------
 
