@@ -92,4 +92,48 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
         assertEq(multiplier.M_i(pilotPools[0]), EXPECTED_POST_STEP_M, "F-8 step from real-registry aggregate (deltaIntra = -STEP)");
         assertEq(multiplier.lastProtocolAggregateEMA(), 3 * UNIFORM_TVL, "aggregate = sum over exactly the 3 dense pools");
     }
+
+    function test_StageJ_ReplaceSlot_ReEnumerates() external {
+        address newPool = makeAddr("newPilotSlot2");
+        assertTrue(registry.isMiliarium(pilotPools[0]), "pilot0 member pre-replace");
+        assertEq(registry.poolAtSlot(2), pilotPools[0], "slot 2 holds pilot0 pre-replace");
+        // Test contract == governance (registry constructed with address(this)); call directly.
+        registry.replaceSlot(2, newPool);
+        assertEq(registry.miliariumPoolsCount(), 3, "dense count unchanged after replace");
+        assertFalse(registry.isMiliarium(pilotPools[0]), "pilot0 dropped from membership");
+        assertTrue(registry.isMiliarium(newPool), "newPool added to membership");
+        assertEq(registry.poolAtSlot(2), newPool, "slot 2 now holds newPool");
+        assertEq(registry.slotOf(pilotPools[0]), 0, "pilot0 slotOf reset to 0 sentinel");
+        assertEq(registry.slotOf(newPool), 2, "newPool slotOf = 2");
+        bool sawOld;
+        bool sawNew;
+        for (uint256 i = 0; i < 3; ++i) {
+            address p = registry.miliariumPoolAt(i);
+            assertTrue(p != address(0), "no address(0) in dense enumeration after replace");
+            if (p == pilotPools[0]) sawOld = true;
+            if (p == newPool) sawNew = true;
+        }
+        assertFalse(sawOld, "dropped pilot0 absent from dense enumeration");
+        assertTrue(sawNew, "newPool present in dense enumeration");
+    }
+
+    function test_StageJ_ReplaceSlot_CCBAggregateFollowsSwap() external {
+        // Non-fork block.number starts at 1 — advance past the F-D6 epoch cadence.
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
+        address newPool = makeAddr("newPilotSlot2");
+        // The dropped pilot0 carries a distinctive large TVL that must NOT survive the swap.
+        mockOracle.set(pilotPools[0], 9_000e18);
+        mockOracle.set(pilotPools[1], UNIFORM_TVL);
+        mockOracle.set(pilotPools[2], UNIFORM_TVL);
+        sampler.updateEMA(pilotPools[0]);
+        sampler.updateEMA(pilotPools[1]);
+        sampler.updateEMA(pilotPools[2]);
+        registry.replaceSlot(2, newPool);
+        mockOracle.set(newPool, UNIFORM_TVL);
+        sampler.updateEMA(newPool);
+        multiplier.updateMultiplier(newPool);
+        // The aggregate sums the post-swap dense set {pilot2, pilot1, newPool} = 3 × UNIFORM_TVL and excludes pilot0's 9_000e18.
+        assertEq(multiplier.lastProtocolAggregateEMA(), 3 * UNIFORM_TVL, "aggregate follows swap - excludes dropped pilot0, includes newPool");
+        assertEq(multiplier.M_i(newPool), EXPECTED_POST_STEP_M, "F-8 step computed on the post-swap newPool (deltaIntra = -STEP)");
+    }
 }
