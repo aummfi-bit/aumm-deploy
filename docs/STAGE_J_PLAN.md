@@ -1,8 +1,8 @@
 # Stage J — Plan & Sub-Step Roadmap
 
-> **Status:** J0.3 PLAN landed on `stage-j` — initial sub-step roadmap (J0—J6) + Decisions mirror (J-D1—J-D7 LOCKED) + Pre-flight checklist + Completion Log. J0.2 NOTES design freeze committed (`8270cc7`). Code phase opens at J1 (`src/registry/IMiliariumSlotRegistry.sol`). Companion to STAGE_J_NOTES.md.
+> **Status:** J1—J5 COMPLETE on `stage-j` — `IMiliariumSlotRegistry` (J1) + `MiliariumRegistry` (J2) + unit suite (J3, 24 tests) + fork integration (J4, 5 tests) + deploy script & fork test (J5) all landed and green (649/649 unit, 5/5 + 1/1 fork). J-D1—J-D8 LOCKED. Only J6 close-of-stage (full split-form regression + `CLAUDE.md` §11 refresh + ff-merge/tag) remains. Companion to STAGE_J_NOTES.md.
 >
-> **Last update:** 2026-06-06 — J0.3 PLAN initial roadmap (this commit): Stage scope + Surfaces tables + Decisions mirror + Pre-flight checklist + J0—J6 sub-step roadmap + empty Completion Log.
+> **Last update:** 2026-06-07 — J5.3 Completion log catch-up (this commit): rows J0.4—J5.2 + header status refresh.
 >
 > **Mode:** Opus high for the interface/contract design beats (J0 entry + J1 interface + J2 concrete — the J-D1 dual-structure reconciliation against tagged Stage F `CCBMultiplier` is the load-bearing surface), dropping to Sonnet for the unit/fork test writing + deploy scaffold + plan-row housekeeping (J3—J6, most of the stage) per §13's Stage J row ("Sonnet entry, Opus for interface design").
 >
@@ -122,7 +122,30 @@ Mirror of STAGE_J_NOTES.md Decisions table (LOCKED at J0.2). Future J-D8 onward 
 | --- | --- | --- |
 | J0.1 | (branch op) | `stage-j` branched from `stage-i-complete` (`0ee2089`) |
 | J0.2 | `8270cc7` | `docs/STAGE_J_NOTES.md` — Stage J design freeze (J-D1—J-D7 LOCKED) |
-| J0.3 | (this commit) | `docs/STAGE_J_PLAN.md` — initial sub-step roadmap (J0—J6) + Decisions mirror + Pre-flight checklist + Completion Log |
+| J0.3 | `1e5749a` | `docs/STAGE_J_PLAN.md` — initial sub-step roadmap (J0—J6) + Decisions mirror + Pre-flight checklist + Completion Log |
+| J0.4 | `ef63fd6` | `CLAUDE.md` §11 — Stage I→J terminal refresh (resume anchor: J1.1 next) |
+| J1.1 | `8074918` | `src/registry/IMiliariumSlotRegistry.sol` — slot/governance interface (replaceSlot/poolAtSlot/slotOf/setGovernanceContract + events + 6 errors per J-D2/J-D3/J-D5/J-D6) |
+| J2.1 | `e722205` | `src/registry/MiliariumRegistry.sol` — abstract scaffold (storage layout + `onlyGovernance` per J-D1/J-D5) |
+| J2.2 | `e965794` | `MiliariumRegistry.sol` — genesis constructor + `_assign` mirror-write (J-D4; H13-safe, zero ctor external calls) |
+| J2.3 | `d9b70ee` | `MiliariumRegistry.sol` — `IMiliariumRegistry` dense CCB views over `_enumerated` (J-D1) |
+| J2.4 | `5b73e3b` | `MiliariumRegistry.sol` — `IMiliariumSlotRegistry` slot views (`poolAtSlot`/`slotOf` per J-D3) |
+| J2.5 | `42773e0` | `MiliariumRegistry.sol` — `replaceSlot` + `_deregister` swap-remove (J-D1 dual-structure sync; SlotPopulated/SlotReplaced) |
+| J2.6 | `34db493` | `MiliariumRegistry.sol` — `setGovernanceContract` + concrete (all 8 interface members; J2 family closed) |
+| J3.1 | `e0c0002` | `test/unit/MiliariumRegistry.t.sol` — harness + setUp (pilots at slots 2/3/7) |
+| J3.2 | `6ad6f42` | `MiliariumRegistry.t.sol` — genesis + view tests |
+| J3.3 | `4e95913` | `MiliariumRegistry.t.sol` — `replaceSlot` populate tests (empty slot, dense grows to 4) |
+| J3.4 | `f6cc14c` | `MiliariumRegistry.t.sol` — `replaceSlot` replace tests (swap-remove correctness, last-element edge) |
+| J3.5 | `b539467` | `MiliariumRegistry.t.sol` — revert vectors (InvalidSlot/ZeroAddress/NotGovernance/PoolAlreadyRegistered + ctor reverts) |
+| J3.6 | `54c50e2` | `MiliariumRegistry.t.sol` — `setGovernanceContract` tests (J3 unit family closed; 24 tests) |
+| J4.0 | `c23f95f` | `STAGE_J_NOTES.md` + `STAGE_J_PLAN.md` — J-D8 LOCK (TVLOracle H-D8 roster re-wire deferred to Stage K) |
+| J4.1 | `a48eda2` | `test/fork/StageJIntegration.t.sol` — fixture (real registry seeded [2,3,7] + F-D20 `setMiliariumRegistry` handoff) |
+| J4.1b | `cfbfc93` | `StageJIntegration.t.sol` — lean self-contained fixture pivot (drop CCBEngineFixture; via_ir relief per J10) |
+| J4.2 | `84a6cfa` | `StageJIntegration.t.sol` — dense-enumeration proof (3 tests; real registry drives CCBMultiplier loop) |
+| J4.3 | `4556408` | `StageJIntegration.t.sol` — `replaceSlot` re-enumeration tests (CCB aggregate follows dense swap) |
+| J4.4 | `b1cd056` | `STAGE_J_NOTES.md` — J10 finding (via_ir stack-too-deep at concrete-test compile; lean fixture relief) |
+| J5.1 | `b4aff8d` | `script/DeployStageJ.s.sol` — deploy `MiliariumRegistry` seeded [2,3,7] (PILOT_POOL_02/03/07 + GOVERNANCE_MULTISIG) |
+| J5.2 | `58f9998` | `test/fork/DeployStageJ.t.sol` — deploy-script fork test (5 state assertions + CCBMultiplier wiring smoke) |
+| J5.3 | (this commit) | `docs/STAGE_J_PLAN.md` — Completion log catch-up (rows J0.4—J5.2) + header status refresh |
 
 ---
 
