@@ -14,6 +14,7 @@ contract MiliariumRegistryTest is Test {
     address internal constant POOL_SLOT7 = address(0x7777777777777777777777777777777777777777);
     address internal constant UNREGISTERED = address(0x9999999999999999999999999999999999999999);
     address internal constant NEW_POOL = address(0x4444444444444444444444444444444444444444);
+    address internal constant STRANGER = address(0x8888888888888888888888888888888888888888);
 
     function setUp() public {
         (uint256[] memory slotNumbers, address[] memory pools) = _seedArrays();
@@ -23,6 +24,7 @@ contract MiliariumRegistryTest is Test {
         vm.label(POOL_SLOT2, "POOL_SLOT2");
         vm.label(POOL_SLOT3, "POOL_SLOT3");
         vm.label(POOL_SLOT7, "POOL_SLOT7");
+        vm.label(STRANGER, "STRANGER");
     }
 
     function test_genesis_poolAtSlot_seeded() public view {
@@ -120,6 +122,72 @@ contract MiliariumRegistryTest is Test {
         assertEq(registry.miliariumPoolAt(0), POOL_SLOT2);
         assertEq(registry.miliariumPoolAt(1), POOL_SLOT3);
         assertEq(registry.miliariumPoolAt(2), NEW_POOL);
+    }
+
+    function test_replaceSlot_revert_invalidSlot() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.InvalidSlot.selector, uint256(0)));
+        registry.replaceSlot(0, NEW_POOL);
+
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.InvalidSlot.selector, uint256(29)));
+        registry.replaceSlot(29, NEW_POOL);
+    }
+
+    function test_replaceSlot_revert_zeroNewPool() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(IMiliariumSlotRegistry.ZeroAddress.selector);
+        registry.replaceSlot(5, address(0));
+    }
+
+    function test_replaceSlot_revert_notGovernance() public {
+        vm.prank(STRANGER);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.NotGovernance.selector, STRANGER));
+        registry.replaceSlot(5, NEW_POOL);
+    }
+
+    function test_replaceSlot_revert_poolAlreadyRegistered() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.PoolAlreadyRegistered.selector, POOL_SLOT2));
+        registry.replaceSlot(5, POOL_SLOT2);
+    }
+
+    function test_constructor_revert_lengthMismatch() public {
+        uint256[] memory slots = new uint256[](2);
+        slots[0] = 2;
+        slots[1] = 3;
+        address[] memory pools = new address[](1);
+        pools[0] = POOL_SLOT2;
+        vm.expectRevert(IMiliariumSlotRegistry.LengthMismatch.selector);
+        new MiliariumRegistry(GOVERNANCE, slots, pools);
+    }
+
+    function test_constructor_revert_duplicateSlot() public {
+        uint256[] memory slots = new uint256[](2);
+        slots[0] = 2;
+        slots[1] = 2;
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_SLOT2;
+        pools[1] = POOL_SLOT3;
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.SlotAlreadyAssigned.selector, uint256(2)));
+        new MiliariumRegistry(GOVERNANCE, slots, pools);
+    }
+
+    function test_constructor_revert_duplicatePool() public {
+        uint256[] memory slots = new uint256[](2);
+        slots[0] = 2;
+        slots[1] = 3;
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_SLOT2;
+        pools[1] = POOL_SLOT2;
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.PoolAlreadyRegistered.selector, POOL_SLOT2));
+        new MiliariumRegistry(GOVERNANCE, slots, pools);
+    }
+
+    function test_constructor_revert_zeroGovernance() public {
+        (uint256[] memory slots, address[] memory pools) = _seedArrays();
+        vm.expectRevert(IMiliariumSlotRegistry.ZeroAddress.selector);
+        new MiliariumRegistry(address(0), slots, pools);
     }
 
     function _seedArrays() internal pure returns (uint256[] memory slotNumbers, address[] memory pools) {
