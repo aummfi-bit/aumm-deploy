@@ -15,6 +15,7 @@ contract MiliariumRegistryTest is Test {
     address internal constant UNREGISTERED = address(0x9999999999999999999999999999999999999999);
     address internal constant NEW_POOL = address(0x4444444444444444444444444444444444444444);
     address internal constant STRANGER = address(0x8888888888888888888888888888888888888888);
+    address internal constant NEW_GOV = address(0x5555555555555555555555555555555555555555);
 
     function setUp() public {
         (uint256[] memory slotNumbers, address[] memory pools) = _seedArrays();
@@ -25,6 +26,7 @@ contract MiliariumRegistryTest is Test {
         vm.label(POOL_SLOT3, "POOL_SLOT3");
         vm.label(POOL_SLOT7, "POOL_SLOT7");
         vm.label(STRANGER, "STRANGER");
+        vm.label(NEW_GOV, "NEW_GOV");
     }
 
     function test_genesis_poolAtSlot_seeded() public view {
@@ -188,6 +190,41 @@ contract MiliariumRegistryTest is Test {
         (uint256[] memory slots, address[] memory pools) = _seedArrays();
         vm.expectRevert(IMiliariumSlotRegistry.ZeroAddress.selector);
         new MiliariumRegistry(address(0), slots, pools);
+    }
+
+    function test_setGovernanceContract_emitsGovernanceTransferred() public {
+        vm.expectEmit(true, true, false, false, address(registry));
+        emit IMiliariumSlotRegistry.GovernanceTransferred(GOVERNANCE, NEW_GOV);
+        vm.prank(GOVERNANCE);
+        registry.setGovernanceContract(NEW_GOV);
+    }
+
+    function test_setGovernanceContract_rebindsGate() public {
+        vm.prank(GOVERNANCE);
+        registry.setGovernanceContract(NEW_GOV);
+        assertEq(registry.governanceContract(), NEW_GOV);
+
+        // the new governance can now mutate the registry
+        vm.prank(NEW_GOV);
+        registry.replaceSlot(5, NEW_POOL);
+        assertEq(registry.poolAtSlot(5), NEW_POOL);
+
+        // the old governance is locked out (otherwise-valid args, gate still rejects)
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.NotGovernance.selector, GOVERNANCE));
+        registry.replaceSlot(6, UNREGISTERED);
+    }
+
+    function test_setGovernanceContract_revert_notGovernance() public {
+        vm.prank(STRANGER);
+        vm.expectRevert(abi.encodeWithSelector(IMiliariumSlotRegistry.NotGovernance.selector, STRANGER));
+        registry.setGovernanceContract(NEW_GOV);
+    }
+
+    function test_setGovernanceContract_revert_zeroGovernance() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(IMiliariumSlotRegistry.ZeroAddress.selector);
+        registry.setGovernanceContract(address(0));
     }
 
     function _seedArrays() internal pure returns (uint256[] memory slotNumbers, address[] memory pools) {
