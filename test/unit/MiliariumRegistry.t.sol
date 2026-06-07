@@ -84,6 +84,44 @@ contract MiliariumRegistryTest is Test {
         assertEq(registry.miliariumPoolAt(3), NEW_POOL);
     }
 
+    function test_replaceSlot_replace_emitsSlotReplaced() public {
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IMiliariumSlotRegistry.SlotReplaced(2, POOL_SLOT2, NEW_POOL, block.number);
+        vm.prank(GOVERNANCE);
+        registry.replaceSlot(2, NEW_POOL);
+    }
+
+    function test_replaceSlot_replace_nonLast_swapRemoveCorrectness() public {
+        vm.prank(GOVERNANCE);
+        registry.replaceSlot(2, NEW_POOL);
+        assertEq(registry.poolAtSlot(2), NEW_POOL);
+        assertEq(registry.slotOf(NEW_POOL), 2);
+        assertTrue(registry.isMiliarium(NEW_POOL));
+        assertEq(registry.slotOf(POOL_SLOT2), 0);
+        assertFalse(registry.isMiliarium(POOL_SLOT2));
+        assertEq(registry.miliariumPoolsCount(), 3);
+        assertEq(registry.miliariumPoolAt(0), POOL_SLOT7);
+        assertEq(registry.miliariumPoolAt(1), POOL_SLOT3);
+        assertEq(registry.miliariumPoolAt(2), NEW_POOL);
+        assertEq(registry.slotOf(POOL_SLOT7), 7);
+        assertEq(registry.poolAtSlot(7), POOL_SLOT7);
+        assertEq(registry.poolAtSlot(3), POOL_SLOT3);
+    }
+
+    function test_replaceSlot_replace_lastElement_edgeCase() public {
+        vm.prank(GOVERNANCE);
+        registry.replaceSlot(7, NEW_POOL);
+        assertEq(registry.poolAtSlot(7), NEW_POOL);
+        assertEq(registry.slotOf(NEW_POOL), 7);
+        assertTrue(registry.isMiliarium(NEW_POOL));
+        assertEq(registry.slotOf(POOL_SLOT7), 0);
+        assertFalse(registry.isMiliarium(POOL_SLOT7));
+        assertEq(registry.miliariumPoolsCount(), 3);
+        assertEq(registry.miliariumPoolAt(0), POOL_SLOT2);
+        assertEq(registry.miliariumPoolAt(1), POOL_SLOT3);
+        assertEq(registry.miliariumPoolAt(2), NEW_POOL);
+    }
+
     function _seedArrays() internal pure returns (uint256[] memory slotNumbers, address[] memory pools) {
         slotNumbers = new uint256[](3);
         slotNumbers[0] = 2;
