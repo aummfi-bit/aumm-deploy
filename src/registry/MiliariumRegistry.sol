@@ -119,6 +119,28 @@ abstract contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistr
     }
 
     // ----------------------------------------------------------------------------
+    // IMiliariumSlotRegistry — mutations
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IMiliariumSlotRegistry
+    function replaceSlot(uint256 slot, address newPool) external override onlyGovernance {
+        if (slot == 0 || slot > SLOT_COUNT) revert InvalidSlot(slot);
+        if (newPool == address(0)) revert ZeroAddress();
+        if (_isMiliarium[newPool]) revert PoolAlreadyRegistered(newPool);
+
+        address oldPool = _slots[slot - 1];
+
+        if (oldPool == address(0)) {
+            _assign(slot, newPool);
+            emit SlotPopulated(slot, newPool, block.number);
+        } else {
+            _deregister(oldPool);
+            _assign(slot, newPool);
+            emit SlotReplaced(slot, oldPool, newPool, block.number);
+        }
+    }
+
+    // ----------------------------------------------------------------------------
     // Internal
     // ----------------------------------------------------------------------------
 
@@ -129,5 +151,18 @@ abstract contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistr
         _isMiliarium[pool] = true;
         _enumIndex[pool] = _enumerated.length;
         _enumerated.push(pool);
+    }
+
+    /// @dev Swap-remove mirror of `_assign` — removes `oldPool` from the dense `_enumerated` list and clears the three mirror maps; does NOT touch `_slots` (the caller's following `_assign` overwrites the slot from oldPool to newPool).
+    function _deregister(address oldPool) private {
+        uint256 oldIdx = _enumIndex[oldPool];
+        uint256 lastIdx = _enumerated.length - 1;
+        address lastPool = _enumerated[lastIdx];
+        _enumerated[oldIdx] = lastPool;
+        _enumIndex[lastPool] = oldIdx;
+        _enumerated.pop();
+        delete _isMiliarium[oldPool];
+        delete _slotOf[oldPool];
+        delete _enumIndex[oldPool];
     }
 }
