@@ -85,6 +85,25 @@ abstract contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistr
     }
 
     // ----------------------------------------------------------------------------
+    // IMiliariumRegistry — CCB read view
+    // ----------------------------------------------------------------------------
+
+    /// @inheritdoc IMiliariumRegistry
+    function isMiliarium(address pool) external view override returns (bool) {
+        return _isMiliarium[pool];
+    }
+
+    /// @inheritdoc IMiliariumRegistry
+    function miliariumPoolsCount() external view override returns (uint256) {
+        return _enumerated.length;
+    }
+
+    /// @inheritdoc IMiliariumRegistry
+    function miliariumPoolAt(uint256 index) external view override returns (address) {
+        return _enumerated[index];
+    }
+
+    // ----------------------------------------------------------------------------
     // Internal
     // ----------------------------------------------------------------------------
 
