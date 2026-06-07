@@ -8,6 +8,7 @@ import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { EMASampler } from "../../src/ccb/EMASampler.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
 
 /**
@@ -57,5 +58,38 @@ abstract contract StageJIntegrationFixture is Test {
         pools[1] = pilotPools[1];
         pools[2] = pilotPools[2];
         return new MiliariumRegistry(address(this), slotNumbers, pools);
+    }
+}
+
+contract StageJDenseEnumerationTest is StageJIntegrationFixture {
+    uint256 internal constant UNIFORM_TVL = 1_000e18;
+    uint256 internal constant EXPECTED_POST_STEP_M = 95e16;
+
+    function test_StageJ_DenseEnumeration_RealRegistryThreePoolsNoZero() external {
+        assertEq(registry.miliariumPoolsCount(), 3, "dense count = 3 real pools");
+        for (uint256 i = 0; i < 3; ++i) {
+            address p = registry.miliariumPoolAt(i);
+            assertTrue(p != address(0), "no address(0) in dense enumeration");
+            assertEq(p, pilotPools[i], "dense[i] = pilot i");
+        }
+    }
+
+    function test_StageJ_DenseEnumeration_MultiplierBoundToRealRegistry() external {
+        assertEq(address(multiplier.miliariumRegistry()), address(registry), "F-D20 handoff bound the real registry");
+    }
+
+    function test_StageJ_DenseEnumeration_UpdateMultiplierSumsRealRegistry() external {
+        // Non-fork block.number starts at 1 — advance past the F-D6 epoch cadence so updateMultiplier is eligible.
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
+        for (uint256 i = 0; i < 3; ++i) {
+            mockOracle.set(pilotPools[i], UNIFORM_TVL);
+            sampler.updateEMA(pilotPools[i]);
+        }
+
+        multiplier.updateMultiplier(pilotPools[0]);
+
+        // deltaGlobal = 0 (cold-start lastProtocolAggregateEMA == 0); poolEMA (1_000e18) far exceeds currentAgg/28, so deltaIntra = -STEP_SIZE; M_i = 1.0 - 0.05 = 0.95.
+        assertEq(multiplier.M_i(pilotPools[0]), EXPECTED_POST_STEP_M, "F-8 step from real-registry aggregate (deltaIntra = -STEP)");
+        assertEq(multiplier.lastProtocolAggregateEMA(), 3 * UNIFORM_TVL, "aggregate = sum over exactly the 3 dense pools");
     }
 }
