@@ -159,4 +159,6 @@ Locked at the K4 pre-flight Opus extra-high beat reading F-9 / F-12 (`11_formula
 
 ## Findings queue
 
-Empty at K0.2 entry; implementation incidents numbered K10 onward (matches C10 / D10 / … / J10).
+Implementation incidents numbered K10 onward (matches C10 / D10 / … / J10).
+
+**K10 — `IVotingWeight` widened with `poke(address holder)` (I13-class fix-forward; resolves the K-D6a/K-D6b §12 gate).** K-D6a typed `VOTING_WEIGHT` as `IVotingWeight`; K-D6b requires `castVote` to call `VOTING_WEIGHT.poke(msg.sender)` before reading `governanceWeight`. The Stage I I9.1 stub (per its NatSpec) committed only to `governanceWeight` + `totalSupply` — the `VaultClassRegistry.vetoProposal` consumer surface — deliberately excluding `poke`. K4 is the first consumer of `poke` through the interface, so the two LOCKED decisions are mutually consistent only if `IVotingWeight` carries `poke`. Resolution: add `poke(address holder) external` to `IVotingWeight` as an I13-class fix-forward on the Stage I artifact (`stage-i-complete` tag untouched; the edit lands on `stage-k`). The concrete `VotingWeight` (K3) already implements `poke` at L107 — no concrete change. Per G16, both `is IVotingWeight` mock doubles (`test/fork/mocks/StageGMocks.sol` `MockVotingWeight`, `test/unit/VaultClassRegistry.t.sol` `MockVotingWeight`) receive a no-op `poke` stub to remain concrete. The `VaultClassRegistry` consumer (holds an `IVotingWeight`, calls only `governanceWeight` / `totalSupply`) is unaffected. Recorded for the CLAUDE.md §11 deferred/add-on list at K-close.
