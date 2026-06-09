@@ -8,6 +8,7 @@ import { StageIIntegrationFixture } from "./StageIIntegration.t.sol";
 import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { VotingWeight } from "../../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 /**
  * @title StageKIntegrationFixture
@@ -60,6 +61,13 @@ abstract contract StageKIntegrationFixture is StageIIntegrationFixture {
         gaugeRegistry.setGovernanceContract(address(gov));
         realRegistry.setGovernanceContract(address(gov));
     }
+
+    /// @dev K6-deferred tvl shim — the StageI-inherited TVLOracle has an empty roster, so tvl(pilot)
+    ///      returns 0 (NOTES R1). Mock tvl(pool) to a fixed nonzero svZCHF value to isolate the
+    ///      VotingWeight poke logic under test from oracle pricing; real pricing is K6 + the TVLOracle suite.
+    function _mockTvl(address pool, uint256 svzchfValue) internal {
+        vm.mockCall(address(tvlOracle), abi.encodeWithSelector(tvlOracle.tvl.selector, pool), abi.encode(svzchfValue));
+    }
 }
 
 contract StageKWiringTest is StageKIntegrationFixture {
@@ -90,5 +98,55 @@ contract StageKWiringTest is StageKIntegrationFixture {
 
         assertEq(realRegistry.governanceContract(), address(gov));
         assertTrue(swapAndDeposit.authorizedDonators(address(gov)));
+    }
+}
+
+contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
+    function test_poke_postCliff_qualifiesNonZeroWeight() public {
+        address lp = makeAddr("lpPostCliff");
+        _depositOneSided(pilotPools[0], lp, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockTvl(pilotPools[0], 1_000e18);
+        votingWeight.poke(lp);
+        assertGt(votingWeight.governanceWeight(lp), 0, "post-cliff poke confers nonzero weight");
+        assertEq(votingWeight.totalSupply(), votingWeight.governanceWeight(lp), "single holder: total == holder weight (I-D17 exact fraction)");
+    }
+
+    function test_poke_preCliff_confersZeroWeight() public {
+        address lp = makeAddr("lpPreCliff");
+        _depositOneSided(pilotPools[0], lp, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS - 1);
+        _mockTvl(pilotPools[0], 1_000e18);
+        votingWeight.poke(lp);
+        assertEq(votingWeight.governanceWeight(lp), 0, "sub-cliff poke confers zero weight");
+        assertEq(votingWeight.totalSupply(), 0, "sub-cliff: no qualified weight in total");
+    }
+
+    function test_poke_afterGaugeRevoke_resetsToZero() public {
+        address lp = makeAddr("lpRevoke");
+        _depositOneSided(pilotPools[0], lp, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockTvl(pilotPools[0], 1_000e18);
+        votingWeight.poke(lp);
+        assertGt(votingWeight.governanceWeight(lp), 0, "baseline qualified before revoke");
+        vm.prank(address(gov));
+        gaugeRegistry.revokeGauge(pilotPools[0]);
+        votingWeight.poke(lp);
+        assertEq(votingWeight.governanceWeight(lp), 0, "gauge revoke zeroes weight at the gauge gate");
+        assertEq(votingWeight.totalSupply(), 0, "revoked-pool weight removed from total");
+    }
+
+    function test_poke_afterWithdrawal_resetsToZero() public {
+        address lp = makeAddr("lpWithdraw");
+        uint256 bptOut = _depositOneSided(pilotPools[0], lp, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockTvl(pilotPools[0], 1_000e18);
+        votingWeight.poke(lp);
+        assertGt(votingWeight.governanceWeight(lp), 0, "baseline qualified before withdrawal");
+        _lpSender = lp;
+        _withdrawProportional(pilotPools[0], bptOut);
+        votingWeight.poke(lp);
+        assertEq(votingWeight.governanceWeight(lp), 0, "withdrawal resets weight at the eqb==0 gate");
+        assertEq(votingWeight.totalSupply(), 0, "withdrawn-position weight removed from total");
     }
 }
