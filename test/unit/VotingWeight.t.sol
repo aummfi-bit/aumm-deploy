@@ -281,4 +281,87 @@ contract VotingWeightTest is Test {
         assertEq(atCap, pastCap);
         assertGt(atCap, 0);
     }
+    function test_Poke_TwoHolders_IndependentWeights() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_A, HOLDER_B, true, 16e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        vw.poke(HOLDER_B);
+        assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER) + vw.governanceWeight(HOLDER_B));
+        assertEq(vw.governanceWeight(HOLDER), vw.governanceWeight(HOLDER_B));
+    }
+    function test_Poke_MultiPool_SumsPositions() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 4e18, 2e8);
+        assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER));
+    }
+    function test_Poke_UnapprovedPoolSkipped_InMulti() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, false, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 2e18, 1e8);
+    }
+    function test_Poke_Noop_WhenWeightUnchanged() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        vm.recordLogs();
+        vw.poke(HOLDER);
+        assertEq(vm.getRecordedLogs().length, 0);
+    }
+    function test_Poke_EmitsWeightPoked() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vm.expectEmit(true, false, false, false);
+        emit VotingWeight.WeightPoked(HOLDER, 0, 0);
+        vw.poke(HOLDER);
+    }
+    function test_Poke_WithdrawalReset_NegativeDelta() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertGt(vw.governanceWeight(HOLDER), 0);
+        recorder.setEffectiveQualBlock(POOL_A, HOLDER, 0);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+        assertEq(vw.totalSupply(), 0);
+    }
+    function test_Poke_TotalSupply_InvariantHolds() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_A, HOLDER_B, true, 16e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        vw.poke(HOLDER_B);
+        recorder.setEffectiveQualBlock(POOL_A, HOLDER, 0);
+        vw.poke(HOLDER);
+        assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER) + vw.governanceWeight(HOLDER_B));
+    }
+    function test_Poke_PermissionlessCaller() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vm.prank(POKER);
+        vw.poke(HOLDER);
+        assertGt(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_TopUp_PositiveDelta() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        uint256 weight1 = vw.governanceWeight(HOLDER);
+        oracle.setTvl(POOL_A, 81e18);
+        vw.poke(HOLDER);
+        uint256 weight2 = vw.governanceWeight(HOLDER);
+        assertGt(weight2, weight1);
+        assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER));
+    }
 }
