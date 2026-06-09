@@ -172,4 +172,72 @@ contract AureumGovernance {
         SUSDS = sUsds_;
         BODENSEE_POOL = bodenseePool_;
     }
+
+    /// @notice Resolve the fixed proposal deposit for a whitelisted pay token.
+    /// @param payToken_ SVZCHF or sUSDS.
+    /// @return deposit amount in `payToken_` wei.
+    function _depositAmount(IERC20 payToken_) internal view returns (uint256) {
+        if (payToken_ == SVZCHF) return PROPOSAL_DEPOSIT_SVZCHF;
+        if (payToken_ == SUSDS) return PROPOSAL_DEPOSIT_SUSDS;
+        revert InvalidPayToken();
+    }
+
+    /// @notice Shared propose tail — pull deposit, donate to Bodensee, snapshot total supply, record proposal.
+    /// @param proposalType_ gauge, composition, or fee variant.
+    /// @param targetPool_ fee or gauge target; zero when unused.
+    /// @param newPool_ composition replacement pool; zero when unused.
+    /// @param slot_ constellation slot for composition; zero when unused.
+    /// @param newFee_ proposed swap fee; zero when unused.
+    /// @param payToken_ SVZCHF or sUSDS deposit token.
+    /// @return proposalId 1-based identifier (`++proposalCount`).
+    /// @dev Deposit is pulled via `safeTransferFrom(proposer → BODENSEE_CHANNEL)` then donated — proposer must
+    ///      `approve` this contract before calling; deposit is non-refundable (permanent Bodensee donation per
+    ///      K-D6d). This contract must be an `authorizedDonator` on `BODENSEE_CHANNEL` (G-D21, wired at K7).
+    function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, IERC20 payToken_) internal returns (uint256 proposalId) {
+        uint256 amount = _depositAmount(payToken_);
+        payToken_.safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
+        BODENSEE_CHANNEL.donate(payToken_, amount);
+        proposalId = ++proposalCount;
+        uint256 snapshot = VOTING_WEIGHT.totalSupply();
+        uint256 start = block.number;
+        uint256 end = start + VOTING_PERIOD_BLOCKS;
+        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotTotalSupply: snapshot, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_ });
+        emit ProposalCreated(proposalId, proposalType_, msg.sender, start, end, snapshot);
+    }
+
+    /// @notice Propose a gauge challenge to revoke an active pilot gauge.
+    /// @param targetPool_ pool whose gauge status must be Active and unslotted (`slotOf == 0`).
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling.
+    function proposeGaugeChallenge(address targetPool_, IERC20 payToken_) external returns (uint256 proposalId) {
+        if (GAUGE_REGISTRY.gaugeStatus(targetPool_) != IGaugeRegistry.GaugeStatus.Active || SLOT_REGISTRY.slotOf(targetPool_) != 0) revert InvalidGaugeTarget(targetPool_);
+        proposalId = _createProposal(ProposalType.GaugeChallenge, targetPool_, address(0), 0, 0, payToken_);
+    }
+
+    /// @notice Propose a composition challenge to replace the pool at a filled constellation slot.
+    /// @param slot_ Miliarium slot in [1, 28].
+    /// @param newPool_ replacement pool address.
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling.
+    function proposeCompositionChallenge(uint256 slot_, address newPool_, IERC20 payToken_) external returns (uint256 proposalId) {
+        if (slot_ == 0 || slot_ > 28) revert InvalidCompositionTarget(slot_); // 28 = Miliarium constellation size
+        if (newPool_ == address(0)) revert ZeroAddress();
+        if (SLOT_REGISTRY.poolAtSlot(slot_) == address(0)) revert InvalidCompositionTarget(slot_);
+        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, payToken_);
+    }
+
+    /// @notice Propose a static swap-fee change on a gauged, non-Bodensee pool.
+    /// @param targetPool_ pool whose fee will change on execution.
+    /// @param newFee_ proposed fee in 18-decimal fixed-point (must lie in [SWAP_FEE_MIN, SWAP_FEE_MAX]).
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling; fee cooldown is enforced at
+    ///      execute time (K4.5), not here.
+    function proposeFeeChange(address targetPool_, uint256 newFee_, IERC20 payToken_) external returns (uint256 proposalId) {
+        if (newFee_ < SWAP_FEE_MIN || newFee_ > SWAP_FEE_MAX) revert InvalidFeeValue(newFee_);
+        if (targetPool_ == BODENSEE_POOL || !GAUGE_REGISTRY.isGaugeApproved(targetPool_)) revert InvalidFeeTarget(targetPool_);
+        proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, payToken_);
+    }
 }
