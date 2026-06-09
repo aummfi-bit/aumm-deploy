@@ -299,4 +299,53 @@ contract AureumGovernance {
     function getProposal(uint256 proposalId) external view returns (Proposal memory) {
         return _proposals[proposalId];
     }
+
+    /// @notice Queue a succeeded proposal for timelocked execution.
+    /// @param proposalId 1-based proposal identifier.
+    /// @dev Requires `Succeeded`; the timelock `eta` is set here. Single-queue is self-guarding via the
+    ///      state transition to `Queued`. Permissionless — validity is established by the vote.
+    function queue(uint256 proposalId) external {
+        if (state(proposalId) != ProposalState.Succeeded) revert ProposalNotSucceeded(proposalId);
+        Proposal storage p = _proposals[proposalId];
+        uint256 eta = block.number + EXECUTION_TIMELOCK_BLOCKS;
+        p.eta = eta;
+        emit ProposalQueued(proposalId, eta);
+    }
+
+    /// @notice Execute a queued proposal after the timelock elapses.
+    /// @param proposalId 1-based proposal identifier.
+    /// @dev Requires `Queued` state — call `queue` first after `Succeeded`; a non-queued proposal reverts
+    ///      `ProposalNotSucceeded`. The `executed` flag is set before the external routing call as a
+    ///      checks-effects-interactions reentrancy guard. Permissionless — validity is established by the vote.
+    function execute(uint256 proposalId) external {
+        Proposal storage p = _proposals[proposalId];
+        if (p.executed) revert ProposalAlreadyExecuted(proposalId);
+        ProposalState s = state(proposalId);
+        if (s == ProposalState.Expired) revert GracePeriodExpired(proposalId);
+        if (s != ProposalState.Queued) revert ProposalNotSucceeded(proposalId);
+        if (block.number < p.eta) revert TimelockNotMet(p.eta, block.number);
+        p.executed = true;
+        _executeProposal(p);
+        emit ProposalExecuted(proposalId);
+    }
+
+    /// @notice Route an executed proposal to its per-type downstream effect.
+    /// @param p Stored proposal record.
+    /// @dev Per-type routing per K-D6e: gauge challenge revokes; composition is atomic
+    ///      revoke-old → `replaceSlot` → register-new; fee change checks cooldown here, stamps
+    ///      `lastFeeChangeBlock`, then calls `VAULT.setStaticSwapFeePercentage`.
+    function _executeProposal(Proposal storage p) internal {
+        if (p.proposalType == ProposalType.GaugeChallenge) {
+            GAUGE_REGISTRY.revokeGauge(p.targetPool);
+        } else if (p.proposalType == ProposalType.CompositionChallenge) {
+            address oldPool = SLOT_REGISTRY.poolAtSlot(p.slot);
+            GAUGE_REGISTRY.revokeGauge(oldPool);
+            SLOT_REGISTRY.replaceSlot(p.slot, p.newPool);
+            GAUGE_REGISTRY.registerGaugeFromComposition(p.newPool);
+        } else {
+            if (block.number < lastFeeChangeBlock[p.targetPool] + FEE_CHANGE_COOLDOWN_BLOCKS) revert FeeCooldownActive(p.targetPool);
+            lastFeeChangeBlock[p.targetPool] = block.number;
+            VAULT.setStaticSwapFeePercentage(p.targetPool, p.newFee);
+        }
+    }
 }
