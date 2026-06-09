@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K3 in progress on `stage-k` — K0—K2 complete (K1 = `AureumGovernanceAuthorizer` `73ceaae` + 12-green unit `e72104c`; K2 = K-D4 reuse-direct, no code surface, `3e8250d` / `29d4b71`); K3.0a landed K-D5 LOCKED (`VotingWeight` stateful poke-accumulator, `d66688b`); this commit lands K3.0b (PLAN K-D5 mirror + K3 sub-step ladder). Next code surface: K3.0c `IEmissionDistributor.effectiveQualBlock` exposure → K3.1 `VotingWeight.sol`. K-D1—K-D5 LOCKED; K-D6—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K3 complete on `stage-k` — K0—K3 done (K1 = `AureumGovernanceAuthorizer` `73ceaae` + 12-green unit `e72104c`; K2 = K-D4 reuse-direct, no code surface, `3e8250d` / `29d4b71`; K3 = `VotingWeight` `50d9f95` + K3.0c `effectiveQualBlock` exposure `888f0bd` + 29-green unit cohort `4d81ffc` / `8e345b5` / `d2f90d1`); K3.3 fork test folded into K4 `StageKIntegration` (user decision 2026-06-08). Next: K4 pre-flight — K-D6 `AureumGovernance` lock with sub-splits K-D6a—K-D6f. K-D1—K-D5 LOCKED; K-D6—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-08 — K3.0b PLAN (this commit): K-D5 mirror flipped to LOCKED (byte-identical NOTES mirror) + K3 sub-step ladder detailed (K3.0a—K3.3, including K3.0c `IEmissionDistributor` exposure) + Surfaces table K3.0c fix-forward rows + Completion Log catch-up (K2.0b—K3.0b).
+> **Last update:** 2026-06-08 — K3.3b PLAN (this commit): K3 close mirror — status flipped to K3 complete + K3.3 row marked folded into K4 `StageKIntegration` + Completion Log catch-up (K3.0b hash backfill `0b790c3` + K3.0c—K3.3b rows). Next: K4 pre-flight (K-D6 lock).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -109,7 +109,7 @@ The value-weighted governance reader implementing `IVotingWeight` (I9.1 stub) = 
 - **K3.0c** `src/emission/IEmissionDistributor.sol` + `src/emission/EmissionDistributor.sol` — expose `effectiveQualBlock(address pool, address user) → uint256` on the interface + `override` on the concrete public mapping (I13-class fix-forward; no behavioural change); Cursor §8e.1.
 - **K3.1** `src/governance/VotingWeight.sol` — the concrete reader per K-D5: `is IVotingWeight`, five zero-checked immutables (`ORACLE` / `GAUGE_REGISTRY` / `RECORDER` / `REGISTRY` / `GENESIS_BLOCK`), two slots (`_holderWeight` / `_totalQualifiedWeight`), `view` `governanceWeight` + `totalSupply`, permissionless `poke(holder)` with internal `_positionPower` (gauge gate, 14-day cliff, on-ramp cap, recorder-share value, F-9 `powDown` root, era flip), F12/F13 signed-delta application, div-by-zero guards; Cursor §8e.1.
 - **K3.2** `test/unit/VotingWeight.t.sol` — unit cohort: 14-day cliff zero; on-ramp cap; era-root flip at `firstHalvingBlock`; gauge-gate zero; withdrawal → `poke` → zero; recorder-share value; multi-pool aggregation; multi-holder `vetoSupport ≤ totalSupply` invariant under mixed poke states (matching `VaultClassRegistry.sol:277-279`); signed-delta on weight drop; div-by-zero guards; Cursor §8e.1.
-- **K3.3** fork test — scope decided at K3.2 pre-flight (lean unit-heavy; fork only for real `TVLOracle.tvl` + recorder clock on pilot pools); Cursor §8e.1.
+- **K3.3** (FOLDED → K4) fork test folded into K4 `test/fork/StageKIntegration.t.sol` (resolved at K3 close 2026-06-08 per user decision — the recorder clock `effectiveQualBlock` needs real hook-recorded deposits, whose fork harness is the K4 integration test; a standalone K3 fork test would duplicate it). **K3 complete.**
 
 ### K4 — AureumGovernance (per K-D6; the largest unit; designs lock at K4 pre-flight)
 
@@ -148,4 +148,11 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K2.0a | `3e8250d` | docs/STAGE_K_NOTES.md — K-D4 TVL-oracle binding LOCKED reuse-direct (ITVLOracle.tvl(pool); no new K2 contract) |
 | K2.0b | `29d4b71` | docs/STAGE_K_PLAN.md — K-D4 mirror flip to LOCKED + K2 documentation-only framing + Completion Log catch-up |
 | K3.0a | `d66688b` | docs/STAGE_K_NOTES.md — K-D5 VotingWeight LOCKED (stateful poke-accumulator, recorder-share value per OQ-25, exact veto fraction) |
-| K3.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D5 mirror flip to LOCKED + K3 sub-step ladder + Surfaces table K3.0c rows + Completion Log catch-up |
+| K3.0b | `0b790c3` | docs/STAGE_K_PLAN.md — K-D5 mirror flip to LOCKED + K3 sub-step ladder + Surfaces table K3.0c rows + Completion Log catch-up |
+| K3.0c | `888f0bd` | src/emission/IEmissionDistributor.sol + EmissionDistributor.sol — effectiveQualBlock interface getter + override (I13-class fix-forward per K-D5) |
+| K3.1 | `50d9f95` | src/governance/VotingWeight.sol — stateful poke-accumulator per K-D5 |
+| K3.2a | `4d81ffc` | test/unit/VotingWeight.t.sol — scaffold, mocks, constructor cohort (7 tests) |
+| K3.2b | `8e345b5` | test/unit/VotingWeight.t.sol — single-position behavioral cohort (13 tests) |
+| K3.2c | `d2f90d1` | test/unit/VotingWeight.t.sol — aggregate behavioral cohort (9 tests) |
+| K3.3a | `e69652c` | docs/STAGE_K_NOTES.md — K3.3 fold into K4 + K3 complete recorded |
+| K3.3b | (this commit) | docs/STAGE_K_PLAN.md — K3.3 fold mirror + status refresh + Completion Log catch-up (K3.0b—K3.3b) |
