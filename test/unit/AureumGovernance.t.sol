@@ -27,7 +27,12 @@ contract MockVotingWeight is IVotingWeight {
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
     }
-    function poke(address) external {}
+    uint256 public pokeCount;
+    address public lastPoked;
+    function poke(address holder) external {
+        pokeCount++;
+        lastPoked = holder;
+    }
 }
 contract MockGaugeRegistry {
     mapping(address => IGaugeRegistry.GaugeStatus) public statusOf;
@@ -327,5 +332,95 @@ contract AureumGovernanceTest is Test {
         address ungauged = makeAddr("ungaugedPool");
         vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidFeeTarget.selector, ungauged));
         gov.proposeFeeChange(ungauged, FEE_OK, IERC20(address(svZchf)));
+    }
+    function test_castVote_accruesForVotes() public {
+        uint256 id = _proposeGauge();
+        uint256 w = 300_000e18;
+        votingWeight.setGovernanceWeight(voterA, w);
+        vm.expectEmit(address(gov));
+        emit AureumGovernance.VoteCast(id, voterA, true, w);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.forVotes, w);
+        assertEq(p.againstVotes, 0);
+        assertTrue(gov.hasVoted(id, voterA));
+    }
+    function test_castVote_accruesAgainstVotes() public {
+        uint256 id = _proposeGauge();
+        uint256 w = 200_000e18;
+        votingWeight.setGovernanceWeight(voterA, w);
+        vm.prank(voterA);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.againstVotes, w);
+        assertEq(p.forVotes, 0);
+    }
+    function test_castVote_multipleVotersAccumulate() public {
+        uint256 id = _proposeGauge();
+        uint256 wA = 300_000e18;
+        uint256 wB = 150_000e18;
+        votingWeight.setGovernanceWeight(voterA, wA);
+        votingWeight.setGovernanceWeight(voterB, wB);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.forVotes, wA);
+        assertEq(p.againstVotes, wB);
+    }
+    function test_castVote_pokesVoterBeforeAccrual() public {
+        uint256 id = _proposeGauge();
+        uint256 w = 100_000e18;
+        votingWeight.setGovernanceWeight(voterA, w);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        assertEq(votingWeight.pokeCount(), 1);
+        assertEq(votingWeight.lastPoked(), voterA);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.forVotes, w);
+    }
+    function test_castVote_zeroWeightNoOp() public {
+        uint256 id = _proposeGauge();
+        vm.expectEmit(address(gov));
+        emit AureumGovernance.VoteCast(id, voterA, true, 0);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.forVotes, 0);
+        assertEq(p.againstVotes, 0);
+        assertTrue(gov.hasVoted(id, voterA));
+    }
+    function test_castVote_revert_doubleVote() public {
+        uint256 id = _proposeGauge();
+        votingWeight.setGovernanceWeight(voterA, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterA);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.AlreadyVoted.selector, voterA, id));
+        gov.castVote(id, true);
+    }
+    function test_castVote_revert_nonexistentProposal() public {
+        vm.roll(1_000);
+        vm.prank(voterA);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotActive.selector, uint256(999)));
+        gov.castVote(999, true);
+    }
+    function test_castVote_windowBoundaryStrict() public {
+        uint256 id = _proposeGauge();
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        uint256 endBlock = p.endBlock;
+        votingWeight.setGovernanceWeight(voterA, 100_000e18);
+        votingWeight.setGovernanceWeight(voterB, 50_000e18);
+        vm.roll(endBlock);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        p = gov.getProposal(id);
+        assertEq(p.forVotes, 100_000e18);
+        vm.roll(endBlock + 1);
+        vm.prank(voterB);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotActive.selector, id));
+        gov.castVote(id, false);
     }
 }
