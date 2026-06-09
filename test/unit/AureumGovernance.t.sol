@@ -508,4 +508,99 @@ contract AureumGovernanceTest is Test {
         vm.roll(1_000);
         assertEq(uint256(gov.state(999)), uint256(AureumGovernance.ProposalState.Defeated));
     }
+    function test_queue_revertNotSucceeded() public {
+        uint256 id = _proposeGauge();
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotSucceeded.selector, id));
+        gov.queue(id);
+    }
+    function test_queue_setsEtaAndEmits() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        uint256 expectedEta = block.number + TIMELOCK;
+        vm.expectEmit(true, false, false, true, address(gov));
+        emit AureumGovernance.ProposalQueued(id, expectedEta);
+        gov.queue(id);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(p.eta, expectedEta);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Queued));
+    }
+    function test_execute_revertTimelockNotMet() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        gov.queue(id);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.TimelockNotMet.selector, p.eta, block.number));
+        gov.execute(id);
+    }
+    function test_execute_revertNotQueued() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotSucceeded.selector, id));
+        gov.execute(id);
+    }
+    function test_execute_revertGracePeriodExpired() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        gov.queue(id);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.eta + GRACE);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.GracePeriodExpired.selector, id));
+        gov.execute(id);
+    }
+    function test_execute_gaugeChallenge_revokesGauge() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        vm.expectEmit(true, false, false, false, address(gov));
+        emit AureumGovernance.ProposalExecuted(id);
+        gov.execute(id);
+        assertTrue(gaugeReg.revoked(gaugePool));
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+    }
+    function test_execute_compositionChallenge_atomicReplace() public {
+        uint256 id = _proposeComposition();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        assertTrue(gaugeReg.revoked(occupantPool));
+        assertEq(slotReg.poolAtSlot(5), candidatePool);
+        assertTrue(gaugeReg.registered(candidatePool));
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+    }
+    function test_execute_feeChange_setsStaticFee() public {
+        uint256 id = _proposeFee();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        assertEq(vault.staticFeeOf(feePool), FEE_OK);
+        assertEq(vault.setFeeCalls(), 1);
+        assertEq(gov.lastFeeChangeBlock(feePool), block.number);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+    }
+    function test_execute_feeChange_cooldownReverts() public {
+        uint256 id1 = _proposeFee();
+        uint256 id2 = _proposeFee();
+        votingWeight.setGovernanceWeight(voterA, TOTAL_SUPPLY);
+        vm.prank(voterA);
+        gov.castVote(id1, true);
+        vm.prank(voterA);
+        gov.castVote(id2, true);
+        vm.roll(block.number + VOTING_PERIOD + 1);
+        gov.queue(id1);
+        gov.queue(id2);
+        AureumGovernance.Proposal memory p = gov.getProposal(id1);
+        vm.roll(p.eta);
+        gov.execute(id1);
+        assertEq(vault.staticFeeOf(feePool), FEE_OK);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.FeeCooldownActive.selector, feePool));
+        gov.execute(id2);
+    }
+    function test_execute_revertAlreadyExecuted() public {
+        uint256 id = _proposeGauge();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalAlreadyExecuted.selector, id));
+        gov.execute(id);
+    }
 }
