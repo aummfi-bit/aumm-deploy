@@ -423,4 +423,89 @@ contract AureumGovernanceTest is Test {
         vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotActive.selector, id));
         gov.castVote(id, false);
     }
+    function test_state_active_duringWindowAndAtEndBlock() public {
+        uint256 id = _proposeGauge();
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active));
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active));
+    }
+    function test_state_quorumBoundaryStrict() public {
+        uint256 id1 = _proposeGauge();
+        votingWeight.setGovernanceWeight(voterA, 200_000e18);
+        vm.prank(voterA);
+        gov.castVote(id1, true);
+        uint256 id2 = _proposeGauge();
+        votingWeight.setGovernanceWeight(voterB, 200_000e18 - 1);
+        vm.prank(voterB);
+        gov.castVote(id2, true);
+        AureumGovernance.Proposal memory p = gov.getProposal(id1);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id1)), uint256(AureumGovernance.ProposalState.Succeeded));
+        assertEq(uint256(gov.state(id2)), uint256(AureumGovernance.ProposalState.Defeated));
+    }
+    function test_state_gauge_simpleMajorityPass() public {
+        uint256 id = _proposeGauge();
+        votingWeight.setGovernanceWeight(voterA, 200_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    function test_state_gauge_tieDefeated() public {
+        uint256 id = _proposeGauge();
+        votingWeight.setGovernanceWeight(voterA, 150_000e18);
+        votingWeight.setGovernanceWeight(voterB, 150_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+    }
+    function test_state_fee_simpleMajorityPass() public {
+        uint256 id = _proposeFee();
+        votingWeight.setGovernanceWeight(voterA, 250_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    function test_state_composition_supermajorityExactPass() public {
+        uint256 id = _proposeComposition();
+        votingWeight.setGovernanceWeight(voterA, 200_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    function test_state_composition_belowSupermajorityDefeated() public {
+        uint256 id = _proposeComposition();
+        votingWeight.setGovernanceWeight(voterA, 175_000e18);
+        votingWeight.setGovernanceWeight(voterB, 125_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+    }
+    function test_state_nonexistent_defeated() public {
+        vm.roll(1_000);
+        assertEq(uint256(gov.state(999)), uint256(AureumGovernance.ProposalState.Defeated));
+    }
 }
