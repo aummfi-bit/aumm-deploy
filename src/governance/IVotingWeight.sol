@@ -8,9 +8,7 @@ pragma solidity ^0.8.26;
  *         view consumed by `VaultClassRegistry.vetoProposal` (G-D9 veto-threshold semantic).
  * @dev Introduced at Stage I (I9.1) per I-D17 as the correctly-named replacement for the deleted
  *      `IAuMT` consumer surface: under I-D14, AuMT is the pool's own Balancer V3 BPT, not a separate
- *      token, so a token-named interface is wrong. This surface commits only to the two members
- *      `VaultClassRegistry` actually reads — `governanceWeight(holder)` and `totalSupply()` — and is
- *      deliberately NOT `is IERC20`: the reader holds no balances and effects no transfers.
+ *      token, so a token-named interface is wrong. This surface commits to three members — `governanceWeight(holder)` and `totalSupply()` (the `VaultClassRegistry.vetoProposal` denominator pair) plus `poke(holder)` (the `AureumGovernance.castVote` checkpoint-refresh, added at Stage K per K10) — and is deliberately NOT `is IERC20`: the reader holds no balances and effects no transfers.
  *
  *      The concrete implementation — `src/governance/VotingWeight.sol`, computing
  *      `(qualified_AuMT_value × time_in_pool_capped)^(1/4 → 1/3)` over the EmissionDistributor
@@ -38,4 +36,16 @@ interface IVotingWeight {
      * @return The total voting-weight supply.
      */
     function totalSupply() external view returns (uint256);
+
+    /**
+     * @notice Permissionless refresh of `holder`'s value-weighted checkpoint.
+     * @dev Consumed by `AureumGovernance.castVote` per K-D6b — called on `msg.sender` immediately
+     *      before reading `governanceWeight`, so the vote uses a fresh checkpoint. Mutating and
+     *      permissionless by design (anyone may refresh any holder, including resetting a withdrawn
+     *      holder's stale weight to its live value). The concrete `VotingWeight` recomputes the
+     *      holder's aggregate over the gauge-filtered registry and updates the `totalSupply()`
+     *      denominator via the signed-delta discipline.
+     * @param holder The address whose checkpoint is refreshed.
+     */
+    function poke(address holder) external;
 }

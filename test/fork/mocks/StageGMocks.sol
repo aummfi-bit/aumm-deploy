@@ -51,4 +51,6 @@ contract MockVotingWeight is IVotingWeight {
     function totalSupply() external view returns (uint256) {
         return _totalSupply;
     }
+
+    function poke(address) external {}
 }
