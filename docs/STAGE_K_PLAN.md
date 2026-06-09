@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K1 in progress on `stage-k` — K0 entry complete (K0.1—K0.4); K1.0a landed K-D3 LOCKED (`130c39d`); this commit lands K1.0b (PLAN K-D3 mirror + K1 sub-step detail). K1.1 contract next. K2—K7 unit designs lock at their per-unit Opus pre-flights per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K2 in progress on `stage-k` — K0—K1 complete (K1 = `AureumGovernanceAuthorizer` `73ceaae` + 12-green unit `e72104c`); K2.0a landed K-D4 LOCKED reuse-direct (`3e8250d`); this commit lands K2.0b (PLAN K-D4 mirror + K2 documentation-only framing). K2 produces no code surface; K3 `VotingWeight` pre-flight next. K-D1—K-D4 LOCKED; K-D5—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-07 — K1.0b PLAN (this commit): K-D3 mirror flipped to LOCKED + K1 sub-step detail (K1.0a/K1.0b/K1.1/K1.2) + Completion Log catch-up (K0.3—K1.0b).
+> **Last update:** 2026-06-08 — K2.0b PLAN (this commit): K-D4 mirror flipped to LOCKED + K2 marked documentation-only (no code surface) + Completion Log catch-up (K1.0b—K2.0b).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -42,14 +42,14 @@ Stage K ships the on-chain governance stack (`AureumGovernance`) plus the value-
 
 ## Decisions
 
-Mirror of STAGE_K_NOTES.md Decisions table (K-D1 + K-D2 LOCKED at K0.2; K-D3 LOCKED at K1 pre-flight; K-D4—K-D9 forward-declared, each locking at its unit pre-flight).
+Mirror of STAGE_K_NOTES.md Decisions table (K-D1 + K-D2 LOCKED at K0.2; K-D3 LOCKED at K1 pre-flight; K-D4 LOCKED at K2 pre-flight; K-D5—K-D9 forward-declared, each locking at its unit pre-flight).
 
 | # | Status | Decision | Anchor | Locked at |
 | --- | --- | --- | --- | --- |
 | K-D1 | LOCKED | Stage K scope = tight governance handoff, seven dependency-ordered units K1—K7. D33 Aureum Router DEFERRED to Stage O; OQ-20 / OQ-21 controller yield-fee leg stays DEFERRED (user scope decision 2026-06-07). New contracts: `AureumGovernanceAuthorizer` (K1), `VotingWeight` (K3), `AureumGovernance` (K4). New scripts: `script/DeployAuMM.s.sol` (H-D42), `script/DeployStageK.s.sol` (K7). Fix-forward edit to tagged contract: `TVLOracle` roster re-wire (K6, J-D8, I13-class). `AuMM.setMinter` is a deploy-script call (K5, H-D41) — no AuMM contract edit. | STAGES_OVERVIEW Stage K; OQ-10; user scope decision 2026-06-07; H-D41 / H-D42 / J-D8 carry-forward | K0.2 |
 | K-D2 | LOCKED | Dependency-ordered build sequence: K1 `AureumGovernanceAuthorizer` → K2 TVL-oracle binding → K3 `VotingWeight` → K4 `AureumGovernance` → K5 `setMinter` handoff → K6 `TVLOracle` re-wire → K7 deploy + migration. Each unit's deep design locks at its own Opus pre-flight as a new K-D entry (K-D3 onward), NOT at K0.2 — F-12 deposit math, F-9 dampening, the snapshot mechanism, and the `VotingWeight` value-curve each need a focused beat reading the canonical formulas. The §12 ambiguity-gate fires fresh at each unit pre-flight. | Stage K size vs Stage J; J-D8 precedent; §12 ambiguity-gate; §13 per-unit Opus pre-flight | K0.2 |
 | K-D3 | LOCKED | `AureumGovernanceAuthorizer` per OQ-10 — `is IAuthorizer`, no new Aureum interface (external surface is `canPerform` + public-immutable getters). Constructor `(governanceContract_, emergencyMultisig_, vault_)` all zero-checked; immutables `GOVERNANCE_CONTRACT` / `EMERGENCY_MULTISIG` / `EMERGENCY_WINDOW_END_BLOCK` + two `bytes32` emergency action IDs; constant `EMERGENCY_WINDOW_BLOCKS = 2_628_000`. `EMERGENCY_WINDOW_END_BLOCK = block.number + EMERGENCY_WINDOW_BLOCKS` (from construction block). Emergency set = {`pauseVault`, `enableRecoveryMode`} (user 2026-06-07; `disableQuery` dropped — permanent defensive-config, not crisis-response). Action IDs computed locally H13-safe; disambiguator = Vault address (verified `Authentication.sol:51` + `VaultAdmin.sol:77`). `canPerform`: governance → true; multisig ∧ emergency ∧ `block.number < END_BLOCK` → true; else false. | OQ-10 (FINDINGS L722-794); `Authentication.sol:51` / `VaultAdmin.sol:77` encoding; `IVaultAdmin` selectors; Stage B `AureumAuthorizer.sol`; user decision 2026-06-07 | K1 |
-| K-D4 | forward-declared | TVL oracle binding for vote-weighting — reuse `src/emission/TVLOracle.sol` (OQ-22 svZCHF valuation, already concrete) vs a governance-local oracle. Pre-flight recommendation: reuse. | OQ-22 (FINDINGS L1106); `src/emission/TVLOracle.sol`; `src/ccb/ITVLOracle.sol` | K2 |
+| K-D4 | LOCKED | TVL-oracle binding for vote-weighting = **reuse-direct**. `ITVLOracle` already exposes `tvl(address pool) → uint256` (svZCHF, 18-dec; `ITVLOracle.sol` L14, implemented at `TVLOracle.sol` L211) — exactly the whole-pool valuation K3 `VotingWeight` multiplies by BPT share (`holderValue = tvl(pool) × balanceOf(holder) / totalSupply()`; BPT reads direct off the pool per I-D14). No adapter, no new K2 contract, no `IVotingWeight` change — `VotingWeight` takes an `ITVLOracle` immutable and calls `tvl(pool)`; injection lands at K3. Single shared `TVLOracle` instance (emission `EfficiencyOracle` + governance; one roster, one `setGovernanceContract` handoff); deploy ordering at K-D9. K6 `_constellationRatio` re-wire is signature-stable (does not touch `tvl` ABI). | OQ-22 (FINDINGS L1106); `src/ccb/ITVLOracle.sol` L14; `src/emission/TVLOracle.sol` L211; I-D14 (AuMT=BPT); K-D9 | K2 |
 | K-D5 | forward-declared | `VotingWeight` value-weighted view — `(qualified_AuMT_value × time_in_pool_capped)^(1/4 → 1/3)` over the `EmissionDistributor` recorder clock; 14-day cliff, 6-month on-ramp, F-9 era root, gauged-only; `is IVotingWeight` (I9.1 stub). I-D17 `totalSupply()` denominator = total qualified voting weight (pre-flight recommendation), fixing the veto-bps semantic. | I-D15; I-D17; OQ-25; `src/governance/IVotingWeight.sol`; F-9 | K3 |
 | K-D6 | forward-declared | `AureumGovernance` three proposal types (gauge challenge F-12 / composition challenge / fee proposal) + F-9 dampening + snapshot voting + timelock. Sub-splits K-D6a—K-D6f at K4 pre-flight: base proposal machinery, snapshot mechanism, F-9 era root, F-12 elite-tail deposit, per-type quorum/majority/deposit, timelock + execution routing. | STAGES_OVERVIEW Stage K L245-252; OQ-7 / OQ-8 / OQ-9 / OQ-11 / OQ-13; F-9 / F-12 | K4 |
 | K-D7 | forward-declared | `AuMM.setMinter(EmissionDistributor)` handoff sequencing per H-D41 — deploy-script call, no AuMM contract edit; `distribute()` / `claim()` unblock from `NotMinter` at this call. | H-D41 (CLAUDE.md §11 deferred); `AuMM.setMinter` | K5 |
@@ -91,9 +91,12 @@ The B-strict 12-month time-bomb authorizer per OQ-10; surfaces `src/governance/A
 - **K1.1** `src/governance/AureumGovernanceAuthorizer.sol` — the concrete contract per K-D3: `is IAuthorizer`, constructor `(governanceContract_, emergencyMultisig_, vault_)` (all zero-checked), three address immutables (`GOVERNANCE_CONTRACT` / `EMERGENCY_MULTISIG` / `EMERGENCY_WINDOW_END_BLOCK`) + two `bytes32` emergency action IDs + `EMERGENCY_WINDOW_BLOCKS = 2_628_000`, locally-computed H13-safe action IDs, `canPerform` routing; Cursor §8e.1.
 - **K1.2** `test/unit/AureumGovernanceAuthorizer.t.sol` — unit cohort (8 cases): governance all-access; emergency × in-window; emergency × post-window; non-emergency × in-window; random account; action-ID encoding matches `getActionId`; window boundary at `== EMERGENCY_WINDOW_END_BLOCK`; three zero-address constructor reverts; Cursor §8e.1.
 
-### K2 — TVL-oracle binding for vote-weighting (per K-D4; resolves at K2 pre-flight)
+### K2 — TVL-oracle binding for vote-weighting (per K-D4 LOCKED; documentation-only — no code surface)
 
-Bind the svZCHF TVL valuation K3 `VotingWeight` reads; K-D4 reuse-vs-new (recommendation: reuse `src/emission/TVLOracle.sol`) resolves at the K2 pre-flight; may produce no new contract on the reuse path or a thin adapter.
+K-D4 resolved reuse-direct at the K2 pre-flight: `ITVLOracle` already exposes `tvl(address pool) → uint256` (svZCHF, 18-dec), exactly the whole-pool valuation K3 `VotingWeight` multiplies by BPT share (`holderValue = tvl(pool) × balanceOf(holder) / totalSupply()`, BPT direct off the pool per I-D14). So `VotingWeight` takes an `ITVLOracle` immutable and calls `tvl(pool)` — no adapter, no new K2 contract, single shared `TVLOracle` instance; the oracle injection folds into the K3 constructor. K2 produces no Surfaces row. (NOTES body landed K2.0a, `3e8250d`.)
+
+- **K2.0a** (DONE — `3e8250d`) `docs/STAGE_K_NOTES.md` — K-D4 TVL-oracle binding LOCKED reuse-direct (`ITVLOracle.tvl(pool)`, single shared instance, K6 re-wire signature-stable, full design body); Cursor §8e.1.
+- **K2.0b** (THIS COMMIT) `docs/STAGE_K_PLAN.md` — K-D4 mirror flip to LOCKED + K2 documentation-only framing + Completion Log catch-up; Cursor §8e.1.
 
 ### K3 — VotingWeight (per K-D5; design locks at K3 pre-flight)
 
@@ -130,4 +133,8 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K0.3 | `597880e` | docs/STAGE_K_PLAN.md — sub-step roadmap + Decisions mirror + Pre-flight checklist + Completion Log skeleton |
 | K0.4 | `5a165a9` | CLAUDE.md §11 — Stage J→K terminal refresh (resume anchor: K0 entry landed, Stage K open, K1 pre-flight next) |
 | K1.0a | `130c39d` | docs/STAGE_K_NOTES.md — K-D3 AureumGovernanceAuthorizer design LOCKED (emergency set {pauseVault, enableRecoveryMode}, H13-safe action-ID encoding) |
-| K1.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D3 mirror flip to LOCKED + K1 sub-step detail + Completion Log catch-up |
+| K1.0b | `e3b8f57` | docs/STAGE_K_PLAN.md — K-D3 mirror flip to LOCKED + K1 sub-step detail + Completion Log catch-up |
+| K1.1 | `73ceaae` | src/governance/AureumGovernanceAuthorizer.sol — B-strict 12-month time-bomb authorizer per OQ-10 / K-D3 (emergency set {pauseVault, enableRecoveryMode}, H13-safe action-ID encoding) |
+| K1.2 | `e72104c` | test/unit/AureumGovernanceAuthorizer.t.sol — unit cohort (12 cases: governance/emergency routing, window boundary, action-ID encoding, constructor reverts) |
+| K2.0a | `3e8250d` | docs/STAGE_K_NOTES.md — K-D4 TVL-oracle binding LOCKED reuse-direct (ITVLOracle.tvl(pool); no new K2 contract) |
+| K2.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D4 mirror flip to LOCKED + K2 documentation-only framing + Completion Log catch-up |
