@@ -150,3 +150,47 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         assertEq(votingWeight.totalSupply(), 0, "withdrawn-position weight removed from total");
     }
 }
+
+contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
+    function test_compositionChallenge_endToEndLifecycle() public {
+        // 1. Qualifying voter — real recorded deposit past the 14-day cliff; tvl mocked (K6 deferred, NOTES R1).
+        address voter = makeAddr("voterComp");
+        _depositOneSided(pilotPools[0], voter, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockTvl(pilotPools[0], 1_000e18);
+        votingWeight.poke(voter);
+        assertGt(votingWeight.governanceWeight(voter), 0, "voter qualified");
+
+        // 2. Propose a composition challenge — replace slot 5 (ixEdelweiss) with a synthetic candidate.
+        uint256 slot = 5;
+        address candidate = makeAddr("candidatePool");
+        address oldPool = realRegistry.poolAtSlot(slot);
+        assertEq(oldPool, pilotPools[1], "slot 5 holds ixEdelweiss");
+        deal(address(svZchf), address(this), 1_000e18); // PROPOSAL_DEPOSIT_SVZCHF
+        svZchf.approve(address(gov), 1_000e18);
+        uint256 id = gov.proposeCompositionChallenge(slot, candidate, svZchf);
+
+        // 3. Vote FOR with the qualifying voter (single 100% turnout).
+        vm.prank(voter);
+        gov.castVote(id, true);
+
+        // 4. Close the voting window — quorum (20%) + 2/3 supermajority both met.
+        AureumGovernance.Proposal memory pv = gov.getProposal(id);
+        vm.roll(pv.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded), "succeeded");
+
+        // 5. Queue, roll to the timelock eta, execute.
+        gov.queue(id);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.eta);
+        gov.execute(id);
+
+        // 6. Composition effects — atomic revoke-old / replaceSlot / register-new.
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed), "executed");
+        assertEq(realRegistry.poolAtSlot(slot), candidate, "slot 5 now holds candidate");
+        assertEq(realRegistry.slotOf(oldPool), 0, "ixEdelweiss deregistered");
+        assertEq(realRegistry.slotOf(candidate), slot, "candidate bound to slot 5");
+        assertTrue(!gaugeRegistry.isGaugeApproved(oldPool), "ixEdelweiss gauge revoked");
+        assertTrue(gaugeRegistry.isGaugeApproved(candidate), "candidate gauge active");
+    }
+}
