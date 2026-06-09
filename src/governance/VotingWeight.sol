@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8.26;
+import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
+import { IVotingWeight } from "./IVotingWeight.sol";
+import { ITVLOracle } from "../ccb/ITVLOracle.sol";
+import { IGaugeRegistry } from "../ccb/IGaugeRegistry.sol";
+import { IMiliariumRegistry } from "../ccb/IMiliariumRegistry.sol";
+import { IEmissionDistributor } from "../emission/IEmissionDistributor.sol";
+import { AureumTime } from "../lib/AureumTime.sol";
+/**
+ * @title VotingWeight
+ * @notice Value-weighted governance reader per K-D5 — a stateful poke-accumulator delivering an exact
+ *         veto fraction (`vetoSupport <= totalSupply` by construction). Implements `IVotingWeight`
+ *         (the I9.1 stub per I-D17) consumed by `VaultClassRegistry.vetoProposal`.
+ * @dev F-9 per-position power `(value * cappedTime/ON_RAMP)^(1/4 in Era 0, 1/3 in Era 1+)` over the
+ *      EmissionDistributor recorder clock; value = recorder share `tvl(pool) * userLP / poolTotalLP`
+ *      (OQ-25 anti-flash-loan — the hook-recorded deposit, never spot BPT balance). `governanceWeight`
+ *      and `totalSupply` are O(1) views over two checkpoints (`_holderWeight` / `_totalQualifiedWeight`);
+ *      permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered Miliarium
+ *      enumeration and applies the signed delta (F12/F13). The exact-fraction invariant holds because
+ *      `_totalQualifiedWeight == sum of _holderWeight[*]` and distinct voters hold disjoint positions.
+ */
+contract VotingWeight is IVotingWeight {
+    using FixedPoint for uint256;
+    /// @notice Era 0 governance-power exponent — F-9 1/4 root (18-dec fixed-point).
+    uint256 internal constant ERA0_EXPONENT = 0.25e18;
+    /// @notice Era 1+ governance-power exponent — F-9 1/3 root (18-dec fixed-point).
+    uint256 internal constant ERA1_PLUS_EXPONENT = FixedPoint.ONE / 3;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    ITVLOracle public immutable ORACLE;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    IGaugeRegistry public immutable GAUGE_REGISTRY;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    IEmissionDistributor public immutable RECORDER;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    IMiliariumRegistry public immutable REGISTRY;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    uint256 public immutable GENESIS_BLOCK;
+    /// @notice Per-holder checkpointed governance weight — sum of `_positionPower` at the holder's last `poke`.
+    mapping(address => uint256) internal _holderWeight;
+    /// @notice Running sum of every holder's checkpoint — the veto-threshold denominator per I-D17.
+    uint256 internal _totalQualifiedWeight;
+    /// @notice Reverts when a zero address is supplied for an immutable dependency.
+    error ZeroAddress();
+    /// @notice Reverts when a zero genesis block is supplied — block 0 is not a valid genesis.
+    error ZeroGenesisBlock();
+    /// @notice Emitted when `poke` refreshes a holder's checkpoint.
+    /// @param holder The holder repoked (indexed).
+    /// @param oldWeight The prior checkpoint.
+    /// @param newWeight The recomputed checkpoint.
+    event WeightPoked(address indexed holder, uint256 oldWeight, uint256 newWeight);
+    constructor(
+        ITVLOracle oracle_,
+        IGaugeRegistry gaugeRegistry_,
+        IEmissionDistributor recorder_,
+        IMiliariumRegistry registry_,
+        uint256 genesisBlock_
+    ) {
+        if (address(oracle_) == address(0)) revert ZeroAddress();
+        if (address(gaugeRegistry_) == address(0)) revert ZeroAddress();
+        if (address(recorder_) == address(0)) revert ZeroAddress();
+        if (address(registry_) == address(0)) revert ZeroAddress();
+        if (genesisBlock_ == 0) revert ZeroGenesisBlock();
+        ORACLE = oracle_;
+        GAUGE_REGISTRY = gaugeRegistry_;
+        RECORDER = recorder_;
+        REGISTRY = registry_;
+        GENESIS_BLOCK = genesisBlock_;
+    }
+    /// @inheritdoc IVotingWeight
+    function governanceWeight(address holder) external view override returns (uint256) {
+        return _holderWeight[holder];
+    }
+    /// @inheritdoc IVotingWeight
+    function totalSupply() external view override returns (uint256) {
+        return _totalQualifiedWeight;
+    }
+    /// @notice Permissionless refresh of `holder`'s checkpoint — recomputes the live aggregate over the
+    ///         gauge-filtered Miliarium enumeration and applies the signed delta to both checkpoints.
+    /// @dev F12/F13 signed-delta discipline via branch-on-sign with unsigned subtraction in each arm; no
+    ///      underflow because `_totalQualifiedWeight >= _holderWeight[holder]` (the holder's checkpoint is
+    ///      one summand of the total), so `_totalQualifiedWeight - (oldWeight - newWeight) >= newWeight`.
+    ///      No-op short-circuit when the aggregate is unchanged. Anyone may poke any holder — this is how a
+    ///      withdrawn holder's stale checkpoint is reset to its live zero (§viii withdrawal-reset). All
+    ///      dependency calls are `view`, so there is no reentrancy surface and writes follow every read.
+    /// @param holder The holder whose checkpoint is refreshed.
+    function poke(address holder) external {
+        uint256 newWeight = 0;
+        uint256 count = REGISTRY.miliariumPoolsCount();
+        for (uint256 i = 0; i < count; i++) {
+            newWeight += _positionPower(REGISTRY.miliariumPoolAt(i), holder);
+        }
+        uint256 oldWeight = _holderWeight[holder];
+        if (newWeight == oldWeight) return;
+        _holderWeight[holder] = newWeight;
+        if (newWeight > oldWeight) {
+            _totalQualifiedWeight += newWeight - oldWeight;
+        } else {
+            _totalQualifiedWeight -= oldWeight - newWeight;
+        }
+        emit WeightPoked(holder, oldWeight, newWeight);
+    }
+    /// @notice F-9 per-position governance power for `holder` in `pool` — live, gauge-gated.
+    /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) clock from the recorder
+    ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (c) value =
+    ///      recorder share `tvl(pool) * userLP / poolTotalLP` (OQ-25); (d) base = value normalized by the
+    ///      capped on-ramp time fraction; (e) power = base^exponent with the F-9 era root. Every degenerate
+    ///      input (zero LP, zero supply, zero value, zero base) short-circuits to 0 before `powDown`.
+    /// @param pool The Miliarium pool.
+    /// @param holder The holder.
+    /// @return The position's governance power (18-dec).
+    function _positionPower(address pool, address holder) internal view returns (uint256) {
+        if (!GAUGE_REGISTRY.isGaugeApproved(pool)) return 0;
+        uint256 eqb = RECORDER.effectiveQualBlock(pool, holder);
+        if (eqb == 0) return 0;
+        uint256 timeInPool = block.number - eqb;
+        if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return 0;
+        uint256 totalLP = RECORDER.poolTotalLP(pool);
+        if (totalLP == 0) return 0;
+        uint256 lp = RECORDER.userLP(pool, holder);
+        if (lp == 0) return 0;
+        uint256 value = ORACLE.tvl(pool).mulDown(lp.divDown(totalLP));
+        if (value == 0) return 0;
+        uint256 cappedTime = timeInPool > AureumTime.ON_RAMP_PERIOD_BLOCKS
+            ? AureumTime.ON_RAMP_PERIOD_BLOCKS
+            : timeInPool;
+        uint256 base = value.mulDown(cappedTime.divDown(AureumTime.ON_RAMP_PERIOD_BLOCKS));
+        if (base == 0) return 0;
+        uint256 exponent = block.number < AureumTime.firstHalvingBlock(GENESIS_BLOCK)
+            ? ERA0_EXPONENT
+            : ERA1_PLUS_EXPONENT;
+        return base.powDown(exponent);
+    }
+}
