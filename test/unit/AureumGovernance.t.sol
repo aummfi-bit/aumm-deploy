@@ -180,4 +180,152 @@ contract AureumGovernanceTest is Test {
         assertEq(address(gov.SUSDS()), address(sUsds));
         assertEq(gov.BODENSEE_POOL(), bodenseePool);
     }
+    function test_constructor_revertZeroAddress_allEightSlots() public {
+        IVotingWeight vw = IVotingWeight(address(votingWeight));
+        IGaugeRegistry gr = IGaugeRegistry(address(gaugeReg));
+        IMiliariumSlotRegistry sr = IMiliariumSlotRegistry(address(slotReg));
+        IVault v = IVault(address(vault));
+        SwapAndDepositToBodensee ch = SwapAndDepositToBodensee(address(channel));
+        IERC20 zc = IERC20(address(svZchf));
+        IERC20 su = IERC20(address(sUsds));
+        address bp = bodenseePool;
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(IVotingWeight(address(0)), gr, sr, v, ch, zc, su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, IGaugeRegistry(address(0)), sr, v, ch, zc, su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, IMiliariumSlotRegistry(address(0)), v, ch, zc, su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, sr, IVault(address(0)), ch, zc, su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, sr, v, SwapAndDepositToBodensee(address(0)), zc, su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, sr, v, ch, IERC20(address(0)), su, bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, sr, v, ch, zc, IERC20(address(0)), bp);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        new AureumGovernance(vw, gr, sr, v, ch, zc, su, address(0));
+    }
+    function test_depositAmount_svZchf() public {
+        _proposeGauge();
+        assertEq(channel.donateCalls(), 1);
+        assertEq(channel.lastDonateToken(), address(svZchf));
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
+        assertEq(svZchf.balanceOf(address(channel)), DEPOSIT_SVZCHF);
+        assertEq(svZchf.balanceOf(proposer), 1_000_000e18 - DEPOSIT_SVZCHF);
+    }
+    function test_depositAmount_sUsds() public {
+        vm.prank(proposer);
+        gov.proposeGaugeChallenge(gaugePool, IERC20(address(sUsds)));
+        assertEq(channel.lastDonateToken(), address(sUsds));
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SUSDS);
+        assertEq(sUsds.balanceOf(address(channel)), DEPOSIT_SUSDS);
+    }
+    function test_depositAmount_revertInvalidPayToken() public {
+        MockERC20 other = new MockERC20("Other Token", "OTH", 18);
+        vm.expectRevert(AureumGovernance.InvalidPayToken.selector);
+        gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(other)));
+    }
+    function test_proposeGauge_happyPath_depositsAndRecords() public {
+        uint256 start = block.number;
+        vm.expectEmit(address(gov));
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.GaugeChallenge, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        uint256 id = _proposeGauge();
+        assertEq(id, 1);
+        assertEq(gov.proposalCount(), 1);
+        AureumGovernance.Proposal memory p = gov.getProposal(1);
+        assertEq(p.proposer, proposer);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.GaugeChallenge));
+        assertEq(p.targetPool, gaugePool);
+        assertEq(p.newPool, address(0));
+        assertEq(p.slot, 0);
+        assertEq(p.newFee, 0);
+        assertEq(p.startBlock, start);
+        assertEq(p.endBlock, start + VOTING_PERIOD);
+        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(p.forVotes, 0);
+        assertEq(p.againstVotes, 0);
+        assertEq(p.eta, 0);
+        assertEq(p.executed, false);
+        assertEq(channel.donateCalls(), 1);
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
+    }
+    function test_proposeGauge_revert_notActive() public {
+        address inactivePool = makeAddr("inactivePool");
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidGaugeTarget.selector, inactivePool));
+        gov.proposeGaugeChallenge(inactivePool, IERC20(address(svZchf)));
+    }
+    function test_proposeGauge_revert_isMiliarium() public {
+        slotReg.setSlotOf(gaugePool, 3);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidGaugeTarget.selector, gaugePool));
+        gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+    }
+    function test_proposeGauge_revert_invalidPayToken() public {
+        MockERC20 other = new MockERC20("Other Token", "OTH", 18);
+        vm.expectRevert(AureumGovernance.InvalidPayToken.selector);
+        gov.proposeGaugeChallenge(gaugePool, IERC20(address(other)));
+    }
+    function test_proposeComposition_happyPath_depositsAndRecords() public {
+        uint256 start = block.number;
+        vm.expectEmit(address(gov));
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.CompositionChallenge, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        uint256 id = _proposeComposition();
+        assertEq(id, 1);
+        assertEq(gov.proposalCount(), 1);
+        AureumGovernance.Proposal memory p = gov.getProposal(1);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.CompositionChallenge));
+        assertEq(p.targetPool, address(0));
+        assertEq(p.newPool, candidatePool);
+        assertEq(p.slot, 5);
+        assertEq(p.newFee, 0);
+        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(channel.donateCalls(), 1);
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
+    }
+    function test_proposeComposition_revert_slotOutOfRange() public {
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidCompositionTarget.selector, uint256(0)));
+        gov.proposeCompositionChallenge(0, candidatePool, IERC20(address(svZchf)));
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidCompositionTarget.selector, uint256(29)));
+        gov.proposeCompositionChallenge(29, candidatePool, IERC20(address(svZchf)));
+    }
+    function test_proposeComposition_revert_slotUnoccupied() public {
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidCompositionTarget.selector, uint256(7)));
+        gov.proposeCompositionChallenge(7, candidatePool, IERC20(address(svZchf)));
+    }
+    function test_proposeComposition_revert_zeroNewPool() public {
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        gov.proposeCompositionChallenge(5, address(0), IERC20(address(svZchf)));
+    }
+    function test_proposeFee_happyPath_depositsAndRecords() public {
+        uint256 start = block.number;
+        vm.expectEmit(address(gov));
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.FeeChange, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        uint256 id = _proposeFee();
+        assertEq(id, 1);
+        assertEq(gov.proposalCount(), 1);
+        AureumGovernance.Proposal memory p = gov.getProposal(1);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.FeeChange));
+        assertEq(p.targetPool, feePool);
+        assertEq(p.newFee, FEE_OK);
+        assertEq(p.newPool, address(0));
+        assertEq(p.slot, 0);
+        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(channel.donateCalls(), 1);
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
+    }
+    function test_proposeFee_revert_feeOutOfRange() public {
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidFeeValue.selector, uint256(1e14 - 1)));
+        gov.proposeFeeChange(feePool, 1e14 - 1, IERC20(address(svZchf)));
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidFeeValue.selector, uint256(3e15 + 1)));
+        gov.proposeFeeChange(feePool, 3e15 + 1, IERC20(address(svZchf)));
+    }
+    function test_proposeFee_revert_bodenseePool() public {
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidFeeTarget.selector, bodenseePool));
+        gov.proposeFeeChange(bodenseePool, FEE_OK, IERC20(address(svZchf)));
+    }
+    function test_proposeFee_revert_notGauged() public {
+        address ungauged = makeAddr("ungaugedPool");
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.InvalidFeeTarget.selector, ungauged));
+        gov.proposeFeeChange(ungauged, FEE_OK, IERC20(address(svZchf)));
+    }
 }
