@@ -6,6 +6,7 @@ import { ITVLOracle } from "src/ccb/ITVLOracle.sol";
 import { IGaugeRegistry } from "src/ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "src/ccb/IMiliariumRegistry.sol";
 import { IEmissionDistributor } from "src/emission/IEmissionDistributor.sol";
+import { AureumTime } from "src/lib/AureumTime.sol";
 /// @notice Test-only mock for `ITVLOracle` — settable svZCHF TVL per pool.
 contract MockTVLOracle is ITVLOracle {
     mapping(address => uint256) private _tvl;
@@ -154,5 +155,130 @@ contract VotingWeightTest is Test {
     function test_InitialWeightsAreZero() public view {
         assertEq(vw.governanceWeight(HOLDER), 0);
         assertEq(vw.totalSupply(), 0);
+    }
+    uint256 internal constant ON_RAMP = AureumTime.ON_RAMP_PERIOD_BLOCKS;
+    uint256 internal constant CLIFF = AureumTime.QUALIFICATION_PERIOD_BLOCKS;
+    // --- helpers ---
+    function _setSinglePool(address pool) internal {
+        address[] memory pools = new address[](1);
+        pools[0] = pool;
+        registry.setPoolList(pools);
+    }
+    function _configurePosition(
+        address pool,
+        address holder,
+        bool gaugeApproved,
+        uint256 tvlValue,
+        uint256 lp,
+        uint256 totalLP,
+        uint256 eqb
+    ) internal {
+        gaugeReg.setApproved(pool, gaugeApproved);
+        oracle.setTvl(pool, tvlValue);
+        recorder.setUserLP(pool, holder, lp);
+        recorder.setPoolTotalLP(pool, totalLP);
+        recorder.setEffectiveQualBlock(pool, holder, eqb);
+    }
+    // --- single-position power: math + per-position guards ---
+    function test_Poke_SingleQualifiedPosition_Era0() public {
+        _setSinglePool(POOL_A);
+        // full ownership (share 1.0), fully-capped on-ramp (timeFrac 1.0) -> base = tvl = 16e18
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        // Era 0 exponent 1/4: 16^(1/4) = 2.0
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 2e18, 1e8);
+        assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER));
+    }
+    function test_Poke_SingleQualifiedPosition_Era1() public {
+        uint256 era1Block = AureumTime.firstHalvingBlock(GENESIS_BLOCK) + 500_000;
+        vm.roll(era1Block);
+        _setSinglePool(POOL_A);
+        // base = 8e18
+        _configurePosition(POOL_A, HOLDER, true, 8e18, 100e18, 100e18, era1Block - ON_RAMP);
+        vw.poke(HOLDER);
+        // Era 1+ exponent 1/3: 8^(1/3) = 2.0
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 2e18, 1e8);
+    }
+    function test_Poke_BaseOne_YieldsOne() public {
+        _setSinglePool(POOL_A);
+        // base = 1e18 -> 1^x = 1 in any era
+        _configurePosition(POOL_A, HOLDER, true, 1e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 1e18, 1e6);
+    }
+    function test_Poke_PartialOnRamp_ScalesValue() public {
+        _setSinglePool(POOL_A);
+        // timeInPool = ON_RAMP/2 -> timeFrac 0.5; value 2e18 -> base 1e18
+        _configurePosition(POOL_A, HOLDER, true, 2e18, 100e18, 100e18, START_BLOCK - (ON_RAMP / 2));
+        vw.poke(HOLDER);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 1e18, 1e6);
+    }
+    function test_Poke_PartialOwnership_SharesValue() public {
+        _setSinglePool(POOL_A);
+        // share 0.5, tvl 32e18 -> value 16e18; fully-capped -> base 16e18
+        _configurePosition(POOL_A, HOLDER, true, 32e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 2e18, 1e8);
+    }
+    function test_Poke_GaugeNotApproved_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, false, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+        assertEq(vw.totalSupply(), 0);
+    }
+    function test_Poke_NoPosition_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        // eqb = 0 -> no qualified position
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, 0);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_SubCliff_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        // timeInPool = CLIFF - 1 -> below the 14-day cliff
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - (CLIFF - 1));
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_AtCliffBoundary_Qualifies() public {
+        _setSinglePool(POOL_A);
+        // timeInPool = CLIFF exactly -> NOT below cliff, qualifies
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - CLIFF);
+        vw.poke(HOLDER);
+        assertGt(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_ZeroPoolTotalLP_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        // totalLP = 0 -> div-by-zero guard returns 0 (no revert)
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 0, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_ZeroUserLP_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 0, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_ZeroTvl_ContributesZero() public {
+        _setSinglePool(POOL_A);
+        // tvl = 0 -> value = 0 guard
+        _configurePosition(POOL_A, HOLDER, true, 0, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+    }
+    function test_Poke_OnRampCap_ClampsTime() public {
+        _setSinglePool(POOL_A);
+        // at cap: timeInPool = ON_RAMP
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        uint256 atCap = vw.governanceWeight(HOLDER);
+        // past cap: timeInPool = ON_RAMP + 200_000 -> clamps to the same timeFrac 1.0
+        _configurePosition(POOL_A, HOLDER_B, true, 16e18, 100e18, 100e18, START_BLOCK - (ON_RAMP + 200_000));
+        vw.poke(HOLDER_B);
+        uint256 pastCap = vw.governanceWeight(HOLDER_B);
+        assertEq(atCap, pastCap);
+        assertGt(atCap, 0);
     }
 }
