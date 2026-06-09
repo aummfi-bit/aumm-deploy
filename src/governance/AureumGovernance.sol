@@ -240,4 +240,27 @@ contract AureumGovernance {
         if (targetPool_ == BODENSEE_POOL || !GAUGE_REGISTRY.isGaugeApproved(targetPool_)) revert InvalidFeeTarget(targetPool_);
         proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, payToken_);
     }
+
+    /// @notice Cast a snapshot-weighted vote on an active proposal.
+    /// @param proposalId 1-based proposal identifier.
+    /// @param support `true` for, `false` against.
+    /// @dev `poke` refreshes the caller's checkpoint before reading `governanceWeight` so the vote uses the
+    ///      weight at the vote block (qualification cliff + on-ramp applied inside `VotingWeight`; no local
+    ///      dampening). A zero-weight caller accrues nothing (Compound-parity no-op, not a revert). The
+    ///      `hasVoted` guard is set before the external `poke` call (checks-effects-interactions) so a
+    ///      reentrant `castVote` reverts `AlreadyVoted`.
+    function castVote(uint256 proposalId, bool support) external {
+        Proposal storage p = _proposals[proposalId];
+        if (block.number < p.startBlock || block.number > p.endBlock) revert ProposalNotActive(proposalId);
+        if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted(msg.sender, proposalId);
+        hasVoted[proposalId][msg.sender] = true;
+        VOTING_WEIGHT.poke(msg.sender);
+        uint256 weight = VOTING_WEIGHT.governanceWeight(msg.sender);
+        if (support) {
+            p.forVotes += weight;
+        } else {
+            p.againstVotes += weight;
+        }
+        emit VoteCast(proposalId, msg.sender, support, weight);
+    }
 }
