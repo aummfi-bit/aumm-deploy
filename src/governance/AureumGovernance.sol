@@ -263,4 +263,40 @@ contract AureumGovernance {
         }
         emit VoteCast(proposalId, msg.sender, support, weight);
     }
+
+    /// @notice Derive the lifecycle state of a proposal from stored fields.
+    /// @param proposalId 1-based proposal identifier.
+    /// @return Current `ProposalState` — non-existent or unvoted proposals derive to `Defeated`.
+    /// @dev Voting is `Active` while `block.number <= endBlock`; tally is evaluated only after
+    ///      `endBlock` per K-D6c.
+    function state(uint256 proposalId) public view returns (ProposalState) {
+        Proposal storage p = _proposals[proposalId];
+        if (p.executed) return ProposalState.Executed;
+        if (block.number <= p.endBlock) return ProposalState.Active;
+        if (!_voteSucceeded(p)) return ProposalState.Defeated;
+        if (p.eta == 0) return ProposalState.Succeeded;
+        if (block.number < p.eta + EXECUTION_GRACE_BLOCKS) return ProposalState.Queued;
+        return ProposalState.Expired;
+    }
+
+    /// @notice Evaluate quorum and per-type majority after the voting window closes.
+    /// @param p Stored proposal record.
+    /// @return `true` when turnout and majority thresholds are met.
+    /// @dev Quorum is 20% turnout per `QUORUM_BPS`. `CompositionChallenge` requires integer-exact 2/3
+    ///      supermajority; `GaugeChallenge` + `FeeChange` require simple majority, per K-D6c.
+    function _voteSucceeded(Proposal storage p) internal view returns (bool) {
+        uint256 totalVotes = p.forVotes + p.againstVotes;
+        if (totalVotes * 10_000 < p.snapshotTotalSupply * QUORUM_BPS) return false; // 10_000 = basis-points denominator
+        if (p.proposalType == ProposalType.CompositionChallenge) {
+            return p.forVotes * 3 >= totalVotes * 2;
+        }
+        return p.forVotes > p.againstVotes;
+    }
+
+    /// @notice Return a full proposal record for off-chain consumers and tests.
+    /// @param proposalId 1-based proposal identifier.
+    /// @return Proposal struct copy — `_proposals` is internal; this is the read surface.
+    function getProposal(uint256 proposalId) external view returns (Proposal memory) {
+        return _proposals[proposalId];
+    }
 }
