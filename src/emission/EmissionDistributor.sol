@@ -95,9 +95,11 @@ contract EmissionDistributor is IEmissionDistributor {
     ///         weighted-average top-up on later deposits; reset to 0 on any
     ///         withdrawal (§viii "remove any amount — even 1% — drops to
     ///         zero"). 0 means no qualified position — the deferred view
-    ///         treats 0 as zero weight. `public` with no interface getter;
-    ///         the view's typed access is deferred per I-D15.
-    mapping(address => mapping(address => uint256)) public effectiveQualBlock;
+    ///         treats 0 as zero weight. `public override` — the
+    ///         `IEmissionDistributor.effectiveQualBlock` interface getter
+    ///         lands at K3.0c (I13-class fix-forward) so the Stage K
+    ///         `VotingWeight` reader (K-D5) binds it typed per I-D15.
+    mapping(address => mapping(address => uint256)) public override effectiveQualBlock;
 
     /* ---------- Governance + recorder slots (H-D14 / H-D16) ---------- */
 

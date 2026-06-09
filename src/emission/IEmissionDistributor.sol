@@ -236,6 +236,18 @@ interface IEmissionDistributor {
     /// @return The current `pendingBalance[pool][user]` (18-decimal fixed-point).
     function pendingBalance(address pool, address user) external view returns (uint256);
 
+    /// @notice Returns the per-user per-pool qualification-clock block for `user` in `pool`.
+    /// @dev Per-user qualification clock per I-D14 / I-D6 — the block from which `time_in_pool` accrues for
+    ///      the value-weighted voting view; fresh-started at `block.number` on the first qualified deposit
+    ///      (or the first deposit after a withdrawal reset), weighted-average top-up on later deposits, reset
+    ///      to 0 on any withdrawal (§viii "remove any amount — even 1% — drops to zero"). 0 means no
+    ///      qualified position. Interface getter added at K3.0c (I13-class fix-forward) so the Stage K
+    ///      `VotingWeight` reader binds it typed per I-D15 / K-D5.
+    /// @param pool The Balancer V3 pool address.
+    /// @param user The AuMT holder address.
+    /// @return The current `effectiveQualBlock[pool][user]` (block number; 0 = no qualified position).
+    function effectiveQualBlock(address pool, address user) external view returns (uint256);
+
     /// @notice Returns the unclaimed AuMM reward balance for `user` in `pool`.
     /// @dev H1 forward-dep producer view per STAGE_H_NOTES.md L177 — derives
     ///      `pendingBalance[pool][user] + (poolAccRewardPerLP[pool] − userRewardDebt[pool][user]).mulDown(userLP[pool][user])` per H-D16 / H-D24 / H-D25 single-snapshot MasterChef variant.
