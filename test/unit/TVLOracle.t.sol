@@ -4,9 +4,33 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {TVLOracle} from "../../src/emission/TVLOracle.sol";
 import {ITVLOracle} from "../../src/ccb/ITVLOracle.sol";
+import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {MockVaultExplorer} from "../fork/mocks/StageHMocks.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+/// @notice Settable dense-enumeration IMiliariumRegistry double for the K6 Leg 2 / dedup cohort - addPool appends to the enumeration and marks membership.
+contract MockMiliariumRegistry is IMiliariumRegistry {
+    address[] internal _pools;
+    mapping(address => bool) internal _member;
+
+    function addPool(address pool) external {
+        _pools.push(pool);
+        _member[pool] = true;
+    }
+
+    function isMiliarium(address pool) external view returns (bool) {
+        return _member[pool];
+    }
+
+    function miliariumPoolsCount() external view returns (uint256) {
+        return _pools.length;
+    }
+
+    function miliariumPoolAt(uint256 index) external view returns (address) {
+        return _pools[index];
+    }
+}
 
 contract TVLOracleTest is Test {
     address internal constant GOVERNANCE = address(0x1001);
@@ -478,5 +502,100 @@ contract TVLOracleTest is Test {
         pBals[0] = 75e18;
         _setComposition(pool, pTokens, pBals);
         assertEq(oracle.quoteSvZCHF(tokenU, 75e18), oracle.tvl(pool));
+    }
+
+    /* ---------- setMiliariumRegistry + Leg 2 enumeration + dedup (K-D8) ---------- */
+
+    function test_setMiliariumRegistry_happyPath_emitsAndSeals() public {
+        MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        vm.expectEmit(true, false, false, false);
+        emit TVLOracle.MiliariumRegistrySet(address(reg));
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+        assertEq(address(oracle.miliariumRegistry()), address(reg));
+        assertEq(oracle.registrySetter(), address(0));
+    }
+
+    function test_setMiliariumRegistry_revert_alreadySet() public {
+        MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+        vm.expectRevert(TVLOracle.OnlyRegistrySetter.selector);
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+    }
+
+    function test_setMiliariumRegistry_revert_notSetter() public {
+        MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        vm.prank(_addr(0xBAD));
+        vm.expectRevert(TVLOracle.OnlyRegistrySetter.selector);
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+    }
+
+    function test_setMiliariumRegistry_revert_zeroAddress() public {
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(0)));
+    }
+
+    function test_tvl_leg2_registryVenueContributes() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        _setComposition(venue, vTokens, vBals);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        // pre-bind: venue is reachable only via the registry (not addConstellationPool'd) so tvl is 0
+        assertEq(oracle.tvl(pool), 0);
+        MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        reg.addPool(venue);
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+        // Leg 2 now prices via the venue: 50e18 * (200/100) = 100e18
+        assertEq(oracle.tvl(pool), 100e18);
+    }
+
+    function test_tvl_dedup_miliariumVenueCountedOnce() public {
+        address pool = _addr(0x5001);
+        address venueA = _addr(0x6001);
+        address venueB = _addr(0x6002);
+        address tokU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        // venue A (governance-only): ratio 100/100 = 1e18
+        address[] memory aTokens = new address[](2);
+        aTokens[0] = tokU;
+        aTokens[1] = SVZCHF;
+        uint256[] memory aBals = new uint256[](2);
+        aBals[0] = 100e18;
+        aBals[1] = 100e18;
+        _addVenue(venueA, aTokens, aBals);
+        // venue B (governance AND registry): ratio 300/100 = 3e18
+        address[] memory bTokens = new address[](2);
+        bTokens[0] = tokU;
+        bTokens[1] = SVZCHF;
+        uint256[] memory bBals = new uint256[](2);
+        bBals[0] = 100e18;
+        bBals[1] = 300e18;
+        _addVenue(venueB, bTokens, bBals);
+        MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        reg.addPool(venueB);
+        oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        // dedup: Leg 1 skips venueB (isMiliarium), Leg 2 owns it; avg = (1e18 + 3e18)/2 = 2e18 -> 50e18 * 2 = 100e18.
+        // a double-count would be (1 + 3 + 3)/3 ~= 2.33e18 -> ~116.67e18.
+        assertEq(oracle.tvl(pool), 100e18);
     }
 }
