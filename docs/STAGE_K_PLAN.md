@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K4 complete on `stage-k` — K0—K4 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4; 6/6 `StageKIntegration` green `dd37cd1`; 19 Completion Log rows added). K5 (`AuMM.setMinter` handoff per H-D41) pre-flight next. K-D1—K-D6 LOCKED; K-D7—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K5 design LOCKED on `stage-k` — K0—K4 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4; 6/6 `StageKIntegration` green `dd37cd1`); K5 pre-flight landed K-D7 LOCKED (`AuMMMinterRouter` Option B dumb allowlist forwarder, `5058f8f`). This commit lands K5.0b (PLAN K-D7 mirror + K5 sub-step ladder). Next code surface: K5.1 `src/token/IAuMMMinterRouter.sol`. K-D1—K-D7 LOCKED; K-D8—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-10 — K4 PLAN Completion Log catch-up (K4.1—K4.7c-notes, 19 rows). K4 complete; K5 (`AuMM.setMinter` handoff per H-D41) pre-flight next.
+> **Last update:** 2026-06-10 — K5.0b PLAN (this commit): K-D7 mirror flipped to LOCKED (`AuMMMinterRouter` Option B byte-identical NOTES mirror) + K5 sub-step ladder (K5.0a—K5.4, fork folded → K7) + Surfaces table K5 rows + Surfaces-NOT correction (EmissionDistributor now a K5 fix-forward) + Completion Log catch-up (K4-§11 / K5.0a / K5.0b).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -27,6 +27,11 @@ Stage K ships the on-chain governance stack (`AureumGovernance`) plus the value-
 | `src/governance/AureumGovernance.sol` | NEW | K4 | ~500 |
 | `test/unit/AureumGovernance.t.sol` | NEW | K4 | ~600 |
 | `test/fork/StageKIntegration.t.sol` | NEW | K4 / K7 | ~300 |
+| `src/token/IAuMMMinterRouter.sol` | NEW | K5 | ~20 |
+| `src/token/AuMMMinterRouter.sol` | NEW | K5 | ~40 |
+| `test/unit/AuMMMinterRouter.t.sol` | NEW | K5 | ~200 |
+| `src/emission/BodenseeBootstrapChannel.sol` | EDIT (fix-forward) | K5 | +setter +mint swap |
+| `src/emission/EmissionDistributor.sol` | EDIT (fix-forward) | K5 | +setter +mint swap |
 | `src/emission/TVLOracle.sol` | EDIT (fix-forward) | K6 | roster re-wire |
 | `script/DeployAuMM.s.sol` | NEW | K7 | ~30 |
 | `script/DeployStageK.s.sol` | NEW | K7 | ~120 |
@@ -37,14 +42,14 @@ Stage K ships the on-chain governance stack (`AureumGovernance`) plus the value-
 - No D33 Aureum Router (deferred to Stage O per K-D1).
 - No OQ-20 / OQ-21 yield-fee entry point (stays deferred).
 - No Vault edits — byte-identical preserved; migration is `setAuthorizer` + `setStaticSwapFeePercentage` calls only.
-- No AuMM or EmissionDistributor contract edits — `setMinter` (K5) is a deploy-script call.
+- No AuMM contract edit — AuMM stays byte-untouched (K-D1 clause holds); the C-D11 one-shot minter slot is consumed by `AuMMMinterRouter` (K5) at the K7 `aumm.setMinter(router)` call per K-D7 / K-D9.
 - No interface change to `IGaugeRegistry` / `IMiliariumSlotRegistry` — consumed as-is.
 
 ---
 
 ## Decisions
 
-Mirror of STAGE_K_NOTES.md Decisions table (K-D1 + K-D2 LOCKED at K0.2; K-D3 LOCKED at K1 pre-flight; K-D4 LOCKED at K2 pre-flight; K-D5 LOCKED at K3 pre-flight; K-D6 LOCKED at K4 pre-flight; K-D7—K-D9 forward-declared, each locking at its unit pre-flight).
+Mirror of STAGE_K_NOTES.md Decisions table (K-D1 + K-D2 LOCKED at K0.2; K-D3 LOCKED at K1 pre-flight; K-D4 LOCKED at K2 pre-flight; K-D5 LOCKED at K3 pre-flight; K-D6 LOCKED at K4 pre-flight; K-D7 LOCKED at K5 pre-flight; K-D8—K-D9 forward-declared, each locking at its unit pre-flight).
 
 | # | Status | Decision | Anchor | Locked at |
 | --- | --- | --- | --- | --- |
@@ -54,7 +59,7 @@ Mirror of STAGE_K_NOTES.md Decisions table (K-D1 + K-D2 LOCKED at K0.2; K-D3 LOC
 | K-D4 | LOCKED | TVL-oracle binding for vote-weighting = **reuse-direct**. `ITVLOracle` already exposes `tvl(address pool) → uint256` (svZCHF, 18-dec; `ITVLOracle.sol` L14, implemented at `TVLOracle.sol` L211) — exactly the whole-pool valuation K3 `VotingWeight` multiplies by BPT share (`holderValue = tvl(pool) × balanceOf(holder) / totalSupply()`; BPT reads direct off the pool per I-D14). No adapter, no new K2 contract, no `IVotingWeight` change — `VotingWeight` takes an `ITVLOracle` immutable and calls `tvl(pool)`; injection lands at K3. Single shared `TVLOracle` instance (emission `EfficiencyOracle` + governance; one roster, one `setGovernanceContract` handoff); deploy ordering at K-D9. K6 `_constellationRatio` re-wire is signature-stable (does not touch `tvl` ABI). | OQ-22 (FINDINGS L1106); `src/ccb/ITVLOracle.sol` L14; `src/emission/TVLOracle.sol` L211; I-D14 (AuMT=BPT); K-D9 | K2 |
 | K-D5 | LOCKED | `VotingWeight is IVotingWeight` (I9.1 stub) = **stateful poke-accumulator** delivering an exact veto fraction (`vetoSupport ≤ totalSupply` by construction). Per-position F-9 power `(value × cappedTime/ON_RAMP)^(1/4 Era 0 → 1/3 Era 1+)` via `FixedPoint.powDown`, era flip at `AureumTime.firstHalvingBlock(GENESIS_BLOCK)`; value = recorder share `ORACLE.tvl(pool) × userLP / poolTotalLP` (OQ-25 anti-flash-loan, **supersedes the K-D4 `balanceOf` shorthand**); clock = `RECORDER.effectiveQualBlock` (14-day cliff `QUALIFICATION_PERIOD_BLOCKS`, 6-month cap `ON_RAMP_PERIOD_BLOCKS`); gauge-gated read-time. Two slots `_holderWeight[h]` + `_totalQualifiedWeight`; `governanceWeight`/`totalSupply` are `view` over checkpoints; permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered `MiliariumRegistry` enumeration (≤28) and applies the signed delta (F12/F13). Five immutables `ORACLE`/`GAUGE_REGISTRY`/`RECORDER`/`REGISTRY`/`GENESIS_BLOCK`. K3.0c exposes `IEmissionDistributor.effectiveQualBlock` (I13-class). I-D17 denominator = total checkpointed qualified weight. | I-D15; I-D17; OQ-25 (FINDINGS L1302-1318); F-9 (`11_formulas.md`); `04_tokenomics.md` §viii; user decision 2026-06-08; `src/governance/IVotingWeight.sol`; `IMiliariumRegistry`; `AureumTime` cliff/on-ramp/`firstHalvingBlock` | K3 |
 | K-D6 | LOCKED | `AureumGovernance` — three proposal types (gauge challenge / composition challenge / fee change), 20% quorum (`QUORUM_BPS = 2_000`), simple-majority gauge+fee / 2/3-supermajority composition, snapshot voting (poke-at-vote weight from K3 `VotingWeight` + frozen `totalSupply` denominator), `VOTING_PERIOD_BLOCKS = 100_800`, `EXECUTION_TIMELOCK_BLOCKS = 14_400`, `EXECUTION_GRACE_BLOCKS = 100_800`. Deposits flat `1_000e18` svZCHF / `1_250e18` sUSDS via `SwapAndDepositToBodensee.donate` (non-refundable); gauge-challenge F-12 deposit deferred to Stage O. Execution: gauge → `revokeGauge`, composition → `replaceSlot` + atomic gauge swap, fee → `setStaticSwapFeePercentage` (band 0.01—0.30%, Bodensee excluded, epoch cooldown). Sub-splits K-D6a—K-D6f in STAGE_K_NOTES.md. F-9 dampening consumed from K3 `VotingWeight`, not reimplemented. | STAGES_OVERVIEW Stage K L245-252; OQ-7 / OQ-8 / OQ-9 / OQ-10 / OQ-11 / OQ-13; F-9 / F-12; user decisions 2026-06-08 | K4 |
-| K-D7 | forward-declared | `AuMM.setMinter(EmissionDistributor)` handoff sequencing per H-D41 — deploy-script call, no AuMM contract edit; `distribute()` / `claim()` unblock from `NotMinter` at this call. | H-D41 (CLAUDE.md §11 deferred); `AuMM.setMinter` | K5 |
+| K-D7 | LOCKED | H-D41 minter handoff = **Option B** — new dumb allowlist forwarder `AuMMMinterRouter` (`src/token/`) holds AuMM's C-D11 one-shot minter slot. Three zero-checked immutables `AUMM` / `BOOTSTRAP_CHANNEL` / `EMISSION_DISTRIBUTOR`; single external `mintFor(address recipient, uint256 amount)` — non-allowlisted caller reverts `NotAllowlisted(msg.sender)`, else forwards `AUMM.mint(recipient, amount)`; no amount policy, no cap math (21M cap stays in AuMM), no governance surface, no setters. Both consumers gain a one-shot `onlyGovernance` `setMintRouter` (I-D9 / H-D5 precedent — constructor signatures unchanged, zero construction-site retrofit) and swap mint sites to `mintRouter.mintFor(...)` — I13-class fix-forward on the two tagged Stage H contracts; AuMM untouched (K-D1 clause holds). Amends the K-D1 roster: +1 new contract (K5), +2 fix-forward edits. `aumm.setMinter(router)` executes at K7 per K-D9. | H-D41 / H-D2 / H-D7 / C-D11; I-D9 / H-D5 one-shot precedent; D36; user decision 2026-06-10 | K5 |
 | K-D8 | forward-declared | `TVLOracle` H-D8 roster re-wire — re-point `_constellationRatio` to enumerate the live `MiliariumRegistry` dense view (`miliariumPoolsCount` / `miliariumPoolAt`); I13-class fix-forward on the tagged Stage H contract. | J-D8 (STAGE_J_NOTES.md); H-D8 roster; I13 blast-radius | K6 |
 | K-D9 | forward-declared | Deploy + authorizer-migration sequencing — `script/DeployAuMM.s.sol` (H-D42, ~30 lines) + `script/DeployStageK.s.sol`: deploy governance stack, multisig one-shot `Vault.setAuthorizer(newAuthorizer)`, registry + gauge `setGovernanceContract` one-shots, `AuMM.setMinter`. | OQ-10 migration sequence (FINDINGS L788-792); H-D42; J-D5 / G-D16d `setGovernanceContract` | K7 |
 
@@ -125,9 +130,18 @@ The three proposal types (gauge challenge / composition challenge / fee change) 
 - **K4.6** `test/unit/AureumGovernance.t.sol` — unit cohort: per-type propose validation + deposit; castVote poke/guard/window; quorum + majority/supermajority boundaries; queue/execute timelock + grace + per-type routing against mocked registries/vault; Cursor §8e.1.
 - **K4.7** `test/fork/StageKIntegration.t.sol` — fork integration: real `VotingWeight` poke over hook-recorded deposits (absorbs the folded K3.3 coverage) + an end-to-end governance proposal lifecycle; Cursor §8e.1.
 
-### K5 — setMinter handoff (per K-D7)
+### K5 — AuMMMinterRouter minter handoff (per K-D7 LOCKED)
 
-`AuMM.setMinter(EmissionDistributor)` per H-D41, a deploy-script call sequenced in K7's script (no AuMM contract edit) that unblocks `distribute()` / `claim()` from `NotMinter`; K5 is the design/sequencing lock (K-D7), executed in the K7 deploy script.
+H-D41 minter handoff resolved Option B at the K5 pre-flight (K-D7, user decision 2026-06-10): a new dumb allowlist forwarder `AuMMMinterRouter` (`src/token/`) holds AuMM's C-D11 one-shot minter slot, both Stage H mint consumers gain a one-shot `onlyGovernance` `setMintRouter` and swap their mint sites to `mintRouter.mintFor(...)` (I13-class fix-forward; `stage-h-complete` untouched), and the multisig `aumm.setMinter(router)` executes at K7 per K-D9 — flushing the bootstrap backlog and unblocking `distribute()` / `claim()` from the `MintRouterNotSet` pre-wiring guard. Surfaces `src/token/IAuMMMinterRouter.sol` + `src/token/AuMMMinterRouter.sol` + `test/unit/AuMMMinterRouter.t.sol` + the two consumer fix-forward edits (`src/emission/BodenseeBootstrapChannel.sol`, `src/emission/EmissionDistributor.sol`); AuMM stays byte-untouched (K-D1 clause holds). Full design body + wiring order + Stage-P fixed-emission-path flag in STAGE_K_NOTES.md K-D7.
+
+- **K5.0a** (DONE — `5058f8f`) `docs/STAGE_K_NOTES.md` — K-D7 `AuMMMinterRouter` (Option B) minter handoff LOCKED (dumb allowlist forwarder, two-member immutable allowlist, one-shot `setMintRouter` consumer fix-forward, wiring order, Stage-P flag, full design body); Cursor §8e.1.
+- **K5.0b** (THIS COMMIT) `docs/STAGE_K_PLAN.md` — K-D7 mirror flip to LOCKED + K5 sub-step ladder + Surfaces table K5 rows + Completion Log catch-up; Cursor §8e.1.
+- **K5.1** `src/token/IAuMMMinterRouter.sol` — the allowlist-forwarder interface: `mintFor(address recipient, uint256 amount)` external + `NotAllowlisted(address caller)` error (event surface bare-vs-`MintRouted` locks at K5.2 per the §12 gate); Cursor §8e.1.
+- **K5.2** `src/token/AuMMMinterRouter.sol` — the concrete forwarder per K-D7: `is IAuMMMinterRouter`, three zero-checked immutables (`AUMM` / `BOOTSTRAP_CHANNEL` / `EMISSION_DISTRIBUTOR`), single `mintFor` reverting `NotAllowlisted(msg.sender)` unless the caller is one of the two consumers else `AUMM.mint(recipient, amount)`; no amount policy, no cap math, no governance slot, no setters; Cursor §8e.1.
+- **K5.3a** `src/emission/BodenseeBootstrapChannel.sol` — channel fix-forward: add `IAuMMMinterRouter public mintRouter` + a one-shot `onlyGovernance` `setMintRouter` (`ZeroAddress` + `MintRouterAlreadySet` guards, `MintRouterBound` event), swap the `distribute()` mint site `AuMM.mint(address(this), amount)` → `mintRouter.mintFor(address(this), amount)` behind a `MintRouterNotSet` pre-wiring guard, I10 NatSpec sweep of stale `setMinter` prerequisite lines (grep-first); the `AuMM` immutable is retained for `blockEmissionRate` reads + IERC20 transfer / balance casts; Cursor §8e.1.
+- **K5.3b** `src/emission/EmissionDistributor.sol` — distributor fix-forward (same shape as K5.3a): `IAuMMMinterRouter public mintRouter` + one-shot `setMintRouter`, swap the `claim()` mint site `AuMM.mint(to, amount)` → `mintRouter.mintFor(to, amount)` behind a `MintRouterNotSet` guard, I10 NatSpec sweep; the `AuMM` immutable is retained for `blockEmissionRate` reads; Cursor §8e.1.
+- **K5.4** `test/unit/AuMMMinterRouter.t.sol` — router unit cohort (allowlist accept/reject, three zero-address constructor reverts, passthrough including cap-boundary against a real AuMM with the test as `minterAdmin`) + the two consumer `setMintRouter` one-shot cohorts (zero-address, already-set, `MintRouterNotSet` pre-wiring revert on `distribute()` / `claim()`); Cursor §8e.1.
+- **Fork transition coverage** (FOLDED → K7) end-to-end `MintRouterNotSet`-to-live minter-transition coverage folds into K7's `DeployStageK` fork test per K-D9 — the wiring order (router deploy → consumer `setMintRouter` → multisig `aumm.setMinter(router)`) is a K7 deploy-sequence concern.
 
 ### K6 — TVLOracle roster re-wire (per K-D8)
 
@@ -188,3 +202,6 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K4.7b | `3f845ea` | test/fork/StageKIntegration.t.sol — VotingWeight poke fork tests, 4 shapes (5/5 green) |
 | K4.7c | `dd37cd1` | test/fork/StageKIntegration.t.sol — composition-challenge lifecycle (6/6 green) |
 | K4.7c-notes | `f68c978` | docs/STAGE_K_NOTES.md — K12 optimizer CSE block.number finding (F10 extension) |
+| K4-§11 | `b628a22` | CLAUDE.md §11 — K4 complete + K5 pre-flight next (resume-anchor refresh) |
+| K5.0a | `5058f8f` | docs/STAGE_K_NOTES.md — K-D7 LOCKED (AuMMMinterRouter Option B minter handoff: dumb allowlist forwarder + one-shot setMintRouter consumer fix-forward) |
+| K5.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D7 mirror flip to LOCKED + K5 sub-step ladder + Surfaces table K5 rows + Completion Log catch-up |
