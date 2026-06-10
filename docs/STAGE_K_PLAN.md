@@ -218,4 +218,10 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K5.3b-ii | `fcdccac` | src/emission/EmissionDistributor.sol — MintRouterNotSet guard + mintFor swap + claim NatSpec sweep (K-D7 behavioral) |
 | K5.3b-iii | `45335d0` | src/emission/EmissionDistributor.sol — mint-posture NatSpec sweep (K-D7 doc consistency) |
 | K5.4-pre-a | `f1cc54a` | docs/STAGE_K_NOTES.md — K13 MintRouterNotSet blast radius finding + K5.4a/b/c sub-step decomposition |
-| K5.4-pre-b | (this commit) | docs/STAGE_K_PLAN.md — K13 PLAN mirror: K5.4a/b/c ladder + Surfaces table +2 consumer-test rows + Completion Log catch-up |
+| K5.4-pre-b | `7d97a0b` | docs/STAGE_K_PLAN.md — K13 PLAN mirror: K5.4a/b/c ladder + Surfaces table +2 consumer-test rows + Completion Log catch-up |
+| K5.4a | `36de306` | test/unit/AuMMMinterRouter.t.sol — router unit cohort (10/10 green, K-D7) |
+| K5.4b-i | `cea9ad9` | test/unit/BodenseeBootstrapChannel.t.sol — K13 retrofit: setUp + ch2 route distribute() mints through real AuMMMinterRouter (6 red → green, 29/29) |
+| K5.4b-ii | `8a63db6` | test/unit/BodenseeBootstrapChannel.t.sol — setMintRouter one-shot cohort + MintRouterNotSet guard test + _freshUnboundChannel helper (5 new, 34/34) |
+| K5.4c-i | `03c528c` | test/unit/EmissionDistributor.t.sol — K13 retrofit: setUp routes claim() mints through real AuMMMinterRouter (5 red → green, 101/101) |
+| K5.4c-ii | `ad7566e` | test/unit/EmissionDistributor.t.sol — setMintRouter one-shot cohort + claim MintRouterNotSet guard test + _freshUnboundDistributor helper (5 new, 106/106) |
+| K5.4-log | (this commit) | docs/STAGE_K_PLAN.md — Completion Log catch-up: K5.4a / b-i / b-ii / c-i / c-ii rows + K5.4-pre-b hash back-fill |
