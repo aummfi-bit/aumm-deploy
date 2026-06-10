@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K5 design LOCKED on `stage-k` — K0—K4 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4; 6/6 `StageKIntegration` green `dd37cd1`); K5 pre-flight landed K-D7 LOCKED (`AuMMMinterRouter` Option B dumb allowlist forwarder, `5058f8f`). This commit lands K5.0b (PLAN K-D7 mirror + K5 sub-step ladder). Next code surface: K5.1 `src/token/IAuMMMinterRouter.sol`. K-D1—K-D7 LOCKED; K-D8—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K5 in progress on `stage-k` — K0—K4 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4; 6/6 `StageKIntegration` green `dd37cd1`); K-D7 LOCKED (`AuMMMinterRouter` Option B dumb allowlist forwarder). K5.1—K5.3b complete (interface + concrete forwarder + both consumer fix-forwards). This commit lands K5.4-pre-b (PLAN mirror of the K13 blast-radius finding: K5.4a/b/c decomposition + Surfaces table +2 consumer-test rows + Completion Log catch-up). Next code surface: K5.4a `test/unit/AuMMMinterRouter.t.sol`. K-D1—K-D7 LOCKED; K-D8—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-10 — K5.0b PLAN (this commit): K-D7 mirror flipped to LOCKED (`AuMMMinterRouter` Option B byte-identical NOTES mirror) + K5 sub-step ladder (K5.0a—K5.4, fork folded → K7) + Surfaces table K5 rows + Surfaces-NOT correction (EmissionDistributor now a K5 fix-forward) + Completion Log catch-up (K4-§11 / K5.0a / K5.0b).
+> **Last update:** 2026-06-10 — K5.4-pre-b PLAN (this commit): mirror of the K13 `MintRouterNotSet` blast-radius finding — K5.4 ladder swapped to K5.4a/b/c + Surfaces table +2 EDIT rows (`test/unit/BodenseeBootstrapChannel.t.sol`, `test/unit/EmissionDistributor.t.sol`) + Completion Log catch-up (K5.0b through K5.4-pre-a). K5.1—K5.3b code complete; next is K5.4a router suite.
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -32,6 +32,8 @@ Stage K ships the on-chain governance stack (`AureumGovernance`) plus the value-
 | `test/unit/AuMMMinterRouter.t.sol` | NEW | K5 | ~200 |
 | `src/emission/BodenseeBootstrapChannel.sol` | EDIT (fix-forward) | K5 | +setter +mint swap |
 | `src/emission/EmissionDistributor.sol` | EDIT (fix-forward) | K5 | +setter +mint swap |
+| `test/unit/BodenseeBootstrapChannel.t.sol` | EDIT (K13 retrofit) | K5 | +router setUp +setMintRouter cohort |
+| `test/unit/EmissionDistributor.t.sol` | EDIT (K13 retrofit) | K5 | +router setUp +setMintRouter cohort |
 | `src/emission/TVLOracle.sol` | EDIT (fix-forward) | K6 | roster re-wire |
 | `script/DeployAuMM.s.sol` | NEW | K7 | ~30 |
 | `script/DeployStageK.s.sol` | NEW | K7 | ~120 |
@@ -140,7 +142,9 @@ H-D41 minter handoff resolved Option B at the K5 pre-flight (K-D7, user decision
 - **K5.2** `src/token/AuMMMinterRouter.sol` — the concrete forwarder per K-D7: `is IAuMMMinterRouter`, three zero-checked immutables (`AUMM` / `BOOTSTRAP_CHANNEL` / `EMISSION_DISTRIBUTOR`), single `mintFor` reverting `NotAllowlisted(msg.sender)` unless the caller is one of the two consumers else `AUMM.mint(recipient, amount)`; no amount policy, no cap math, no governance slot, no setters; Cursor §8e.1.
 - **K5.3a** `src/emission/BodenseeBootstrapChannel.sol` — channel fix-forward: add `IAuMMMinterRouter public mintRouter` + a one-shot `onlyGovernance` `setMintRouter` (`ZeroAddress` + `MintRouterAlreadySet` guards, `MintRouterBound` event), swap the `distribute()` mint site `AuMM.mint(address(this), amount)` → `mintRouter.mintFor(address(this), amount)` behind a `MintRouterNotSet` pre-wiring guard, I10 NatSpec sweep of stale `setMinter` prerequisite lines (grep-first); the `AuMM` immutable is retained for `blockEmissionRate` reads + IERC20 transfer / balance casts; Cursor §8e.1.
 - **K5.3b** `src/emission/EmissionDistributor.sol` — distributor fix-forward (same shape as K5.3a): `IAuMMMinterRouter public mintRouter` + one-shot `setMintRouter`, swap the `claim()` mint site `AuMM.mint(to, amount)` → `mintRouter.mintFor(to, amount)` behind a `MintRouterNotSet` guard, I10 NatSpec sweep; the `AuMM` immutable is retained for `blockEmissionRate` reads; Cursor §8e.1.
-- **K5.4** `test/unit/AuMMMinterRouter.t.sol` — router unit cohort (allowlist accept/reject, three zero-address constructor reverts, passthrough including cap-boundary against a real AuMM with the test as `minterAdmin`) + the two consumer `setMintRouter` one-shot cohorts (zero-address, already-set, `MintRouterNotSet` pre-wiring revert on `distribute()` / `claim()`); Cursor §8e.1.
+- **K5.4a** `test/unit/AuMMMinterRouter.t.sol` (NEW) — router unit cohort: three zero-address constructor reverts + immutable wiring, `mintFor` allowlist accept (from both consumers) / reject (`NotAllowlisted`), `MintRouted` emit, passthrough including cap-boundary against a real AuMM with the test as `minterAdmin`; Cursor §8e.1.
+- **K5.4b** `test/unit/BodenseeBootstrapChannel.t.sol` (EDIT, K13 retrofit) — setUp deploys a real `AuMMMinterRouter(aumm, channel, dummyDistributor)`, re-points `aumm.setMinter(router)`, binds `channel.setMintRouter(router)` (greening the 6 K13-red `distribute()` tests; the in-test `ch2` site re-wires identically), plus the channel `setMintRouter` one-shot cohort (zero-address, already-set, caller-not-governance, `MintRouterBound` emit) and a `MintRouterNotSet` pre-wiring revert test on a fresh unbound channel; Cursor §8e.1.
+- **K5.4c** `test/unit/EmissionDistributor.t.sol` (EDIT, K13 retrofit) — same retrofit shape (greening the 5 K13-red `claim()` tests) plus the distributor `setMintRouter` one-shot cohort and a `MintRouterNotSet` pre-wiring revert test on a fresh unbound distributor; Cursor §8e.1.
 - **Fork transition coverage** (FOLDED → K7) end-to-end `MintRouterNotSet`-to-live minter-transition coverage folds into K7's `DeployStageK` fork test per K-D9 — the wiring order (router deploy → consumer `setMintRouter` → multisig `aumm.setMinter(router)`) is a K7 deploy-sequence concern.
 
 ### K6 — TVLOracle roster re-wire (per K-D8)
@@ -204,4 +208,14 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K4.7c-notes | `f68c978` | docs/STAGE_K_NOTES.md — K12 optimizer CSE block.number finding (F10 extension) |
 | K4-§11 | `b628a22` | CLAUDE.md §11 — K4 complete + K5 pre-flight next (resume-anchor refresh) |
 | K5.0a | `5058f8f` | docs/STAGE_K_NOTES.md — K-D7 LOCKED (AuMMMinterRouter Option B minter handoff: dumb allowlist forwarder + one-shot setMintRouter consumer fix-forward) |
-| K5.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D7 mirror flip to LOCKED + K5 sub-step ladder + Surfaces table K5 rows + Completion Log catch-up |
+| K5.0b | `056e08c` | docs/STAGE_K_PLAN.md — K-D7 mirror flip to LOCKED + K5 sub-step ladder + Surfaces table K5 rows + Completion Log catch-up |
+| K5.1 | `47aaddc` | src/token/IAuMMMinterRouter.sol — allowlist-forwarder interface (mintFor + NotAllowlisted) |
+| K5.2-pre | `e3e60a8` | docs/STAGE_K_NOTES.md — K-D7 event-surface §12 gate LOCKED (MintRouted indexed caller) |
+| K5.2 | `104e724` | src/token/AuMMMinterRouter.sol — allowlist mint forwarder (MintRouted + ZeroAddress, three immutables) |
+| K5.3a-i | `99d2f92` | src/emission/BodenseeBootstrapChannel.sol — mintRouter storage + MintRouterAlreadySet + MintRouterBound + setMintRouter (K-D7 additive) |
+| K5.3a-ii | `e866682` | src/emission/BodenseeBootstrapChannel.sol — MintRouterNotSet + mintFor swap + NatSpec sweep (K-D7 behavioral) |
+| K5.3b-i | `4950059` | src/emission/IEmissionDistributor.sol + EmissionDistributor.sol — mintRouter storage + setMintRouter setter + 3 interface symbols (K-D7 additive) |
+| K5.3b-ii | `fcdccac` | src/emission/EmissionDistributor.sol — MintRouterNotSet guard + mintFor swap + claim NatSpec sweep (K-D7 behavioral) |
+| K5.3b-iii | `45335d0` | src/emission/EmissionDistributor.sol — mint-posture NatSpec sweep (K-D7 doc consistency) |
+| K5.4-pre-a | `f1cc54a` | docs/STAGE_K_NOTES.md — K13 MintRouterNotSet blast radius finding + K5.4a/b/c sub-step decomposition |
+| K5.4-pre-b | (this commit) | docs/STAGE_K_PLAN.md — K13 PLAN mirror: K5.4a/b/c ladder + Surfaces table +2 consumer-test rows + Completion Log catch-up |
