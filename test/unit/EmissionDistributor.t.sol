@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {EmissionDistributor} from "../../src/emission/EmissionDistributor.sol";
+import {AuMMMinterRouter} from "../../src/token/AuMMMinterRouter.sol";
 import {IEmissionDistributor} from "../../src/emission/IEmissionDistributor.sol";
 import {IAuMM} from "../../src/token/IAuMM.sol";
 import {IGaugeRegistry} from "../../src/ccb/IGaugeRegistry.sol";
@@ -182,6 +183,7 @@ contract EmissionDistributorTest is Test {
     address internal constant POOL_B = address(0xB2);
     address internal constant USER_1 = address(0xE1);
     address internal constant USER_2 = address(0xE2);
+    address internal constant DUMMY_CHANNEL = address(0xC4A9);
 
     MockAuMM internal aumm;
     MockGaugeRegistry internal gauges;
@@ -190,6 +192,7 @@ contract EmissionDistributorTest is Test {
     MockEfficiencyOracle internal effOracle;
     MockMiliariumRegistry internal miliReg;
     EmissionDistributorHarness internal distributor;
+    AuMMMinterRouter internal router;
 
     function setUp() public virtual {
         aumm = new MockAuMM();
@@ -208,7 +211,10 @@ contract EmissionDistributorTest is Test {
             GENESIS_BLOCK_,
             GOV
         );
-        aumm.setMinter(address(distributor));
+        router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
+        aumm.setMinter(address(router));
+        vm.prank(GOV);
+        distributor.setMintRouter(address(router));
         effOracle.setEmissionsRecorder(address(distributor));
         vm.prank(GOV);
         distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
