@@ -9,6 +9,7 @@ import {TransientStorageHelpers} from "@balancer-labs/v3-solidity-utils/contract
 import {StorageSlotExtension} from "@balancer-labs/v3-solidity-utils/contracts/openzeppelin/StorageSlotExtension.sol";
 import {IBodenseeBootstrapChannel} from "./IBodenseeBootstrapChannel.sol";
 import {IAuMM} from "../token/IAuMM.sol";
+import {IAuMMMinterRouter} from "../token/IAuMMMinterRouter.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
 
 /// @title BodenseeBootstrapChannel — F-0 piecewise bootstrap rail routing accrued AuMM to der Bodensee from GENESIS_BLOCK through month10EndBlock per H-D2
@@ -39,6 +40,11 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
 
     /// @notice Governance authority — Stage A—K Authorizer Safe at deploy; rebound via setGovernanceContract at Stage K per H-D14. Gates distribute() via onlyGovernance.
     address public governance;
+
+    /* ---------- Mint router (K-D7) ---------- */
+
+    /// @notice The AuMMMinterRouter holding AuMM's C-D11 one-shot minter slot per K-D7 — distribute() forwards mints through `mintRouter.mintFor`. Bound exactly once via `setMintRouter`; zero until then, after which distribute() goes live.
+    IAuMMMinterRouter public mintRouter;
 
     /* ---------- Accrue state (H-D11) ---------- */
 
@@ -90,10 +96,16 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
     /// @notice Reverts in `_distributeCallback` when `postReserve != preReserve + amount` — AuMM reserve must increase by exactly `amount` after DONATION settlement (mirrors SwapAndDepositToBodensee G-D18).
     error ReserveDeltaMismatch(uint256 expected, uint256 actual);
 
+    /// @notice Reverts when `setMintRouter` is called after the mint router has already been bound — the binding is one-shot per K-D7.
+    error MintRouterAlreadySet();
+
     /* ---------- Events ---------- */
 
     /// @notice Emitted when setGovernanceContract rebinds the governance authority (Stage K handoff per H-D14).
     event GovernanceTransferred(address indexed oldGovernance, address indexed newGovernance);
+
+    /// @notice Emitted once when `setMintRouter` binds the AuMMMinterRouter (K-D7 wiring at K7).
+    event MintRouterBound(address indexed router);
 
     /* ---------- Constructor ---------- */
 
@@ -161,6 +173,18 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         address oldGovernance = governance;
         governance = newGovernance;
         emit GovernanceTransferred(oldGovernance, newGovernance);
+    }
+
+    /**
+     * @notice One-shot binding of the AuMMMinterRouter per K-D7 — wires the mint path for distribute().
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input and `MintRouterAlreadySet` if already bound; emits `MintRouterBound(router_)`. Mirrors the I-D9 `setAuMTContractForPool` / H-D5 one-shot setter precedent. Executes at K7 step (2) while `governance` still points at the deploy-side authority, before the `setGovernanceContract` handoff per the K-D7 wiring order.
+     * @param router_ The AuMMMinterRouter address — holds AuMM's C-D11 minter slot via `aumm.setMinter(router_)` at K7.
+     */
+    function setMintRouter(address router_) external onlyGovernance {
+        if (router_ == address(0)) revert ZeroAddress();
+        if (address(mintRouter) != address(0)) revert MintRouterAlreadySet();
+        mintRouter = IAuMMMinterRouter(router_);
+        emit MintRouterBound(router_);
     }
 
     /* ---------- Accrual (H-D11) ---------- */
