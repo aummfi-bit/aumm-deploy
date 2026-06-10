@@ -229,6 +229,10 @@ contract EmissionDistributorTest is Test {
         vm.roll(blockNumber);
     }
 
+    function _freshUnboundDistributor() internal returns (EmissionDistributor) {
+        return new EmissionDistributor(IAuMM(address(aumm)), IGaugeRegistry(address(gauges)), IEMASampler(address(ema)), ICCBMultiplier(address(mult)), IEfficiencyOracle(address(effOracle)), IMiliariumRegistry(address(miliReg)), GENESIS_BLOCK_, GOV);
+    }
+
     /* ---------- Constructor tests (H-D14 / H-D16 / H-D21 / H-D22) ---------- */
 
     /// @notice Reverts `ZeroAddress` when the AuMM constructor parameter is zero.
@@ -1491,5 +1495,59 @@ contract EmissionDistributorTest is Test {
         emit IEmissionDistributor.IncendiaryRegistrySet(address(0), address(0xBEEF));
         vm.prank(GOV);
         distributor.setIncendiaryRegistry(address(0xBEEF));
+    }
+
+    /* ---------- setMintRouter one-shot + claim MintRouterNotSet guard (K-D7) ---------- */
+
+    /// @notice Confirms setMintRouter binds the router address and emits MintRouterBound.
+    function test_SetMintRouter_HappyPath_EmitsAndBinds() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.MintRouterBound(address(0xF00D));
+        vm.prank(GOV);
+        fresh.setMintRouter(address(0xF00D));
+        assertEq(address(fresh.mintRouter()), address(0xF00D), "mintRouter bound");
+    }
+
+    /// @notice Reverts ZeroAddress when setMintRouter is called with address(0).
+    function test_SetMintRouter_RevertWhen_RouterZero() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        fresh.setMintRouter(address(0));
+    }
+
+    /// @notice Reverts MintRouterAlreadySet when setMintRouter is called on a distributor that already has a router bound.
+    function test_SetMintRouter_RevertWhen_AlreadySet() public {
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.MintRouterAlreadySet.selector);
+        distributor.setMintRouter(address(0xF00D));
+    }
+
+    /// @notice Reverts NotGovernance when setMintRouter is called by a non-governance address.
+    function test_SetMintRouter_RevertWhen_CallerNotGovernance() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        fresh.setMintRouter(address(0xF00D));
+    }
+
+    /// @notice Reverts MintRouterNotSet when claim is called on a distributor with no router bound.
+    function test_Claim_RevertWhen_MintRouterNotSet() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        effOracle.setEmissionsRecorder(address(fresh));
+        vm.prank(GOV);
+        fresh.setAuMTContractForPool(POOL_A, AUMT_REC);
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
+        fresh.recordScore(POOL_A);
+        vm.prank(AUMT_REC);
+        fresh.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        vm.prank(USER_1);
+        vm.expectRevert(IEmissionDistributor.MintRouterNotSet.selector);
+        fresh.claim(POOL_A, USER_1);
     }
 }
