@@ -202,35 +202,65 @@ contract TVLOracle is ITVLOracle {
 
     /**
      * @notice H-D9 Step 2 — balance-ratio averaging α(`underlying`): the cross-venue arithmetic mean of `(balZ * 1e18) / balU` across constellation venues that hold both `underlying` and `SVZCHF` (Phase 1 direct venues only per OQ-22 L1115 — no 2-hop carry-forward).
-     * @dev (1) If `underlying == SVZCHF`, returns `1e18` identity. (2) If no constellation venue holds both `underlying` and `SVZCHF`, or every such venue has zero `balU` or zero `balZ`, returns `0` (that underlying's contribution is omitted from the `tvl()` sum). (3) Within one venue, `balU` and `balZ` sum `balancesLiveScaled18` across all pool tokens whose `tokenToUnderlying` resolves to `underlying` or `SVZCHF` respectively — aggregating wrappers and bases that map to the same underlying. (4) Outer iteration walks `_underlyingToPools[underlying]`; Phase 1 uses per-venue `getPoolTokens` + `getPoolData`; OQ-5a-bis daily EMA cadence absorbs read cost.
+     * @dev (1) If `underlying == SVZCHF`, returns `1e18` identity. (2) Two enumeration legs are averaged together per K-D8: Leg 1 walks the governance reverse-map `_underlyingToPools[underlying]`; Leg 2 walks the live `MiliariumRegistry` dense view (`miliariumPoolsCount` / `miliariumPoolAt`) when `miliariumRegistry` is bound. Leg 1 skips any venue with `miliariumRegistry.isMiliarium(v) == true` so a pool present in both legs is counted once (Leg 2 owns Miliarium pools). When the registry is unbound (`address(0)`), Leg 2 is skipped and Leg 1's skip never fires — exact pre-K6 behavior. (3) Per-venue eligibility and ratio are computed by `_venueRatio`. (4) Returns `0` when no eligible venue exists (that underlying's contribution is omitted from the `tvl()` sum). Per-venue `getPoolTokens` + `getPoolData`; OQ-5a-bis daily EMA cadence absorbs the read cost, now O(reverse-map + `miliariumPoolsCount`) venues.
      * @param underlying The valuation underlying being priced in svZCHF; if equal to `SVZCHF`, returns the 1e18 identity ratio without iteration.
      * @return ratio 18-dec fixed-point average of `(balZ * 1e18) / balU` across eligible venues; `0` when no eligible venue exists.
      */
     function _constellationRatio(address underlying) internal view returns (uint256) {
         if (underlying == SVZCHF) return 1e18;
-        address[] storage pools = _underlyingToPools[underlying];
+        bool registryBound = address(miliariumRegistry) != address(0);
         uint256 acc = 0;
         uint256 count = 0;
+        // Leg 1 — governance reverse-map venues; skip Miliarium pools (Leg 2 owns them) per K-D8 dedup.
+        address[] storage pools = _underlyingToPools[underlying];
         for (uint256 i = 0; i < pools.length; i++) {
             address v = pools[i];
-            IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
-            PoolData memory data = vaultExplorer.getPoolData(v);
-            uint256 balU = 0;
-            uint256 balZ = 0;
-            for (uint256 j = 0; j < tokens.length; j++) {
-                address u = tokenToUnderlying[address(tokens[j])];
-                if (u == underlying) {
-                    balU += data.balancesLiveScaled18[j];
-                } else if (u == SVZCHF) {
-                    balZ += data.balancesLiveScaled18[j];
-                }
-            }
-            if (balU > 0 && balZ > 0) {
-                acc += (balZ * 1e18) / balU;
+            if (registryBound && miliariumRegistry.isMiliarium(v)) continue;
+            (uint256 ratio, bool eligible) = _venueRatio(v, underlying);
+            if (eligible) {
+                acc += ratio;
                 count += 1;
             }
         }
+        // Leg 2 — live MiliariumRegistry dense enumeration (K-D8); dormant until the registry is bound.
+        if (registryBound) {
+            uint256 n = miliariumRegistry.miliariumPoolsCount();
+            for (uint256 k = 0; k < n; k++) {
+                (uint256 ratio, bool eligible) = _venueRatio(miliariumRegistry.miliariumPoolAt(k), underlying);
+                if (eligible) {
+                    acc += ratio;
+                    count += 1;
+                }
+            }
+        }
         return count == 0 ? 0 : acc / count;
+    }
+
+    /**
+     * @notice Per-venue balance-ratio contribution shared by both `_constellationRatio` enumeration legs (K-D8).
+     * @dev Sums `balancesLiveScaled18` into `balU` / `balZ` across `v`'s tokens by `tokenToUnderlying` resolution (aggregating wrappers and bases that map to the same underlying); eligible only when both are positive. Phase 1 direct-venue read via `getPoolTokens` + `getPoolData`.
+     * @param v The constellation venue (pool) to read.
+     * @param underlying The valuation underlying being priced in svZCHF.
+     * @return ratio `(balZ * 1e18) / balU` when eligible, else `0`.
+     * @return eligible True when `v` holds both `underlying` and `SVZCHF` with positive scaled balances.
+     */
+    function _venueRatio(address v, address underlying) internal view returns (uint256 ratio, bool eligible) {
+        IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
+        PoolData memory data = vaultExplorer.getPoolData(v);
+        uint256 balU = 0;
+        uint256 balZ = 0;
+        for (uint256 j = 0; j < tokens.length; j++) {
+            address u = tokenToUnderlying[address(tokens[j])];
+            if (u == underlying) {
+                balU += data.balancesLiveScaled18[j];
+            } else if (u == SVZCHF) {
+                balZ += data.balancesLiveScaled18[j];
+            }
+        }
+        if (balU > 0 && balZ > 0) {
+            return ((balZ * 1e18) / balU, true);
+        }
+        return (0, false);
     }
 
     /* ---------- ITVLOracle ---------- */
