@@ -5,6 +5,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import {IEmissionDistributor} from "./IEmissionDistributor.sol";
 import {IAuMM} from "../token/IAuMM.sol";
+import {IAuMMMinterRouter} from "../token/IAuMMMinterRouter.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "../ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../ccb/ICCBMultiplier.sol";
@@ -114,6 +115,10 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Governance-settable Stage L Incendiary registry address per H-D29 — `address(0)` at deploy (pre-Stage-L posture and deprecation safety valve); read inside `_phaseAwareBody`'s continuous-leg sub-interval body of `_lpTrancheIntegral` per H-D29; `address(0)` short-circuits the F-7 Step 1 skim subtraction returning `rate × n` (zero skim); semantics mirror H-D10 `feeRecorder` / `emissionsRecorder` recorder-slot precedent (governance-settable, `address(0)` clears).
     address public incendiaryRegistry;
 
+    /* ---------- Mint router slot (K-D7) ---------- */
+    /// @notice The AuMMMinterRouter holding AuMM's C-D11 one-shot minter slot per K-D7 — `claim` forwards mints through `mintRouter.mintFor`. Bound exactly once via `setMintRouter`; zero until then, after which `claim` can mint. Concrete-only slot (no interface getter), mirroring the `incendiaryRegistry` H-D29 precedent.
+    IAuMMMinterRouter public mintRouter;
+
     /* ---------- Constructor ---------- */
 
     /**
@@ -209,6 +214,18 @@ contract EmissionDistributor is IEmissionDistributor {
         address oldRegistry = incendiaryRegistry;
         incendiaryRegistry = newRegistry;
         emit IncendiaryRegistrySet(oldRegistry, newRegistry);
+    }
+
+    /**
+     * @notice One-shot binding of the AuMMMinterRouter per K-D7 — wires the mint path for `claim`.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input and `MintRouterAlreadySet` if already bound; emits `MintRouterBound(router_)`. Mirrors the I-D9 `setAuMTContractForPool` one-shot / H-D5 hook setter precedent and the concrete-only `setIncendiaryRegistry` declaration posture (no interface getter). Executes at K7 step (2) while `governance` still points at the deploy-side authority, before the `setGovernanceContract` handoff per the K-D7 wiring order.
+     * @param router_ The AuMMMinterRouter address — holds AuMM's C-D11 minter slot via `aumm.setMinter(router_)` at K7.
+     */
+    function setMintRouter(address router_) external onlyGovernance {
+        if (router_ == address(0)) revert ZeroAddress();
+        if (address(mintRouter) != address(0)) revert MintRouterAlreadySet();
+        mintRouter = IAuMMMinterRouter(router_);
+        emit MintRouterBound(router_);
     }
 
     /* ---------- Emission rate stub (H-D21) ---------- */

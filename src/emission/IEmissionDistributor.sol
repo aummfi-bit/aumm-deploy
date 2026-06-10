@@ -76,6 +76,11 @@ interface IEmissionDistributor {
     /// @param newRegistry The new `incendiaryRegistry` address (zero address permitted).
     event IncendiaryRegistrySet(address indexed oldRegistry, address indexed newRegistry);
 
+    /// @notice Emitted once when governance binds the AuMMMinterRouter via `setMintRouter` (K-D7 wiring at K7).
+    /// @dev Per K-D7 one-shot mint-router binding — single-indexed-router shape mirrors `MinterSet` (AuMM C-D11) and the `setMintRouter` precedent on `BodenseeBootstrapChannel`. The router holds AuMM's C-D11 minter slot; `claim` forwards mints through `mintRouter.mintFor`.
+    /// @param router The bound AuMMMinterRouter address.
+    event MintRouterBound(address indexed router);
+
     /// @notice Thrown when `recordScore` is called for a pool that is not gauge-approved.
     /// @dev Per H-D17 (a) and H-D5 per-call `isGaugeApproved` gate — prevents `totalScore` corruption
     ///      from stale recordings on revoked gauges.
@@ -108,6 +113,13 @@ interface IEmissionDistributor {
     ///      `setAuMTContractForPool` per I-D9 (new AuMT recorder must be non-zero; the H-D16 deprecation
     ///      safety valve does not apply under one-shot per-pool semantic).
     error ZeroAddress();
+
+    /// @notice Thrown when `setMintRouter` is called after the mint router has already been bound.
+    /// @dev Per K-D7 one-shot binding — once `mintRouter` is non-zero, the slot is immutable. Mirrors the I-D9 `AuMTAlreadyBound` / H-D5 one-shot setter semantic.
+    error MintRouterAlreadySet();
+    /// @notice Thrown in `claim` when the mint router has not yet been bound.
+    /// @dev Per K-D7 — `claim` reverts until governance calls `setMintRouter`; replaces the H-D7 `NotMinter` revert posture (AuMM is deployed minterless; the router receives the C-D11 slot at K7).
+    error MintRouterNotSet();
 
     /// @notice Permissionlessly records the current F-5 score for `pool` and updates `totalScore`.
     /// @dev Sequence per H-D17: (a) revert `NotApproved(pool)` if gauge revoked; (b) run `_accrueGlobal`
