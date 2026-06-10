@@ -5,6 +5,7 @@ import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaul
 import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
+import {IMiliariumRegistry} from "../ccb/IMiliariumRegistry.sol";
 
 /// @title TVLOracle — concrete `ITVLOracle` implementation per H-D8 + H-D9 (Phase 1: direct constellation venues)
 /// @notice svZCHF-denominated pool TVL via Balancer V3 scaled balances, per-token underlying mapping, and constellation balance-ratio averaging per H-D8 + H-D9.
@@ -44,6 +45,14 @@ contract TVLOracle is ITVLOracle {
     /// @notice Precomputed reverse index from underlying to constellation pools — rebuilt when roster or `tokenToUnderlying` changes.
     mapping(address => address[]) internal _underlyingToPools;
 
+    /* ---------- Miliarium registry binding (K-D8) ---------- */
+
+    /// @notice Live Miliarium registry — bound once via `setMiliariumRegistry` at the Stage K (K7) handoff per K-D8; `address(0)` pre-binding, in which case `_constellationRatio` runs its reverse-map leg only (exact pre-K6 behavior). Once bound, `_constellationRatio` enumerates this dense view (`miliariumPoolsCount` / `miliariumPoolAt`) as its second leg.
+    IMiliariumRegistry public miliariumRegistry;
+
+    /// @notice Deployer-pinned authority for the one-shot `setMiliariumRegistry`, F-D20 self-seal mirroring `CCBMultiplier` — set to `msg.sender` at construction, self-zeros on the first successful bind so the registry is sealed thereafter.
+    address public registrySetter;
+
     /* ---------- Errors ---------- */
 
     /// @notice Reverts when a zero address is supplied for an immutable or the initial governance slot.
@@ -58,6 +67,9 @@ contract TVLOracle is ITVLOracle {
     /// @notice Reverts when `addConstellationPool` is called against a pool already in `isInGovernanceRoster`.
     error AlreadyAdded(address pool);
 
+    /// @notice Reverts when `setMiliariumRegistry` is called by a non-`registrySetter` caller — covers pre-seal unauthorized callers and all post-seal callers (F-D20 self-zero mechanic).
+    error OnlyRegistrySetter();
+
     /* ---------- Events ---------- */
 
     /// @notice Emitted when `setGovernanceContract` rebinds the `governance` authority (Stage K handoff per H-D8).
@@ -68,6 +80,9 @@ contract TVLOracle is ITVLOracle {
 
     /// @notice Emitted on H-D9 governance-curated `tokenToUnderlying` writes; `token`, `oldUnderlying`, and `newUnderlying` are indexed for off-chain reconstruction of mapping history (Solidity 3-indexed-param limit).
     event TokenUnderlyingSet(address indexed token, address indexed oldUnderlying, address indexed newUnderlying);
+
+    /// @notice Emitted when `setMiliariumRegistry` binds the live Miliarium registry at the K7 handoff (one-shot per K-D8).
+    event MiliariumRegistrySet(address indexed registry);
 
     /* ---------- Modifiers ---------- */
 
@@ -113,6 +128,7 @@ contract TVLOracle is ITVLOracle {
         for (uint256 i = 0; i < _tokensSeed.length; i++) {
             tokenToUnderlying[_tokensSeed[i]] = _underlyingsSeed[i];
         }
+        registrySetter = msg.sender;
     }
 
     /* ---------- Governance ---------- */
@@ -165,6 +181,21 @@ contract TVLOracle is ITVLOracle {
         address oldUnderlying = tokenToUnderlying[token];
         tokenToUnderlying[token] = underlying;
         emit TokenUnderlyingSet(token, oldUnderlying, underlying);
+    }
+
+    /* ---------- Miliarium registry binding (K-D8) ---------- */
+
+    /**
+     * @notice One-shot bind of the live Miliarium registry at the Stage K (K7) handoff per K-D8 — mirrors the `CCBMultiplier` F-D20 self-seal.
+     * @dev Callable exactly once, by the deployer-pinned `registrySetter`. The authority check fires before the zero guard, so caller-side errors report `OnlyRegistrySetter` regardless of `newRegistry`. Binds `miliariumRegistry` then zeros `registrySetter` to seal — subsequent calls revert `OnlyRegistrySetter` because no caller holds `address(0)`. The `_constellationRatio` second leg (K6.2) enumerates the bound registry's dense view. Reverts `ZeroAddress` on a zero `newRegistry`; emits `MiliariumRegistrySet`.
+     * @param newRegistry Concrete `IMiliariumRegistry` deployed at Stage J — must be non-zero.
+     */
+    function setMiliariumRegistry(IMiliariumRegistry newRegistry) external {
+        if (msg.sender != registrySetter) revert OnlyRegistrySetter();
+        if (address(newRegistry) == address(0)) revert ZeroAddress();
+        miliariumRegistry = newRegistry;
+        registrySetter = address(0);
+        emit MiliariumRegistrySet(address(newRegistry));
     }
 
     /* ---------- Internal helpers (H-D9 Step 2) ---------- */
