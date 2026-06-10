@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K6 in progress on `stage-k` — K0—K5 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4, `AuMMMinterRouter` minter handoff K5; full unit coverage green). K-D8 LOCKED (`TVLOracle` roster re-wire — F-D20 setter binding + live `MiliariumRegistry` Leg 2 + `isMiliarium` dedup, signature-stable). This commit lands K6.0b (PLAN mirror: K-D8 row + K6 sub-step ladder + Surfaces `test/unit/TVLOracle.t.sol` row + Completion Log catch-up). Next code surface: K6.1 `src/emission/TVLOracle.sol` (additive setter). K-D1—K-D8 LOCKED; K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K6 complete on `stage-k` — K0—K6 done (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4, `AuMMMinterRouter` minter handoff K5, `TVLOracle` roster re-wire K6; full unit coverage green). K-D8 LOCKED + materialized — `TVLOracle` roster re-wire (F-D20 setter binding + live `MiliariumRegistry` Leg 2 + `isMiliarium` dedup, signature-stable): K6.1 additive setter `5a0a809` / K6.2 `_constellationRatio` two-leg `e05b52d` / K6.3 test cohort 42/42 `aef852c`. This commit lands K6-log (PLAN Completion Log catch-up: K6.1—K6.3 rows + K5.4-log `81793f3` / K6.0b `7fc8a85` hash back-fill + Status/Last-update banner refresh). Next unit: K7 deploy + authorizer migration (K-D9). K-D1—K-D8 LOCKED; K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-10 — K6.0b PLAN (this commit): K-D8 mirror flip to LOCKED + K6 sub-step ladder (K6.1 additive / K6.2 behavioral / K6.3 tests) + Surfaces `test/unit/TVLOracle.t.sol` EDIT row + Completion Log catch-up (K6.0a + this) + Status banner refresh. K5 complete (router suite + both consumer retrofits green); next is K6.1 TVLOracle additive setter.
+> **Last update:** 2026-06-10 — K6-log PLAN (this commit): Completion Log catch-up — K6.1 `5a0a809` / K6.2 `e05b52d` / K6.3 `aef852c` rows appended + K5.4-log `81793f3` / K6.0b `7fc8a85` hash back-fill + Status/Last-update banner refresh to K6 close. K6 complete (TVLOracle roster re-wire triad green, 42/42); next is K7 pre-flight (deploy + authorizer migration per K-D9).
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -231,6 +231,10 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K5.4b-ii | `8a63db6` | test/unit/BodenseeBootstrapChannel.t.sol — setMintRouter one-shot cohort + MintRouterNotSet guard test + _freshUnboundChannel helper (5 new, 34/34) |
 | K5.4c-i | `03c528c` | test/unit/EmissionDistributor.t.sol — K13 retrofit: setUp routes claim() mints through real AuMMMinterRouter (5 red → green, 101/101) |
 | K5.4c-ii | `ad7566e` | test/unit/EmissionDistributor.t.sol — setMintRouter one-shot cohort + claim MintRouterNotSet guard test + _freshUnboundDistributor helper (5 new, 106/106) |
-| K5.4-log | (this commit) | docs/STAGE_K_PLAN.md — Completion Log catch-up: K5.4a / b-i / b-ii / c-i / c-ii rows + K5.4-pre-b hash back-fill |
+| K5.4-log | `81793f3` | docs/STAGE_K_PLAN.md — Completion Log catch-up: K5.4a / b-i / b-ii / c-i / c-ii rows + K5.4-pre-b hash back-fill |
 | K6.0a | `bd28e72` | docs/STAGE_K_NOTES.md — K-D8 LOCKED: TVLOracle roster re-wire (F-D20 setter binding + live MiliariumRegistry Leg 2 + isMiliarium dedup) + K6 sub-step ladder |
-| K6.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D8 mirror flip to LOCKED + K6 sub-step ladder + Surfaces test/unit/TVLOracle.t.sol row + Completion Log catch-up + banner refresh |
+| K6.0b | `7fc8a85` | docs/STAGE_K_PLAN.md — K-D8 mirror flip to LOCKED + K6 sub-step ladder + Surfaces test/unit/TVLOracle.t.sol row + Completion Log catch-up + banner refresh |
+| K6.1 | `5a0a809` | src/emission/TVLOracle.sol — additive setMiliariumRegistry surface (F-D20 self-seal: miliariumRegistry + registrySetter slots, OnlyRegistrySetter error, MiliariumRegistrySet event; _constellationRatio untouched) |
+| K6.2 | `e05b52d` | src/emission/TVLOracle.sol — _constellationRatio two-leg re-wire (Leg 1 reverse-map + isMiliarium dedup skip / Leg 2 live MiliariumRegistry enumeration) + _venueRatio helper (K-D8; 36/36 green) |
+| K6.3 | `aef852c` | test/unit/TVLOracle.t.sol — K-D8 cohort: setMiliariumRegistry one-shot self-seal + Leg 2 enumeration contribution + isMiliarium dedup-skip (local dense mock; 6 new, 42/42) |
+| K6-log | (this commit) | docs/STAGE_K_PLAN.md — Completion Log catch-up: K6.1 / K6.2 / K6.3 rows + K5.4-log / K6.0b hash back-fill + Status/Last-update banner refresh to K6 close |
