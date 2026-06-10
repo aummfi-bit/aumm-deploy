@@ -249,6 +249,10 @@ contract BodenseeBootstrapChannelTest is Test {
         return AureumTime.month10EndBlock(GENESIS_BLOCK_);
     }
 
+    function _freshUnboundChannel() internal returns (BodenseeBootstrapChannel) {
+        return new BodenseeBootstrapChannel(IVault(address(vault)), BODENSEE_POOL_, IAuMM(address(aumm)), GENESIS_BLOCK_, GOV);
+    }
+
     /* ---------- Constructor (H-D14 + H-D11) ---------- */
 
     function test_Constructor_RevertWhen_VaultZero() public {
@@ -527,5 +531,47 @@ contract BodenseeBootstrapChannelTest is Test {
         vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.ReserveDeltaMismatch.selector, preReserve + amount, preReserve));
         vm.prank(GOV);
         channel.distribute();
+    }
+
+    /* ---------- setMintRouter one-shot + distribute MintRouterNotSet guard (K-D7) ---------- */
+
+    function test_SetMintRouter_HappyPath_EmitsAndBinds() public {
+        BodenseeBootstrapChannel fresh = _freshUnboundChannel();
+        address routerAddr = _addr(5);
+        vm.expectEmit(true, false, false, true);
+        emit BodenseeBootstrapChannel.MintRouterBound(routerAddr);
+        vm.prank(GOV);
+        fresh.setMintRouter(routerAddr);
+        assertEq(address(fresh.mintRouter()), routerAddr, "mintRouter bound");
+    }
+
+    function test_SetMintRouter_RevertWhen_RouterZero() public {
+        BodenseeBootstrapChannel fresh = _freshUnboundChannel();
+        vm.expectRevert(BodenseeBootstrapChannel.ZeroAddress.selector);
+        vm.prank(GOV);
+        fresh.setMintRouter(address(0));
+    }
+
+    function test_SetMintRouter_RevertWhen_AlreadySet() public {
+        vm.expectRevert(BodenseeBootstrapChannel.MintRouterAlreadySet.selector);
+        vm.prank(GOV);
+        channel.setMintRouter(_addr(7));
+    }
+
+    function test_SetMintRouter_RevertWhen_CallerNotGovernance() public {
+        BodenseeBootstrapChannel fresh = _freshUnboundChannel();
+        address bad = _addr(99);
+        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, bad));
+        vm.prank(bad);
+        fresh.setMintRouter(_addr(5));
+    }
+
+    function test_Distribute_RevertWhen_MintRouterNotSet() public {
+        BodenseeBootstrapChannel fresh = _freshUnboundChannel();
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        fresh.accrue();
+        vm.expectRevert(BodenseeBootstrapChannel.MintRouterNotSet.selector);
+        vm.prank(GOV);
+        fresh.distribute();
     }
 }
