@@ -1,8 +1,8 @@
 # Stage K — Plan & Sub-Step Roadmap
 
-> **Status:** K4 design LOCKED (K-D6) on `stage-k` — K0—K3 complete (K1 `AureumGovernanceAuthorizer` `73ceaae` + 12-green `e72104c`; K2 reuse-direct, no code; K3 `VotingWeight` `50d9f95` + 29-green `4d81ffc` / `8e345b5` / `d2f90d1`); K3.3 fork test folded into K4 `StageKIntegration`. K-D6 `AureumGovernance` locked at the K4 pre-flight Opus beat (`4e3b5e6`) — three proposal types, 20% quorum, simple-majority gauge+fee / 2/3-supermajority composition, epoch voting + 2-day timelock; gauge-challenge F-12 deposit deferred to Stage O. Next: K4.1 `src/governance/AureumGovernance.sol` scaffold. K-D1—K-D6 LOCKED; K-D7—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
+> **Status:** K4 complete on `stage-k` — K0—K4 complete (`AureumGovernanceAuthorizer` K1, TVL-oracle binding K2 doc-only, `VotingWeight` K3, `AureumGovernance` K4; 6/6 `StageKIntegration` green `dd37cd1`; 19 Completion Log rows added). K5 (`AuMM.setMinter` handoff per H-D41) pre-flight next. K-D1—K-D6 LOCKED; K-D7—K-D9 forward-declared per K-D2. Companion to STAGE_K_NOTES.md.
 >
-> **Last update:** 2026-06-08 — K4.0b PLAN (this commit): K-D6 mirror flip to LOCKED + K4 sub-step ladder (K4.0a—K4.7) + Completion Log catch-up (K3.4 / K4.0a / K4.0b). Next: K4.1 `src/governance/AureumGovernance.sol` scaffold.
+> **Last update:** 2026-06-10 — K4 PLAN Completion Log catch-up (K4.1—K4.7c-notes, 19 rows). K4 complete; K5 (`AuMM.setMinter` handoff per H-D41) pre-flight next.
 >
 > **Mode:** Opus extra-high entry per §13 stage-level defaults — governance handoff; stay on Opus through the stage. Each unit K1—K7 opens with an Opus pre-flight that locks its K-D and details its sub-steps.
 >
@@ -168,4 +168,23 @@ Full split-form regression (unit + fork per D35 / D36) green; `CLAUDE.md` §11 c
 | K3.3b | `1ad18ea` | docs/STAGE_K_PLAN.md — K3.3 fold mirror + status refresh + Completion Log catch-up (K3.0b—K3.3b) |
 | K3.4 | `632e23d` | CLAUDE.md §11 — K3 complete + K4 pre-flight next (resume anchor) |
 | K4.0a | `4e3b5e6` | docs/STAGE_K_NOTES.md — K-D6 LOCKED (AureumGovernance three proposal types + K-D6a—K-D6f sub-splits) |
-| K4.0b | (this commit) | docs/STAGE_K_PLAN.md — K-D6 mirror flip to LOCKED + K4 sub-step ladder (K4.0a—K4.7) + Completion Log catch-up (K3.4 / K4.0a / K4.0b) |
+| K4.0b | `8ca9d3b` | docs/STAGE_K_PLAN.md — K-D6 mirror flip to LOCKED + K4 sub-step ladder (K4.0a—K4.7) + Completion Log catch-up (K3.4 / K4.0a / K4.0b) |
+| K4.1 | `d7cc7b5` | src/governance/AureumGovernance.sol — scaffold (8 immutables + 9 constants + ProposalType/ProposalState enums + 13-field Proposal struct + storage/events/errors per K-D6a) |
+| K4.2 | `e88a8f8` | src/governance/AureumGovernance.sol — propose family |
+| K4.2-post-a | `1625ec4` | docs/STAGE_K_NOTES.md — K10 finding (IVotingWeight poke I13-class fix-forward) |
+| K4.2-post-b | `81d246d` | src/governance/IVotingWeight.sol + mock stubs — add poke (K10 / G16) |
+| K4.3 | `dd0dbf2` | src/governance/AureumGovernance.sol — castVote |
+| K4.4 | `5523e71` | src/governance/AureumGovernance.sol — state, _voteSucceeded, getProposal |
+| K4.5 | `dc7eb99` | src/governance/AureumGovernance.sol — queue, execute, _executeProposal |
+| K4.6a | `c2dd343` | test/unit/AureumGovernance.t.sol — harness, mocks, setUp, 1/1 green |
+| K4.6b | `a5f615c` | test/unit/AureumGovernance.t.sol — constructor zero-reverts, deposit mechanics, propose-family validation |
+| K4.6b-post | `44fb7ec` | docs/STAGE_K_NOTES.md — K11 finding (Foundry parameterized expectRevert) |
+| K4.6c | `01c3db0` | test/unit/AureumGovernance.t.sol — castVote accrual, poke obligation, window boundary, guards |
+| K4.6d | `a6b18c4` | test/unit/AureumGovernance.t.sol — state/tally, quorum boundary, supermajority |
+| K4.6e | `828eb86` | test/unit/AureumGovernance.t.sol — queue/execute guards, per-type routing, cooldown |
+| K4.7.0a | `594eb5b` | docs/STAGE_K_NOTES.md — K4.7 fork-integration design (pre-flight lock) |
+| K4.7a | `dcf94f9` | test/fork/StageKIntegration.t.sol — fixture, setUp, wiring smoke (1/1 green) |
+| K4.7b-fix1 | `e599b0e` | docs/STAGE_K_NOTES.md — correct R1 fork-runtime risk (tvl mocked via _mockTvl) |
+| K4.7b | `3f845ea` | test/fork/StageKIntegration.t.sol — VotingWeight poke fork tests, 4 shapes (5/5 green) |
+| K4.7c | `dd37cd1` | test/fork/StageKIntegration.t.sol — composition-challenge lifecycle (6/6 green) |
+| K4.7c-notes | `f68c978` | docs/STAGE_K_NOTES.md — K12 optimizer CSE block.number finding (F10 extension) |
