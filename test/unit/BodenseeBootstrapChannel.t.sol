@@ -8,6 +8,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import {AddLiquidityKind, AddLiquidityParams, TokenInfo} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {BodenseeBootstrapChannel} from "src/emission/BodenseeBootstrapChannel.sol";
+import {AuMMMinterRouter} from "src/token/AuMMMinterRouter.sol";
 import {IAuMM} from "src/token/IAuMM.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {IBodenseeBootstrapChannel} from "src/emission/IBodenseeBootstrapChannel.sol";
@@ -189,12 +190,14 @@ contract BodenseeBootstrapChannelTest is Test {
     uint256 internal constant GENESIS_BLOCK_ = 1_000_000;
     address internal constant BODENSEE_POOL_ = address(0xB0DE);
     address internal constant GOV = address(0xC0FE);
+    address internal constant DUMMY_DISTRIBUTOR = address(0xD157);
 
     MockVault internal vault;
     MockERC20 internal svZchf;
     MockERC20 internal sUsds;
     MockAuMM internal aumm;
     BodenseeBootstrapChannel internal channel;
+    AuMMMinterRouter internal router;
 
     function setUp() public virtual {
         vault = new MockVault();
@@ -222,7 +225,10 @@ contract BodenseeBootstrapChannelTest is Test {
             GOV
         );
         vault.setHelper(address(channel));
-        aumm.setMinter(address(channel));
+        router = new AuMMMinterRouter(IAuMM(address(aumm)), address(channel), DUMMY_DISTRIBUTOR);
+        aumm.setMinter(address(router));
+        vm.prank(GOV);
+        channel.setMintRouter(address(router));
         vm.roll(GENESIS_BLOCK_);
     }
 
@@ -473,7 +479,10 @@ contract BodenseeBootstrapChannelTest is Test {
             address(vault)
         );
         vault.setHelper(address(ch2));
-        aumm.setMinter(address(ch2));
+        AuMMMinterRouter router2 = new AuMMMinterRouter(IAuMM(address(aumm)), address(ch2), DUMMY_DISTRIBUTOR);
+        aumm.setMinter(address(router2));
+        vm.prank(address(vault));
+        ch2.setMintRouter(address(router2));
         _rollTo(GENESIS_BLOCK_ + 1_000);
         ch2.accrue();
         vault.enableReentrancyAttack();
