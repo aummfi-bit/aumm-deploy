@@ -1,116 +1,95 @@
 # aumm-deploy
 
-Foundry project for deploying Aureum's parallel instance of the Balancer V3 Vault.
+Foundry monorepo for **Aureum** — an automated market maker built as a parallel instance of Balancer V3 with a redesigned, Bitcoin-inspired tokenomic layer. Fair launch, fixed 21M cap, geometric halving, no pre-mine, no VCs, no creator fees.
 
-> **Scope:** this repository contains only the code needed to deploy and operate Aureum's parallel Vault — `AureumVaultFactory` (forked `VaultFactory`), `AureumAuthorizer`, `AureumProtocolFeeController`, and the deploy script. It does **not** contain the AuMM token, gauges, CCB engine, or any tokenomics-layer contracts. Those live in a separate repository.
+Public site: <https://aumm.fi> · Canonical spec: [aummfi-bit/aumm-site](https://github.com/aummfi-bit/aumm-site)
+
+> **Scope.** This repository contains the **full Aureum protocol** — the parallel Vault customization *and* the complete tokenomic layer: the AuMM token, fee routing, the CCB engine, gauges, emission, the Miliarium registry, and on-chain governance. (Earlier revisions of this README described a Vault-only repo with tokenomics living elsewhere — that is no longer the case; everything is here.)
 >
-> **Canonical specs:** all protocol specifications (mental model, tokenomics, constitution, formulas, Miliarium Aureum pool registry) live in [`aummfi-bit/aumm-site`](https://github.com/aummfi-bit/aumm-site). When a canonical fact changes there, constants or logic in this repo may need updating, but the docs here reference by path and do not duplicate.
+> **Canonical specs.** All protocol specifications — mental model, tokenomics, constitution, formulas (F-0…F-12), the 28-pool Miliarium Aureum registry — live in [aummfi-bit/aumm-site](https://github.com/aummfi-bit/aumm-site). Constants and logic here reference that spec by path; they do not duplicate it.
+>
+> **Orientation.** New to the repo? Read [`CLAUDE.md`](CLAUDE.md) (operational context) and [`docs/STAGES_OVERVIEW.md`](docs/STAGES_OVERVIEW.md) (the C→R stage sequence) first.
 
 ## Current status
 
-**Stage B (B0–B4 complete, B5–B7 in progress).** Stage A is tagged `stage-a-complete`. See [`docs/STAGE_B_PLAN.md`](docs/STAGE_B_PLAN.md) for the step-by-step plan and the Completion Log; design decisions and implementation notes live in [`docs/STAGE_B_NOTES.md`](docs/STAGE_B_NOTES.md).
+**Stage K complete** — tagged `stage-k-complete`. On-chain governance and the authorizer migration are in place; the contract surface spans Stages B through K. Full regression: **852/852 tests green** (759 unit + 93 fork, run split-form per the note in Quick start).
+
+The protocol is built in lettered stages, A → R:
+
+| Stage | Focus | Status |
+|---|---|---|
+| A | Foundry environment — toolchain compiling against the pinned Balancer V3 fork + a mainnet-fork sanity test (no Aureum code yet) | Complete |
+| B | Vault substrate — forked `AureumVault`, `AureumVaultFactory`, `AureumProtocolFeeController`, `AureumAuthorizer` | Complete |
+| C | Block-number time library + the AuMM token — 21M cap, geometric halving | Complete |
+| D | Fee-routing hook (OQ-1) + der Bodensee pool | Complete |
+| E | Pool-deployment framework + 3 pilot Miliarium pools | Complete |
+| F | CCB engine — Compound Centrifugal Balance scoring (F-4/F-5/F-6/F-8) | Complete |
+| G | Gauge registry + permissionless auto-gauge eligibility | Complete |
+| H | Emission distributor — the AuMM emission schedule | Complete |
+| I | AuMT LP tessera — reframed as the Vault's Balancer Pool Token | Complete |
+| J | Miliarium registry — the 28-slot → pool mapping | Complete |
+| K | On-chain governance + Vault authorizer migration | **Complete — current tip** |
+| L | Incendiary Boost — the F-2 priority skim | Pending |
+| M | Miliarium pools, Sector 2 — Majors / yield-core (~10) | Pending |
+| N | Miliarium pools, Sector 3 — Equity + thematic (~14) | Pending |
+| O | Composition challenge / replacement-launch path + Aureum Router | Pending |
+| P | Holesky full-system deployment + integration validation | Pending |
+| Q | External audit + patch cycle | Pending |
+| R | Mainnet deployment — terminal stage | Pending |
 
 **Nothing in this repository is audited, deployed to mainnet, or production-ready.**
 
-## Architecture summary
+## Architecture
 
-Aureum deploys its own parallel instance of the Balancer V3 Vault using **byte-identical bytecode** for `Vault.sol`, `VaultAdmin.sol`, and `VaultExtension.sol`. Those three files are never edited — they come directly from the pinned [`aummfi-bit/balancer-v3-monorepo`](https://github.com/aummfi-bit/balancer-v3-monorepo) submodule. The audit-inheritance argument depends on this byte-identity.
+Aureum deploys its own parallel instance of the Balancer V3 Vault using **byte-identical bytecode** for `Vault.sol`, `VaultAdmin.sol`, and `VaultExtension.sol` — these come directly from the pinned [aummfi-bit/balancer-v3-monorepo](https://github.com/aummfi-bit/balancer-v3-monorepo) submodule and are never edited. The audit-inheritance argument depends on that byte-identity. All Aureum customization is isolated to the reviewable contracts below.
 
-Aureum owns four contracts in this repository:
+| Module (`src/`) | Stage | Contracts | Role |
+|---|---|---|---|
+| `vault/` | B | `AureumVaultFactory`, `AureumAuthorizer`, `AureumProtocolFeeController` | F2 fork factory accepting an external fee controller; binary Safe-multisig authorizer; fee controller routing the Vault's 50%-capped protocol fees to der Bodensee, creator fees structurally disabled |
+| `lib/` | C | `AureumTime` | Block-number math — eras, epochs, halving boundaries |
+| `token/` | C, K | `AuMM`, `AuMMMinterRouter` | 21M-cap geometric-halving ERC-20; one-shot-minter allowlist forwarder (K5 handoff) |
+| `fee_router/` | D | `AureumFeeRoutingHook` | Converts swap/yield fees and routes them to der Bodensee (OQ-1 hook saturating the 50% protocol-fee cap) |
+| `factory/` | E | `AureumWeightedPoolFactory` | WeightedPool factory enforcing the 52% ERC-4626 Quality Gate |
+| `ccb/` | F | `CCBMultiplier`, `CCBScore`, `CCBShare`, `EMASampler` | F-8 anti-cyclical (Compound Centrifugal Balance) multiplier over the 28-Miliarium constellation; EMA TVL sampling |
+| `gauge/` | G | `GaugeRegistry`, `GaugeEligibility`, `VaultClassRegistry`, `SwapAndDepositToBodensee` | Gauge state machine (three activation paths), eligibility checks, vault-class admission, anti-spam Bodensee donation primitive |
+| `emission/` | H | `EmissionDistributor`, `BodenseeBootstrapChannel`, `TVLOracle`, `EfficiencyOracle` | Pool-scoped AuMM emission; F-0 piecewise bootstrap rail; TVL and efficiency oracles |
+| `registry/` | J | `MiliariumRegistry` | Canonical fixed 28-slot constellation binding + dense pool enumeration |
+| `governance/` | K | `AureumGovernance`, `AureumGovernanceAuthorizer`, `VotingWeight` | Three proposal types (gauge / composition / fee) + snapshot voting + 2-day timelock; B-strict 12-month time-bomb authorizer (OQ-10); value-weighted voting reader |
+| `incendiary/` | L | `IIncendiaryRegistry` (interface only) | Forward-dep stub for the Stage L boost registry — not yet implemented |
 
-| Contract | Role | Stage |
-|---|---|---|
-| `AureumVaultFactory.sol` | Forked `VaultFactory` — one-shot deployer. Diff against upstream: ~25 lines; accepts an external `IProtocolFeeController` via constructor (`INITIAL_FEE_CONTROLLER` immutable) instead of deploying one inline, drops the `deployedProtocolFeeControllers` mapping (per B11). | B |
-| `AureumAuthorizer.sol` | Implements `IAuthorizer`. Grants all Vault admin permissions to a single governance Safe multisig address. Binary: multisig can do anything, no one else can do anything. | B |
-| `AureumProtocolFeeController.sol` | Implements `IProtocolFeeController`. Routes 100% of protocol-extractable fees (both swap and yield, per the protocol fee percentage set per pool by governance up to a 50% cap) to the immutable der Bodensee Pool address set at deploy time. Pool creator fees structurally disabled — all four creator-fee functions revert unconditionally with `CreatorFeesDisabled()`. No treasury, no post-deploy destination setter. | B |
-| `script/DeployAureumVault.s.sol` | Foundry deploy script. Deploys authorizer + factory, computes future Vault address via CREATE3, deploys fee controller with that address, calls `factory.create()`. | B |
+**On AuMT.** Aureum's per-pool LP receipt (AuMT — Aureum Market Tessera) is the Vault's Balancer Pool Token (BPT) itself, reframed at Stage I — there is no separate `AuMT.sol`. Governance weight derived from it is read by `VotingWeight`.
 
 ## Quick start
 
-```bash
-# Install Foundry (once, per machine)
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
+Prerequisites: Foundry — `curl -L https://foundry.paradigm.xyz | bash` then `foundryup`.
 
-# Clone
-git clone git@github.com:aummfi-bit/aumm-deploy.git
-cd aumm-deploy
+1. Clone with submodules: `git clone --recursive git@github.com:aummfi-bit/aumm-deploy.git && cd aumm-deploy` (already cloned without `--recursive`? run `git submodule update --init --recursive`).
+2. Build: `forge build`.
+3. Unit tests (no fork): `forge test --no-match-path "test/fork/**"`.
+4. Fork tests: copy `.env.example` to `.env`, set `MAINNET_RPC_URL`, then `source .env && forge test --match-path "test/fork/**" --fork-url $MAINNET_RPC_URL --threads 1`.
 
-# Add submodule (the Aureum-owned Balancer V3 fork)
-git submodule add https://github.com/aummfi-bit/balancer-v3-monorepo.git lib/balancer-v3-monorepo
-forge install OpenZeppelin/openzeppelin-contracts --no-commit
-forge install foundry-rs/forge-std --no-commit
-
-# Build
-forge build
-
-# Sanity test against mainnet fork
-cp .env.example .env
-# fill in MAINNET_RPC_URL
-source .env
-forge test --fork-url $MAINNET_RPC_URL -vv
-```
-
-Full walkthrough: [`docs/STAGE_A_PLAN.md`](docs/STAGE_A_PLAN.md).
+> Run the unit and fork suites **separately**, as above. A single `forge test --fork-url …` applies fork context to all 200+ tests and rate-limit-hangs on Ankr; `--threads 1` avoids a `vm.setEnv` race between parallel fork-test contracts.
 
 ## Repository layout
 
-```
-aumm-deploy/
-├── src/
-│   ├── vault/                        # Stage B contracts (forked/implemented)
-│   │   ├── AureumVaultFactory.sol
-│   │   ├── AureumAuthorizer.sol
-│   │   └── AureumProtocolFeeController.sol
-│   ├── lib/                          # Stage C
-│   │   └── AureumTime.sol            # Block-number math library
-│   └── token/                        # Stage C
-│       ├── AuMM.sol                  # ERC-20: 21M cap, geometric halving
-│       └── IAuMM.sol                 # Interface
-├── script/                           # Foundry deployment scripts
-│   └── DeployAureumVault.s.sol
-├── test/
-│   ├── unit/
-│   │   ├── AureumAuthorizer.t.sol
-│   │   ├── AureumProtocolFeeController.t.sol
-│   │   ├── AureumTime.t.sol          # Stage C
-│   │   └── AuMM.t.sol                # Stage C
-│   └── fork/
-│       ├── Sanity.t.sol              # Stage A: toolchain check
-│       └── DeployAureumVault.t.sol   # Stage B: integration
-├── lib/
-│   ├── balancer-v3-monorepo/         # Submodule (aummfi-bit fork)
-│   ├── openzeppelin-contracts/
-│   └── forge-std/
-├── docs/
-│   ├── STAGE_A_PLAN.md
-│   ├── STAGE_B_NOTES.md
-│   ├── STAGE_B_PLAN.md
-│   ├── STAGE_C_NOTES.md              # Stage C
-│   ├── STAGE_C_PLAN.md               # Stage C
-│   └── balancer_v3_reference.md
-├── foundry.toml
-├── remappings.txt
-├── .env.example
-├── .cursorrules                      # Rules for Cursor's AI assistant
-├── .gitignore
-├── LICENSE                           # GPL-3.0-or-later
-└── README.md                         # This file
-```
+- `src/` — Aureum contracts, one directory per module: `vault/` `lib/` `token/` `fee_router/` `factory/` `ccb/` `gauge/` `emission/` `registry/` `governance/` `incendiary/` (see the Architecture table).
+- `script/` — Foundry deploy scripts: per-stage (`DeployAuMM`, `DeployAureumVault`, `DeployAureumWeightedPoolFactory`, `DeployDerBodensee`, `DeployStageH`…`DeployStageK`) plus `script/pools/` (per-Miliarium-pool configs and deploy runners).
+- `test/` — `unit/` (per-contract suites + `harness/`), `fork/` (mainnet-fork integration + `mocks/`), and shared `mocks/`.
+- `lib/` — submodules: `balancer-v3-monorepo` (aummfi-bit fork, pinned), `openzeppelin-contracts`, `forge-std`.
+- `docs/` — `STAGES_OVERVIEW.md`, `FINDINGS.md`, `ROBUSTNESS_BACKPORT_REGISTER.md`, per-stage `STAGE_A`…`STAGE_K` `_PLAN`/`_NOTES` files, `balancer_v3_reference.md`, and `white_hat/` (audit process + findings ledger).
+- Root — `CLAUDE.md` (session operational context), `foundry.toml`, `foundry.lock`, `remappings.txt`, `.env.example`, `.cursorrules`, `LICENSE` (GPL-3.0-or-later), `README.md`.
 
 ## Toolchain
 
-- **Solc:** `0.8.26` (matches Balancer V3 mainnet exactly)
-- **EVM version:** `cancun`
-- **Optimizer:** enabled, 9999 runs
-- **IR pipeline:** `via_ir = true`
-- **Foundry:** forge, cast, anvil (install via `foundryup`)
-- **Editor:** Cursor with Solidity extension by Juan Blanco
+- **Solc** `0.8.26` (exact match to Balancer V3 mainnet), **EVM** `cancun`, optimizer enabled at **9999** runs, **`via_ir = true`**.
+- **Foundry** — forge, cast, anvil (install via `foundryup`).
+- **Slither** `0.11.4` (in `.venv/`) for static analysis.
+- **Editor** — Cursor with the Juan Blanco Solidity extension.
 
 ## License
 
-GPL-3.0-or-later. Aureum forks Balancer V3, which is GPL-3.0; this code inherits the license. Aureum is not affiliated with, endorsed by, or sponsored by Balancer Labs or Balancer DAO.
+GPL-3.0-or-later. Aureum forks Balancer V3 (GPL-3.0); this code inherits the license. Aureum is not affiliated with, endorsed by, or sponsored by Balancer Labs or Balancer DAO.
 
 ## Disclaimer
 
-Nothing in this repository constitutes financial advice. The code is in active development, unaudited, and not production-ready. DeFi liquidity provision involves substantial risk, including impermanent loss, smart-contract risk, oracle risk, governance risk, regulatory risk, and the total loss of deposited assets. See [`aummfi-bit/aumm-site`](https://github.com/aummfi-bit/aumm-site) for the full protocol disclaimer.
+Nothing in this repository constitutes financial advice. The code is in active development, unaudited, and not production-ready. DeFi liquidity provision involves substantial risk — impermanent loss, smart-contract risk, oracle risk, governance risk, regulatory risk, and the total loss of deposited assets. See [aummfi-bit/aumm-site](https://github.com/aummfi-bit/aumm-site) for the full protocol disclaimer.
