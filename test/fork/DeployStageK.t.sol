@@ -10,6 +10,7 @@ import { VotingWeight } from "../../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 import { AureumGovernanceAuthorizer } from "../../src/governance/AureumGovernanceAuthorizer.sol";
 import { AuMMMinterRouter } from "../../src/token/AuMMMinterRouter.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 /**
  * @title DeployStageKForkTest
  * @notice Integration test for `script/DeployStageK.s.sol` — the Stage K governance handoff
@@ -164,5 +165,30 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertTrue(authorizer.canPerform(recoveryAction, EMERGENCY_MULTISIG, address(vault)), "emergency multisig denied recovery in-window");
         assertFalse(authorizer.canPerform(nonEmergencyAction, EMERGENCY_MULTISIG, address(vault)), "emergency multisig allowed non-emergency");
         assertFalse(authorizer.canPerform(pauseAction, rando, address(vault)), "arbitrary account allowed");
+    }
+
+    // Assertion A1 — wires (3)/(5): bootstrap channel distribute() mints via router post-wiring
+    function test_A1_distribute_mintsViaRouterPostWiring() public {
+        uint256 g = aumm.GENESIS_BLOCK();
+        vm.roll(g + 1_000);
+        bootstrapChannel.accrue();
+        assertGt(bootstrapChannel.pendingAccrual(), 0, "no pending accrual to distribute");
+        bootstrapChannel.distribute();
+        assertGt(bootstrapChannel.totalDistributed(), 0, "distribute did not mint via router");
+    }
+
+    // Assertion A2 — gauge-seed pranked as handed-off governance (wire 6) — test-harness shortcut; real flow is a governance proposal
+    function test_A2_claim_mintsViaRouterPostWiring() public {
+        address user = makeAddr("k73_claimer");
+        vm.prank(address(governance));
+        gaugeRegistry.seedFoundingPool(pilotPools[0]);
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
+        vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
+        emissionDistributor.recordScore(pilotPools[0]);
+        _depositOneSided(pilotPools[0], user, 100);
+        vm.roll(block.number + 300);
+        vm.prank(user);
+        emissionDistributor.claim(pilotPools[0], user);
+        assertGt(aumm.balanceOf(user), 0, "claim did not mint via router");
     }
 }
