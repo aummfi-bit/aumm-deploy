@@ -31,14 +31,16 @@ import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.so
  *      EmissionDistributor + MockMiliariumRegistry. Post-construction wiring: H-D23
  *      `setEmissionsRecorder(address(emissionDistributor))` on efficiencyOracle + H6.3
  *      `setAuMTContractForPool(pilotPools[0..2], address(this))` on emissionDistributor (test contract impersonates the Stage I AuMT
- *      recorder for `recordDeposit` / `recordWithdrawal` calls). `aumm.setMinter(...)` is deferred to each
- *      derived contract's setUp override per H-D37 amended at H9.0c (Option A — avoids Bodensee-pool AuMM
- *      token conflict: `StageHBootstrapPhaseTest` needs `bootstrapChannel` as minter for H-D39 DONATION
- *      callback, other tests need `emissionDistributor` as minter for H-D20 `claim` path; C-D11 one-shot
- *      `_minterAdmin` disallows fixture-level wiring). `incendiaryRegistry` stays `address(0)` per H-D29
+ *      recorder for `recordDeposit` / `recordWithdrawal` calls). Minter wiring per K7.4b (K-D7): one
+ *      `AuMMMinterRouter` holds AuMM's C-D11 one-shot `_minterAdmin` slot via
+ *      `aumm.setMinter(address(minterRouter))` and forwards `mintFor` for both allowlisted consumers —
+ *      `bootstrapChannel` (H-D39 DONATION callback) and `emissionDistributor` (H-D20 `claim` path); both
+ *      `setMintRouter` one-shots land at fixture level while channel/distributor governance is still
+ *      `address(this)`, superseding the H-D37/H9.0c Option A per-derived deferral that the one-shot
+ *      `_minterAdmin` previously forced. `incendiaryRegistry` stays `address(0)` per H-D29
  *      zero-stub (slot default — no setter call required; F-7 Step 1 Incendiary skim collapses to 0 per
  *      H5.1c continuous-leg short-circuit).
- *      Anchors: H-D37, H-D7 (OPEN), C-D11, H-D11, H-D20, H-D23, H-D29, H-D31, D35 + D36 + H-D40, E10.
+ *      Anchors: H-D37, K-D7, C-D11, H-D11, H-D20, H-D23, H-D29, H-D31, D35 + D36 + H-D40, E10.
  */
 abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
     TVLOracle internal tvlOracle;
@@ -117,9 +119,10 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
  * @notice Fork-level exercise of BodenseeBootstrapChannel.accrue() against the real Bodensee + real AuMM stack.
  *         Covers: F-0/F-1 bootstrap arc; accrue() cadence across Bootstrap A (80→50%) + Bootstrap B (50→0%);
  *         H-D11 AP closed-form identity; pendingAccrual conservation invariant pre-distribute.
- *         Minter handoff: bootstrapChannel receives AuMM minting authority in setUp per H-D37 amended at H9.0c
- *         (Option A — C-D11 one-shot _minterAdmin consumed here; a later setMinter on the same AuMM instance
- *         would revert NotMinterAdmin, as expected). The distribute() arc + sad-path pair land separately at H9.3.
+ *         Minter wiring: AuMM's sole minter is the fixture's `AuMMMinterRouter` (bound in `super.setUp` per
+ *         K7.4b/K-D7) — `bootstrapChannel` mints via `mintRouter.mintFor` as an allowlisted consumer.
+ *         `setGovernanceContract(GOVERNANCE_MULTISIG)` runs after the fixture's `setMintRouter` wiring,
+ *         preserving the K-D7 wire-before-handoff order. The distribute() arc + sad-path pair land separately at H9.3.
  *         Anchors: H-D11, H-D37, H-D38(1), C-D11.
  */
 contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
