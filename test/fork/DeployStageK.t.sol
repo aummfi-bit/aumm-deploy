@@ -143,4 +143,26 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertTrue(address(authorizer) != address(0), "authorizer unset");
         assertTrue(address(router) != address(0), "router unset");
     }
+
+    // Assertion B — wires (1) / (6) / (7): gauge + registry handoff + VCR votingWeight
+    function test_B_governanceHandoff_gaugeRegistryVCR() public view {
+        assertEq(gaugeRegistry.governanceContract(), address(governance), "gauge governance not handed off");
+        assertEq(realRegistry.governanceContract(), address(governance), "miliarium governance not handed off");
+        assertEq(address(freshVCR.votingWeight()), address(votingWeight), "VCR votingWeight not wired");
+    }
+
+    // Assertion C — wire (8) + canPerform routing: OQ-10 authorizer migration
+    function test_C_authorizerMigration_canPerformRouting() public view {
+        bytes32 pauseAction = authorizer.EMERGENCY_ACTION_PAUSE_VAULT();
+        bytes32 recoveryAction = authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE();
+        bytes32 nonEmergencyAction = keccak256("k73_nonEmergencyAction");
+        address rando = address(uint160(uint256(keccak256("k73_rando"))));
+        assertEq(address(vault.getAuthorizer()), address(authorizer), "vault authorizer not migrated");
+        assertTrue(authorizer.canPerform(nonEmergencyAction, address(governance), address(vault)), "governance denied broad");
+        assertTrue(authorizer.canPerform(pauseAction, address(governance), address(vault)), "governance denied emergency action");
+        assertTrue(authorizer.canPerform(pauseAction, EMERGENCY_MULTISIG, address(vault)), "emergency multisig denied pause in-window");
+        assertTrue(authorizer.canPerform(recoveryAction, EMERGENCY_MULTISIG, address(vault)), "emergency multisig denied recovery in-window");
+        assertFalse(authorizer.canPerform(nonEmergencyAction, EMERGENCY_MULTISIG, address(vault)), "emergency multisig allowed non-emergency");
+        assertFalse(authorizer.canPerform(pauseAction, rando, address(vault)), "arbitrary account allowed");
+    }
 }
