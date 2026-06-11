@@ -9,6 +9,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { StageGIntegrationFixture } from "./StageGIntegration.t.sol";
 import { MockMiliariumRegistry } from "./mocks/CCBMocks.sol";
 import { IAuMM } from "../../src/token/IAuMM.sol";
+import { AuMMMinterRouter } from "../../src/token/AuMMMinterRouter.sol";
 import { EMASampler } from "../../src/ccb/EMASampler.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
@@ -46,6 +47,7 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
     EfficiencyOracle internal efficiencyOracle;
     BodenseeBootstrapChannel internal bootstrapChannel;
     EmissionDistributor internal emissionDistributor;
+    AuMMMinterRouter internal minterRouter;
     MockMiliariumRegistry internal miliariumRegistry;
 
     function setUp() public virtual override {
@@ -101,7 +103,11 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
         emissionDistributor.setAuMTContractForPool(pilotPools[1], address(this));
         emissionDistributor.setAuMTContractForPool(pilotPools[2], address(this));
 
-        // aumm.setMinter(...) deferred to each derived contract's setUp override per H-D37 amended at H9.0c (Option A — Bodensee-pool AuMM token shared between bootstrapChannel and emissionDistributor minter paths; one-shot C-D11 _minterAdmin disallows fixture-level wiring)
+        // K7.4b (K-D7) router unification — one AuMMMinterRouter holds AuMM's C-D11 one-shot minter slot; both consumers allowlisted via setMintRouter while governance is still address(this), before any setGovernanceContract handoff
+        minterRouter = new AuMMMinterRouter(IAuMM(address(aumm)), address(bootstrapChannel), address(emissionDistributor));
+        aumm.setMinter(address(minterRouter));
+        bootstrapChannel.setMintRouter(address(minterRouter));
+        emissionDistributor.setMintRouter(address(minterRouter));
         // incendiaryRegistry stays address(0) per H-D29 zero-stub (slot default — no setter call required; F-7 Step 1 Incendiary skim collapses to 0 per H5.1c continuous-leg short-circuit)
     }
 }
@@ -119,7 +125,6 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
 contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
     function setUp() public override {
         super.setUp();
-        aumm.setMinter(address(bootstrapChannel));
         // H-D14 — transfer to multisig per H-D39 production-deploy semantics
         bootstrapChannel.setGovernanceContract(GOVERNANCE_MULTISIG);
     }
@@ -275,7 +280,6 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
 contract StageHContinuousPhaseTest is StageHIntegrationFixture {
     function setUp() public override {
         super.setUp();
-        aumm.setMinter(address(emissionDistributor));
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
         gaugeRegistry.seedFoundingPool(pilotPools[0]);
         gaugeRegistry.seedFoundingPool(pilotPools[1]);
@@ -344,7 +348,6 @@ contract StageHContinuousPhaseTest is StageHIntegrationFixture {
 contract StageHHalvingBoundaryTest is StageHIntegrationFixture {
     function setUp() public override {
         super.setUp();
-        aumm.setMinter(address(emissionDistributor));
         gaugeRegistry.seedFoundingPool(pilotPools[0]);
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
     }
@@ -383,7 +386,6 @@ contract StageHHalvingBoundaryTest is StageHIntegrationFixture {
 contract StageHCrossStackTest is StageHIntegrationFixture {
     function setUp() public override {
         super.setUp();
-        aumm.setMinter(address(emissionDistributor));
         IERC20[] memory ptokens = vault.getPoolTokens(pilotPools[0]);
         for (uint256 i = 0; i < ptokens.length; ++i) {
             tvlOracle.setTokenUnderlying(address(ptokens[i]), address(svZchf));
