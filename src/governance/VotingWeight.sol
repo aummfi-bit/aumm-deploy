@@ -12,9 +12,9 @@ import { AureumTime } from "../lib/AureumTime.sol";
  * @notice Value-weighted governance reader per K-D5 — a stateful poke-accumulator delivering an exact
  *         veto fraction (`vetoSupport <= totalSupply` by construction). Implements `IVotingWeight`
  *         (the I9.1 stub per I-D17) consumed by `VaultClassRegistry.vetoProposal`.
- * @dev F-9 per-position power `(value * cappedTime/ON_RAMP)^(1/4 in Era 0, 1/3 in Era 1+)` over the
- *      EmissionDistributor recorder clock; value = recorder share `tvlEMA(pool) * userLP / poolTotalLP`
- *      (OQ-25 anti-flash-loan — the hook-recorded deposit, never spot BPT balance; F-04 — value reads the 60-day TVL EMA, never spot tvl). `governanceWeight`
+ * @dev F-9 pool-aggregate power `tvlEMA(pool)^(1/4 in Era 0, 1/3 in Era 1+) * (userLP / poolTotalLP) * min(time, ON_RAMP)/ON_RAMP` over the
+ *      EmissionDistributor recorder clock (OQ-25 anti-flash-loan — hook-recorded shares, never spot BPT; F-04 — the 60-day TVL EMA, never spot tvl;
+ *      F-02 — the root applies to the pool aggregate and the holder leg is linear, so weight is invariant under splitting a position across wallets). `governanceWeight`
  *      and `totalSupply` are O(1) views over two checkpoints (`_holderWeight` / `_totalQualifiedWeight`);
  *      permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered Miliarium
  *      enumeration and applies the signed delta (F12/F13). The exact-fraction invariant holds because
@@ -122,11 +122,12 @@ contract VotingWeight is IVotingWeight {
         }
         emit WeightPoked(holder, oldWeight, newWeight);
     }
-    /// @notice F-9 per-position governance power for `holder` in `pool` — live, gauge-gated.
+    /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
     /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), or has never seeded, confers 0 (F-04 anti-spot-pump); (c) clock from the recorder
-    ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) value = recorder share
-    ///      `tvlEMA(pool) * userLP / poolTotalLP` (OQ-25 + F-04 — the 60-day EMA, never spot tvl); (e) base = value normalized by the
-    ///      capped on-ramp time fraction; (f) power = base^exponent with the F-9 era root. Every degenerate input (immature/never-seeded EMA, zero LP, zero supply, zero value, zero base) short-circuits to 0 before `powDown`.
+    ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
+    ///      `userLP / poolTotalLP` (OQ-25), timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
+    ///      poolPower * share * timeFactor — the holder leg is linear, so the position is split-invariant across wallets (F-02). Every
+    ///      degenerate input (immature/never-seeded EMA, zero LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
     /// @param holder The holder.
     /// @return The position's governance power (18-dec).
@@ -143,16 +144,17 @@ contract VotingWeight is IVotingWeight {
         if (totalLP == 0) return 0;
         uint256 lp = RECORDER.userLP(pool, holder);
         if (lp == 0) return 0;
-        uint256 value = EMA_SAMPLER.tvlEMA(pool).mulDown(lp.divDown(totalLP));
-        if (value == 0) return 0;
+        uint256 ema = EMA_SAMPLER.tvlEMA(pool);
+        if (ema == 0) return 0;
+        uint256 share = lp.divDown(totalLP);
+        if (share == 0) return 0;
         uint256 cappedTime = timeInPool > AureumTime.ON_RAMP_PERIOD_BLOCKS
             ? AureumTime.ON_RAMP_PERIOD_BLOCKS
             : timeInPool;
-        uint256 base = value.mulDown(cappedTime.divDown(AureumTime.ON_RAMP_PERIOD_BLOCKS));
-        if (base == 0) return 0;
+        uint256 timeFactor = cappedTime.divDown(AureumTime.ON_RAMP_PERIOD_BLOCKS);
         uint256 exponent = block.number < AureumTime.firstHalvingBlock(GENESIS_BLOCK)
             ? ERA0_EXPONENT
             : ERA1_PLUS_EXPONENT;
-        return base.powDown(exponent);
+        return ema.powDown(exponent).mulDown(share).mulDown(timeFactor);
     }
 }

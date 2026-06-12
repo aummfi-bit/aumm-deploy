@@ -211,17 +211,17 @@ contract VotingWeightTest is Test {
     }
     function test_Poke_PartialOnRamp_ScalesValue() public {
         _setSinglePool(POOL_A);
-        // timeInPool = ON_RAMP/2 -> timeFrac 0.5; value 2e18 -> base 1e18
+        // 2^(1/4) × 0.5 = 1.18921… × 0.5 — pool-aggregate F-9: ema^(1/4) × share × timeFactor.
         _configurePosition(POOL_A, HOLDER, true, 2e18, 100e18, 100e18, START_BLOCK - (ON_RAMP / 2));
         vw.poke(HOLDER);
-        assertApproxEqAbs(vw.governanceWeight(HOLDER), 1e18, 1e6);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 594603557501354586, 1e6);
     }
     function test_Poke_PartialOwnership_SharesValue() public {
         _setSinglePool(POOL_A);
-        // share 0.5, tvl 32e18 -> value 16e18; fully-capped -> base 16e18
+        // 32^(1/4) × 0.5 = 2.37841… × 0.5 — pool-aggregate F-9: ema^(1/4) × share × timeFactor.
         _configurePosition(POOL_A, HOLDER, true, 32e18, 50e18, 100e18, START_BLOCK - ON_RAMP);
         vw.poke(HOLDER);
-        assertApproxEqAbs(vw.governanceWeight(HOLDER), 2e18, 1e8);
+        assertApproxEqAbs(vw.governanceWeight(HOLDER), 1189207115002709172, 1e8);
     }
     function test_Poke_GaugeNotApproved_ContributesZero() public {
         _setSinglePool(POOL_A);

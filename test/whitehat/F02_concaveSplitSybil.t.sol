@@ -9,9 +9,10 @@ import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockRecorder, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 
-/// @notice White-hat finding F-02 (S9): proves the F-9 concave power curve `base.powDown(0.25e18)`
-///         (VotingWeight L152) is subadditive, so splitting one LP position across N addresses multiplies
-///         summed governanceWeight by ~N^(3/4) in Era 0 — defeating anti-plutocracy dampening.
+/// @notice White-hat finding F-02 regression (S9, Fixed): proves the pool-aggregate F-9 root
+///         (`tvlEMA^e × share × timeFactor`, linear holder leg) is split-invariant — splitting one
+///         LP position across N addresses never increases summed governanceWeight; rounding-down
+///         means the split sums to the consolidated weight minus dust, closing the Sybil-split gain.
 contract F02_ConcaveSplitSybilTest is Test {
     MockEMASampler internal emaSampler;
     MockGaugeRegistry internal gaugeReg;
@@ -53,7 +54,7 @@ contract F02_ConcaveSplitSybilTest is Test {
         }
     }
 
-    function test_singleConsolidatedPositionWeight() public {
+    function test_F02_SingleConsolidatedPosition_NonzeroBaseline() public {
         // Single and split addresses are independent — the mock does not enforce Σ userLP == poolTotalLP,
         // so the comparison isolates the formula's subadditive splitting gain at identical total value.
         address holder = address(0xDEAD);
@@ -64,23 +65,21 @@ contract F02_ConcaveSplitSybilTest is Test {
         assertGt(wSingle, 0);
     }
 
-    function test_split16xGivesApprox8xWeight() public {
+    function test_F02_Split16_WeightInvariant_NeverGains() public {
         // Single and split addresses are independent — the mock does not enforce Σ userLP == poolTotalLP,
-        // so the comparison isolates the formula's subadditive splitting gain at identical total value.
+        // so the comparison isolates split behavior at identical total value — the linear holder leg makes the split sum to ≤ the consolidated weight (rounding dust only).
         uint256 wSingle = _weightOfSplit(1, POOL_TOTAL_LP);
         uint256 wSplit16 = _weightOfSplit(16, POOL_TOTAL_LP);
-        assertGt(wSplit16, wSingle);
-        assertGt(wSplit16, wSingle * 7);
-        assertLt(wSplit16, wSingle * 9);
+        assertLe(wSplit16, wSingle);
+        assertApproxEqRel(wSplit16, wSingle, 1e12);
     }
 
-    function test_split81xGivesApprox27xWeight() public {
+    function test_F02_Split81_WeightInvariant_NeverGains() public {
         // Single and split addresses are independent — the mock does not enforce Σ userLP == poolTotalLP,
-        // so the comparison isolates the formula's subadditive splitting gain at identical total value.
+        // so the comparison isolates split behavior at identical total value — the linear holder leg makes the split sum to ≤ the consolidated weight (rounding dust only).
         uint256 wSingle = _weightOfSplit(1, POOL_TOTAL_LP);
         uint256 wSplit81 = _weightOfSplit(81, POOL_TOTAL_LP);
-        assertGt(wSplit81, wSingle);
-        assertGt(wSplit81, wSingle * 24);
-        assertLt(wSplit81, wSingle * 30);
+        assertLe(wSplit81, wSingle);
+        assertApproxEqRel(wSplit81, wSingle, 1e12);
     }
 }
