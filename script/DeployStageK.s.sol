@@ -20,30 +20,31 @@ import { AuMMMinterRouter } from "../src/token/AuMMMinterRouter.sol";
 import { VaultClassRegistry } from "../src/gauge/VaultClassRegistry.sol";
 import { BodenseeBootstrapChannel } from "../src/emission/BodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
+import { TVLOracle } from "../src/emission/TVLOracle.sol";
 
 /**
  * @title DeployStageK
  * @notice Deploys AND wires the Stage K governance stack — VotingWeight ->
  *         AureumGovernance -> AureumGovernanceAuthorizer -> AuMMMinterRouter (deploy, in
- *         constructor-dependency order) followed by the eight-call wiring chain that
+ *         constructor-dependency order) followed by the nine-call wiring chain that
  *         migrates the gauge + Miliarium governance to the on-chain governance contract
  *         and the Vault authorizer to AureumGovernanceAuthorizer — per K-D9 and the K14
  *         wiring inventory. _deploy() (K7.2a) performs the four `new` calls; _wire()
- *         (K7.2b) performs the eight wiring calls; both run() and deploy() deploy then wire.
- * @dev Wiring chain (8 calls, load-bearing order per K14): (1) VaultClassRegistry.setVotingWeight;
+ *         (K7.2b) performs the nine wiring calls; both run() and deploy() deploy then wire.
+ * @dev Wiring chain (9 calls, load-bearing order per K14): (1) VaultClassRegistry.setVotingWeight;
  *      (2) SwapAndDepositToBodensee.addAuthorizedDonator(governance); (3) BodenseeBootstrapChannel.setMintRouter
  *      and (4) EmissionDistributor.setMintRouter (BEFORE the handoff, K-D7); (5) AuMM.setMinter(router)
  *      (C-D11 one-shot); (6) GaugeRegistry.setGovernanceContract and (7) MiliariumRegistry.setGovernanceContract
- *      (the handoff); (8) Vault.setAuthorizer(authorizer) (OQ-10 migration, LAST). Handoff scope is gauge +
+ *      (the handoff); (8) TVLOracle.setMiliariumRegistry (K6 Miliarium-leg bind, F-03/K-D8); (9) Vault.setAuthorizer(authorizer) (OQ-10 migration, LAST). Handoff scope is gauge +
  *      Miliarium ONLY per K-D9 — emission-layer and VaultClassRegistry governance slots stay at the multisig.
- * @dev Single-governor caller model (K14) — all four deploys and eight wiring calls execute as one `governor`
+ * @dev Single-governor caller model (K14) — all four deploys and nine wiring calls execute as one `governor`
  *      (= GOVERNANCE_MULTISIG) via vm.startBroadcast / vm.startPrank; deploy and migrate share one run.
  *      Production preconditions (governor holds the setter/governance role on each wiring target and is
  *      authorized for Vault.setAuthorizer by the current Stage B Safe authorizer) are the deployer's
  *      responsibility — the script states them, it cannot enforce them.
  * @dev H13 — the four governance-stack constructors are all zero-check-only (no external calls), so they
  *      tolerate keccak placeholder env values; however _deploy itself external-calls IAuMM(AUMM).GENESIS_BLOCK()
- *      and _wire external-calls every live wiring target, so AUMM and the eight wiring targets must be real
+ *      and _wire external-calls every live wiring target, so AUMM and the nine wiring targets must be real
  *      contract state in fork tests (K7.3 inherits the Stage-I/J fork fixture per K-D9).
  * @dev Two distinct Bodensee channels — SWAP_AND_DEPOSIT (SwapAndDepositToBodensee, the proposal-deposit
  *      channel) feeds AureumGovernance and receives addAuthorizedDonator; BODENSEE_CHANNEL
@@ -137,11 +138,11 @@ contract DeployStageK is Script {
         return (votingWeight, governance, authorizer, router);
     }
     /// @dev Wires the deployed stack into the live protocol as `governor` (single-governor caller model, K14):
-    ///      eight calls in load-bearing order. (1) VaultClassRegistry.setVotingWeight self-seal; (2)
+    ///      nine calls in load-bearing order. (1) VaultClassRegistry.setVotingWeight self-seal; (2)
     ///      addAuthorizedDonator so AureumGovernance can post proposal deposits; (3) + (4) bind the mint router
     ///      on both emission channels BEFORE the handoff (K-D7); (5) AuMM one-shot setMinter to the router
     ///      (C-D11); (6) + (7) the gauge + Miliarium governance handoff (K-D9 scope — emission-layer and
-    ///      VaultClassRegistry governance slots stay at the multisig); (8) the OQ-10 Vault authorizer migration,
+    ///      VaultClassRegistry governance slots stay at the multisig); (8) the TVLOracle Miliarium-registry bind (F-03/K-D8); (9) the OQ-10 Vault authorizer migration,
     ///      LAST. `IVault` inherits `IVaultAdmin.setAuthorizer`; AureumGovernanceAuthorizer `is IAuthorizer`, so
     ///      the authorizer handle upcasts implicitly.
     function _wire(
@@ -162,7 +163,9 @@ contract DeployStageK is Script {
         // (6) + (7) the gauge + Miliarium governance handoff (K-D9 scope)
         IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")).setGovernanceContract(address(governance));
         IMiliariumSlotRegistry(vm.envAddress("MILIARIUM_REGISTRY")).setGovernanceContract(address(governance));
-        // (8) OQ-10 Vault authorizer migration — LAST, the actual governance handoff
+        // (8) bind the live Miliarium registry into the TVLOracle valuation leg (F-03 / K-D8 — registrySetter-gated, order-independent of the handoff)
+        TVLOracle(vm.envAddress("TVL_ORACLE")).setMiliariumRegistry(IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY")));
+        // (9) OQ-10 Vault authorizer migration — LAST, the actual governance handoff
         IVault(vm.envAddress("VAULT")).setAuthorizer(authorizer);
     }
 }

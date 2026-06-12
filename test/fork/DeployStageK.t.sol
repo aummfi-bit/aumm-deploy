@@ -191,4 +191,10 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         emissionDistributor.claim(pilotPools[0], user);
         assertGt(aumm.balanceOf(user), 0, "claim did not mint via router");
     }
+
+    // F-03 regression — wire (8): TVLOracle Miliarium-registry bind seals the K6 leg on deploy
+    function test_F03_tvlOracleMiliariumRegistryBoundAndSealed() public view {
+        assertEq(address(tvlOracle.miliariumRegistry()), address(realRegistry), "TVLOracle Miliarium registry not bound at K7 wire");
+        assertEq(tvlOracle.registrySetter(), address(0), "TVLOracle registrySetter not sealed after bind");
+    }
 }
