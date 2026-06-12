@@ -88,6 +88,7 @@ contract MockGaugeRegistry is IGaugeRegistry {
 
 contract MockEMASampler is IEMASampler {
     mapping(address => uint256) private _tvl;
+    mapping(address => uint256) public emaSeedBlock;
 
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;

@@ -68,6 +68,10 @@ contract EMASampler {
     ///         Zero indicates "never sampled" — F-D15 cold-start sentinel.
     mapping(address => uint256) public lastEMAUpdateBlock;
 
+    /// @notice Per-pool block number of the first updateEMA seed per F-D15.
+    ///         Zero indicates "never sampled". Written exactly once.
+    mapping(address => uint256) public emaSeedBlock;
+
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
@@ -134,6 +138,7 @@ contract EMASampler {
         if (last == 0) {
             // F-D15 cold-start sentinel seed. Direct assign, no smoothing.
             newEMA = spotTVL;
+            emaSeedBlock[pool] = block.number;
         } else {
             // F-4 update: alpha = 2/61, half-life ~21 days.
             newEMA = (

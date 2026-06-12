@@ -17,4 +17,10 @@ interface IEMASampler {
     /// @param pool The Balancer V3 pool address.
     /// @return The block number of the last EMA update for `pool`.
     function lastEMAUpdateBlock(address pool) external view returns (uint256);
+
+    /// @notice Block number of the pool's first `updateEMA` seed per F-D15 cold-start.
+    /// @param pool The Balancer V3 pool address.
+    /// @return The block number of the first seed for `pool`; zero means never sampled.
+    /// @dev `EMASampler.sol` `public emaSeedBlock` mapping satisfies this interface via Solidity auto-generated getters.
+    function emaSeedBlock(address pool) external view returns (uint256);
 }

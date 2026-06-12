@@ -101,6 +101,51 @@ contract EMASamplerTest is Test {
         assertLt(sampler.tvlEMA(POOL_A), 100e18); // far below new spot
     }
 
+    // --- emaSeedBlock (F04.1 / F-04 maturity clock) ---
+
+    // emaSeedBlock is zero before any updateEMA call for the pool.
+    function test_emaSeedBlock_zeroBeforeFirstSample() public view {
+        assertEq(sampler.emaSeedBlock(POOL_A), 0);
+    }
+
+    // First updateEMA seeds emaSeedBlock at the current block.
+    function test_updateEMA_firstCall_setsEmaSeedBlock() public {
+        oracle.setTvl(POOL_A, 1_000e18);
+        sampler.updateEMA(POOL_A);
+        assertEq(sampler.emaSeedBlock(POOL_A), START_BLOCK);
+    }
+
+    // A zero-spot F-D15 seed still records emaSeedBlock — the EMA history
+    // clock starts even when tvlEMA seeds to zero.
+    function test_updateEMA_firstCall_withZeroSpot_setsEmaSeedBlock() public {
+        sampler.updateEMA(POOL_A);
+        assertEq(sampler.emaSeedBlock(POOL_A), START_BLOCK);
+    }
+
+    // emaSeedBlock is written exactly once at first seed and never updated
+    // by subsequent F-4 smoothed updates.
+    function test_updateEMA_seedBlockImmutableAcrossUpdates() public {
+        // Tracked block counter — vm.roll(block.number + ...) across sequential rolls is unsafe per F10.
+        uint256 currentBlock = START_BLOCK;
+        oracle.setTvl(POOL_A, 1_000e18);
+        sampler.updateEMA(POOL_A);
+
+        oracle.setTvl(POOL_A, 2_000e18);
+        currentBlock += AureumTime.BLOCKS_PER_DAY;
+        vm.roll(currentBlock);
+        sampler.updateEMA(POOL_A);
+
+        currentBlock += AureumTime.BLOCKS_PER_DAY;
+        vm.roll(currentBlock);
+        sampler.updateEMA(POOL_A);
+
+        assertEq(sampler.emaSeedBlock(POOL_A), START_BLOCK);
+        assertEq(
+            sampler.lastEMAUpdateBlock(POOL_A),
+            START_BLOCK + 2 * AureumTime.BLOCKS_PER_DAY
+        );
+    }
+
     // --- updateEMA F-4 formula ---
 
     function test_updateEMA_secondCall_steadyState() public {
