@@ -129,4 +129,28 @@ contract F01_QuorumSnapshotTimingTest is Test {
         assertTrue(gaugeReg.revoked(occupantPool));
         assertTrue(gaugeReg.registered(candidatePool));
     }
+
+    /// @notice F-01 fix regression — with the tally-time live-supply denominator (AureumGovernance L294), a
+    ///         minority attacker can no longer clear quorum against a stale propose-time snapshot. Models the
+    ///         lazy `_totalQualifiedWeight` accumulator growing 20x between propose and tally; pre-fix this
+    ///         proposal Succeeded, post-fix it is Defeated.
+    function test_F01_liveTallySupplyDefeatsStaleQuorumGaming() public {
+        // Propose-time: the lazy accumulator is small — few holders have poked in yet.
+        votingWeight.setTotalSupply(10_000e18);
+        vm.prank(attacker);
+        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+        // Attacker votes with weight equal to the entire propose-time snapshot.
+        votingWeight.setGovernanceWeight(attacker, 10_000e18);
+        vm.prank(attacker);
+        gov.castVote(id, true);
+        // Between propose and tally, honest holders poke in — the live accumulator grows 20x.
+        votingWeight.setTotalSupply(200_000e18);
+        vm.roll(block.number + VOTING_PERIOD + 1);
+        assertEq(gov.getProposal(id).snapshotTotalSupply, 10_000e18, "snapshot frozen at propose-time");
+        assertEq(votingWeight.totalSupply(), 200_000e18, "live accumulator grew post-propose");
+        assertEq(gov.getProposal(id).forVotes, 10_000e18, "attacker weight recorded");
+        // Pre-fix (stale snapshot denominator): 10_000e18 turnout is 100% of the 10_000e18 snapshot, clears the 20% bar — Succeeded.
+        // Post-fix (live denominator): 10_000e18 is 5% of the 200_000e18 live supply, below the 20% bar — Defeated.
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated), "live-tally quorum defeats stale-snapshot gaming");
+    }
 }

@@ -284,9 +284,14 @@ contract AureumGovernance {
     /// @return `true` when turnout and majority thresholds are met.
     /// @dev Quorum is 20% turnout per `QUORUM_BPS`. `CompositionChallenge` requires integer-exact 2/3
     ///      supermajority; `GaugeChallenge` + `FeeChange` require simple majority, per K-D6c.
+    /// @dev F-01 — the quorum denominator reads `VOTING_WEIGHT.totalSupply()` live at tally-time, not the
+    ///      stored propose-time `snapshotTotalSupply`. `_totalQualifiedWeight` is a lazy poke-accumulator that
+    ///      grows as holders poke in, so a stale propose-time snapshot lets turnout exceed 100% of it; the live
+    ///      read tracks the same clock as the `poke`-weighted `forVotes` / `againstVotes`. `snapshotTotalSupply`
+    ///      is retained for the `ProposalCreated` event / off-chain reference only.
     function _voteSucceeded(Proposal storage p) internal view returns (bool) {
         uint256 totalVotes = p.forVotes + p.againstVotes;
-        if (totalVotes * 10_000 < p.snapshotTotalSupply * QUORUM_BPS) return false; // 10_000 = basis-points denominator
+        if (totalVotes * 10_000 < VOTING_WEIGHT.totalSupply() * QUORUM_BPS) return false; // 10_000 = basis-points denominator
         if (p.proposalType == ProposalType.CompositionChallenge) {
             return p.forVotes * 3 >= totalVotes * 2;
         }
