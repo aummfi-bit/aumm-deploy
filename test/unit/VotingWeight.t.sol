@@ -2,22 +2,23 @@
 pragma solidity ^0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { VotingWeight } from "src/governance/VotingWeight.sol";
-import { ITVLOracle } from "src/ccb/ITVLOracle.sol";
+import { IEMASampler } from "src/ccb/IEMASampler.sol";
 import { IGaugeRegistry } from "src/ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "src/ccb/IMiliariumRegistry.sol";
 import { IEmissionDistributor } from "src/emission/IEmissionDistributor.sol";
 import { AureumTime } from "src/lib/AureumTime.sol";
-/// @notice Test-only mock for `ITVLOracle` — settable svZCHF TVL per pool.
-contract MockTVLOracle is ITVLOracle {
-    mapping(address => uint256) private _tvl;
-    function setTvl(address pool, uint256 value) external {
-        _tvl[pool] = value;
+/// @notice Test-only mock for `IEMASampler` — settable per-pool TVL EMA and first-seed block.
+contract MockEMASampler is IEMASampler {
+    mapping(address => uint256) public tvlEMA;
+    mapping(address => uint256) public lastEMAUpdateBlock;
+    mapping(address => uint256) public emaSeedBlock;
+
+    function setTvlEMA(address pool, uint256 value) external {
+        tvlEMA[pool] = value;
     }
-    function tvl(address pool) external view override returns (uint256) {
-        return _tvl[pool];
-    }
-    function quoteSvZCHF(address, uint256) external pure override returns (uint256) {
-        return 0;
+
+    function setSeedBlock(address pool, uint256 blockNo) external {
+        emaSeedBlock[pool] = blockNo;
     }
 }
 /// @notice Test-only mock for `IGaugeRegistry` — settable approval; all other surface stubbed per G-D24 backfill.
@@ -104,7 +105,7 @@ contract MockRecorder is IEmissionDistributor {
 }
 contract VotingWeightTest is Test {
     VotingWeight internal vw;
-    MockTVLOracle internal oracle;
+    MockEMASampler internal emaSampler;
     MockGaugeRegistry internal gaugeReg;
     MockRecorder internal recorder;
     MockMiliariumRegistry internal registry;
@@ -117,36 +118,36 @@ contract VotingWeightTest is Test {
     address internal constant POOL_C = address(0xC3);
     address internal constant POKER = address(0xBEEF);
     function setUp() public {
-        oracle = new MockTVLOracle();
+        emaSampler = new MockEMASampler();
         gaugeReg = new MockGaugeRegistry();
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
-        vw = new VotingWeight(oracle, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
         vm.roll(START_BLOCK);
     }
     // --- constructor zero-checks ---
-    function test_Constructor_RevertWhen_ZeroOracle() public {
+    function test_Constructor_RevertWhen_ZeroEmaSampler() public {
         vm.expectRevert(VotingWeight.ZeroAddress.selector);
-        new VotingWeight(ITVLOracle(address(0)), gaugeReg, recorder, registry, GENESIS_BLOCK);
+        new VotingWeight(IEMASampler(address(0)), gaugeReg, recorder, registry, GENESIS_BLOCK);
     }
     function test_Constructor_RevertWhen_ZeroGaugeRegistry() public {
         vm.expectRevert(VotingWeight.ZeroAddress.selector);
-        new VotingWeight(oracle, IGaugeRegistry(address(0)), recorder, registry, GENESIS_BLOCK);
+        new VotingWeight(emaSampler, IGaugeRegistry(address(0)), recorder, registry, GENESIS_BLOCK);
     }
     function test_Constructor_RevertWhen_ZeroRecorder() public {
         vm.expectRevert(VotingWeight.ZeroAddress.selector);
-        new VotingWeight(oracle, gaugeReg, IEmissionDistributor(address(0)), registry, GENESIS_BLOCK);
+        new VotingWeight(emaSampler, gaugeReg, IEmissionDistributor(address(0)), registry, GENESIS_BLOCK);
     }
     function test_Constructor_RevertWhen_ZeroRegistry() public {
         vm.expectRevert(VotingWeight.ZeroAddress.selector);
-        new VotingWeight(oracle, gaugeReg, recorder, IMiliariumRegistry(address(0)), GENESIS_BLOCK);
+        new VotingWeight(emaSampler, gaugeReg, recorder, IMiliariumRegistry(address(0)), GENESIS_BLOCK);
     }
     function test_Constructor_RevertWhen_ZeroGenesisBlock() public {
         vm.expectRevert(VotingWeight.ZeroGenesisBlock.selector);
-        new VotingWeight(oracle, gaugeReg, recorder, registry, 0);
+        new VotingWeight(emaSampler, gaugeReg, recorder, registry, 0);
     }
     function test_Constructor_SetsImmutables() public view {
-        assertEq(address(vw.ORACLE()), address(oracle));
+        assertEq(address(vw.EMA_SAMPLER()), address(emaSampler));
         assertEq(address(vw.GAUGE_REGISTRY()), address(gaugeReg));
         assertEq(address(vw.RECORDER()), address(recorder));
         assertEq(address(vw.REGISTRY()), address(registry));
@@ -158,6 +159,7 @@ contract VotingWeightTest is Test {
     }
     uint256 internal constant ON_RAMP = AureumTime.ON_RAMP_PERIOD_BLOCKS;
     uint256 internal constant CLIFF = AureumTime.QUALIFICATION_PERIOD_BLOCKS;
+    uint256 internal constant EMA_MATURITY = 60 * AureumTime.BLOCKS_PER_DAY;
     // --- helpers ---
     function _setSinglePool(address pool) internal {
         address[] memory pools = new address[](1);
@@ -174,7 +176,8 @@ contract VotingWeightTest is Test {
         uint256 eqb
     ) internal {
         gaugeReg.setApproved(pool, gaugeApproved);
-        oracle.setTvl(pool, tvlValue);
+        emaSampler.setTvlEMA(pool, tvlValue);
+        emaSampler.setSeedBlock(pool, 1);
         recorder.setUserLP(pool, holder, lp);
         recorder.setPoolTotalLP(pool, totalLP);
         recorder.setEffectiveQualBlock(pool, holder, eqb);
@@ -358,10 +361,38 @@ contract VotingWeightTest is Test {
         _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
         vw.poke(HOLDER);
         uint256 weight1 = vw.governanceWeight(HOLDER);
-        oracle.setTvl(POOL_A, 81e18);
+        emaSampler.setTvlEMA(POOL_A, 81e18);
         vw.poke(HOLDER);
         uint256 weight2 = vw.governanceWeight(HOLDER);
         assertGt(weight2, weight1);
         assertEq(vw.totalSupply(), vw.governanceWeight(HOLDER));
+    }
+
+    // --- F-04 EMA maturity gate ---
+
+    function test_Poke_ZeroWhen_EmaNeverSeeded() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        emaSampler.setSeedBlock(POOL_A, 0);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+        assertEq(vw.totalSupply(), 0);
+    }
+
+    function test_Poke_ZeroWhen_EmaImmature() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        emaSampler.setSeedBlock(POOL_A, START_BLOCK - EMA_MATURITY + 1);
+        vw.poke(HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), 0);
+        assertEq(vw.totalSupply(), 0);
+    }
+
+    function test_Poke_FlowsAtExactMaturityBoundary() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        emaSampler.setSeedBlock(POOL_A, START_BLOCK - EMA_MATURITY);
+        vw.poke(HOLDER);
+        assertGt(vw.governanceWeight(HOLDER), 0);
     }
 }

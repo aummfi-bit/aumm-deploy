@@ -3,18 +3,17 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {VotingWeight} from "src/governance/VotingWeight.sol";
-import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
-import {MockTVLOracle, MockGaugeRegistry, MockRecorder, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
+import {MockEMASampler, MockGaugeRegistry, MockRecorder, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 
 /// @notice White-hat finding F-02 (S9): proves the F-9 concave power curve `base.powDown(0.25e18)`
 ///         (VotingWeight L152) is subadditive, so splitting one LP position across N addresses multiplies
 ///         summed governanceWeight by ~N^(3/4) in Era 0 — defeating anti-plutocracy dampening.
 contract F02_ConcaveSplitSybilTest is Test {
-    MockTVLOracle internal oracle;
+    MockEMASampler internal emaSampler;
     MockGaugeRegistry internal gaugeReg;
     MockRecorder internal recorder;
     MockMiliariumRegistry internal registry;
@@ -28,18 +27,19 @@ contract F02_ConcaveSplitSybilTest is Test {
     uint256 internal constant EQB_FULL_ONRAMP = START_BLOCK - AureumTime.ON_RAMP_PERIOD_BLOCKS;
 
     function setUp() public {
-        oracle = new MockTVLOracle();
+        emaSampler = new MockEMASampler();
         gaugeReg = new MockGaugeRegistry();
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
-        vw = new VotingWeight(oracle, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
         vm.roll(START_BLOCK);
         address[] memory pools = new address[](1);
         pools[0] = POOL;
         registry.setPoolList(pools);
         registry.setMiliarium(POOL, true);
         gaugeReg.setApproved(POOL, true);
-        oracle.setTvl(POOL, TVL);
+        emaSampler.setTvlEMA(POOL, TVL);
+        emaSampler.setSeedBlock(POOL, 1);
         recorder.setPoolTotalLP(POOL, POOL_TOTAL_LP);
     }
 

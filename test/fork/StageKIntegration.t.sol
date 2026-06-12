@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { StageIIntegrationFixture } from "./StageIIntegration.t.sol";
+import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { VotingWeight } from "../../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
@@ -43,7 +44,7 @@ abstract contract StageKIntegrationFixture is StageIIntegrationFixture {
         pools[2] = pilotPools[2];
         realRegistry = new MiliariumRegistry(address(this), slots, pools);
 
-        votingWeight = new VotingWeight(tvlOracle, gaugeRegistry, emissionDistributor, realRegistry, aumm.GENESIS_BLOCK());
+        votingWeight = new VotingWeight(IEMASampler(address(emaSampler)), gaugeRegistry, emissionDistributor, realRegistry, aumm.GENESIS_BLOCK());
 
         gov = new AureumGovernance(
             votingWeight,
@@ -62,11 +63,13 @@ abstract contract StageKIntegrationFixture is StageIIntegrationFixture {
         realRegistry.setGovernanceContract(address(gov));
     }
 
-    /// @dev K6-deferred tvl shim — the StageI-inherited TVLOracle has an empty roster, so tvl(pilot)
-    ///      returns 0 (NOTES R1). Mock tvl(pool) to a fixed nonzero svZCHF value to isolate the
-    ///      VotingWeight poke logic under test from oracle pricing; real pricing is K6 + the TVLOracle suite.
-    function _mockTvl(address pool, uint256 svzchfValue) internal {
-        vm.mockCall(address(tvlOracle), abi.encodeWithSelector(tvlOracle.tvl.selector, pool), abi.encode(svzchfValue));
+    /// @dev K6-deferred EMA shim — VotingWeight now reads the 60-day `tvlEMA` behind the F-04
+    ///      `EMA_MATURITY_BLOCKS` seed-age gate; the shim mocks both `tvlEMA` and a mature
+    ///      `emaSeedBlock` to keep isolating the poke logic under test from oracle pricing and
+    ///      EMA cadence (the R1 empty-roster rationale still applies upstream).
+    function _mockPoolEma(address pool, uint256 svzchfValue) internal {
+        vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.tvlEMA.selector, pool), abi.encode(svzchfValue));
+        vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.emaSeedBlock.selector, pool), abi.encode(uint256(1)));
     }
 }
 
@@ -81,7 +84,7 @@ contract StageKWiringTest is StageKIntegrationFixture {
         assertEq(address(gov.SUSDS()), address(susds));
         assertEq(gov.BODENSEE_POOL(), bodenseePool);
 
-        assertEq(address(votingWeight.ORACLE()), address(tvlOracle));
+        assertEq(address(votingWeight.EMA_SAMPLER()), address(emaSampler));
         assertEq(address(votingWeight.GAUGE_REGISTRY()), address(gaugeRegistry));
         assertEq(address(votingWeight.RECORDER()), address(emissionDistributor));
         assertEq(address(votingWeight.REGISTRY()), address(realRegistry));
@@ -106,7 +109,7 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         address lp = makeAddr("lpPostCliff");
         _depositOneSided(pilotPools[0], lp, 100);
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
-        _mockTvl(pilotPools[0], 1_000e18);
+        _mockPoolEma(pilotPools[0], 1_000e18);
         votingWeight.poke(lp);
         assertGt(votingWeight.governanceWeight(lp), 0, "post-cliff poke confers nonzero weight");
         assertEq(votingWeight.totalSupply(), votingWeight.governanceWeight(lp), "single holder: total == holder weight (I-D17 exact fraction)");
@@ -116,7 +119,7 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         address lp = makeAddr("lpPreCliff");
         _depositOneSided(pilotPools[0], lp, 100);
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS - 1);
-        _mockTvl(pilotPools[0], 1_000e18);
+        _mockPoolEma(pilotPools[0], 1_000e18);
         votingWeight.poke(lp);
         assertEq(votingWeight.governanceWeight(lp), 0, "sub-cliff poke confers zero weight");
         assertEq(votingWeight.totalSupply(), 0, "sub-cliff: no qualified weight in total");
@@ -126,7 +129,7 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         address lp = makeAddr("lpRevoke");
         _depositOneSided(pilotPools[0], lp, 100);
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
-        _mockTvl(pilotPools[0], 1_000e18);
+        _mockPoolEma(pilotPools[0], 1_000e18);
         votingWeight.poke(lp);
         assertGt(votingWeight.governanceWeight(lp), 0, "baseline qualified before revoke");
         vm.prank(address(gov));
@@ -140,7 +143,7 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         address lp = makeAddr("lpWithdraw");
         uint256 bptOut = _depositOneSided(pilotPools[0], lp, 100);
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
-        _mockTvl(pilotPools[0], 1_000e18);
+        _mockPoolEma(pilotPools[0], 1_000e18);
         votingWeight.poke(lp);
         assertGt(votingWeight.governanceWeight(lp), 0, "baseline qualified before withdrawal");
         _lpSender = lp;
@@ -157,7 +160,7 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
         address voter = makeAddr("voterComp");
         _depositOneSided(pilotPools[0], voter, 100);
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
-        _mockTvl(pilotPools[0], 1_000e18);
+        _mockPoolEma(pilotPools[0], 1_000e18);
         votingWeight.poke(voter);
         assertGt(votingWeight.governanceWeight(voter), 0, "voter qualified");
 

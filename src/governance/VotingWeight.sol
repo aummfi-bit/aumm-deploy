@@ -2,7 +2,7 @@
 pragma solidity ^0.8.26;
 import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import { IVotingWeight } from "./IVotingWeight.sol";
-import { ITVLOracle } from "../ccb/ITVLOracle.sol";
+import { IEMASampler } from "../ccb/IEMASampler.sol";
 import { IGaugeRegistry } from "../ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "../ccb/IMiliariumRegistry.sol";
 import { IEmissionDistributor } from "../emission/IEmissionDistributor.sol";
@@ -13,8 +13,8 @@ import { AureumTime } from "../lib/AureumTime.sol";
  *         veto fraction (`vetoSupport <= totalSupply` by construction). Implements `IVotingWeight`
  *         (the I9.1 stub per I-D17) consumed by `VaultClassRegistry.vetoProposal`.
  * @dev F-9 per-position power `(value * cappedTime/ON_RAMP)^(1/4 in Era 0, 1/3 in Era 1+)` over the
- *      EmissionDistributor recorder clock; value = recorder share `tvl(pool) * userLP / poolTotalLP`
- *      (OQ-25 anti-flash-loan — the hook-recorded deposit, never spot BPT balance). `governanceWeight`
+ *      EmissionDistributor recorder clock; value = recorder share `tvlEMA(pool) * userLP / poolTotalLP`
+ *      (OQ-25 anti-flash-loan — the hook-recorded deposit, never spot BPT balance; F-04 — value reads the 60-day TVL EMA, never spot tvl). `governanceWeight`
  *      and `totalSupply` are O(1) views over two checkpoints (`_holderWeight` / `_totalQualifiedWeight`);
  *      permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered Miliarium
  *      enumeration and applies the signed delta (F12/F13). The exact-fraction invariant holds because
@@ -26,12 +26,14 @@ contract VotingWeight is IVotingWeight {
     uint256 internal constant ERA0_EXPONENT = 0.25e18;
     /// @notice Era 1+ governance-power exponent — F-9 1/3 root (18-dec fixed-point).
     uint256 internal constant ERA1_PLUS_EXPONENT = FixedPoint.ONE / 3;
+    /// @notice A pool's TVL EMA must have been seeding for 60 days (matching the EMASampler 60-day window) before the pool confers governance weight — F-04 anti-spot-pump floor.
+    uint256 internal constant EMA_MATURITY_BLOCKS = 60 * AureumTime.BLOCKS_PER_DAY;
     // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
     // for protocol-critical addresses, matching upstream-forked files. See
     // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
     // and AureumProtocolFeeController.
     // slither-disable-next-line naming-convention
-    ITVLOracle public immutable ORACLE;
+    IEMASampler public immutable EMA_SAMPLER;
     // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
     // for protocol-critical addresses, matching upstream-forked files. See
     // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
@@ -70,18 +72,18 @@ contract VotingWeight is IVotingWeight {
     /// @param newWeight The recomputed checkpoint.
     event WeightPoked(address indexed holder, uint256 oldWeight, uint256 newWeight);
     constructor(
-        ITVLOracle oracle_,
+        IEMASampler emaSampler_,
         IGaugeRegistry gaugeRegistry_,
         IEmissionDistributor recorder_,
         IMiliariumRegistry registry_,
         uint256 genesisBlock_
     ) {
-        if (address(oracle_) == address(0)) revert ZeroAddress();
+        if (address(emaSampler_) == address(0)) revert ZeroAddress();
         if (address(gaugeRegistry_) == address(0)) revert ZeroAddress();
         if (address(recorder_) == address(0)) revert ZeroAddress();
         if (address(registry_) == address(0)) revert ZeroAddress();
         if (genesisBlock_ == 0) revert ZeroGenesisBlock();
-        ORACLE = oracle_;
+        EMA_SAMPLER = emaSampler_;
         GAUGE_REGISTRY = gaugeRegistry_;
         RECORDER = recorder_;
         REGISTRY = registry_;
@@ -121,16 +123,18 @@ contract VotingWeight is IVotingWeight {
         emit WeightPoked(holder, oldWeight, newWeight);
     }
     /// @notice F-9 per-position governance power for `holder` in `pool` — live, gauge-gated.
-    /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) clock from the recorder
-    ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (c) value =
-    ///      recorder share `tvl(pool) * userLP / poolTotalLP` (OQ-25); (d) base = value normalized by the
-    ///      capped on-ramp time fraction; (e) power = base^exponent with the F-9 era root. Every degenerate
-    ///      input (zero LP, zero supply, zero value, zero base) short-circuits to 0 before `powDown`.
+    /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), or has never seeded, confers 0 (F-04 anti-spot-pump); (c) clock from the recorder
+    ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) value = recorder share
+    ///      `tvlEMA(pool) * userLP / poolTotalLP` (OQ-25 + F-04 — the 60-day EMA, never spot tvl); (e) base = value normalized by the
+    ///      capped on-ramp time fraction; (f) power = base^exponent with the F-9 era root. Every degenerate input (immature/never-seeded EMA, zero LP, zero supply, zero value, zero base) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
     /// @param holder The holder.
     /// @return The position's governance power (18-dec).
     function _positionPower(address pool, address holder) internal view returns (uint256) {
         if (!GAUGE_REGISTRY.isGaugeApproved(pool)) return 0;
+        uint256 seedBlock = EMA_SAMPLER.emaSeedBlock(pool);
+        if (seedBlock == 0) return 0;
+        if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return 0;
         uint256 eqb = RECORDER.effectiveQualBlock(pool, holder);
         if (eqb == 0) return 0;
         uint256 timeInPool = block.number - eqb;
@@ -139,7 +143,7 @@ contract VotingWeight is IVotingWeight {
         if (totalLP == 0) return 0;
         uint256 lp = RECORDER.userLP(pool, holder);
         if (lp == 0) return 0;
-        uint256 value = ORACLE.tvl(pool).mulDown(lp.divDown(totalLP));
+        uint256 value = EMA_SAMPLER.tvlEMA(pool).mulDown(lp.divDown(totalLP));
         if (value == 0) return 0;
         uint256 cappedTime = timeInPool > AureumTime.ON_RAMP_PERIOD_BLOCKS
             ? AureumTime.ON_RAMP_PERIOD_BLOCKS

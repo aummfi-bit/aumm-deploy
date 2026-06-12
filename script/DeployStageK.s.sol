@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import { Script } from "forge-std/Script.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import { ITVLOracle } from "../src/ccb/ITVLOracle.sol";
+import { IEMASampler } from "../src/ccb/IEMASampler.sol";
 import { IGaugeRegistry } from "../src/ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
 import { IMiliariumSlotRegistry } from "../src/registry/IMiliariumSlotRegistry.sol";
@@ -57,7 +57,8 @@ import { TVLOracle } from "../src/emission/TVLOracle.sol";
  *
  *        GOVERNANCE_MULTISIG    address  — broadcast/prank deployer + handoff caller
  *        AUMM                   address  — deployed AuMM (genesis source + setMinter target)
- *        TVL_ORACLE             address  — shared TVLOracle (VotingWeight value oracle)
+ *        TVL_ORACLE             address  — shared TVLOracle (wire (9) Miliarium-registry bind, F-03/K-D8)
+ *        EMA_SAMPLER            address  — Stage F EMASampler (VotingWeight value EMA + F-04 maturity gate)
  *        GAUGE_REGISTRY         address  — GaugeRegistry (VotingWeight + AureumGovernance + handoff)
  *        EMISSION_DISTRIBUTOR   address  — EmissionDistributor (VotingWeight recorder + setMintRouter)
  *        MILIARIUM_REGISTRY     address  — MiliariumRegistry (IMiliariumRegistry + IMiliariumSlotRegistry + handoff)
@@ -109,7 +110,7 @@ contract DeployStageK is Script {
     {
         IAuMM aumm = IAuMM(vm.envAddress("AUMM"));
         VotingWeight votingWeight = new VotingWeight(
-            ITVLOracle(vm.envAddress("TVL_ORACLE")),
+            IEMASampler(vm.envAddress("EMA_SAMPLER")),
             IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")),
             IEmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR")),
             IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY")),

@@ -3,16 +3,18 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 import {VotingWeight} from "src/governance/VotingWeight.sol";
-import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
-import {MockTVLOracle, MockGaugeRegistry, MockRecorder, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
+import {MockEMASampler, MockGaugeRegistry, MockRecorder, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 
-/// @notice F-04 (S7) — `VotingWeight._positionPower` consumes `ORACLE.tvl(pool)` as an atomic spot read (VotingWeight L142), so a spot-tvl pump inflates `governanceWeight` with no change to the recorder position (structurally manipulable); the F-9 power root (`0.25e18` Era0 / `ONE/3` Era1+, L149-152) caps the gain at the 4th/3rd root of the pump, self-limiting it.
+/// @notice F-04 fix regression (S7) — `VotingWeight._positionPower` now reads the 60-day
+///         `EMASampler.tvlEMA` (not spot `ORACLE.tvl`) behind a 60-day `EMA_MATURITY_BLOCKS`
+///         seed-age gate, so an attacker cannot seed-or-pump a pool's EMA and vote in the same
+///         window; a mature EMA remains F-9 quartically bounded.
 contract F04_SpotTvlManipulationTest is Test {
-    MockTVLOracle oracle;
+    MockEMASampler emaSampler;
     MockGaugeRegistry gaugeReg;
     MockRecorder recorder;
     MockMiliariumRegistry registry;
@@ -20,15 +22,16 @@ contract F04_SpotTvlManipulationTest is Test {
 
     uint256 constant GENESIS_BLOCK = 1_000_000;
     uint256 constant START_BLOCK = 2_000_000;
+    uint256 constant EMA_MATURITY = 60 * AureumTime.BLOCKS_PER_DAY;
     address constant POOL = address(0xA1);
     address constant ATTACKER = address(0x1111);
 
     function setUp() public {
-        oracle = new MockTVLOracle();
+        emaSampler = new MockEMASampler();
         gaugeReg = new MockGaugeRegistry();
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
-        vw = new VotingWeight(oracle, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
         vm.roll(START_BLOCK);
         address[] memory pools = new address[](1);
         pools[0] = POOL;
@@ -39,33 +42,34 @@ contract F04_SpotTvlManipulationTest is Test {
         recorder.setEffectiveQualBlock(POOL, ATTACKER, START_BLOCK - AureumTime.ON_RAMP_PERIOD_BLOCKS);
     }
 
-    function _pokeAndRead(uint256 spotTvl) private returns (uint256) {
-        oracle.setTvl(POOL, spotTvl);
+    function _pokeAndRead(uint256 emaValue) private returns (uint256) {
+        emaSampler.setTvlEMA(POOL, emaValue);
         vw.poke(ATTACKER);
         return vw.governanceWeight(ATTACKER);
     }
 
-    function test_SpotTvlPump_MovesWeight_QuarticDampedEra0() public {
+    function test_F04_FreshlySeededEmaPump_ConfersZeroWeight() public {
+        emaSampler.setSeedBlock(POOL, START_BLOCK);
+        uint256 w = _pokeAndRead(1_000_000e18);
+        assertEq(w, 0);
+        assertEq(vw.totalSupply(), 0);
+    }
+
+    function test_F04_ImmatureEmaPump_ConfersZeroWeight() public {
+        emaSampler.setSeedBlock(POOL, START_BLOCK - EMA_MATURITY + 1);
+        assertEq(_pokeAndRead(1_000_000e18), 0);
+    }
+
+    function test_F04_MatureEmaFlowsAtBoundary() public {
+        emaSampler.setSeedBlock(POOL, START_BLOCK - EMA_MATURITY);
+        assertGt(_pokeAndRead(16_000e18), 0);
+    }
+
+    function test_F04_MatureEmaResidualStillQuarticallyBounded() public {
+        emaSampler.setSeedBlock(POOL, START_BLOCK - EMA_MATURITY);
         uint256 w1 = _pokeAndRead(1_000e18);
         uint256 w16 = _pokeAndRead(16_000e18);
-        assertGt(w16, w1);
         assertApproxEqRel(w16, 2 * w1, 0.01e18);
         assertLt(w16, 3 * w1);
-    }
-
-    function test_SpotTvlPump_CubeRootDampedEra1Plus() public {
-        vm.roll(AureumTime.firstHalvingBlock(GENESIS_BLOCK) + 500_000);
-        recorder.setEffectiveQualBlock(POOL, ATTACKER, block.number - AureumTime.ON_RAMP_PERIOD_BLOCKS);
-        uint256 w1 = _pokeAndRead(1_000e18);
-        uint256 w8 = _pokeAndRead(8_000e18);
-        assertApproxEqRel(w8, 2 * w1, 0.01e18);
-        assertLt(w8, 3 * w1);
-    }
-
-    function test_ExtremeSpotTvlPump_YieldsBoundedWeight_Era0() public {
-        uint256 w1 = _pokeAndRead(1e18);
-        uint256 wHuge = _pokeAndRead(10_000e18);
-        assertApproxEqRel(wHuge, 10 * w1, 0.01e18);
-        assertLt(wHuge, 11 * w1);
     }
 }

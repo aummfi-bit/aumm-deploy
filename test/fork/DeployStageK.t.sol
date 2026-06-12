@@ -109,6 +109,8 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("TVL_ORACLE", vm.toString(address(tvlOracle)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("EMA_SAMPLER", vm.toString(address(emaSampler)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("GAUGE_REGISTRY", vm.toString(address(gaugeRegistry)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("EMISSION_DISTRIBUTOR", vm.toString(address(emissionDistributor)));
