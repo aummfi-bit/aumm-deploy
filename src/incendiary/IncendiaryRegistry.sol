@@ -5,6 +5,7 @@ import {IIncendiaryRegistry} from "./IIncendiaryRegistry.sol";
 import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IAuMM} from "../token/IAuMM.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IWeightedPool} from "@balancer-labs/v3-interfaces/contracts/pool-weighted/IWeightedPool.sol";
 import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
@@ -97,6 +98,15 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @notice Per-(epoch, pool) AuMM-wei boost allocation — additive stacking delivery map (L-D9 / L-D17).
     mapping(uint256 => mapping(address => uint256)) public epochPoolSkim;
 
+    /* ---------- Events ---------- */
+
+    /// @notice Emitted on every successful `updateRailEMA` call (both seed and smoothed paths) (L-D19).
+    /// @param payToken    The pay-token rail sampled (svZCHF / sUSDS).
+    /// @param spot        The spot rate read from `_spotRate` for this update.
+    /// @param newEMA      The post-update EMA (= `spot` on the seed path).
+    /// @param blockNumber block.number at the update.
+    event RailEMAUpdated(address indexed payToken, uint256 spot, uint256 newEMA, uint256 blockNumber);
+
     /* ---------- Errors ---------- */
 
     /// @notice A constructor address argument was the zero address.
@@ -107,6 +117,14 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /// @notice der Bodensee reported a zero scaled balance for `token`; a silent `divDown` zero would poison the EMA seed (L-D18).
     error ZeroSpotBalance(address token);
+
+    /// @notice `updateRailEMA` called with a token that is not a configured pay-token rail (svZCHF / sUSDS) (L-D19).
+    error UnknownRail(address rail);
+
+    /// @notice `updateRailEMA` called before the once-per-`BLOCKS_PER_DAY` cadence permits (L-D19, `EMASampler` mirror).
+    /// @param currentBlock block.number at the failed call.
+    /// @param nextEligibleBlock The first block at which `updateRailEMA(payToken)` is callable.
+    error TooEarly(uint256 currentBlock, uint256 nextEligibleBlock);
 
     /* ---------- Constructor ---------- */
 
@@ -155,6 +173,43 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     ///      zero-warning stub form — widens to `view` at L6.2 when it reads the per-pool buckets.
     function boostIntegral(address, uint256, uint256) external pure override returns (uint256) {
         return 0;
+    }
+
+    /* ---------- Price EMA sampler (L3.2 / L-D19) ---------- */
+
+    /// @notice Sample der Bodensee's AuMM/`payToken` spot and fold it into the rail's 60-day price EMA.
+    /// @dev L-D19, the `EMASampler.updateEMA` mirror (`EMASampler.sol:122-154`). Permissionless — anyone
+    ///      may poke once the cadence permits. Order: (1) `UnknownRail` unless `payToken` is a configured
+    ///      rail; (2) `TooEarly` unless `block.number >= lastSampleBlock + BLOCKS_PER_DAY`; (3) read
+    ///      `_spotRate`; (4) seed (`seedBlock == 0` ⇒ `ema = spot`, write `seedBlock`) or smooth
+    ///      `(2·spot + 59·ema) / 61` — plain integer arithmetic, NOT `divDown` (the `/61` is a weighted-mean
+    ///      divisor, not a fixed-point scale). Single-step, no catch-up: a multi-day gap applies exactly one
+    ///      smoothing step and `lastSampleBlock` advances to the call block (OQ-5a-bis). Maturity is gated
+    ///      separately at the read side (`_maturePrice`, L3.2b), not here — sampling builds maturity.
+    /// @param payToken The pay-token rail to sample (svZCHF / sUSDS).
+    /// @return newEMA The post-update rail EMA (= `spot` on the seed path).
+    function updateRailEMA(address payToken) external returns (uint256 newEMA) {
+        if (payToken != address(SVZCHF) && payToken != address(SUSDS)) revert UnknownRail(payToken);
+
+        RailEMA storage rail = railEMA[payToken];
+        uint256 nextEligible = rail.lastSampleBlock + AureumTime.BLOCKS_PER_DAY;
+        if (block.number < nextEligible) revert TooEarly(block.number, nextEligible);
+
+        uint256 spot = _spotRate(payToken);
+
+        if (rail.seedBlock == 0) {
+            newEMA = spot;
+            rail.seedBlock = block.number;
+        } else {
+            newEMA =
+                (EMA_ALPHA_NUMERATOR * spot + (EMA_ALPHA_DENOMINATOR - EMA_ALPHA_NUMERATOR) * rail.ema) /
+                EMA_ALPHA_DENOMINATOR;
+        }
+
+        rail.ema = newEMA;
+        rail.lastSampleBlock = block.number;
+
+        emit RailEMAUpdated(payToken, spot, newEMA, block.number);
     }
 
     /* ---------- Internal: spot-rate read (L3.1 / L-D18) ---------- */
