@@ -2,7 +2,7 @@
 
 > **Status:** L0.1 NOTES design freeze (L-D1—L-D9 LOCKED) landed at `cd58d22` on `stage-l`. This file (L0.2-PLAN) lays out the L0—L9 sub-step roadmap. Implementation not yet begun — L0.3 (`CLAUDE.md` §11 refresh) then the L1 interface/pre-flight beat are next. Companion to STAGE_L_NOTES.md.
 >
-> **Last update:** 2026-06-13 — L1.0 pre-flight: L-D10—L-D15 LOCKED in NOTES; mirrored here (Decisions + Pre-flight + Q-resolution + Completion log). Next: L1.1 IIncendiaryRegistry interface edit.
+> **Last update:** 2026-06-13 — L2.1 pre-flight: L-D16—L-D17 LOCKED in NOTES (`3d4b7cb`); mirrored here (Decisions + roadmap L2.1a/b split + crystallize-cache→L5.3). Next: L2.1a `IncendiaryRegistry` compiling skeleton.
 >
 > **Mode:** Opus high per §13 (Stage L entry) for the L1 interface/pre-flight beat and the registry design beats (L2—L7 — the EMA spot-read, the emission-integral cap, the FCFS walk-forward, and the `EmissionDistributor` I13 delivery leg are the load-bearing surfaces), dropping to Sonnet for test writing (L8) and plan-row housekeeping once each unit's design is set.
 >
@@ -39,7 +39,7 @@ Stage L ships the Incendiary Boost producer (canonical F-2): a registry that sel
 
 ## Decisions
 
-Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 LOCKED at L1.0 pre-flight). See NOTES for full bodies.
+Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 LOCKED at L1.0 pre-flight; L-D16—L-D17 LOCKED at L2.1 pre-flight). See NOTES for full bodies.
 
 | # | Status | Decision (summary) | Locked at |
 | --- | --- | --- | --- |
@@ -58,6 +58,8 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L-D13 | LOCKED | `AureumTime.epochStartBlock(genesisBlock, epochIndex_)` + `epochEndBlock(genesisBlock, epochIndex_)` — additive `internal pure` helpers; params `epochIndex_` (trailing underscore avoids G15-class shadow of `epochIndex()` function). Added at L1.2. | L1.0 |
 | L-D14 | LOCKED | `_settlePool` boost leg — new `poolBoostCursor[pool]`; `poolAccRewardPerLP[pool] += boostIntegral(pool, cursor+1, block.number).divDown(poolTotalLP[pool])` when `poolTotalLP > 0`; guard `incendiaryRegistry != address(0)` keeps 106-test cohort no-op. | L1.0 |
 | L-D15 | LOCKED | `_settlePool` boost leg does NOT call `_efficiencyOracle.recordEmissions` — purchased emission must not inflate the F-10 tournament denominator. | L1.0 |
+| L-D16 | LOCKED | Immutable set = 8 (PLAN's 7 + `VAULT_EXPLORER`, the I12 gap L-D11 consumes): `SwapAndDepositToBodensee BODENSEE_CHANNEL`, `address BODENSEE_POOL`, `IVaultExplorer VAULT_EXPLORER`, `IAuMM AUMM`, `IERC20 SVZCHF`, `IERC20 SUSDS`, `IGaugeRegistry GAUGE_REGISTRY`, `uint256 GENESIS_BLOCK`. `AUMM`=`IAuMM` (`blockEmissionRate` feeds the L-D6 cap). Constructor wires all + ZeroAddress-guards the 7 address-bearing args. | L2.1 |
+| L-D17 | LOCKED | Storage: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]` (15% bucket); `epochPoolSkim[epoch][pool]` (additive). Crystallize cumulative-cache slots deferred L2.1→L5.3 (§12 design-before-materialize; I12). L2.1 split: L2.1a skeleton (imports+8 immutables+constructor+stub views `return 0`), L2.1b constants+settled storage+errors+events. | L2.1 |
 
 ---
 
@@ -92,7 +94,8 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 
 ### L2 — `IncendiaryRegistry` scaffold (per L-D1 / L-D9)
 
-- **L2.1** `src/incendiary/IncendiaryRegistry.sol` — scaffold: SPDX, `pragma ^0.8.26`, imports, `contract IncendiaryRegistry is IIncendiaryRegistry`, immutables (`BODENSEE_CHANNEL`, `BODENSEE_POOL`, `AUMM`, `SVZCHF`, `SUSDS`, `GAUGE_REGISTRY`, `GENESIS_BLOCK`), constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`), storage (per-rail EMA state + seed block, per-epoch aggregate bucket, per-(epoch,pool) additive map, crystallize cursors), errors, events. Cursor §8e.1.
+- **L2.1a** `src/incendiary/IncendiaryRegistry.sol` — compiling skeleton (L-D16): SPDX, `pragma ^0.8.26`, imports, `contract IncendiaryRegistry is IIncendiaryRegistry`, the 8 immutables (`SwapAndDepositToBodensee BODENSEE_CHANNEL`, `address BODENSEE_POOL`, `IVaultExplorer VAULT_EXPLORER`, `IAuMM AUMM`, `IERC20 SVZCHF`, `IERC20 SUSDS`, `IGaugeRegistry GAUGE_REGISTRY`, `uint256 GENESIS_BLOCK`), the constructor (wires all + ZeroAddress-guards the 7 address-bearing args), and `integratedSkim` / `boostIntegral` stubbed `return 0` (concrete + deployable, H-D21 stub precedent). Cursor §8e.1.
+- **L2.1b** `src/incendiary/IncendiaryRegistry.sol` — constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`) + settled storage (L-D17: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]`; `epochPoolSkim[epoch][pool]`) + errors + events. Crystallize cumulative-cache slots NOT here — deferred to L5.3 (L-D17). Cursor §8e.1.
 
 ### L3 — Price EMA (per L-D5)
 
@@ -108,7 +111,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 
 - **L5.1** epoch-emission-integral basis + 15% aggregate cap computation (integral form per L-D6). Cursor §8e.1.
 - **L5.2** FCFS walk-forward placement into the per-(epoch,pool) additive buckets + per-epoch aggregate bucket (L-D7); per-block stream = allocation / `BLOCKS_PER_EPOCH`. Cursor §8e.1.
-- **L5.3** permissionless `crystallize(from, to)` cumulative-sum cache updater (L-D9), outside the `IIncendiaryRegistry` read surface. Cursor §8e.1.
+- **L5.3** permissionless `crystallize(from, to)` cumulative-sum cache updater (L-D9) + its storage slots deferred from L2.1 (L-D17: the global + per-pool epoch-boundary prefix-sum maps and the crystallize cursor — designed with the O(1) algorithm here, not guessed at scaffold), outside the `IIncendiaryRegistry` read surface. Cursor §8e.1.
 
 ### L6 — Views (per L-D8 / L-D9)
 
