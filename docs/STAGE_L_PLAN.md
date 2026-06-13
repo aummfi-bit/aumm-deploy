@@ -2,7 +2,7 @@
 
 > **Status:** L0.1 NOTES design freeze (L-D1—L-D9 LOCKED) landed at `cd58d22` on `stage-l`. This file (L0.2-PLAN) lays out the L0—L9 sub-step roadmap. Implementation not yet begun — L0.3 (`CLAUDE.md` §11 refresh) then the L1 interface/pre-flight beat are next. Companion to STAGE_L_NOTES.md.
 >
-> **Last update:** 2026-06-13 — L0.2-PLAN (this commit): initial roadmap + Decisions mirror + Pre-flight checklist + Completion log + Open questions.
+> **Last update:** 2026-06-13 — L1.0 pre-flight: L-D10—L-D15 LOCKED in NOTES; mirrored here (Decisions + Pre-flight + Q-resolution + Completion log). Next: L1.1 IIncendiaryRegistry interface edit.
 >
 > **Mode:** Opus high per §13 (Stage L entry) for the L1 interface/pre-flight beat and the registry design beats (L2—L7 — the EMA spot-read, the emission-integral cap, the FCFS walk-forward, and the `EmissionDistributor` I13 delivery leg are the load-bearing surfaces), dropping to Sonnet for test writing (L8) and plan-row housekeeping once each unit's design is set.
 >
@@ -39,7 +39,7 @@ Stage L ships the Incendiary Boost producer (canonical F-2): a registry that sel
 
 ## Decisions
 
-Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1). See NOTES for full bodies. New L-D10 onward attach to sub-step-specific locks during L1—L9 pre-flight beats and are recorded in both files.
+Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 LOCKED at L1.0 pre-flight). See NOTES for full bodies.
 
 | # | Status | Decision (summary) | Locked at |
 | --- | --- | --- | --- |
@@ -52,6 +52,12 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L-D7 | LOCKED | FCFS walk-forward spill across consecutive epochs; per-block stream = epoch allocation / `BLOCKS_PER_EPOCH`. | L0.1 |
 | L-D8 | LOCKED | Delivery in distributor allocation (F-7 Step 1/Step 2): global `integratedSkim` + per-pool `boostIntegral`; invariant `Σ_pools boostIntegral = integratedSkim`. | L0.1 |
 | L-D9 | LOCKED | Epoch-bucketed cumulative sums (O(1) views); permissionless `crystallize`; additive per-(epoch,pool) map (stacking); full provenance. | L0.1 |
+| L-D10 | LOCKED | `buyBoost` reverts unless `_gaugeRegistry.isGaugeApproved(pool)` at purchase; mid-boost gauge revocation does not halt already-sold stream (epoch buckets immutable once placed). | L1.0 |
+| L-D11 | LOCKED | Spot-rate = direct Bodensee `balancesLiveScaled18` + `getNormalizedWeights()`; both svZCHF and sUSDS rails direct (no 2-hop); `TVLOracle.quoteSvZCHF` rejected (returns 0 for unmapped AuMM). | L1.0 |
+| L-D12 | LOCKED | `boostIntegral(address pool, uint256 from, uint256 to) external view returns (uint256)` — per-pool delivery view; added to `IIncendiaryRegistry` at L1.1; G16 sweep: zero inheritors, four `integratedSkim`-selector mocks unaffected. | L1.0 |
+| L-D13 | LOCKED | `AureumTime.epochStartBlock(genesisBlock, epochIndex_)` + `epochEndBlock(genesisBlock, epochIndex_)` — additive `internal pure` helpers; params `epochIndex_` (trailing underscore avoids G15-class shadow of `epochIndex()` function). Added at L1.2. | L1.0 |
+| L-D14 | LOCKED | `_settlePool` boost leg — new `poolBoostCursor[pool]`; `poolAccRewardPerLP[pool] += boostIntegral(pool, cursor+1, block.number).divDown(poolTotalLP[pool])` when `poolTotalLP > 0`; guard `incendiaryRegistry != address(0)` keeps 106-test cohort no-op. | L1.0 |
+| L-D15 | LOCKED | `_settlePool` boost leg does NOT call `_efficiencyOracle.recordEmissions` — purchased emission must not inflate the F-10 tournament denominator. | L1.0 |
 
 ---
 
@@ -59,10 +65,10 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 
 - [x] `main` at `stage-k-whitehat-complete` (`7f98cc2`); `stage-l` branched and at `cd58d22` (L0.1 NOTES).
 - [x] STAGE_L_NOTES.md design freeze L-D1—L-D9 LOCKED at L0.1 (`cd58d22`).
-- [ ] (L1.0 pre-flight, §12) `boostIntegral(address pool, uint256 from, uint256 to) → uint256` signature locked + G16 inheritor sweep `grep -rn "is IIncendiaryRegistry" src/ test/ script/` — enumerate every implementer/mock to update at the interface edit.
-- [ ] (L1.0 pre-flight, §12) `AureumTime` epoch-boundary helper decision — add a named `epochStartBlock` / `epochEndBlock` (additive lib edit) vs compute inline from `epochIndex` (`AureumTime.sol:48`).
-- [ ] (L1.0 pre-flight, §12) der Bodensee spot-rate read mechanism for the EMA — how AuMM/svZCHF and AuMM/sUSDS are derived from the three-token pool (live balances / weights vs rate provider); typed-domain gate before L3 materializes the EMA.
-- [ ] (L1.0 pre-flight) `EmissionDistributor` I13 blast-radius sizing — enumerate every test exercising the per-pool settle/claim path + the existing mock surface, before the L7 fix-forward.
+- [x] (L1.0 pre-flight, §12) `boostIntegral(address pool, uint256 from, uint256 to) → uint256` signature locked + G16 inheritor sweep — RESOLVED → L-D12. Zero inheritors (producer not yet built); four `integratedSkim.selector` mocks in `EmissionDistributor.t.sol` unaffected. L1.1 is zero-blast.
+- [x] (L1.0 pre-flight, §12) `AureumTime` epoch-boundary helper decision — RESOLVED → L-D13. Named helper selected (additive `internal pure`); params `epochIndex_` (G15-class shadow avoidance). Lands at L1.2.
+- [x] (L1.0 pre-flight, §12) der Bodensee spot-rate read mechanism — RESOLVED → L-D11. Direct `balancesLiveScaled18` + `getNormalizedWeights()` for both rails; `TVLOracle.quoteSvZCHF` rejected.
+- [x] (L1.0 pre-flight) `EmissionDistributor` I13 blast-radius sizing — RESOLVED → L-D14. 106-test cohort stays no-op via `incendiaryRegistry != address(0)` guard; new tests at L8.5 are additive only.
 - [ ] (resolves L8) Stage L unit cohort green — `test/unit/IncendiaryRegistry.t.sol` + `EmissionDistributor.t.sol` delivery tests.
 - [ ] (resolves L8) `StageLIntegration` fork green — buy → donate → skim → per-pool delivery + conservation invariant.
 - [ ] (resolves L9) `DeployStageL` fork green.
@@ -80,7 +86,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 
 ### L1 — Interface + lib pre-flight (per L-D1 / L-D8; §12 gates)
 
-- **L1.0** (Opus pre-flight) lock `boostIntegral` signature, run the G16 inheritor sweep, decide the `AureumTime` epoch-boundary helper, resolve the Bodensee spot-rate read mechanism, and size the `EmissionDistributor` I13 blast radius — record as new L-D10+ entries in NOTES + PLAN.
+- **L1.0** (DONE — L-D10—L-D15 LOCKED in NOTES + mirrored here) lock `boostIntegral` signature, G16 sweep (zero inheritors), `AureumTime` boundary helper (L-D13 named helper + `epochIndex_`), Bodensee spot-rate (L-D11 direct read), I13 blast-radius (L-D14 106-test cohort no-op). Opus pre-flight beat 2026-06-13.
 - **L1.1** `src/incendiary/IIncendiaryRegistry.sol` — add `boostIntegral(pool, from, to)` (the per-pool delivery view); update every inheritor/mock the G16 sweep found in the same beat. Cursor §8e.1.
 - **L1.2** `src/lib/AureumTime.sol` — add the epoch-boundary helper if L1.0 selects the named-helper option (additive `internal pure`, no existing signature touched). Cursor §8e.1. (Skipped if L1.0 selects inline.)
 
@@ -138,15 +144,16 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | --- | --- | --- |
 | L0.1 | `cd58d22` | `docs/STAGE_L_NOTES.md` — Stage L Incendiary Boost design freeze (L-D1—L-D9 LOCKED) |
 | L0.2-PLAN | (this commit) | `docs/STAGE_L_PLAN.md` — sub-step roadmap (L0—L9) + Decisions mirror + Pre-flight checklist + Completion log + Open questions |
+| L1.0 | (pending — same commit as NOTES update) | L1.0 Opus pre-flight: L-D10—L-D15 LOCKED in NOTES; mirrored into PLAN (Decisions + Pre-flight + Q-resolution). |
 
 ---
 
 ## Open questions
 
-- **Q1 — target pool gauge gate.** F-2 says a boost funds "a gauged pool." Lock: `buyBoost` reverts if the target pool is not gauge-approved at purchase (via `GAUGE_REGISTRY.isGaugeApproved`). What happens if the pool loses gauge status mid-boost (delivery to a since-revoked pool) resolves at the L7 pre-flight. Candidate L-D10.
-- **Q2 — Bodensee spot-rate read.** The exact mechanism deriving AuMM/svZCHF and AuMM/sUSDS from the three-token der Bodensee (live balances + weights vs rate provider). Resolves at L1.0; §12 typed-domain gate before L3. Candidate L-D11.
-- **Q3 — `AureumTime` epoch-boundary helper.** Named helper (additive lib edit) vs inline from `epochIndex`. Resolves at L1.0; §12 gate.
-- **Q4 — sUSDS valuation path.** Confirm the sUSDS rail prices directly off Bodensee (the pool holds sUSDS) rather than via a svZCHF 2-hop. Resolves at L1.0.
+- **Q1 — target pool gauge gate.** RESOLVED → L-D10 (L1.0). `buyBoost` reverts if `_gaugeRegistry.isGaugeApproved(pool)` fails at purchase; mid-boost revocation leaves already-sold stream intact (immutable epoch buckets).
+- **Q2 — Bodensee spot-rate read.** RESOLVED → L-D11 (L1.0). Direct `IVaultExplorer.getPoolData(BODENSEE_POOL).balancesLiveScaled18` + `WeightedPool.getNormalizedWeights()`; `TVLOracle.quoteSvZCHF` rejected (returns 0 for unmapped AuMM).
+- **Q3 — `AureumTime` epoch-boundary helper.** RESOLVED → L-D13 (L1.0). Named helper selected; additive `internal pure`; params `epochIndex_` (G15-class shadow avoidance). Lands at L1.2.
+- **Q4 — sUSDS valuation path.** RESOLVED → L-D11 (L1.0). sUSDS rail prices directly off Bodensee (no 2-hop); both AuMM/sUSDS and AuMM/svZCHF pairs are in the 40/30/30 pool.
 
 ---
 
