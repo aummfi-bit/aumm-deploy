@@ -410,14 +410,14 @@ After every commit, verify with `git log --oneline -N` where N covers the commit
 
 This section is the resumption anchor — a thin pointer, not a ledger. Per-sub-step commit detail lives in git and the `STAGE_*_PLAN.md` Completion logs; §11 holds only what a cold session needs to resume. Update at the end of every completed sub-step.
 
-**Last update:** 2026-06-13. Branch `stage-l` at `7f98cc2` (== `main`).
+**Last update:** 2026-06-13 — L0.3 §11 refresh. Branch `stage-l`: L0 entry complete (NOTES `cd58d22` + PLAN `7bcadd1` + this §11 refresh), ahead of `main` (`7f98cc2`).
 
 - **Stage K COMPLETE** (`stage-k-complete`, ff-merged to `main`) — the governance handoff: `AureumGovernance` (three proposal types), `VotingWeight` value-weighted reader, `AureumGovernanceAuthorizer` (B-strict 12-month time-bomb, OQ-10). Vault authorizer migrated off the Stage B Safe via `setAuthorizer` CALL — **Vault bytecode untouched**. Detail: `docs/STAGE_K_PLAN.md` (Completion log) + `docs/STAGE_K_NOTES.md` (K-D1—K-D9).
 - **Whitehat K-pass COMPLETE** (`stage-k-whitehat-complete`, ff-merged) — findings F-01…F-04 all **Fixed**, all fix-forward on `main` (no substrate seam, no re-tag). Ledger `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`; process `docs/white_hat/AUREUM_WHITEHAT_PROCESS.md`.
 
-**Branch / tag state:** `main` == `stage-l` == `7f98cc2`. Tags `stage-a-complete` … `stage-k-complete` + `stage-k-whitehat-complete` all in place; `stage-l-complete` cut at L-close.
+**Branch / tag state:** `main` == `stage-k-whitehat-complete` == `7f98cc2`; `stage-l` ahead by the L0 entry commits (L0.1 `cd58d22`, L0.2-PLAN `7bcadd1`, L0.3 §11 refresh). Tags `stage-a-complete` … `stage-k-complete` + `stage-k-whitehat-complete` all in place; `stage-l-complete` cut at L-close.
 
-**Next — Stage L (Incendiary Boost)** (STAGES_OVERVIEW Stage L; ~300 lines, "Small"): `src/incendiary/IncendiaryBoost.sol`. **Not yet begun** — no `docs/STAGE_L_*` files exist; the L0.x entry sequence (NOTES design freeze → PLAN roadmap → L1) is the next work, driven separately. Entry mode Opus-high per §13.
+**Stage L (Incendiary Boost) — IN PROGRESS** (STAGES_OVERVIEW Stage L; "Small", wholesale-locked per the Stage J precedent). L0 entry complete: NOTES design freeze L-D1—L-D9 (`cd58d22`) + PLAN roadmap L0—L9 (`7bcadd1`). **Resume at L1.0** — the Opus pre-flight beat: lock the `boostIntegral(pool, from, to)` signature + run the G16 `is IIncendiaryRegistry` inheritor sweep, decide the `AureumTime` epoch-boundary helper (§12), resolve the der-Bodensee spot-rate read mechanism (§12), and size the `EmissionDistributor` I13 blast-radius — recording L-D10+ as resolved. Main contract `src/incendiary/IncendiaryRegistry.sol` (the concrete producer behind the H-D29 `IIncendiaryRegistry` forward-dep) + one additive I13 fix-forward on `EmissionDistributor` for the per-pool `boostIntegral` delivery leg. Detail: `docs/STAGE_L_PLAN.md` (roadmap + Completion log) + `docs/STAGE_L_NOTES.md` (L-D1—L-D9). Entry mode Opus-high per §13.
 
 **Deferred carry-forward** (live obligations beyond Stage K):
 - **D33 — Aureum's own Router** → Stage O (mainnet Balancer Router is Vault-bound, D32).
@@ -425,7 +425,7 @@ This section is the resumption anchor — a thin pointer, not a ledger. Per-sub-
 - **OQ-22** — 2-hop fallback through ZCHF / sUSDS; H-D9 ships direct venues only.
 - **D36 permanent fix** — env-key namespacing in `test/fork/DeployAureumVault.t.sol`; fork race-safe via `--threads 1` (F-D11).
 - **Direct `ReentrancyGuard.selector` test** via `vm.transientStore` — H3.7e covers transitively; deferred to a robustness backport.
-- **aumm-site spec edits (user-side)** — `04_tokenomics.md` §viii/§ix per OQ-20/21 + the I-reframe (I-D14—I-D17); §xxi sandbox row obsolete (G-D2).
+- **aumm-site spec edits (user-side)** — `04_tokenomics.md` §viii/§ix per OQ-20/21 + the I-reframe (I-D14—I-D17); §xxi sandbox row obsolete (G-D2); `11_formulas.md` F-2 Incendiary amendments per Stage L (5% anti-gaming haircut, aggregate 15%-of-epoch cap, post-Year-1 gate, 60-day-EMA pricing, FCFS walk-forward spill, drop "one boost per pool per epoch") + FINDINGS L269/L348/L369/L377 Incendiary-scope corrections.
 - **OQ-I10 recorder-binding rollout** — slots 02/03/07 bound at Stage I; slots 01/04/05/06/08—28 → Stage M/N.
 - **Whitehat back-fill queue** — WH-D / WH-G / WH-H / WH-J per-stage passes + INV-2 harness → Stage P sweep.
 
