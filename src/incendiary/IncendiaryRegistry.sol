@@ -6,6 +6,9 @@ import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IAuMM} from "../token/IAuMM.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
+import {IWeightedPool} from "@balancer-labs/v3-interfaces/contracts/pool-weighted/IWeightedPool.sol";
+import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title IncendiaryRegistry — Stage L concrete producer for the canonical F-2 Incendiary Boost
@@ -21,6 +24,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///      cumulative-cache slots are deferred to L5.3 (L-D17). Until governance calls
 ///      `setIncendiaryRegistry`, the distributor defaults to `address(0)` (zero skim) per H-D29.
 contract IncendiaryRegistry is IIncendiaryRegistry {
+    using FixedPoint for uint256;
+
     /* ---------- Constants ---------- */
 
     /// @notice EMA smoothing numerator — `EMASampler` constants verbatim (L-D5); α = 2/61 ≈ 60-day half-life.
@@ -97,6 +102,12 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @notice A constructor address argument was the zero address.
     error ZeroAddress();
 
+    /// @notice `_spotRate` could not resolve `token`'s index in der Bodensee's token set (L-D18).
+    error TokenNotInPool(address token);
+
+    /// @notice der Bodensee reported a zero scaled balance for `token`; a silent `divDown` zero would poison the EMA seed (L-D18).
+    error ZeroSpotBalance(address token);
+
     /* ---------- Constructor ---------- */
 
     /// @notice Wires the eight immutables; ZeroAddress-guards the seven address-bearing arguments.
@@ -144,5 +155,47 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     ///      zero-warning stub form — widens to `view` at L6.2 when it reads the per-pool buckets.
     function boostIntegral(address, uint256, uint256) external pure override returns (uint256) {
         return 0;
+    }
+
+    /* ---------- Internal: spot-rate read (L3.1 / L-D18) ---------- */
+
+    /// @notice Live der Bodensee spot of AuMM denominated in `payToken` — the per-sample input the
+    ///         L-D5 60-day price EMA smooths (L3.2). Internal, no public view: the raw spot is never
+    ///         priced (L-D5), so it cannot be mistaken for a callable price oracle.
+    /// @dev L-D18. der Bodensee registers its three tokens address-sorted
+    ///      (`DeployDerBodensee.s.sol:45-61`), so AuMM's and `payToken`'s positions are
+    ///      deploy-address-dependent — resolved by identity-matching `getPoolData(BODENSEE_POOL).tokens[i]`
+    ///      against the `AUMM` immutable and `payToken` (the `TVLOracle._venueRatio` pattern), never
+    ///      hardcoded. One `getPoolData` supplies `tokens` + `balancesLiveScaled18` (the rate-scaled
+    ///      leg — Bodensee stables are `WITH_RATE`); one `getNormalizedWeights()` supplies the
+    ///      index-aligned weights. Formula `(bal_X · w_A).divDown(bal_A · w_X)` → 18-dec X-per-AuMM;
+    ///      `FixedPoint.divDown(a, b) = a · 1e18 / b` supplies the `· 1e18`, so the receiver is not
+    ///      pre-multiplied. Reverts `TokenNotInPool` (index unresolved) / `ZeroSpotBalance` (zero balance).
+    /// @param payToken The pay-token rail (svZCHF / sUSDS) the spot is denominated in.
+    /// @return spotRate 18-dec fixed-point X-per-AuMM (stable-per-AuMM, L-D17).
+    function _spotRate(address payToken) internal view returns (uint256 spotRate) {
+        PoolData memory data = VAULT_EXPLORER.getPoolData(BODENSEE_POOL);
+        uint256[] memory weights = IWeightedPool(BODENSEE_POOL).getNormalizedWeights();
+
+        uint256 iA = type(uint256).max;
+        uint256 iX = type(uint256).max;
+        address aumm = address(AUMM);
+        for (uint256 i = 0; i < data.tokens.length; i++) {
+            address t = address(data.tokens[i]);
+            if (t == aumm) {
+                iA = i;
+            } else if (t == payToken) {
+                iX = i;
+            }
+        }
+        if (iA == type(uint256).max) revert TokenNotInPool(aumm);
+        if (iX == type(uint256).max) revert TokenNotInPool(payToken);
+
+        uint256 balA = data.balancesLiveScaled18[iA];
+        uint256 balX = data.balancesLiveScaled18[iX];
+        if (balA == 0) revert ZeroSpotBalance(aumm);
+        if (balX == 0) revert ZeroSpotBalance(payToken);
+
+        spotRate = (balX * weights[iA]).divDown(balA * weights[iX]);
     }
 }
