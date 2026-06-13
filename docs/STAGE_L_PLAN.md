@@ -95,7 +95,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 ### L2 — `IncendiaryRegistry` scaffold (per L-D1 / L-D9)
 
 - **L2.1a** `src/incendiary/IncendiaryRegistry.sol` — compiling skeleton (L-D16): SPDX, `pragma ^0.8.26`, imports, `contract IncendiaryRegistry is IIncendiaryRegistry`, the 8 immutables (`SwapAndDepositToBodensee BODENSEE_CHANNEL`, `address BODENSEE_POOL`, `IVaultExplorer VAULT_EXPLORER`, `IAuMM AUMM`, `IERC20 SVZCHF`, `IERC20 SUSDS`, `IGaugeRegistry GAUGE_REGISTRY`, `uint256 GENESIS_BLOCK`), the constructor (wires all + ZeroAddress-guards the 7 address-bearing args), and `integratedSkim` / `boostIntegral` stubbed `return 0` (concrete + deployable, H-D21 stub precedent). Cursor §8e.1.
-- **L2.1b** `src/incendiary/IncendiaryRegistry.sol` — constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`) + settled storage (L-D17: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]`; `epochPoolSkim[epoch][pool]`) + errors + events. Crystallize cumulative-cache slots NOT here — deferred to L5.3 (L-D17). Cursor §8e.1.
+- **L2.1b** `src/incendiary/IncendiaryRegistry.sol` — constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`) + settled storage (L-D17: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]`; `epochPoolSkim[epoch][pool]`). Errors (beyond `ZeroAddress`) + events deferred to their L4/L5 emit/revert sites (§12 — field sets not settled until purchase/placement logic). Crystallize cumulative-cache slots NOT here — deferred to L5.3 (L-D17). Cursor §8e.1.
 
 ### L3 — Price EMA (per L-D5)
 
@@ -146,8 +146,14 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | Sub-step | Commit | Summary |
 | --- | --- | --- |
 | L0.1 | `cd58d22` | `docs/STAGE_L_NOTES.md` — Stage L Incendiary Boost design freeze (L-D1—L-D9 LOCKED) |
-| L0.2-PLAN | (this commit) | `docs/STAGE_L_PLAN.md` — sub-step roadmap (L0—L9) + Decisions mirror + Pre-flight checklist + Completion log + Open questions |
-| L1.0 | (pending — same commit as NOTES update) | L1.0 Opus pre-flight: L-D10—L-D15 LOCKED in NOTES; mirrored into PLAN (Decisions + Pre-flight + Q-resolution). |
+| L0.2-PLAN | `7bcadd1` | `docs/STAGE_L_PLAN.md` — sub-step roadmap (L0—L9) + Decisions mirror + Pre-flight checklist + Completion log + Open questions |
+| L0.3 | `dc4a594` | `CLAUDE.md` §11 — Stage L L0-entry resume refresh (resume anchor L1.0; IncendiaryBoost→IncendiaryRegistry rename) |
+| L1.0 | `0946cec` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L1.0 Opus pre-flight: L-D10—L-D15 LOCKED (gauge gate, Bodensee spot read, boostIntegral sig, AureumTime helpers, _settlePool boost leg, F-10 bypass) |
+| L1.1 | `edabe8a` | `src/incendiary/IIncendiaryRegistry.sol` — add `boostIntegral(pool, from, to)` per-pool delivery view (L-D12) |
+| L1.2 | `2274ad1` | `src/lib/AureumTime.sol` — add `epochStartBlock` / `epochEndBlock` epoch-boundary helpers (L-D13) |
+| L2.0-pre | `3d4b7cb` + `93a95e2` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D16—L-D17 LOCKED (8-immutable set incl. VAULT_EXPLORER I12-gap, AUMM=IAuMM; RailEMA storage + crystallize-cache→L5.3 + L2.1a/b split) |
+| L2.1a | `5dca67c` | `src/incendiary/IncendiaryRegistry.sol` — compiling skeleton (8 immutables + constructor + stubbed IIncendiaryRegistry views) per L-D16 |
+| L2.1b | `ca5a48b` | `src/incendiary/IncendiaryRegistry.sol` — L-D17 constants (5) + settled storage (RailEMA + 3 maps); errors/events deferred to L4/L5 |
 
 ---
 
