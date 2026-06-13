@@ -88,4 +88,14 @@ library AureumTime {
     function nthHalvingBlock(uint256 genesisBlock, uint256 n) internal pure returns (uint256) {
         return genesisBlock + n * BLOCKS_PER_ERA;
     }
+
+    /// @notice First block of the epoch with the given index. epochStartBlock(g, 0) == g; epoch analog of nthHalvingBlock (L-D13).
+    function epochStartBlock(uint256 genesisBlock, uint256 epochIndex_) internal pure returns (uint256) {
+        return genesisBlock + epochIndex_ * BLOCKS_PER_EPOCH;
+    }
+
+    /// @notice Last block (inclusive) of the epoch with the given index. epochEndBlock(g, e) == epochStartBlock(g, e + 1) - 1 (L-D13).
+    function epochEndBlock(uint256 genesisBlock, uint256 epochIndex_) internal pure returns (uint256) {
+        return genesisBlock + (epochIndex_ + 1) * BLOCKS_PER_EPOCH - 1;
+    }
 }
