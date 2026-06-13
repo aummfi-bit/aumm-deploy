@@ -39,4 +39,24 @@ interface IIncendiaryRegistry {
     /// @return The integrated sum of active Incendiary Boost claims over `[from, to]` in AuMM-wei
     ///         (18-decimal fixed-point).
     function integratedSkim(uint256 from, uint256 to) external view returns (uint256);
+
+    /// @notice Returns the integrated sum of active Incendiary Boost allocations directed at `pool` over the
+    ///         block interval `[from, to]` inclusive.
+    /// @dev Per L-D8 / L-D12 — the per-pool delivery counterpart to `integratedSkim`. The Stage L
+    ///      `EmissionDistributor` I13 fix-forward (L-D14) reads this in `_settlePool`'s per-pool boost leg and
+    ///      adds `boostIntegral(pool, cursor + 1, block.number).divDown(poolTotalLP[pool])` to
+    ///      `poolAccRewardPerLP[pool]`, delivering the purchased stream through the pool's existing claim path
+    ///      with no new mint channel. Conservation invariant `Σ_pools boostIntegral(p, from, to) =
+    ///      integratedSkim(from, to)` ties the per-pool delivery legs back to the global skim per H-D26 — the
+    ///      score path emits `rate × n − skim`, the boost legs emit `Σ_pools boostIntegral = skim`, total =
+    ///      full LP tranche, no over/under-mint against the 21M cap. Same epoch-bucketed O(1) accounting as
+    ///      `integratedSkim` per L-D9. Reverting from this function reverts the distributor's `_settlePool`
+    ///      (no `try/catch` wrap), symmetric with the `integratedSkim` posture per H-D29.
+    /// @param pool The gauged pool the boost stream is directed at; the L-D10 gauge gate is enforced at
+    ///        purchase, not re-checked here.
+    /// @param from The starting block number of the interval (inclusive).
+    /// @param to The ending block number of the interval (inclusive).
+    /// @return The integrated sum of `pool`'s active Incendiary Boost allocations over `[from, to]` in
+    ///         AuMM-wei (18-decimal fixed-point).
+    function boostIntegral(address pool, uint256 from, uint256 to) external view returns (uint256);
 }
