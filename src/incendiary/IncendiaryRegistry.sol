@@ -126,6 +126,13 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @param nextEligibleBlock The first block at which `updateRailEMA(payToken)` is callable.
     error TooEarly(uint256 currentBlock, uint256 nextEligibleBlock);
 
+    /// @notice `_maturePrice` read a rail whose price EMA has not seasoned the 60-day `EMA_MATURITY_BLOCKS`
+    ///         window — never seeded (`age == 0`) or still ramping (L-D19, F-04 gate).
+    /// @param payToken The rail whose EMA is immature.
+    /// @param age Blocks since the rail's EMA seed, 0 if never seeded.
+    /// @param required The maturity threshold, `EMA_MATURITY_BLOCKS`.
+    error EMANotMature(address payToken, uint256 age, uint256 required);
+
     /* ---------- Constructor ---------- */
 
     /// @notice Wires the eight immutables; ZeroAddress-guards the seven address-bearing arguments.
@@ -210,6 +217,23 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         rail.lastSampleBlock = block.number;
 
         emit RailEMAUpdated(payToken, spot, newEMA, block.number);
+    }
+
+    /// @notice The rail's mature 60-day price EMA, stable-per-AuMM per L-D17 — the price the L4.1
+    ///         `buyBoost` valuation divides the deposit by; reverts unless seasoned 60 days.
+    /// @dev L-D19. Mirrors the F-04 `VotingWeight._positionPower` gate (`VotingWeight.sol:134-138`) but
+    ///      reverts rather than returning 0: unseeded (`seedBlock == 0`, age 0) or still-ramping
+    ///      (`block.number - seedBlock < EMA_MATURITY_BLOCKS`) reverts `EMANotMature`, else returns
+    ///      `rail.ema`. Internal-only, no public price view (L-D5) — maturity is built by `updateRailEMA`,
+    ///      not here.
+    /// @param payToken The pay-token rail (svZCHF / sUSDS) the price is denominated in.
+    /// @return ema The mature 18-dec rail EMA, stable-per-AuMM.
+    function _maturePrice(address payToken) internal view returns (uint256 ema) {
+        RailEMA storage rail = railEMA[payToken];
+        if (rail.seedBlock == 0) revert EMANotMature(payToken, 0, EMA_MATURITY_BLOCKS);
+        uint256 age = block.number - rail.seedBlock;
+        if (age < EMA_MATURITY_BLOCKS) revert EMANotMature(payToken, age, EMA_MATURITY_BLOCKS);
+        ema = rail.ema;
     }
 
     /* ---------- Internal: spot-rate read (L3.1 / L-D18) ---------- */
