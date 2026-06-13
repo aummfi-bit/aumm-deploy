@@ -21,6 +21,23 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///      cumulative-cache slots are deferred to L5.3 (L-D17). Until governance calls
 ///      `setIncendiaryRegistry`, the distributor defaults to `address(0)` (zero skim) per H-D29.
 contract IncendiaryRegistry is IIncendiaryRegistry {
+    /* ---------- Constants ---------- */
+
+    /// @notice EMA smoothing numerator — `EMASampler` constants verbatim (L-D5); α = 2/61 ≈ 60-day half-life.
+    uint256 public constant EMA_ALPHA_NUMERATOR = 2;
+
+    /// @notice EMA smoothing denominator — `EMASampler` constants verbatim (L-D5).
+    uint256 public constant EMA_ALPHA_DENOMINATOR = 61;
+
+    /// @notice Blocks a rail's EMA must season before it may price a purchase — 60 days at `BLOCKS_PER_DAY` (L-D5).
+    uint256 public constant EMA_MATURITY_BLOCKS = 432_000;
+
+    /// @notice Aggregate per-epoch boost cap — 15% of the epoch's emission integral (L-D6).
+    uint256 public constant BOOST_CAP_BPS = 1_500;
+
+    /// @notice Anti-gaming valuation haircut — the 5% never skimmed, retained in `Remaining` for other pools (L-D4).
+    uint256 public constant HAIRCUT_BPS = 500;
+
     /* ---------- Immutables ---------- */
 
     // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
@@ -54,6 +71,26 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /// @notice Protocol genesis block — the AureumTime epoch / era basis for placement and cap windows.
     uint256 public immutable GENESIS_BLOCK;
+
+    /* ---------- Storage ---------- */
+
+    /// @notice Per-rail price EMA state — the AuMM price in the pay token (stable-per-AuMM, L-D11); pricing
+    ///         divides the deposit by `ema` (the L3.1 divide-direction gate). Mirrors `EMASampler`'s
+    ///         three-field-per-key shape (L-D5 / L-D17).
+    struct RailEMA {
+        uint256 ema;
+        uint256 lastSampleBlock;
+        uint256 seedBlock;
+    }
+
+    /// @notice Price-EMA state keyed by pay-token rail (`SVZCHF` / `SUSDS`); `seedBlock == 0` ⇒ unseeded (L-D17).
+    mapping(address => RailEMA) public railEMA;
+
+    /// @notice Aggregate AuMM-wei boost allocated per epoch — the shared 15%-cap bucket (L-D6 / L-D17).
+    mapping(uint256 => uint256) public epochSkimAllocated;
+
+    /// @notice Per-(epoch, pool) AuMM-wei boost allocation — additive stacking delivery map (L-D9 / L-D17).
+    mapping(uint256 => mapping(address => uint256)) public epochPoolSkim;
 
     /* ---------- Errors ---------- */
 
