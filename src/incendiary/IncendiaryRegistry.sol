@@ -135,6 +135,18 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @param required The maturity threshold, `EMA_MATURITY_BLOCKS`.
     error EMANotMature(address payToken, uint256 age, uint256 required);
 
+    /// @notice `buyBoost` called before the continuous phase opens — purchases are gated until after
+    ///         Year 1 (`block.number > year1EndBlock`) so the F-7 Step 1 skim stays phase-aligned (L-D3).
+    /// @param currentBlock block.number at the failed call.
+    /// @param year1EndBlock The last block of Year 1; purchases open at `year1EndBlock + 1`.
+    error BoostsNotOpen(uint256 currentBlock, uint256 year1EndBlock);
+
+    /// @notice `buyBoost` target pool is not gauge-approved (L-D10); only gauged pools may be boosted.
+    error PoolNotGauged(address pool);
+
+    /// @notice `buyBoost` called with a zero deposit amount.
+    error ZeroAmount();
+
     /* ---------- Constructor ---------- */
 
     /// @notice Wires the eight immutables; ZeroAddress-guards the seven address-bearing arguments.
@@ -182,6 +194,33 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     ///      zero-warning stub form — widens to `view` at L6.2 when it reads the per-pool buckets.
     function boostIntegral(address, uint256, uint256) external pure override returns (uint256) {
         return 0;
+    }
+
+    /* ---------- Purchase entry (L4 / L-D20) ---------- */
+
+    /// @notice Quote the AuMM-wei boost entitlement for an `amount` deposit of `payToken` directed at `pool`.
+    /// @dev L4.1b (L-D20). Gates in order: (1) phase — purchases open only after Year 1 (L-D3); (2) rail —
+    ///      `payToken` must be a configured rail svZCHF / sUSDS (L-D2; reuses `UnknownRail`, the pay token
+    ///      is the rail); (3) gauge — `pool` must be gauge-approved (L-D10); (4) `amount > 0`; (5) maturity —
+    ///      enforced inside `_valueInAuMM` via `_maturePrice` (`EMANotMature` on unseeded / immature, L-D5).
+    ///      Entitlement = the rate-scaled deposit value at the mature EMA less the L-D4 5% anti-gaming
+    ///      haircut, as plain-integer basis-points (`value × (10_000 - HAIRCUT_BPS) / 10_000`). `view` here
+    ///      is the zero-warning quote form (mirroring the stub views) — it reads (gates + valuation) and
+    ///      returns the entitlement but takes no deposit and places no boost. The L-D2 deposit routing +
+    ///      L-D7 placement wire in once the L5 placement internals exist (the L-D20 safe-scaffold
+    ///      sequencing), dropping `view` when they write.
+    /// @param pool The gauge-approved target pool to boost.
+    /// @param payToken The pay-token rail (svZCHF / sUSDS) of the deposit.
+    /// @param amount The raw deposit amount in `payToken`'s native units.
+    /// @return entitlement The boost entitlement in AuMM-wei (18-dec), post-haircut.
+    function buyBoost(address pool, address payToken, uint256 amount) external view returns (uint256 entitlement) {
+        uint256 year1End = AureumTime.year1EndBlock(GENESIS_BLOCK);
+        if (block.number <= year1End) revert BoostsNotOpen(block.number, year1End);
+        if (payToken != address(SVZCHF) && payToken != address(SUSDS)) revert UnknownRail(payToken);
+        if (!GAUGE_REGISTRY.isGaugeApproved(pool)) revert PoolNotGauged(pool);
+        if (amount == 0) revert ZeroAmount();
+
+        entitlement = (_valueInAuMM(payToken, amount) * (10_000 - HAIRCUT_BPS)) / 10_000;
     }
 
     /* ---------- Price EMA sampler (L3.2 / L-D19) ---------- */
