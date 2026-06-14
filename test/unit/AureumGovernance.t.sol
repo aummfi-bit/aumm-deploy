@@ -33,6 +33,8 @@ contract MockVotingWeight is IVotingWeight {
         pokeCount++;
         lastPoked = holder;
     }
+    function getPastVotes(address, uint256) external view returns (uint256) { return 0; }
+    function getPastTotalSupply(uint256) external view returns (uint256) { return 0; }
 }
 contract MockGaugeRegistry {
     mapping(address => IGaugeRegistry.GaugeStatus) public statusOf;

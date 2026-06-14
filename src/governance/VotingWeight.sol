@@ -111,20 +111,13 @@ contract VotingWeight is IVotingWeight {
     function totalSupply() external view override returns (uint256) {
         return _totalQualifiedWeight;
     }
-    /// @notice Governor-style historical vote weight for `holder` at a past block — the frozen weight `AureumGovernance` reads at a proposal's `snapshotBlock` (F-06).
-    /// @dev `upperLookup` returns the holder's checkpoint as of the most recent `poke` at or before `blockNumber`; a holder who never poked on or before `blockNumber` reads 0. Reverts `FutureLookup` for the current or a future block.
-    /// @param holder The holder whose past weight is read.
-    /// @param blockNumber A strictly-past block (`< block.number`).
-    /// @return The holder's checkpointed weight as of `blockNumber`.
-    function getPastVotes(address holder, uint256 blockNumber) external view returns (uint256) {
+    /// @inheritdoc IVotingWeight
+    function getPastVotes(address holder, uint256 blockNumber) external view override returns (uint256) {
         if (blockNumber >= block.number) revert FutureLookup(blockNumber);
         return _holderWeightHistory[holder].upperLookup(blockNumber.toUint48());
     }
-    /// @notice Governor-style historical total qualified weight at a past block — the snapshot quorum denominator `AureumGovernance` reads at `snapshotBlock` (F-06).
-    /// @dev `upperLookup` returns the running total as of the most recent `poke` at or before `blockNumber`. The total trace is pushed with the running sum on every `poke`, so its value equals the sum of every holder's checkpoint at that block — hence `sum of getPastVotes(voter, b) <= getPastTotalSupply(b)`, the numerator-le-denominator invariant. Reverts `FutureLookup` for the current or a future block.
-    /// @param blockNumber A strictly-past block (`< block.number`).
-    /// @return The total qualified weight as of `blockNumber`.
-    function getPastTotalSupply(uint256 blockNumber) external view returns (uint256) {
+    /// @inheritdoc IVotingWeight
+    function getPastTotalSupply(uint256 blockNumber) external view override returns (uint256) {
         if (blockNumber >= block.number) revert FutureLookup(blockNumber);
         return _totalQualifiedWeightHistory.upperLookup(blockNumber.toUint48());
     }

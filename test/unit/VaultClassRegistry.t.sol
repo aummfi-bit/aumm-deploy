@@ -48,6 +48,8 @@ contract MockVotingWeight is IVotingWeight {
     }
 
     function poke(address) external {}
+    function getPastVotes(address, uint256) external view returns (uint256) { return 0; }
+    function getPastTotalSupply(uint256) external view returns (uint256) { return 0; }
 }
 
 /// @notice Harness scaffold for VaultClassRegistry proposal-veto-finalize tests (G1.16 split).
