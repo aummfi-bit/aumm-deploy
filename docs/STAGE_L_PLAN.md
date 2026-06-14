@@ -159,6 +159,14 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L2.0-pre | `3d4b7cb` + `93a95e2` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D16—L-D17 LOCKED (8-immutable set incl. VAULT_EXPLORER I12-gap, AUMM=IAuMM; RailEMA storage + crystallize-cache→L5.3 + L2.1a/b split) |
 | L2.1a | `5dca67c` | `src/incendiary/IncendiaryRegistry.sol` — compiling skeleton (8 immutables + constructor + stubbed IIncendiaryRegistry views) per L-D16 |
 | L2.1b | `ca5a48b` | `src/incendiary/IncendiaryRegistry.sol` — L-D17 constants (5) + settled storage (RailEMA + 3 maps); errors/events deferred to L4/L5 |
+| L3.1-pre | `eef58f7` + `8540f37` + `2dc6912` + `2464241` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D18 LOCKED (spot-rate: identity-match `iA`/`iX` on `getPoolData.tokens`; `(bal_X·w_A).divDown(bal_A·w_X)` after the divDown double-scale correction; `TokenNotInPool`/`ZeroSpotBalance`) |
+| L3.1 | `0b3e184` | `src/incendiary/IncendiaryRegistry.sol` — `_spotRate(payToken)` internal view (L-D18) |
+| L3.2-pre | `a52c8ec` + `ddf0c7b` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D19 LOCKED (EMA sampler `updateRailEMA` + explicit `UnknownRail` gate + `_maturePrice` maturity gate; EMASampler mirror; L3.2a/b split) |
+| L3.2a | `4598148` | `src/incendiary/IncendiaryRegistry.sol` — `updateRailEMA` permissionless sampler (L-D19: UnknownRail/TooEarly, `(2·spot+59·ema)/61` integer smooth, RailEMAUpdated) |
+| L3.2b | `0579734` | `src/incendiary/IncendiaryRegistry.sol` — `_maturePrice` internal reader + `EMANotMature` (L-D19: F-04 60-day gate, reverts not returns 0) |
+| L4.1-pre | `b60a3c1` + `7b9c8f9` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D20 LOCKED (buyBoost gates + rate-scaled valuation: raw deposit→scaled-18 before EMA pricing; plain-integer BPS haircut; L4.1a/b safe-scaffold split) |
+| L4.1a | `fd56e80` | `src/incendiary/IncendiaryRegistry.sol` — `_payTokenIndex` + `_valueInAuMM` valuation internals (L-D20: rate-scaled deposit ÷ mature EMA via ScalingHelpers) |
+| L4.1b | `e489371` | `src/incendiary/IncendiaryRegistry.sol` — `buyBoost` gated quote + `BoostsNotOpen`/`PoolNotGauged`/`ZeroAmount` (L-D20: 5 gates, plain-integer BPS haircut, view scaffold) |
 
 ---
 
