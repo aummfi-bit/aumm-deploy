@@ -62,6 +62,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L-D17 | LOCKED | Storage: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]` (15% bucket); `epochPoolSkim[epoch][pool]` (additive). Crystallize cumulative-cache slots deferred L2.1→L5.3 (§12 design-before-materialize; I12). L2.1 split: L2.1a skeleton (imports+8 immutables+constructor+stub views `return 0`), L2.1b constants+settled storage (errors/events deferred to L4/L5). | L2.1 |
 | L-D18 | LOCKED | `_spotRate(payToken)` internal view; identity-match `iA`/`iX` on `getPoolData(BODENSEE_POOL).tokens` (address-sorted); spot = `(bal_X·w_A).divDown(bal_A·w_X)` on `balancesLiveScaled18` + live `getNormalizedWeights()` → 18-dec X-per-AuMM (stable-per-AuMM, L-D17); reverts `TokenNotInPool`/`ZeroSpotBalance`; feeds L3.2 EMA only. | L3.1 |
 | L-D19 | LOCKED | L3.2 EMA: `updateRailEMA(payToken)` permissionless sampler — `UnknownRail` gate ({SVZCHF,SUSDS}) → `TooEarly` cadence → `_spotRate` → seed (`seedBlock==0`) or integer smooth `(2·spot+59·ema)/61` (plain integer NOT divDown; single-step, no catch-up) → `RailEMAUpdated`. `_maturePrice(payToken)` internal reverts `EMANotMature` on unseeded/immature, else `rail.ema`. Errors `UnknownRail`/`TooEarly`/`EMANotMature`; `AureumTime` import; split L3.2a/L3.2b. | L3.2 |
+| L-D20 | LOCKED | L4.1 valuation rate-scales the raw deposit before EMA pricing (WITH_RATE pay tokens ⇒ L-D18 EMA is scaled-18): `_valueInAuMM(payToken,amount)` = `amount.toScaled18ApplyRateRoundDown(decimalScalingFactors[iX], tokenRates[iX]).divDown(_maturePrice(payToken))` (`_payTokenIndex` identity-match → `TokenNotInPool`; round-down conservative skim). `buyBoost(pool,payToken,amount) external returns (uint256 entitlement)`: gates phase (`BoostsNotOpen`) → rail (`UnknownRail`) → gauge (`PoolNotGauged`) → `amount>0` (`ZeroAmount`) → maturity (`EMANotMature`); `entitlement = value × (10_000 - HAIRCUT_BPS)/10_000` plain-integer BPS. Split L4.1a internals / L4.1b gated quote; deposit + donate + placement wire after L5. | L4.1 |
 
 ---
 
@@ -73,6 +74,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 - [x] (L1.0 pre-flight, §12) `AureumTime` epoch-boundary helper decision — RESOLVED → L-D13. Named helper selected (additive `internal pure`); params `epochIndex_` (G15-class shadow avoidance). Lands at L1.2.
 - [x] (L1.0 pre-flight, §12) der Bodensee spot-rate read mechanism — RESOLVED → L-D11. Direct `balancesLiveScaled18` + `getNormalizedWeights()` for both rails; `TVLOracle.quoteSvZCHF` rejected.
 - [x] (L1.0 pre-flight) `EmissionDistributor` I13 blast-radius sizing — RESOLVED → L-D14. 106-test cohort stays no-op via `incendiaryRegistry != address(0)` guard; new tests at L8.5 are additive only.
+- [x] (L4.1 pre-flight, §12) deposit valuation denomination — raw deposit vs rate-scaled (scaled-18) EMA — RESOLVED → L-D20. Rate-scale the raw deposit via Balancer `toScaled18ApplyRateRoundDown` (PoolData `decimalScalingFactors`/`tokenRates`, round down) before `divDown(ema)`; der Bodensee pay tokens are WITH_RATE (`DeployDerBodensee.s.sol:103-116`).
 - [ ] (resolves L8) Stage L unit cohort green — `test/unit/IncendiaryRegistry.t.sol` + `EmissionDistributor.t.sol` delivery tests.
 - [ ] (resolves L8) `StageLIntegration` fork green — buy → donate → skim → per-pool delivery + conservation invariant.
 - [ ] (resolves L9) `DeployStageL` fork green.
@@ -106,8 +108,9 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 
 ### L4 — Purchase entry + valuation (per L-D2 / L-D3 / L-D4)
 
-- **L4.1** `buyBoost(pool, payToken, amount)` gates — post-Y1 (L-D3), token ∈ {svZCHF, sUSDS} (L-D2), target pool gauge-approved (Open question Q1), EMA mature (L-D5), `amount > 0` — then valuation `value_in_AuMM_at_EMA × 95%` (L-D4). Cursor §8e.1.
-- **L4.2** deposit routing — `safeTransferFrom(buyer → BODENSEE_CHANNEL)` then `BODENSEE_CHANNEL.donate(payToken, amount)` (L-D2); then placement call. Cursor §8e.1.
+- **L4.1a** `src/incendiary/IncendiaryRegistry.sol` — valuation internals (L-D20): `_payTokenIndex(data, payToken)` identity-match (→ `TokenNotInPool`) + `_valueInAuMM(payToken, amount)` = mature EMA (`_maturePrice`) over the rate-scaled deposit (`toScaled18ApplyRateRoundDown` on `getPoolData` `decimalScalingFactors`/`tokenRates`, round down) ÷ ema; `ScalingHelpers` import + `using ScalingHelpers for uint256`. Cursor §8e.1.
+- **L4.1b** `src/incendiary/IncendiaryRegistry.sol` — `buyBoost(address pool, address payToken, uint256 amount) external returns (uint256 entitlement)`: five gates (phase `BoostsNotOpen` L-D3 → rail `UnknownRail` L-D2 → gauge `PoolNotGauged` L-D10 → `amount>0` `ZeroAmount` → maturity `EMANotMature` via `_valueInAuMM`) + `entitlement = value × (10_000 - HAIRCUT_BPS)/10_000` (L-D4 plain-integer BPS); returns the entitlement as a quote — no deposit, no placement (safe scaffold). Errors `BoostsNotOpen`/`PoolNotGauged`/`ZeroAmount` at use site. Cursor §8e.1.
+- **L4.2** `src/incendiary/IncendiaryRegistry.sol` — final wiring, executes after the L5 placement internals exist (L-D20 safe-scaffold sequencing): insert the L-D2 deposit routing (`safeTransferFrom(buyer → BODENSEE_CHANNEL)` + `BODENSEE_CHANNEL.donate(payToken, amount)`; `SafeERC20` import) + the L-D7 placement call + the `BoostPurchased` event into `buyBoost`. Cursor §8e.1.
 
 ### L5 — Placement + accounting + crystallize (per L-D6 / L-D7 / L-D9)
 
