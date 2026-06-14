@@ -7,6 +7,8 @@ import { IGaugeRegistry } from "../ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "../ccb/IMiliariumRegistry.sol";
 import { IEmissionDistributor } from "../emission/IEmissionDistributor.sol";
 import { AureumTime } from "../lib/AureumTime.sol";
+import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
+import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 /**
  * @title VotingWeight
  * @notice Value-weighted governance reader per K-D5 — a stateful poke-accumulator delivering an exact
@@ -19,9 +21,15 @@ import { AureumTime } from "../lib/AureumTime.sol";
  *      permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered Miliarium
  *      enumeration and applies the signed delta (F12/F13). The exact-fraction invariant holds because
  *      `_totalQualifiedWeight == sum of _holderWeight[*]` and distinct voters hold disjoint positions.
+ *
+ *      F-06 — every `poke` also pushes block-keyed checkpoints of the holder weight and the running total
+ *      (OZ `Checkpoints.Trace208`); `getPastVotes` / `getPastTotalSupply` read frozen weight at a past block
+ *      for `AureumGovernance` snapshot voting (numerator ≤ denominator by construction).
  */
 contract VotingWeight is IVotingWeight {
     using FixedPoint for uint256;
+    using Checkpoints for Checkpoints.Trace208;
+    using SafeCast for uint256;
     /// @notice Era 0 governance-power exponent — F-9 1/4 root (18-dec fixed-point).
     uint256 internal constant ERA0_EXPONENT = 0.25e18;
     /// @notice Era 1+ governance-power exponent — F-9 1/3 root (18-dec fixed-point).
@@ -62,10 +70,16 @@ contract VotingWeight is IVotingWeight {
     mapping(address => uint256) internal _holderWeight;
     /// @notice Running sum of every holder's checkpoint — the veto-threshold denominator per I-D17.
     uint256 internal _totalQualifiedWeight;
+    /// @notice Per-holder weight history — Governor-style block-keyed checkpoints for snapshot voting (F-06). Pushed on every `poke` delta; read via `getPastVotes`.
+    mapping(address => Checkpoints.Trace208) internal _holderWeightHistory;
+    /// @notice Total-weight history — the snapshot quorum denominator for `AureumGovernance` (F-06). Pushed on every `poke` delta; read via `getPastTotalSupply`.
+    Checkpoints.Trace208 internal _totalQualifiedWeightHistory;
     /// @notice Reverts when a zero address is supplied for an immutable dependency.
     error ZeroAddress();
     /// @notice Reverts when a zero genesis block is supplied — block 0 is not a valid genesis.
     error ZeroGenesisBlock();
+    /// @notice Reverts when `getPastVotes` / `getPastTotalSupply` is queried for the current or a future block — the checkpoint is not yet final (Governor `getPast*` semantics).
+    error FutureLookup(uint256 blockNumber);
     /// @notice Emitted when `poke` refreshes a holder's checkpoint.
     /// @param holder The holder repoked (indexed).
     /// @param oldWeight The prior checkpoint.
@@ -97,6 +111,23 @@ contract VotingWeight is IVotingWeight {
     function totalSupply() external view override returns (uint256) {
         return _totalQualifiedWeight;
     }
+    /// @notice Governor-style historical vote weight for `holder` at a past block — the frozen weight `AureumGovernance` reads at a proposal's `snapshotBlock` (F-06).
+    /// @dev `upperLookup` returns the holder's checkpoint as of the most recent `poke` at or before `blockNumber`; a holder who never poked on or before `blockNumber` reads 0. Reverts `FutureLookup` for the current or a future block.
+    /// @param holder The holder whose past weight is read.
+    /// @param blockNumber A strictly-past block (`< block.number`).
+    /// @return The holder's checkpointed weight as of `blockNumber`.
+    function getPastVotes(address holder, uint256 blockNumber) external view returns (uint256) {
+        if (blockNumber >= block.number) revert FutureLookup(blockNumber);
+        return _holderWeightHistory[holder].upperLookup(blockNumber.toUint48());
+    }
+    /// @notice Governor-style historical total qualified weight at a past block — the snapshot quorum denominator `AureumGovernance` reads at `snapshotBlock` (F-06).
+    /// @dev `upperLookup` returns the running total as of the most recent `poke` at or before `blockNumber`. The total trace is pushed with the running sum on every `poke`, so its value equals the sum of every holder's checkpoint at that block — hence `sum of getPastVotes(voter, b) <= getPastTotalSupply(b)`, the numerator-le-denominator invariant. Reverts `FutureLookup` for the current or a future block.
+    /// @param blockNumber A strictly-past block (`< block.number`).
+    /// @return The total qualified weight as of `blockNumber`.
+    function getPastTotalSupply(uint256 blockNumber) external view returns (uint256) {
+        if (blockNumber >= block.number) revert FutureLookup(blockNumber);
+        return _totalQualifiedWeightHistory.upperLookup(blockNumber.toUint48());
+    }
     /// @notice Permissionless refresh of `holder`'s checkpoint — recomputes the live aggregate over the
     ///         gauge-filtered Miliarium enumeration and applies the signed delta to both checkpoints.
     /// @dev F12/F13 signed-delta discipline via branch-on-sign with unsigned subtraction in each arm; no
@@ -120,6 +151,8 @@ contract VotingWeight is IVotingWeight {
         } else {
             _totalQualifiedWeight -= oldWeight - newWeight;
         }
+        _holderWeightHistory[holder].push(block.number.toUint48(), newWeight.toUint208());
+        _totalQualifiedWeightHistory.push(block.number.toUint48(), _totalQualifiedWeight.toUint208());
         emit WeightPoked(holder, oldWeight, newWeight);
     }
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
