@@ -225,6 +225,36 @@ it), or `—` (deferred — explain in Notes).
 
 ---
 
+## Fix design — F-06 (Stage-L) · Governor-checkpoint snapshot voting
+
+> Locks the chosen fix for F-06 (row above, Medium, Suspected, Open) BEFORE implementation, per the §12 ambiguity-gate. SUPERSEDES the WK-R.8 disposition sketch ("snapshot the quorum DENOMINATOR at `endBlock`"): that lazy-capture froze only the denominator and left a one-block `endBlock` capture surface; the chosen fix freezes BOTH numerator and denominator at a single pre-vote `snapshotBlock`, closing the F-06 inflation grief AND the WK-R.8 symmetric deflate-to-pass face, and converting F-01's live-read into a structural numerator ≤ denominator invariant. Recorded here, not as a K-D entry — a new K-D would mislabel a Stage-L whitehat fix as pre-tag build-line design. Status stays Open until the code + PoC land; the resolution commit then flips the F-06 row to Fixed with the hash + test path per the two-commit discipline below. Fix-forward on `stage-l`, no Stage-K re-tag (I13-class add-on, F-01..F-04 precedent). OZ `Checkpoints.Trace208` / `upperLookup` / `SafeCast` signatures are confirmed at the first `VotingWeight` `forge build` (G10/G14 compile-probe discipline).
+
+**Design class — Governor-style historical checkpointing.** `VotingWeight` gains per-holder + total weight HISTORY; `AureumGovernance` reads voter weight and the quorum denominator at a frozen `snapshotBlock = startBlock + VOTING_DELAY_BLOCKS`, so post-snapshot `poke`s move neither side.
+
+1. **`VotingWeight` checkpoint history.** Add two OZ `Checkpoints.Trace208` traces (`lib/openzeppelin-contracts/contracts/utils/structs/Checkpoints.sol`, pinned 5.6.1) — one per-holder, one for the running total. `poke` pushes both on every non-no-op delta: key `block.number` → `SafeCast.toUint48`, value the new weight → `SafeCast.toUint208` (reverts on overflow, never truncates). Add `getPastVotes(address holder, uint256 blockNumber)` + `getPastTotalSupply(uint256 blockNumber)` via `upperLookup`, each reverting `FutureLookup(blockNumber)` when `blockNumber >= block.number`. The live `governanceWeight` / `totalSupply` / `poke` surface is UNCHANGED — the veto path keeps live reads (see scope).
+   - Bound: `_positionPower` weight is `tvlEMA^(1/4..1/3) · share · timeFactor` ≈ ≤1e21/holder, total ≪ `uint208` max (≈4.1e62) — `SafeCast` is the fail-closed belt, not an expected path.
+   - Invariant: the total trace is pushed with the running sum on every `poke`, so its value at any block = Σ holders' checkpointed weight at that block; therefore Σ over voters of `getPastVotes(h, snap)` ≤ `getPastTotalSupply(snap)` — numerator ≤ denominator BY CONSTRUCTION. This is the F-06 closure and the durable F-01 fix.
+
+2. **`AureumGovernance` snapshot + voting delay.** `VOTING_DELAY_BLOCKS = AureumTime.BLOCKS_PER_DAY` (7_200, ~1 day; parity with `EXECUTION_TIMELOCK_BLOCKS = 2 · BLOCKS_PER_DAY`). Struct `Proposal`: REPLACE `snapshotTotalSupply` (uint256) → `snapshotBlock` (uint256), 1-for-1, no slot-layout growth. `_createProposal` sets `snapshotBlock = start + VOTING_DELAY_BLOCKS` and `end = snapshotBlock + VOTING_PERIOD_BLOCKS`, and DROPS the live `VOTING_WEIGHT.totalSupply()` read. `ProposalCreated` emits `snapshotBlock` in place of `snapshotTotalSupply`. Enum `ProposalState`: APPEND `Pending` (new value 6 — preserves Active=0..Expired=5 for existing raw-uint consumers).
+
+3. **`state()` ordering.** `Executed` → `Pending` (`block.number < snapshotBlock`) → `Active` (`snapshotBlock <= block.number <= endBlock`) → post-`endBlock` tally (`_voteSucceeded` → `Defeated` / `Succeeded` / `Queued` / `Expired`). Adds the lower bound at `snapshotBlock` that today's check (`block.number <= endBlock` only) lacks. Non-existent proposals (all-zero fields) keep deriving to `Defeated` (the `block.number < snapshotBlock` test is false at `snapshotBlock == 0`, so they fall through to the tally path).
+
+4. **`castVote` / `_voteSucceeded` snapshot reads.** `castVote`: gate on Active (`block.number < snapshotBlock || block.number > endBlock` → `ProposalNotActive`); REMOVE the `VOTING_WEIGHT.poke(msg.sender)` call; read `weight = VOTING_WEIGHT.getPastVotes(msg.sender, p.snapshotBlock)` (`snapshotBlock < block.number` holds inside Active, so never `FutureLookup`). `hasVoted` CEI guard unchanged. `_voteSucceeded`: denominator reads `VOTING_WEIGHT.getPastTotalSupply(p.snapshotBlock)` in place of live `totalSupply()`.
+
+5. **`IVotingWeight`.** Add `getPastVotes` + `getPastTotalSupply`; keep the existing three members. The `poke` NatSpec ("called on `msg.sender` immediately before reading `governanceWeight`") is now STALE — `castVote` no longer pokes; rewrite that NatSpec to the snapshot semantics in the interface sub-step.
+
+**Load-bearing semantics (bake into Must-match at materialization):**
+- **Pre-snapshot `poke` is load-bearing.** A voter's counted weight is the last checkpoint AT OR BEFORE `snapshotBlock`; a `poke` during the Active window updates live state + future checkpoints but NOT this proposal's vote. The ~1-day delay is the establish-weight window; permissionless third-party `poke` (K-D5) still works. This AMENDS K-D6b's "poke-at-vote" semantics, justified by the whitehat fix.
+- **+1-day lifecycle.** Propose→close grows from ~14 days (`VOTING_PERIOD_BLOCKS`) to ~15 (delay + period) — intentional Governor-delay extension of K-D6f, not drift.
+- **G16 blast radius — exactly three mocks** (`grep -rn "is IVotingWeight"`): `test/unit/AureumGovernance.t.sol`, `test/unit/VaultClassRegistry.t.sol`, `test/fork/mocks/StageGMocks.sol` — each gains stub `getPastVotes` / `getPastTotalSupply`. Re-grep at the interface sub-step per G16.
+- **`ProposalCreated` field change** — `snapshotTotalSupply` → `snapshotBlock`; the AureumGovernance test event assert + any off-chain indexer update with it.
+
+**Scope boundary (confirmed).** F-06 stays scoped to `AureumGovernance`. `VaultClassRegistry.vetoProposal` (G-D9, `stage-g-complete`) keeps its LIVE `governanceWeight` / `totalSupply` reads — a different consumer (cumulative accrual over `VETO_WINDOW_BLOCKS`, no `poke`, no post-`endBlock` frozen-numerator geometry), so the F-06 attack does not exist there. The veto path's live-denominator surface is logged as a SEPARATE carry-forward observation (→ a future `F-NN` if tracked), not folded into F-06's blast radius.
+
+**Materialization order (one §8e.1 each, F-06 before F-05):** (i) `VotingWeight` checkpoint history + `getPast*`; (ii) `IVotingWeight` two members + `poke` NatSpec rewrite; (iii) `AureumGovernance` struct / enum / `_createProposal` / `state` / `castVote` / `_voteSucceeded`; (iv) the three `is IVotingWeight` mocks; (v) F-06 PoC `test/whitehat/F06_*.t.sol` (post-snapshot `poke` no longer moves the tally) + regression; (vi) resolution commit flips the F-06 row → Fixed.
+
+---
+
 ## Commit discipline
 
 Follows the project's two-commit pattern:
