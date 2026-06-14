@@ -10,6 +10,7 @@ import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaul
 import {IWeightedPool} from "@balancer-labs/v3-interfaces/contracts/pool-weighted/IWeightedPool.sol";
 import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
+import {ScalingHelpers} from "@balancer-labs/v3-solidity-utils/contracts/helpers/ScalingHelpers.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title IncendiaryRegistry — Stage L concrete producer for the canonical F-2 Incendiary Boost
@@ -26,6 +27,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///      `setIncendiaryRegistry`, the distributor defaults to `address(0)` (zero skim) per H-D29.
 contract IncendiaryRegistry is IIncendiaryRegistry {
     using FixedPoint for uint256;
+    using ScalingHelpers for uint256;
 
     /* ---------- Constants ---------- */
 
@@ -276,5 +278,43 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         if (balX == 0) revert ZeroSpotBalance(payToken);
 
         spotRate = (balX * weights[iA]).divDown(balA * weights[iX]);
+    }
+
+    /* ---------- Internal: valuation (L4.1 / L-D20) ---------- */
+
+    /// @notice Resolve `payToken`'s index in der Bodensee's token set — the rate / decimal-scaling
+    ///         lookup key for the L-D20 deposit valuation.
+    /// @dev Identity-match on `data.tokens` (address-sorted, deploy-dependent per L-D18); reverts
+    ///      `TokenNotInPool` if `payToken` is absent (the {SVZCHF, SUSDS} whitelist is gated at `buyBoost`).
+    /// @param data The der Bodensee `PoolData` (one `getPoolData` read, shared with `_valueInAuMM`).
+    /// @param payToken The pay-token rail (svZCHF / sUSDS).
+    /// @return iX `payToken`'s index in `data.tokens` / `data.tokenRates` / `data.decimalScalingFactors`.
+    function _payTokenIndex(PoolData memory data, address payToken) internal pure returns (uint256 iX) {
+        for (uint256 i = 0; i < data.tokens.length; i++) {
+            if (address(data.tokens[i]) == payToken) return i;
+        }
+        revert TokenNotInPool(payToken);
+    }
+
+    /// @notice AuMM-wei value of an `amount` deposit of `payToken`, priced at the mature rail EMA — the
+    ///         L4.1 valuation basis the L-D4 haircut applies to.
+    /// @dev L-D20. `_maturePrice` supplies the mature 60-day EMA (reverts `EMANotMature` on unseeded /
+    ///      immature — the L-D5 maturity gate rides the valuation). der Bodensee's stables are `WITH_RATE`,
+    ///      so the EMA is scaled-18 pay-token per AuMM (L-D18); the raw deposit is rate-scaled to the same
+    ///      basis before dividing. `toScaled18ApplyRateRoundDown` applies the index-aligned decimal factor
+    ///      + rate-provider rate (round down — conservative skim), then `divDown(ema)` yields AuMM-wei. One
+    ///      `getPoolData` read; `_payTokenIndex` resolves the rate / scaling index (`TokenNotInPool` on miss).
+    /// @param payToken The pay-token rail (svZCHF / sUSDS) the deposit is denominated in.
+    /// @param amount The raw deposit amount in `payToken`'s native units.
+    /// @return valueInAuMM The deposit's value in AuMM-wei (18-dec) at the mature EMA.
+    function _valueInAuMM(address payToken, uint256 amount) internal view returns (uint256 valueInAuMM) {
+        uint256 ema = _maturePrice(payToken);
+        PoolData memory data = VAULT_EXPLORER.getPoolData(BODENSEE_POOL);
+        uint256 iX = _payTokenIndex(data, payToken);
+        uint256 amountScaled18 = amount.toScaled18ApplyRateRoundDown(
+            data.decimalScalingFactors[iX],
+            data.tokenRates[iX]
+        );
+        valueInAuMM = amountScaled18.divDown(ema);
     }
 }
