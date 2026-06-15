@@ -313,4 +313,23 @@ contract IncendiaryRegistryTest is Test {
         assertEq(registry.epochSkimAllocated(2), 1_000e18);
         assertEq(registry.epochPoolSkim(2, poolB), 1_000e18);
     }
+
+    function test_extEpochOverlapBlocks_fullEpoch() public {
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        uint256 eEnd = AureumTime.epochEndBlock(GENESIS_BLOCK, 1);
+        // query spans the entire epoch — overlap is BLOCKS_PER_EPOCH
+        assertEq(registry.extEpochOverlapBlocks(1, eStart, eEnd), 100_800);
+    }
+
+    function test_extEpochOverlapBlocks_partial() public {
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        // inclusive [eStart, eStart + 49_999] is 50_000 blocks inside epoch 1
+        assertEq(registry.extEpochOverlapBlocks(1, eStart, eStart + 49_999), 50_000);
+    }
+
+    function test_extEpochOverlapBlocks_disjoint() public {
+        uint256 e2Start = AureumTime.epochStartBlock(GENESIS_BLOCK, 2);
+        // query window sits entirely in epoch 2 — no overlap with epoch 1
+        assertEq(registry.extEpochOverlapBlocks(1, e2Start, e2Start + 100), 0);
+    }
 }
