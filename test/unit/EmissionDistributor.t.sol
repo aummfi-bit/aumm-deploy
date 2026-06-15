@@ -1551,4 +1551,54 @@ contract EmissionDistributorTest is Test {
         vm.expectRevert(IEmissionDistributor.MintRouterNotSet.selector);
         fresh.claim(POOL_A, USER_1);
     }
+
+    /* ---------- L-D25 boost-delivery leg tests (L7 / L-D25) ---------- */
+
+    function test_BoostDelivery_HappyPath_AddsToAccRewardPerLPNoOraclePush() public {
+        address registry = address(0xBEEF);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), GENESIS_BLOCK_ + 1),
+            abi.encode(uint256(1e18))
+        );
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 1e16);
+        assertEq(distributor.poolBoostCursor(POOL_A), GENESIS_BLOCK_ + 1);
+        // L-D15 — boost delivery makes NO recordEmissions push
+        assertEq(effOracle.callsLength(), 0);
+    }
+
+    function test_BoostDelivery_ZeroLPStranded_CursorStillAdvances() public {
+        address registry = address(0xBEEF);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), GENESIS_BLOCK_ + 1),
+            abi.encode(uint256(1e18))
+        );
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 0);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
+        // cursor advances regardless — L-D25 always-advance while registry set
+        assertEq(distributor.poolBoostCursor(POOL_A), GENESIS_BLOCK_ + 1);
+    }
+
+    function test_BoostDelivery_DefaultRegistryDormant_CursorNeverAdvances() public {
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        // registry never set — boost leg fully dormant
+        assertEq(distributor.poolBoostCursor(POOL_A), 0);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
+    }
 }
