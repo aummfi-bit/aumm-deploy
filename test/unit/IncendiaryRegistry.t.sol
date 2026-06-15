@@ -354,4 +354,43 @@ contract IncendiaryRegistryTest is Test {
         // from > to returns 0 before any bucket read
         assertEq(registry.integratedSkim(2_000_000, 1_000_000), 0);
     }
+
+    function test_boostIntegral_perPoolAndUnknown() public {
+        aumm.setRate(1e18);
+        registry.extPlaceBoost(address(venue), 100_800);
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        uint256 eEnd = AureumTime.epochEndBlock(GENESIS_BLOCK, 1);
+        assertEq(registry.boostIntegral(address(venue), eStart, eEnd), 100_800);
+        // unknown pool — zero bucket ⇒ 0
+        assertEq(registry.boostIntegral(makeAddr("unknownPool"), eStart, eEnd), 0);
+    }
+
+    function test_conservation_exactWhenDivisible() public {
+        aumm.setRate(1e18);
+        address poolB = makeAddr("poolB");
+        registry.extPlaceBoost(address(venue), 100_800);
+        registry.extPlaceBoost(poolB, 201_600);
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        uint256 eEnd = AureumTime.epochEndBlock(GENESIS_BLOCK, 1);
+        uint256 global = registry.integratedSkim(eStart, eEnd);
+        uint256 a = registry.boostIntegral(address(venue), eStart, eEnd);
+        uint256 b = registry.boostIntegral(poolB, eStart, eEnd);
+        assertLe(a + b, global);
+        // both buckets divide BLOCKS_PER_EPOCH cleanly — exact tiling
+        assertEq(a + b, global);
+    }
+
+    function test_conservation_strictWithFlooringDust() public {
+        aumm.setRate(1e18);
+        address poolB = makeAddr("poolB");
+        registry.extPlaceBoost(address(venue), 151_200);
+        registry.extPlaceBoost(poolB, 151_200);
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        uint256 eEnd = AureumTime.epochEndBlock(GENESIS_BLOCK, 1);
+        uint256 global = registry.integratedSkim(eStart, eEnd);
+        uint256 a = registry.boostIntegral(address(venue), eStart, eEnd);
+        uint256 b = registry.boostIntegral(poolB, eStart, eEnd);
+        // per-pool flooring — L-D23 invariant is ≤, not ==
+        assertLt(a + b, global);
+    }
 }
