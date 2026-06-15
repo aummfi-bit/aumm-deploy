@@ -172,4 +172,28 @@ contract IncendiaryRegistryTest is Test {
         assertEq(ema, 8e17);
         assertEq(seedBlock, GENESIS_BLOCK);
     }
+
+    function _seedAndMature(address rail) internal {
+        registry.updateRailEMA(rail);
+        vm.roll(block.number + 432_000);
+    }
+
+    function test_extValueInAuMM_svzchf() public {
+        _seedAndMature(address(svzchf));
+        // ema 1e18, scaling 1, rate 1e18 — value equals amount
+        assertEq(registry.extValueInAuMM(address(svzchf), 1000e18), 1000e18);
+    }
+
+    function test_extValueInAuMM_susds() public {
+        _seedAndMature(address(susds));
+        // ema 8e17 — 1000e18·1e18 / 8e17 = 1250e18 AuMM-wei
+        assertEq(registry.extValueInAuMM(address(susds), 1000e18), 1250e18);
+    }
+
+    function test_extValueInAuMM_revert_immatureEMA() public {
+        registry.updateRailEMA(address(svzchf));
+        vm.roll(GENESIS_BLOCK + 7_200);
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.EMANotMature.selector, address(svzchf), 7_200, 432_000));
+        registry.extValueInAuMM(address(svzchf), 1000e18);
+    }
 }
