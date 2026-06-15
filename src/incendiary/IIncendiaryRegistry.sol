@@ -26,11 +26,11 @@ interface IIncendiaryRegistry {
     ///      AuMM-wei (18-decimal fixed-point). The Stage H distributor reads this in `_phaseAwareBody`'s
     ///      continuous-leg sub-interval body (for `sub_from > year1EndBlock`) and subtracts from `rate × n`
     ///      to derive the LP-tranche contribution per H-D26 conservation invariant `LP_integral +
-    ///      Bodensee_apsum + Incendiary_integral = blockEmissionRate × n`. Concrete Stage L implementation
-    ///      under `src/incendiary/` is expected to use epoch-bucketed cumulative sums to keep
-    ///      `integratedSkim` O(1); a permissionless `crystallize(from, to)` cache-update helper on the
-    ///      registry side is the standard pattern. The `view` mutability signals read-only to the
-    ///      distributor — cache-update functions live outside this interface and outside the distributor's
+    ///      Bodensee_apsum + Incendiary_integral = blockEmissionRate × n`. The concrete Stage L
+    ///      implementation under `src/incendiary/` direct-walks its per-epoch skim buckets per L-D23 —
+    ///      the interval is era-bounded by the distributor's `_lpTrancheIntegral` era-split, so no
+    ///      cumulative cache is required. The `view` mutability signals read-only to the distributor;
+    ///      placement and accounting functions live outside this interface and outside the distributor's
     ///      path. Reverting from this function reverts the distributor's entire accrual per H-D29 (no
     ///      `try/catch` wrap; conservative against silent skim-suppression that would over-credit LPs past
     ///      the 21M cap).
