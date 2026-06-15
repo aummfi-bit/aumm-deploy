@@ -356,4 +356,44 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         );
         valueInAuMM = amountScaled18.divDown(ema);
     }
+
+    /* ---------- Internal: epoch cap basis (L5.1 / L-D21) ---------- */
+
+    /// @notice Gross AuMM-wei emission integrated over the whole of epoch `epoch` — the L-D6 cap basis.
+    /// @dev L-D21. Era-split cursor walk mirroring `EmissionDistributor._lpTrancheIntegral`
+    ///      (`EmissionDistributor.sol:335-349`) over `[epochStartBlock, epochEndBlock]` (the L-D13
+    ///      helpers), summing `blockEmissionRate(cursor) × subLen` per era sub-interval. An epoch
+    ///      (`BLOCKS_PER_EPOCH` = 100_800) straddles at most one halving (`BLOCKS_PER_ERA` = 10_512_000),
+    ///      so the loop runs at most two iterations; `blockEmissionRate` is piecewise-constant within an
+    ///      era (OQ-5 / §xxix) so the per-sub-interval rate snapshot is exact. Integral form (not
+    ///      `rate × BLOCKS_PER_EPOCH`) precisely because the epoch may straddle a halving (L-D6).
+    ///      `AUMM.blockEmissionRate` is the only external call; `cursor >= GENESIS_BLOCK` for every epoch
+    ///      (epoch >= 0) so the pre-genesis zero branch is never taken.
+    /// @param epoch The zero-indexed epoch whose gross emission to integrate.
+    /// @return integral The gross AuMM-wei emission over the epoch's inclusive block window.
+    function _epochEmissionIntegral(uint256 epoch) internal view returns (uint256 integral) {
+        uint256 to = AureumTime.epochEndBlock(GENESIS_BLOCK, epoch);
+        uint256 cursor = AureumTime.epochStartBlock(GENESIS_BLOCK, epoch);
+
+        while (cursor <= to) {
+            uint256 era = AureumTime.eraIndex(GENESIS_BLOCK, cursor);
+            uint256 eraEnd = AureumTime.nthHalvingBlock(GENESIS_BLOCK, era + 1) - 1;
+            uint256 subTo = eraEnd < to ? eraEnd : to;
+            uint256 rate = AUMM.blockEmissionRate(cursor);
+            integral += rate * (subTo - cursor + 1);
+            cursor = subTo + 1;
+        }
+    }
+
+    /// @notice The aggregate boost cap for epoch `epoch` — 15% of the epoch's gross emission integral (L-D6).
+    /// @dev L-D21. `_epochEmissionIntegral(epoch) × BOOST_CAP_BPS / 10_000` as plain-integer basis-points
+    ///      (the L-D4 / L-D20 BPS convention — NOT `divDown`; `BOOST_CAP_BPS` is a rational fraction, not a
+    ///      fixed-point scalar). One shared 15% bucket every pool draws from per epoch — the anti-drought
+    ///      guard for ordinary LPs (L-D6); the L5.2 `_placeBoost` walk fills `epochSkimAllocated[epoch]` up
+    ///      to this ceiling.
+    /// @param epoch The zero-indexed epoch whose cap to compute.
+    /// @return cap The aggregate AuMM-wei boost ceiling for the epoch.
+    function _epochCap(uint256 epoch) internal view returns (uint256 cap) {
+        cap = (_epochEmissionIntegral(epoch) * BOOST_CAP_BPS) / 10_000;
+    }
 }
