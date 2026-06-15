@@ -15,7 +15,7 @@ import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *         veto fraction (`vetoSupport <= totalSupply` by construction). Implements `IVotingWeight`
  *         (the I9.1 stub per I-D17) consumed by `VaultClassRegistry.vetoProposal`.
  * @dev F-9 pool-aggregate power `tvlEMA(pool)^(1/4 in Era 0, 1/3 in Era 1+) * (userLP / poolTotalLP) * min(time, ON_RAMP)/ON_RAMP` over the
- *      EmissionDistributor recorder clock (OQ-25 anti-flash-loan — hook-recorded shares, never spot BPT; F-04 — the 60-day TVL EMA, never spot tvl;
+ *      EmissionDistributor recorder clock (OQ-25 anti-flash-loan — hook-recorded shares, never spot BPT; F-04 — the 60-day TVL EMA, never spot tvl; F-05 — that EMA must also be fresh, refreshed within one epoch, never a long-stale seed;
  *      F-02 — the root applies to the pool aggregate and the holder leg is linear, so weight is invariant under splitting a position across wallets). `governanceWeight`
  *      and `totalSupply` are O(1) views over two checkpoints (`_holderWeight` / `_totalQualifiedWeight`);
  *      permissionless `poke(holder)` recomputes the holder aggregate over the gauge-filtered Miliarium
@@ -36,6 +36,8 @@ contract VotingWeight is IVotingWeight {
     uint256 internal constant ERA1_PLUS_EXPONENT = FixedPoint.ONE / 3;
     /// @notice A pool's TVL EMA must have been seeding for 60 days (matching the EMASampler 60-day window) before the pool confers governance weight — F-04 anti-spot-pump floor.
     uint256 internal constant EMA_MATURITY_BLOCKS = 60 * AureumTime.BLOCKS_PER_DAY;
+    /// @notice A pool's TVL EMA must have been refreshed within EMA_STALENESS_BLOCKS (14 days, one epoch) for the pool to confer governance weight — F-05 anti-stale-seed floor: EMA_MATURITY_BLOCKS gates seed age, this gates seed freshness, so a single ancient seed never confers weight on a long-dormant pool.
+    uint256 internal constant EMA_STALENESS_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
     // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
     // for protocol-critical addresses, matching upstream-forked files. See
     // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
@@ -149,11 +151,11 @@ contract VotingWeight is IVotingWeight {
         emit WeightPoked(holder, oldWeight, newWeight);
     }
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
-    /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), or has never seeded, confers 0 (F-04 anti-spot-pump); (c) clock from the recorder
+    /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity + freshness — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), has never seeded, or was last refreshed more than EMA_STALENESS_BLOCKS (14 days) ago confers 0 (F-04 anti-spot-pump; F-05 anti-stale-seed); (c) clock from the recorder
     ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
     ///      `userLP / poolTotalLP` (OQ-25), timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
     ///      poolPower * share * timeFactor — the holder leg is linear, so the position is split-invariant across wallets (F-02). Every
-    ///      degenerate input (immature/never-seeded EMA, zero LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
+    ///      degenerate input (immature/never-seeded/stale EMA, zero LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
     /// @param holder The holder.
     /// @return The position's governance power (18-dec).
@@ -162,6 +164,7 @@ contract VotingWeight is IVotingWeight {
         uint256 seedBlock = EMA_SAMPLER.emaSeedBlock(pool);
         if (seedBlock == 0) return 0;
         if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return 0;
+        if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return 0;
         uint256 eqb = RECORDER.effectiveQualBlock(pool, holder);
         if (eqb == 0) return 0;
         uint256 timeInPool = block.number - eqb;

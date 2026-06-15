@@ -40,6 +40,8 @@ contract F04_SpotTvlManipulationTest is Test {
         recorder.setUserLP(POOL, ATTACKER, 1e18);
         recorder.setPoolTotalLP(POOL, 1e18);
         recorder.setEffectiveQualBlock(POOL, ATTACKER, START_BLOCK - AureumTime.ON_RAMP_PERIOD_BLOCKS);
+        // F-05 freshness gate: stamp the EMA as updated now; per-test seed blocks still drive the maturity scenarios.
+        emaSampler.setLastUpdateBlock(POOL, block.number);
     }
 
     function _pokeAndRead(uint256 emaValue) private returns (uint256) {

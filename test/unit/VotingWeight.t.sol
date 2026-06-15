@@ -20,6 +20,10 @@ contract MockEMASampler is IEMASampler {
     function setSeedBlock(address pool, uint256 blockNo) external {
         emaSeedBlock[pool] = blockNo;
     }
+
+    function setLastUpdateBlock(address pool, uint256 blockNo) external {
+        lastEMAUpdateBlock[pool] = blockNo;
+    }
 }
 /// @notice Test-only mock for `IGaugeRegistry` — settable approval; all other surface stubbed per G-D24 backfill.
 contract MockGaugeRegistry is IGaugeRegistry {
@@ -178,6 +182,7 @@ contract VotingWeightTest is Test {
         gaugeReg.setApproved(pool, gaugeApproved);
         emaSampler.setTvlEMA(pool, tvlValue);
         emaSampler.setSeedBlock(pool, 1);
+        emaSampler.setLastUpdateBlock(pool, block.number);
         recorder.setUserLP(pool, holder, lp);
         recorder.setPoolTotalLP(pool, totalLP);
         recorder.setEffectiveQualBlock(pool, holder, eqb);

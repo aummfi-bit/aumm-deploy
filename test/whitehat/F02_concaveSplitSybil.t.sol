@@ -41,6 +41,8 @@ contract F02_ConcaveSplitSybilTest is Test {
         gaugeReg.setApproved(POOL, true);
         emaSampler.setTvlEMA(POOL, TVL);
         emaSampler.setSeedBlock(POOL, 1);
+        // F-05 freshness gate: stamp the EMA as updated now so the mature seed (block 1) confers weight.
+        emaSampler.setLastUpdateBlock(POOL, block.number);
         recorder.setPoolTotalLP(POOL, POOL_TOTAL_LP);
     }
 
