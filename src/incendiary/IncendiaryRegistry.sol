@@ -109,6 +109,12 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @param blockNumber block.number at the update.
     event RailEMAUpdated(address indexed payToken, uint256 spot, uint256 newEMA, uint256 blockNumber);
 
+    /// @notice Emitted once per epoch a boost purchase allocates into, by `_placeBoost` (L-D22 / L-D7).
+    /// @param pool   The boosted pool the allocation is directed to.
+    /// @param epoch  The epoch the allocation lands in (FCFS walk-forward from `epochIndex(now) + 1`).
+    /// @param amount The AuMM-wei allocated into this epoch's bucket for `pool`.
+    event BoostPlaced(address indexed pool, uint256 indexed epoch, uint256 amount);
+
     /* ---------- Errors ---------- */
 
     /// @notice A constructor address argument was the zero address.
@@ -395,5 +401,41 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @return cap The aggregate AuMM-wei boost ceiling for the epoch.
     function _epochCap(uint256 epoch) internal view returns (uint256 cap) {
         cap = (_epochEmissionIntegral(epoch) * BOOST_CAP_BPS) / 10_000;
+    }
+
+    /* ---------- Internal: placement (L5.2 / L-D22) ---------- */
+
+    /// @notice FCFS walk-forward placement of an `entitlement` boost for `pool` into the per-epoch
+    ///         additive buckets, subject to the L-D6 aggregate 15% cap.
+    /// @dev L-D22 / L-D7. Starts at the next epoch boundary `e = epochIndex(now) + 1` (the current
+    ///      partially-elapsed epoch is never written — FCFS from the next boundary, L-D7) and, per epoch,
+    ///      allocates `min(remaining, _epochCap(e) − epochSkimAllocated[e])` into both the shared 15%
+    ///      bucket `epochSkimAllocated[e]` (L-D6) and the per-(epoch,pool) additive delivery bucket
+    ///      `epochPoolSkim[e][pool]` (L-D9 stacking), carrying the remainder to `e + 1` until exhausted. A
+    ///      full epoch (`capLeft == 0`) allocates nothing and is skipped; `BoostPlaced` fires only for a
+    ///      non-zero allocation. `_epochCap(e)` is time-invariant (pure in `e` + the halving schedule) and
+    ///      the bucket only grows by `alloc <= capLeft`, so the subtraction never underflows. The per-block
+    ///      delivery stream for an epoch is that epoch's bucket / `BLOCKS_PER_EPOCH`, read back by the L6
+    ///      views (L-D23). Termination: far-future epochs are empty with a positive cap (emission is
+    ///      positive for the protocol's life), so a boost spans at most `ceil(entitlement / per-epoch-cap)`
+    ///      epochs — bounded by the buyer's gas, no max-span (L-D7 accepted). `entitlement == 0` places
+    ///      nothing (the loop never enters).
+    /// @param pool The gauge-approved target pool (gated at `buyBoost`, L-D10).
+    /// @param entitlement The post-haircut AuMM-wei boost to place (the `buyBoost` quote, L-D4 / L-D20).
+    function _placeBoost(address pool, uint256 entitlement) internal {
+        uint256 remaining = entitlement;
+        uint256 e = AureumTime.epochIndex(GENESIS_BLOCK, block.number) + 1;
+
+        while (remaining > 0) {
+            uint256 capLeft = _epochCap(e) - epochSkimAllocated[e];
+            if (capLeft > 0) {
+                uint256 alloc = remaining < capLeft ? remaining : capLeft;
+                epochSkimAllocated[e] += alloc;
+                epochPoolSkim[e][pool] += alloc;
+                remaining -= alloc;
+                emit BoostPlaced(pool, e, alloc);
+            }
+            e++;
+        }
     }
 }
