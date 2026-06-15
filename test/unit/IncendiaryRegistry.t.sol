@@ -249,4 +249,24 @@ contract IncendiaryRegistryTest is Test {
         assertEq(svzchf.balanceOf(buyer), 0);
         assertEq(svzchf.balanceOf(address(channel)), amount);
     }
+
+    function test_extEpochEmissionIntegral_flat() public {
+        uint256 rate = 1e18;
+        aumm.setRate(rate);
+        // epoch 5 is wholly inside era 0 — single flat-rate slice over BLOCKS_PER_EPOCH
+        assertEq(registry.extEpochEmissionIntegral(5), rate * 100_800);
+    }
+
+    function test_extEpochCap_flat() public {
+        uint256 rate = 1e18;
+        aumm.setRate(rate);
+        uint256 integral = rate * 100_800;
+        uint256 expectedCap = (integral * 1_500) / 10_000;
+        assertEq(registry.extEpochCap(5), expectedCap);
+    }
+
+    function test_extEpochCap_zeroWhenRateZero() public {
+        // default MockAuMMRate rate is zero — zero cap (would hang _placeBoost without L8.2b setRate)
+        assertEq(registry.extEpochCap(5), 0);
+    }
 }
