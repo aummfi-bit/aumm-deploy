@@ -89,4 +89,87 @@ contract IncendiaryRegistryTest is Test {
         // 600_000·0.4 / (1_000_000·0.3) = 0.8 — sUSDS-per-AuMM spot at the fixture weights
         assertEq(registry.extSpotRate(address(susds)), 8e17);
     }
+
+    function test_updateRailEMA_seed_svzchf() public {
+        assertEq(registry.updateRailEMA(address(svzchf)), 1e18);
+        (uint256 ema, uint256 lastSampleBlock, uint256 seedBlock) = registry.railEMA(address(svzchf));
+        assertEq(ema, 1e18);
+        assertEq(lastSampleBlock, GENESIS_BLOCK);
+        assertEq(seedBlock, GENESIS_BLOCK);
+    }
+
+    function test_updateRailEMA_smooth_svzchf() public {
+        assertEq(registry.updateRailEMA(address(svzchf)), 1e18);
+
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = IERC20(address(aumm));
+        tokens[1] = IERC20(address(svzchf));
+        tokens[2] = IERC20(address(susds));
+
+        uint256[] memory balances2 = new uint256[](3);
+        balances2[0] = BAL_AUMM;
+        balances2[1] = 1_500_000e18;
+        balances2[2] = BAL_SUSDS;
+
+        uint256[] memory rates = new uint256[](3);
+        rates[0] = 1e18;
+        rates[1] = 1e18;
+        rates[2] = 1e18;
+
+        uint256[] memory scaling = new uint256[](3);
+        scaling[0] = 1;
+        scaling[1] = 1;
+        scaling[2] = 1;
+
+        explorer.setPoolData(address(venue), tokens, balances2, rates, scaling);
+
+        vm.roll(GENESIS_BLOCK + 7_200);
+        uint256 newSpot = 2e18;
+        uint256 seededEMA = 1e18;
+        uint256 expectedEMA = (2 * newSpot + 59 * seededEMA) / 61;
+        assertEq(registry.updateRailEMA(address(svzchf)), expectedEMA);
+    }
+
+    function test_updateRailEMA_revert_tooEarly() public {
+        registry.updateRailEMA(address(svzchf));
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.TooEarly.selector, GENESIS_BLOCK, GENESIS_BLOCK + 7_200));
+        registry.updateRailEMA(address(svzchf));
+    }
+
+    function test_updateRailEMA_revert_unknownRail() public {
+        address fake = makeAddr("fake");
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.UnknownRail.selector, fake));
+        registry.updateRailEMA(fake);
+    }
+
+    function test_updateRailEMA_event() public {
+        vm.expectEmit(true, false, false, true);
+        emit IncendiaryRegistry.RailEMAUpdated(address(svzchf), 1e18, 1e18, GENESIS_BLOCK);
+        registry.updateRailEMA(address(svzchf));
+    }
+
+    function test_extMaturePrice_revert_unseeded() public {
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.EMANotMature.selector, address(svzchf), 0, 432_000));
+        registry.extMaturePrice(address(svzchf));
+    }
+
+    function test_extMaturePrice_revert_immature() public {
+        registry.updateRailEMA(address(svzchf));
+        vm.roll(GENESIS_BLOCK + 7_200);
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.EMANotMature.selector, address(svzchf), 7_200, 432_000));
+        registry.extMaturePrice(address(svzchf));
+    }
+
+    function test_extMaturePrice_mature() public {
+        registry.updateRailEMA(address(svzchf));
+        vm.roll(GENESIS_BLOCK + 432_000);
+        assertEq(registry.extMaturePrice(address(svzchf)), 1e18);
+    }
+
+    function test_updateRailEMA_seed_susds() public {
+        assertEq(registry.updateRailEMA(address(susds)), 8e17);
+        (uint256 ema,, uint256 seedBlock) = registry.railEMA(address(susds));
+        assertEq(ema, 8e17);
+        assertEq(seedBlock, GENESIS_BLOCK);
+    }
 }
