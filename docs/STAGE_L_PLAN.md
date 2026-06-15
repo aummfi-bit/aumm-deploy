@@ -22,7 +22,9 @@ Stage L ships the Incendiary Boost producer (canonical F-2): a registry that sel
 | `src/lib/AureumTime.sol` | EDIT? (epoch-boundary helper; L1.0 §12 gate) | L1.2 | +~10 |
 | `src/incendiary/IncendiaryRegistry.sol` | NEW | L2—L6 | ~340 |
 | `src/emission/EmissionDistributor.sol` | EDIT (I13 per-pool boost leg) | L7.1 | +~35 |
-| `test/unit/IncendiaryRegistry.t.sol` | NEW | L8.1—L8.4 | ~360 |
+| `test/fork/mocks/StageLMocks.sol` | NEW | L8.1a | ~90 |
+| `test/unit/harness/IncendiaryRegistryHarness.sol` | NEW | L8.1b | ~35 |
+| `test/unit/IncendiaryRegistry.t.sol` | NEW | L8.1c—L8.4 | ~360 |
 | `test/unit/EmissionDistributor.t.sol` | EDIT (delivery + invariant tests) | L8.5 | +~90 |
 | `test/fork/StageLIntegration.t.sol` | NEW | L8.6 | ~190 |
 | `script/DeployStageL.s.sol` | NEW | L9.1 | ~75 |
@@ -39,7 +41,7 @@ Stage L ships the Incendiary Boost producer (canonical F-2): a registry that sel
 
 ## Decisions
 
-Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 at L1.0; L-D16—L-D17 at L2.1; L-D18 at L3.1; L-D19 at L3.2; L-D20 at L4.1; L-D21—L-D23 at L5.0; L-D24 at L4.2; L-D25 at L7.0). See NOTES for full bodies.
+Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 at L1.0; L-D16—L-D17 at L2.1; L-D18 at L3.1; L-D19 at L3.2; L-D20 at L4.1; L-D21—L-D23 at L5.0; L-D24 at L4.2; L-D25 at L7.0; L-D26 at L8.0). See NOTES for full bodies.
 
 | # | Status | Decision (summary) | Locked at |
 | --- | --- | --- | --- |
@@ -68,6 +70,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L-D23 | LOCKED | L5.3 view strategy: direct epoch-walk both views (crystallize DROPPED, supersedes L-D9; L-D17 slots cancelled; storage final at L2.1b). `integratedSkim`/`boostIntegral` widen stubs pure→view, sum `_epochOverlapBlocks × (bucket / BLOCKS_PER_EPOCH)`; per-block model (i) tiling; conservation `Σ_pools boostIntegral ≤ integratedSkim` (amends L-D8, cap-safe). | L5.0 |
 | L-D24 | LOCKED | L4.2 `buyBoost` mutating wiring: drops `view` → `external returns (uint256 entitlement)`; after the L-D20 gates + entitlement quote, the L-D2 deposit tail (`safeTransferFrom(buyer → BODENSEE_CHANNEL)` + `BODENSEE_CHANNEL.donate`) runs, then `_placeBoost(pool, entitlement)`, then `emit BoostPurchased(buyer, pool, payToken, amount, entitlement)`. `SafeERC20` import; no reentrancy guard (svZCHF/sUSDS non-callback; `AureumGovernance._createProposal` precedent). | L4.2 |
 | L-D25 | LOCKED | L7.1 delivery leg (I13 fix-forward on the tagged `EmissionDistributor`): concrete-only `mapping(address => uint256) public poolBoostCursor`; in `_settlePool` after the CCB `poolAccDebt` rebase, a block guarded by `incendiaryRegistry != address(0)` adds `boostIntegral(pool, cursor+1, block.number).divDown(poolTotalLP[pool])` to `poolAccRewardPerLP[pool]` and always advances the cursor; NO `recordEmissions` (L-D15); sits OUTSIDE `if (poolAllocation > 0)`. Blast radius ZERO (all settle-path tests run registry `address(0)`). | L7.0 |
+| L-D26 | LOCKED | L8.1—L8.4 unit harness: new `test/fork/mocks/StageLMocks.sol` (4 cast-not-inherit mocks — `MockBodenseeExplorer` full-PoolData, `MockWeightedVenue` weights, `MockBodenseeChannel` no-op `donate`, `MockAuMMRate` `blockEmissionRate`) + `test/unit/harness/IncendiaryRegistryHarness.sol` (`is IncendiaryRegistry`, 8-arg ctor, `ext*` wrappers bar `_payTokenIndex`). StageH `MockVaultExplorer` not reused (tokens+balances only; I13/G16-class); reuse `MockGaugeRegistry` ← CCBMocks, `MockERC20` ← test/mocks. L8.1 splits a/b/c; L8.5 distributor mock separate. | L8.0 |
 
 ---
 
@@ -133,7 +136,10 @@ Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoc
 
 ### L8 — Tests (6 sub-steps)
 
-- **L8.1** `test/unit/IncendiaryRegistry.t.sol` harness + EMA tests (seed, daily sample, maturity gate, two rails). Cursor §8e.1.
+- **L8.1** harness infra + EMA tests (per L-D26):
+  - **L8.1a** `test/fork/mocks/StageLMocks.sol` — 4 cast-not-inherit mocks (`MockBodenseeExplorer` full-PoolData, `MockWeightedVenue` weights, `MockBodenseeChannel` no-op `donate`, `MockAuMMRate` `blockEmissionRate`). Cursor §8e.1.
+  - **L8.1b** `test/unit/harness/IncendiaryRegistryHarness.sol` — `is IncendiaryRegistry`, 8-arg ctor forward, `ext*` wrappers (`extSpotRate` / `extMaturePrice` / `extValueInAuMM` / `extEpochEmissionIntegral` / `extEpochCap` / `extEpochOverlapBlocks` / `extPlaceBoost`). Cursor §8e.1.
+  - **L8.1c** `test/unit/IncendiaryRegistry.t.sol` setUp + EMA tests (seed, daily sample, maturity gate, two rails, `UnknownRail` / `TooEarly` reverts). Cursor §8e.1.
 - **L8.2** purchase/valuation/gate tests (post-Y1, token whitelist, 95% haircut, donate routing, gauge gate). Cursor §8e.1.
 - **L8.3** placement/cap/spill tests (15% aggregate cap, FCFS walk-forward, multi-epoch spill, stacking). Cursor §8e.1.
 - **L8.4** view tests (`integratedSkim` / `boostIntegral` direct epoch-walk, conservation `Σ_pools boostIntegral ≤ integratedSkim` per L-D23). Cursor §8e.1.
