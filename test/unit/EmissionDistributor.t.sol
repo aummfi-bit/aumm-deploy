@@ -1601,4 +1601,50 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.poolBoostCursor(POOL_A), 0);
         assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
     }
+
+    function test_BoostDelivery_ZeroBoostDue_CursorStillAdvances() public {
+        address registry = address(0xBEEF);
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.roll(GENESIS_BLOCK_ + 1);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), GENESIS_BLOCK_ + 1),
+            abi.encode(uint256(0))
+        );
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 0);
+        assertEq(distributor.poolBoostCursor(POOL_A), GENESIS_BLOCK_ + 1);
+        assertEq(effOracle.callsLength(), 0);
+    }
+
+    function test_BoostDelivery_CursorUsedAsNextFrom() public {
+        address registry = address(0xBEEF);
+        uint256 b1 = GENESIS_BLOCK_ + 5;
+        uint256 b2 = GENESIS_BLOCK_ + 10;
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        vm.prank(GOV);
+        distributor.setIncendiaryRegistry(registry);
+        vm.roll(b1);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), b1),
+            abi.encode(uint256(1e18))
+        );
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        vm.mockCall(
+            registry,
+            abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, b1 + 1, b2),
+            abi.encode(uint256(2e18))
+        );
+        vm.roll(b2);
+        vm.prank(AUMT_REC);
+        distributor.recordWithdrawal(POOL_A, USER_1, 0);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 3e16);
+    }
 }
