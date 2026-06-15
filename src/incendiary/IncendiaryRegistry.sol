@@ -12,6 +12,7 @@ import {PoolData} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.
 import {FixedPoint} from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import {ScalingHelpers} from "@balancer-labs/v3-solidity-utils/contracts/helpers/ScalingHelpers.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title IncendiaryRegistry — Stage L concrete producer for the canonical F-2 Incendiary Boost
 /// @notice Sells 14-day directed AuMM emission boosts funded by skimming the existing fixed block
@@ -28,6 +29,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract IncendiaryRegistry is IIncendiaryRegistry {
     using FixedPoint for uint256;
     using ScalingHelpers for uint256;
+    using SafeERC20 for IERC20;
 
     /* ---------- Constants ---------- */
 
@@ -114,6 +116,14 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @param epoch  The epoch the allocation lands in (FCFS walk-forward from `epochIndex(now) + 1`).
     /// @param amount The AuMM-wei allocated into this epoch's bucket for `pool`.
     event BoostPlaced(address indexed pool, uint256 indexed epoch, uint256 amount);
+
+    /// @notice Emitted once per completed `buyBoost`, ahead of the per-epoch `BoostPlaced` events the placement emits (L-D24 / L-D9).
+    /// @param buyer       The purchaser (`msg.sender`); the deposit source of record.
+    /// @param pool        The gauge-approved pool the boost stream is directed at.
+    /// @param payToken    The pay-token rail deposited (svZCHF / sUSDS).
+    /// @param amount      The raw deposit amount in `payToken`'s native units.
+    /// @param entitlement The post-haircut AuMM-wei boost placed into the epoch buckets.
+    event BoostPurchased(address indexed buyer, address indexed pool, address indexed payToken, uint256 amount, uint256 entitlement);
 
     /* ---------- Errors ---------- */
 
@@ -231,22 +241,24 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /* ---------- Purchase entry (L4 / L-D20) ---------- */
 
-    /// @notice Quote the AuMM-wei boost entitlement for an `amount` deposit of `payToken` directed at `pool`.
-    /// @dev L4.1b (L-D20). Gates in order: (1) phase — purchases open only after Year 1 (L-D3); (2) rail —
-    ///      `payToken` must be a configured rail svZCHF / sUSDS (L-D2; reuses `UnknownRail`, the pay token
-    ///      is the rail); (3) gauge — `pool` must be gauge-approved (L-D10); (4) `amount > 0`; (5) maturity —
-    ///      enforced inside `_valueInAuMM` via `_maturePrice` (`EMANotMature` on unseeded / immature, L-D5).
-    ///      Entitlement = the rate-scaled deposit value at the mature EMA less the L-D4 5% anti-gaming
-    ///      haircut, as plain-integer basis-points (`value × (10_000 - HAIRCUT_BPS) / 10_000`). `view` here
-    ///      is the zero-warning quote form (mirroring the stub views) — it reads (gates + valuation) and
-    ///      returns the entitlement but takes no deposit and places no boost. The L-D2 deposit routing +
-    ///      L-D7 placement wire in once the L5 placement internals exist (the L-D20 safe-scaffold
-    ///      sequencing), dropping `view` when they write.
+    /// @notice Buy a directed AuMM emission boost for `pool` with an `amount` deposit of `payToken`.
+    /// @dev L4.2 (L-D24) — the real mutating entry; the L4.1b `view` quote scaffold is now wired. Gates in
+    ///      order (L-D20): (1) phase — open only after Year 1 (L-D3); (2) rail — `payToken` must be a
+    ///      configured rail svZCHF / sUSDS (L-D2; reuses `UnknownRail`); (3) gauge — `pool` must be
+    ///      gauge-approved (L-D10); (4) `amount > 0`; (5) maturity — enforced inside `_valueInAuMM` via
+    ///      `_maturePrice` (`EMANotMature` on unseeded / immature, L-D5). Entitlement = the rate-scaled
+    ///      deposit value at the mature EMA less the L-D4 5% anti-gaming haircut (`value × (10_000 -
+    ///      HAIRCUT_BPS) / 10_000`, plain-integer BPS). After the quote, the L-D2 deposit tail pulls and
+    ///      donates the deposit to der Bodensee (`safeTransferFrom(msg.sender → BODENSEE_CHANNEL)` then
+    ///      `donate`), then `_placeBoost` commits the FCFS epoch buckets (L-D22), then `BoostPurchased` is
+    ///      emitted — the `AureumGovernance._createProposal` pull-and-donate-before-commit ordering, no
+    ///      reentrancy guard (svZCHF / sUSDS are non-callback, `donate` rides the vault's own guard, the tx
+    ///      reverts atomically on any failure, L-D24). The deposit is non-refundable, 100% to der Bodensee (L-D2).
     /// @param pool The gauge-approved target pool to boost.
     /// @param payToken The pay-token rail (svZCHF / sUSDS) of the deposit.
     /// @param amount The raw deposit amount in `payToken`'s native units.
-    /// @return entitlement The boost entitlement in AuMM-wei (18-dec), post-haircut.
-    function buyBoost(address pool, address payToken, uint256 amount) external view returns (uint256 entitlement) {
+    /// @return entitlement The boost entitlement in AuMM-wei (18-dec), post-haircut, placed into the epoch buckets.
+    function buyBoost(address pool, address payToken, uint256 amount) external returns (uint256 entitlement) {
         uint256 year1End = AureumTime.year1EndBlock(GENESIS_BLOCK);
         if (block.number <= year1End) revert BoostsNotOpen(block.number, year1End);
         if (payToken != address(SVZCHF) && payToken != address(SUSDS)) revert UnknownRail(payToken);
@@ -254,6 +266,13 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         if (amount == 0) revert ZeroAmount();
 
         entitlement = (_valueInAuMM(payToken, amount) * (10_000 - HAIRCUT_BPS)) / 10_000;
+
+        IERC20(payToken).safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
+        BODENSEE_CHANNEL.donate(IERC20(payToken), amount);
+
+        _placeBoost(pool, entitlement);
+
+        emit BoostPurchased(msg.sender, pool, payToken, amount, entitlement);
     }
 
     /* ---------- Price EMA sampler (L3.2 / L-D19) ---------- */
