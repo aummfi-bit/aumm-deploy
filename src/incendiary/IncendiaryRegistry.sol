@@ -19,13 +19,14 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 ///         emission (F-7 Step 1), never by minting new supply. A buyer deposits svZCHF or sUSDS
 ///         one-sided into der Bodensee and receives a supplementary per-block emission stream over
 ///         one or more epochs for a gauged pool of their choice.
-/// @dev The concrete implementation behind the H-D29 `IIncendiaryRegistry` forward-dep. L2.1a is the
-///      compiling skeleton (L-D16): immutables + constructor + the two `IIncendiaryRegistry` views
-///      stubbed `return 0` (concrete + deployable, the H-D21 stub precedent). The price EMA (L3),
-///      purchase entry + valuation (L4), placement + cap + crystallize (L5), and the real view bodies
-///      (L6) land in subsequent sub-steps. Constants + settled storage land at L2.1b; the crystallize
-///      cumulative-cache slots are deferred to L5.3 (L-D17). Until governance calls
-///      `setIncendiaryRegistry`, the distributor defaults to `address(0)` (zero skim) per H-D29.
+/// @dev The concrete implementation behind the H-D29 `IIncendiaryRegistry` forward-dep. `buyBoost`
+///      values the one-sided svZCHF/sUSDS deposit against the mature der-Bodensee price EMA (L3),
+///      applies the L-D4 anti-gaming haircut, donates the deposit to der Bodensee, and FCFS
+///      walk-forward places the entitlement into per-(epoch,pool) additive buckets under the L-D6
+///      15%-of-epoch aggregate cap (L-D7). `integratedSkim` and `boostIntegral` are L-D23 direct
+///      epoch-walk views over those buckets; Stage L storage is final at L2.1b (the three mappings
+///      + `RailEMA`, no cumulative cache). Until governance calls `setIncendiaryRegistry`, the
+///      distributor defaults to `address(0)` (zero skim) per H-D29.
 contract IncendiaryRegistry is IIncendiaryRegistry {
     using FixedPoint for uint256;
     using ScalingHelpers for uint256;
