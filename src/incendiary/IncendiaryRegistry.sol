@@ -186,20 +186,47 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         GENESIS_BLOCK = genesisBlock_;
     }
 
-    /* ---------- IIncendiaryRegistry views (L2.1a stubs; real bodies at L6) ---------- */
+    /* ---------- IIncendiaryRegistry views (L5.3 / L-D23 direct epoch-walk) ---------- */
 
     /// @inheritdoc IIncendiaryRegistry
-    /// @dev L2.1a stub returning 0; the O(1) epoch-bucketed body lands at L6.1. `pure` here is the
-    ///      zero-warning stub form — widens to `view` at L6.1 when it reads the cumulative buckets.
-    function integratedSkim(uint256, uint256) external pure override returns (uint256) {
-        return 0;
+    /// @dev L-D23 direct epoch-walk (supersedes L-D9 crystallize-cache model). Iterates every epoch
+    ///      that overlaps `[from, to]`, multiplies the epoch's fixed per-block rate
+    ///      `(epochSkimAllocated[e] / AureumTime.BLOCKS_PER_EPOCH)` by the overlap block-count from
+    ///      `_epochOverlapBlocks`, and accumulates. Divide-first fixed per-block rate ensures exact
+    ///      tiling across consecutive distributor accrual queries (per-block model (i), L-D23).
+    ///      `from > to` ⇒ 0 (empty interval guard). Epoch range bounded by the distributor's ≤1-era
+    ///      accrual cadence (L-D23). Epochs with zero allocation (`bucket == 0`) are skipped.
+    function integratedSkim(uint256 from, uint256 to) external view override returns (uint256 total) {
+        if (from > to) return 0;
+        uint256 eFrom = AureumTime.epochIndex(GENESIS_BLOCK, from);
+        uint256 eTo   = AureumTime.epochIndex(GENESIS_BLOCK, to);
+        for (uint256 e = eFrom; e <= eTo; e++) {
+            uint256 bucket = epochSkimAllocated[e];
+            if (bucket == 0) continue;
+            uint256 perBlockRate = bucket / AureumTime.BLOCKS_PER_EPOCH;
+            total += perBlockRate * _epochOverlapBlocks(e, from, to);
+        }
     }
 
     /// @inheritdoc IIncendiaryRegistry
-    /// @dev L2.1a stub returning 0; the O(1) per-pool body lands at L6.2. `pure` here is the
-    ///      zero-warning stub form — widens to `view` at L6.2 when it reads the per-pool buckets.
-    function boostIntegral(address, uint256, uint256) external pure override returns (uint256) {
-        return 0;
+    /// @dev L-D23 direct epoch-walk, per-pool counterpart to `integratedSkim`. Reads
+    ///      `epochPoolSkim[e][pool]` (the additive delivery bucket, L-D9 stacking) and applies the
+    ///      same divide-first per-block model:
+    ///      `(epochPoolSkim[e][pool] / AureumTime.BLOCKS_PER_EPOCH) × overlap`. Conservation invariant
+    ///      `Σ_pools boostIntegral ≤ integratedSkim` (relaxed per L-D23 — sub-femto-AuMM/epoch
+    ///      floored-division dust, cap-safe). `pool` is not re-gate-checked here (gauge gate enforced
+    ///      at purchase, L-D10); an unrecognised `pool` address returns 0 (zero bucket). Bounded by
+    ///      the per-pool settle cadence in `_settlePool` (L-D14 / L-D23).
+    function boostIntegral(address pool, uint256 from, uint256 to) external view override returns (uint256 total) {
+        if (from > to) return 0;
+        uint256 eFrom = AureumTime.epochIndex(GENESIS_BLOCK, from);
+        uint256 eTo   = AureumTime.epochIndex(GENESIS_BLOCK, to);
+        for (uint256 e = eFrom; e <= eTo; e++) {
+            uint256 bucket = epochPoolSkim[e][pool];
+            if (bucket == 0) continue;
+            uint256 perBlockRate = bucket / AureumTime.BLOCKS_PER_EPOCH;
+            total += perBlockRate * _epochOverlapBlocks(e, from, to);
+        }
     }
 
     /* ---------- Purchase entry (L4 / L-D20) ---------- */
@@ -437,5 +464,25 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
             }
             e++;
         }
+    }
+
+    /* ---------- Internal: epoch-overlap block-count (L5.3 / L-D23) ---------- */
+
+    /// @notice Count of blocks in `[from, to]` that fall within epoch `e`'s range.
+    /// @dev Clamps the intersection: `lo = max(from, epochStart)`, `hi = min(to, epochEnd)`;
+    ///      returns `hi − lo + 1` when the intervals overlap, 0 otherwise. Uses immutable
+    ///      `GENESIS_BLOCK` + pure `AureumTime` — no storage reads beyond the immutable. Called
+    ///      once per epoch per view walk in `integratedSkim` / `boostIntegral` (L-D23).
+    /// @param e The zero-indexed epoch number.
+    /// @param from The start of the query interval (inclusive).
+    /// @param to The end of the query interval (inclusive).
+    /// @return overlap The number of blocks in `[from, to] ∩ epoch(e)`.
+    function _epochOverlapBlocks(uint256 e, uint256 from, uint256 to) internal view returns (uint256 overlap) {
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, e);
+        uint256 eEnd   = AureumTime.epochEndBlock(GENESIS_BLOCK, e);
+        if (eEnd < from || eStart > to) return 0;
+        uint256 lo = from > eStart ? from : eStart;
+        uint256 hi = to   < eEnd   ? to   : eEnd;
+        overlap = hi - lo + 1;
     }
 }
