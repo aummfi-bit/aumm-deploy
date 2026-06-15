@@ -102,7 +102,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 ### L2 — `IncendiaryRegistry` scaffold (per L-D1 / L-D9)
 
 - **L2.1a** `src/incendiary/IncendiaryRegistry.sol` — compiling skeleton (L-D16): SPDX, `pragma ^0.8.26`, imports, `contract IncendiaryRegistry is IIncendiaryRegistry`, the 8 immutables (`SwapAndDepositToBodensee BODENSEE_CHANNEL`, `address BODENSEE_POOL`, `IVaultExplorer VAULT_EXPLORER`, `IAuMM AUMM`, `IERC20 SVZCHF`, `IERC20 SUSDS`, `IGaugeRegistry GAUGE_REGISTRY`, `uint256 GENESIS_BLOCK`), the constructor (wires all + ZeroAddress-guards the 7 address-bearing args), and `integratedSkim` / `boostIntegral` stubbed `return 0` (concrete + deployable, H-D21 stub precedent). Cursor §8e.1.
-- **L2.1b** `src/incendiary/IncendiaryRegistry.sol` — constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`) + settled storage (L-D17: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]`; `epochPoolSkim[epoch][pool]`). Errors (beyond `ZeroAddress`) + events deferred to their L4/L5 emit/revert sites (§12 — field sets not settled until purchase/placement logic). Crystallize cumulative-cache slots NOT here — deferred to L5.3 (L-D17). Cursor §8e.1.
+- **L2.1b** `src/incendiary/IncendiaryRegistry.sol` — constants (EMA α 2/61, `EMA_MATURITY_BLOCKS = 432_000`, `BOOST_CAP_BPS = 1_500`, `HAIRCUT_BPS = 500`) + settled storage (L-D17: `RailEMA {ema, lastSampleBlock, seedBlock}` in `mapping(address => RailEMA) railEMA`; `epochSkimAllocated[epoch]`; `epochPoolSkim[epoch][pool]`). Errors (beyond `ZeroAddress`) + events deferred to their L4/L5 emit/revert sites (§12 — field sets not settled until purchase/placement logic). Crystallize cumulative-cache slots CANCELLED per L-D23 (direct-walk views need no cache; storage final here). Cursor §8e.1.
 
 ### L3 — Price EMA (per L-D5)
 
@@ -115,16 +115,15 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 - **L4.1b** `src/incendiary/IncendiaryRegistry.sol` — `buyBoost(address pool, address payToken, uint256 amount) external returns (uint256 entitlement)`: five gates (phase `BoostsNotOpen` L-D3 → rail `UnknownRail` L-D2 → gauge `PoolNotGauged` L-D10 → `amount>0` `ZeroAmount` → maturity `EMANotMature` via `_valueInAuMM`) + `entitlement = value × (10_000 - HAIRCUT_BPS)/10_000` (L-D4 plain-integer BPS); returns the entitlement as a quote — no deposit, no placement (safe scaffold). Errors `BoostsNotOpen`/`PoolNotGauged`/`ZeroAmount` at use site. Cursor §8e.1.
 - **L4.2** `src/incendiary/IncendiaryRegistry.sol` — final wiring, executes after the L5 placement internals exist (L-D20 safe-scaffold sequencing): insert the L-D2 deposit routing (`safeTransferFrom(buyer → BODENSEE_CHANNEL)` + `BODENSEE_CHANNEL.donate(payToken, amount)`; `SafeERC20` import) + the L-D7 placement call + the `BoostPurchased` event into `buyBoost`. Cursor §8e.1.
 
-### L5 — Placement + accounting + crystallize (per L-D6 / L-D7 / L-D9)
+### L5 — Placement + accounting + views (per L-D6 / L-D7 / L-D9 / L-D23)
 
 - **L5.1** epoch-emission-integral basis + 15% aggregate cap computation (integral form per L-D6). Cursor §8e.1.
 - **L5.2** FCFS walk-forward placement into the per-(epoch,pool) additive buckets + per-epoch aggregate bucket (L-D7); per-block stream = allocation / `BLOCKS_PER_EPOCH`. Cursor §8e.1.
-- **L5.3** permissionless `crystallize(from, to)` cumulative-sum cache updater (L-D9) + its storage slots deferred from L2.1 (L-D17: the global + per-pool epoch-boundary prefix-sum maps and the crystallize cursor — designed with the O(1) algorithm here, not guessed at scaffold), outside the `IIncendiaryRegistry` read surface. Cursor §8e.1.
+- **L5.3** `integratedSkim` / `boostIntegral` direct epoch-walk view bodies + `_epochOverlapBlocks` helper (L-D23 — supersedes the L-D9 `crystallize` cache; the L-D17 cumulative-cache slots are cancelled, storage stays final at L2.1b): widen the L2.1a `return 0` stubs pure→view, summing `_epochOverlapBlocks(e, from, to) × (bucket / BLOCKS_PER_EPOCH)` over the epochs in `[from, to]`. Cursor §8e.1.
 
-### L6 — Views (per L-D8 / L-D9)
+### L6 — Views — ABSORBED into L5.3 per L-D23
 
-- **L6.1** `integratedSkim(from, to)` — O(1) over the cumulative buckets (the H-D29 surface the distributor already consumes). Cursor §8e.1.
-- **L6.2** `boostIntegral(pool, from, to)` — O(1) per-pool view + close-of-family (`forge clean && forge build` per F14). Cursor §8e.1.
+Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoch-walk per L-D23, not as a separate O(1)-over-cumulative-cache step. The original L6.1 / L6.2 split is superseded; no separate L6 sub-step executes. The close-of-family `forge clean && forge build` (F14) runs at L5.3.
 
 ### L7 — `EmissionDistributor` fix-forward (per L-D8; I13)
 
@@ -135,7 +134,7 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 - **L8.1** `test/unit/IncendiaryRegistry.t.sol` harness + EMA tests (seed, daily sample, maturity gate, two rails). Cursor §8e.1.
 - **L8.2** purchase/valuation/gate tests (post-Y1, token whitelist, 95% haircut, donate routing, gauge gate). Cursor §8e.1.
 - **L8.3** placement/cap/spill tests (15% aggregate cap, FCFS walk-forward, multi-epoch spill, stacking). Cursor §8e.1.
-- **L8.4** views + `crystallize` tests (`integratedSkim` / `boostIntegral` O(1), conservation `Σ_pools = global`). Cursor §8e.1.
+- **L8.4** view tests (`integratedSkim` / `boostIntegral` direct epoch-walk, conservation `Σ_pools boostIntegral ≤ integratedSkim` per L-D23). Cursor §8e.1.
 - **L8.5** `test/unit/EmissionDistributor.t.sol` delivery tests (I13 blast-radius cohort — per-pool boost leg, mock registry). Cursor §8e.1.
 - **L8.6** `test/fork/StageLIntegration.t.sol` — end-to-end: buy → donate → skim → per-pool delivery + H-D26 conservation (split-form per D35, `--threads 1` per D36). Cursor §8e.1.
 
