@@ -13,6 +13,7 @@ import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaul
 import {IAuMM} from "../../src/token/IAuMM.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IGaugeRegistry} from "../../src/ccb/IGaugeRegistry.sol";
+import {AureumTime} from "../../src/lib/AureumTime.sol";
 
 contract IncendiaryRegistryTest is Test {
     IncendiaryRegistryHarness internal registry;
@@ -195,5 +196,57 @@ contract IncendiaryRegistryTest is Test {
         vm.roll(GENESIS_BLOCK + 7_200);
         vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.EMANotMature.selector, address(svzchf), 7_200, 432_000));
         registry.extValueInAuMM(address(svzchf), 1000e18);
+    }
+
+    function test_buyBoost_revert_notOpen() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(IncendiaryRegistry.BoostsNotOpen.selector, GENESIS_BLOCK, AureumTime.year1EndBlock(GENESIS_BLOCK))
+        );
+        registry.buyBoost(address(venue), address(svzchf), 1000e18);
+    }
+
+    function test_buyBoost_revert_unknownRail() public {
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.UnknownRail.selector, address(0xBAD)));
+        registry.buyBoost(address(venue), address(0xBAD), 1000e18);
+    }
+
+    function test_buyBoost_revert_notGauged() public {
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.PoolNotGauged.selector, address(venue)));
+        registry.buyBoost(address(venue), address(svzchf), 1000e18);
+    }
+
+    function test_buyBoost_revert_zeroAmount() public {
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        gauges.setApproved(address(venue), true);
+        vm.expectRevert(IncendiaryRegistry.ZeroAmount.selector);
+        registry.buyBoost(address(venue), address(svzchf), 0);
+    }
+
+    function test_buyBoost_happyPath_svzchf() public {
+        address buyer = makeAddr("boostBuyer");
+        uint256 amount = 1000e18;
+
+        registry.updateRailEMA(address(svzchf));
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        aumm.setRate(1e18);
+        gauges.setApproved(address(venue), true);
+        svzchf.mint(buyer, amount);
+        vm.prank(buyer);
+        svzchf.approve(address(registry), amount);
+
+        uint256 expectedEntitlement = (amount * (10_000 - 500)) / 10_000;
+
+        vm.expectEmit(true, true, true, true, address(registry));
+        emit IncendiaryRegistry.BoostPurchased(buyer, address(venue), address(svzchf), amount, expectedEntitlement);
+        vm.prank(buyer);
+        uint256 entitlement = registry.buyBoost(address(venue), address(svzchf), amount);
+
+        assertEq(entitlement, expectedEntitlement);
+        assertEq(address(channel.lastPayToken()), address(svzchf));
+        assertEq(channel.lastAmount(), amount);
+        assertEq(svzchf.balanceOf(buyer), 0);
+        assertEq(svzchf.balanceOf(address(channel)), amount);
     }
 }
