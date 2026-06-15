@@ -269,4 +269,48 @@ contract IncendiaryRegistryTest is Test {
         // default MockAuMMRate rate is zero — zero cap (would hang _placeBoost without L8.2b setRate)
         assertEq(registry.extEpochCap(5), 0);
     }
+
+    function test_extPlaceBoost_singleEpoch() public {
+        aumm.setRate(1e18);
+        registry.extPlaceBoost(address(venue), 1_000e18);
+        assertEq(registry.epochSkimAllocated(1), 1_000e18);
+        assertEq(registry.epochPoolSkim(1, address(venue)), 1_000e18);
+        assertEq(registry.epochSkimAllocated(2), 0);
+    }
+
+    function test_extPlaceBoost_spillsAcrossEpochs() public {
+        uint256 rate = 1e18;
+        aumm.setRate(rate);
+        uint256 cap = (rate * 100_800 * 1_500) / 10_000;
+        uint256 entitlement = 2 * cap + 1_000e18;
+        registry.extPlaceBoost(address(venue), entitlement);
+        assertEq(registry.epochSkimAllocated(1), cap);
+        assertEq(registry.epochSkimAllocated(2), cap);
+        assertEq(registry.epochSkimAllocated(3), 1_000e18);
+        assertEq(registry.epochPoolSkim(3, address(venue)), 1_000e18);
+        assertEq(registry.epochSkimAllocated(4), 0);
+    }
+
+    function test_extPlaceBoost_stacking() public {
+        aumm.setRate(1e18);
+        registry.extPlaceBoost(address(venue), 1_000e18);
+        registry.extPlaceBoost(address(venue), 2_000e18);
+        // per-(epoch,pool) bucket is additive — L-D9 stacking
+        assertEq(registry.epochSkimAllocated(1), 3_000e18);
+        assertEq(registry.epochPoolSkim(1, address(venue)), 3_000e18);
+    }
+
+    function test_extPlaceBoost_capSharedAcrossPools() public {
+        uint256 rate = 1e18;
+        aumm.setRate(rate);
+        uint256 cap = (rate * 100_800 * 1_500) / 10_000;
+        address poolB = makeAddr("poolB");
+        registry.extPlaceBoost(address(venue), cap);
+        registry.extPlaceBoost(poolB, 1_000e18);
+        assertEq(registry.epochSkimAllocated(1), cap);
+        assertEq(registry.epochPoolSkim(1, address(venue)), cap);
+        assertEq(registry.epochPoolSkim(1, poolB), 0);
+        assertEq(registry.epochSkimAllocated(2), 1_000e18);
+        assertEq(registry.epochPoolSkim(2, poolB), 1_000e18);
+    }
 }
