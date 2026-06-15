@@ -332,4 +332,26 @@ contract IncendiaryRegistryTest is Test {
         // query window sits entirely in epoch 2 — no overlap with epoch 1
         assertEq(registry.extEpochOverlapBlocks(1, e2Start, e2Start + 100), 0);
     }
+
+    function test_integratedSkim_fullEpoch() public {
+        aumm.setRate(1e18);
+        registry.extPlaceBoost(address(venue), 100_800);
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        uint256 eEnd = AureumTime.epochEndBlock(GENESIS_BLOCK, 1);
+        // per-block rate 1 × 100_800 overlap — whole bucket, no flooring dust
+        assertEq(registry.integratedSkim(eStart, eEnd), 100_800);
+    }
+
+    function test_integratedSkim_partialWindow() public {
+        aumm.setRate(1e18);
+        registry.extPlaceBoost(address(venue), 100_800);
+        uint256 eStart = AureumTime.epochStartBlock(GENESIS_BLOCK, 1);
+        // per-block rate 1 × 50_000 overlap
+        assertEq(registry.integratedSkim(eStart, eStart + 49_999), 50_000);
+    }
+
+    function test_integratedSkim_emptyInterval() public {
+        // from > to returns 0 before any bucket read
+        assertEq(registry.integratedSkim(2_000_000, 1_000_000), 0);
+    }
 }
