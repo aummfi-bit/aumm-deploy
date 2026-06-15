@@ -12,10 +12,16 @@ import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockVotingWeight, MockGaugeRegistry, MockSlotRegistry, MockVault, MockBodenseeChannel} from "test/unit/AureumGovernance.t.sol";
 
-/// @notice White-hat finding F-01 (S9): proves the propose-time `totalSupply()` snapshot
-///         (AureumGovernance L201/L289) diverges from vote-time `governanceWeight` (L257-258), so turnout
-///         can exceed 100% of snapshot and the 20% quorum is defeated. Production root cause =
-///         VotingWeight `_totalQualifiedWeight` is a lazy poke-accumulator that excludes never-poked holders.
+/// @notice White-hat finding F-01 (S9) regression suite, re-pointed to the F-06 fix. F-06 (Stage-L)
+///         replaced F-01's live tally-time `totalSupply()` read with Governor-style snapshot voting:
+///         both the numerator (each `getPastVotes(voter, snapshotBlock)` in `castVote`) and the
+///         denominator (`getPastTotalSupply(snapshotBlock)` in `_voteSucceeded`) freeze at one pre-vote
+///         `snapshotBlock`, so turnout is bounded by the snapshot supply by construction. These tests
+///         assert the documented F-01 attacks now Defeat under that denominator, using the block-agnostic
+///         mock with consistent snapshot inputs; the block-precise freeze proof (a post-snapshot `poke`
+///         cannot move `getPastTotalSupply(snapshotBlock)`) lives in `F06_*.t.sol` with a block-aware mock.
+///         `test_F06_vacuousQuorumAtZeroSnapshotStillOpen` records the one case F-06 does NOT close
+///         (ledger L140 mul-form, `snapshot == 0`), carried to Stage-P.
 contract F01_QuorumSnapshotTimingTest is Test {
     AureumGovernance internal gov;
     MockVotingWeight internal votingWeight;
@@ -73,84 +79,90 @@ contract F01_QuorumSnapshotTimingTest is Test {
         vm.roll(gov.getProposal(id).eta);
     }
 
-    function test_turnoutCanExceedSnapshot() public {
-        votingWeight.setTotalSupply(100e18);
+    /// @notice F-01 regression: the quorum denominator is now `getPastTotalSupply(snapshotBlock)`, read at
+    ///         the same block as every `getPastVotes` numerator, so a holder's turnout is bounded by the
+    ///         snapshot supply. A minority gauge attacker (10% of supply) can no longer clear the 20% bar.
+    function test_F01_turnoutBoundedBySnapshotSupply() public {
+        votingWeight.setTotalSupply(100_000e18);
         vm.prank(attacker);
         uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
-        votingWeight.setGovernanceWeight(attacker, 10_000e18);
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(attacker, 10_000e18); // 10% of snapshot supply, below the 20% quorum
         vm.prank(attacker);
         gov.castVote(id, true);
-        vm.roll(block.number + VOTING_PERIOD + 1);
-        assertEq(gov.getProposal(id).snapshotTotalSupply, 100e18);
+        vm.roll(gov.getProposal(id).endBlock + 1);
         assertEq(gov.getProposal(id).forVotes, 10_000e18);
-        assertGt(gov.getProposal(id).forVotes, gov.getProposal(id).snapshotTotalSupply);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
     }
 
-    function test_minorityAttackerRevokesGauge() public {
-        votingWeight.setTotalSupply(500e18);
+    /// @notice F-01 regression: the finding's 200e18 attacker was ~0.4% of true eligible weight but passed
+    ///         because the propose-time accumulator excluded the never-poked honestWhale (50_000e18). Under
+    ///         snapshot voting the denominator is the checkpointed total at `snapshotBlock`, which subsumes
+    ///         every qualified holder, so the dust attacker is defeated and the gauge survives.
+    function test_F01_dustAttackerCannotRevokeGauge() public {
+        votingWeight.setTotalSupply(50_500e18); // 500e18 poked subset + honestWhale 50_000e18, both in the snapshot
         vm.prank(attacker);
         uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
-        votingWeight.setGovernanceWeight(attacker, 200e18);
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(attacker, 200e18); // ~0.4% of true eligible weight
         vm.prank(attacker);
         gov.castVote(id, true);
-        vm.roll(block.number + VOTING_PERIOD + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
-        _queueAndReachEta(id);
-        gov.execute(id);
-        assertTrue(gaugeReg.revoked(gaugePool));
-        // 200e18 is ~0.4% of the ~50_700e18 true eligible weight (500e18 poked subset + honestWhale 50_000e18 never poked).
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertFalse(gaugeReg.revoked(gaugePool));
     }
 
-    function test_vacuousQuorumWhenAccumulatorEmpty() public {
+    /// @notice F-06 does NOT close the `snapshot == 0` vacuous-quorum case: the stored mul-form
+    ///         `totalVotes * 10_000 < getPastTotalSupply(snapshotBlock) * QUORUM_BPS` passes vacuously when the
+    ///         denominator is 0 (0 < 0 is false), so a 1e18 vote Succeeds. Orthogonal to the F-01/F-06
+    ///         denominator-timing axis (ledger L140, the mul-form's permissive direction); a separate open
+    ///         observation carried to Stage-P, asserted here so a future div-form fix flips this test.
+    function test_F06_vacuousQuorumAtZeroSnapshotStillOpen() public {
         votingWeight.setTotalSupply(0);
         vm.prank(attacker);
         uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(attacker, 1e18);
         vm.prank(attacker);
         gov.castVote(id, true);
-        vm.roll(block.number + VOTING_PERIOD + 1);
-        assertEq(gov.getProposal(id).snapshotTotalSupply, 0);
+        vm.roll(gov.getProposal(id).endBlock + 1);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
     }
 
-    function test_singleVoterClearsCompositionSupermajority() public {
-        votingWeight.setTotalSupply(300e18);
+    /// @notice F-01 regression: a single 100e18 voter cleared a composition 2/3 supermajority in the finding
+    ///         because the propose-time snapshot excluded never-poked holders. Under snapshot voting the
+    ///         denominator is the full checkpointed total, so 100e18 fails the 20% quorum outright and the
+    ///         slot swap does not execute.
+    function test_F01_singleVoterCannotClearComposition() public {
+        votingWeight.setTotalSupply(300_000e18);
         vm.prank(attacker);
         uint256 id = gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
-        votingWeight.setGovernanceWeight(attacker, 100e18);
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(attacker, 100e18); // far below the 20% quorum of true supply
         vm.prank(attacker);
         gov.castVote(id, true);
-        vm.roll(block.number + VOTING_PERIOD + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
-        _queueAndReachEta(id);
-        gov.execute(id);
-        assertEq(slotReg.poolAtSlot(5), candidatePool);
-        assertTrue(gaugeReg.revoked(occupantPool));
-        assertTrue(gaugeReg.registered(candidatePool));
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertEq(slotReg.poolAtSlot(5), occupantPool);
+        assertFalse(gaugeReg.revoked(occupantPool));
+        assertFalse(gaugeReg.registered(candidatePool));
     }
 
-    /// @notice F-01 fix regression — with the tally-time live-supply denominator (AureumGovernance L294), a
-    ///         minority attacker can no longer clear quorum against a stale propose-time snapshot. Models the
-    ///         lazy `_totalQualifiedWeight` accumulator growing 20x between propose and tally; pre-fix this
-    ///         proposal Succeeded, post-fix it is Defeated.
-    function test_F01_liveTallySupplyDefeatsStaleQuorumGaming() public {
-        // Propose-time: the lazy accumulator is small — few holders have poked in yet.
-        votingWeight.setTotalSupply(10_000e18);
+    /// @notice F-01 named regression, re-pointed from the live-read fix to the snapshot fix. Pre-F-06 the
+    ///         F-01 fix read the quorum denominator live at tally; F-06 freezes it at `snapshotBlock`. The
+    ///         attacker's 10_000e18, which would have been 100% of a thin propose-time snapshot, is 5% of the
+    ///         200_000e18 snapshot supply, so the proposal is Defeated. The block-precise proof that a
+    ///         post-snapshot `poke` cannot move `getPastTotalSupply(snapshotBlock)` is in `F06_*.t.sol` (v).
+    function test_F01_snapshotDenominatorDefeatsStaleQuorumGaming() public {
+        votingWeight.setTotalSupply(200_000e18);
         vm.prank(attacker);
         uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
-        // Attacker votes with weight equal to the entire propose-time snapshot.
-        votingWeight.setGovernanceWeight(attacker, 10_000e18);
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(attacker, 10_000e18); // 5% of the snapshot supply
         vm.prank(attacker);
         gov.castVote(id, true);
-        // Between propose and tally, honest holders poke in — the live accumulator grows 20x.
-        votingWeight.setTotalSupply(200_000e18);
-        vm.roll(block.number + VOTING_PERIOD + 1);
-        assertEq(gov.getProposal(id).snapshotTotalSupply, 10_000e18, "snapshot frozen at propose-time");
-        assertEq(votingWeight.totalSupply(), 200_000e18, "live accumulator grew post-propose");
-        assertEq(gov.getProposal(id).forVotes, 10_000e18, "attacker weight recorded");
-        // Pre-fix (stale snapshot denominator): 10_000e18 turnout is 100% of the 10_000e18 snapshot, clears the 20% bar — Succeeded.
-        // Post-fix (live denominator): 10_000e18 is 5% of the 200_000e18 live supply, below the 20% bar — Defeated.
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated), "live-tally quorum defeats stale-snapshot gaming");
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(gov.getProposal(id).forVotes, 10_000e18);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
     }
 }

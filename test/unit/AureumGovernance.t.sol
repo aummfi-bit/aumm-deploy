@@ -33,8 +33,8 @@ contract MockVotingWeight is IVotingWeight {
         pokeCount++;
         lastPoked = holder;
     }
-    function getPastVotes(address, uint256) external view returns (uint256) { return 0; }
-    function getPastTotalSupply(uint256) external view returns (uint256) { return 0; }
+    function getPastVotes(address holder, uint256) external view returns (uint256) { return governanceWeights[holder]; }
+    function getPastTotalSupply(uint256) external view returns (uint256) { return _totalSupply; }
 }
 contract MockGaugeRegistry {
     mapping(address => IGaugeRegistry.GaugeStatus) public statusOf;
@@ -120,6 +120,7 @@ contract AureumGovernanceTest is Test {
     uint256 internal constant DEPOSIT_SVZCHF = 1_000e18;
     uint256 internal constant DEPOSIT_SUSDS = 1_250e18;
     uint256 internal constant TOTAL_SUPPLY = 1_000_000e18;
+    uint256 internal constant VOTING_DELAY = 7_200;
     uint256 internal constant VOTING_PERIOD = 100_800;
     uint256 internal constant TIMELOCK = 14_400;
     uint256 internal constant GRACE = 100_800;
@@ -168,9 +169,11 @@ contract AureumGovernanceTest is Test {
     }
     function _voteAndClose(uint256 id, bool support) internal {
         votingWeight.setGovernanceWeight(voterA, TOTAL_SUPPLY);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.snapshotBlock + 1);
         vm.prank(voterA);
         gov.castVote(id, support);
-        vm.roll(block.number + VOTING_PERIOD + 1);
+        vm.roll(p.endBlock + 1);
     }
     function _queueAndReachEta(uint256 id) internal {
         gov.queue(id);
@@ -236,7 +239,7 @@ contract AureumGovernanceTest is Test {
     function test_proposeGauge_happyPath_depositsAndRecords() public {
         uint256 start = block.number;
         vm.expectEmit(address(gov));
-        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.GaugeChallenge, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.GaugeChallenge, proposer, start, start + VOTING_DELAY, start + VOTING_DELAY + VOTING_PERIOD);
         uint256 id = _proposeGauge();
         assertEq(id, 1);
         assertEq(gov.proposalCount(), 1);
@@ -248,8 +251,8 @@ contract AureumGovernanceTest is Test {
         assertEq(p.slot, 0);
         assertEq(p.newFee, 0);
         assertEq(p.startBlock, start);
-        assertEq(p.endBlock, start + VOTING_PERIOD);
-        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(p.snapshotBlock, start + VOTING_DELAY);
+        assertEq(p.endBlock, start + VOTING_DELAY + VOTING_PERIOD);
         assertEq(p.forVotes, 0);
         assertEq(p.againstVotes, 0);
         assertEq(p.eta, 0);
@@ -275,7 +278,7 @@ contract AureumGovernanceTest is Test {
     function test_proposeComposition_happyPath_depositsAndRecords() public {
         uint256 start = block.number;
         vm.expectEmit(address(gov));
-        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.CompositionChallenge, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.CompositionChallenge, proposer, start, start + VOTING_DELAY, start + VOTING_DELAY + VOTING_PERIOD);
         uint256 id = _proposeComposition();
         assertEq(id, 1);
         assertEq(gov.proposalCount(), 1);
@@ -285,7 +288,7 @@ contract AureumGovernanceTest is Test {
         assertEq(p.newPool, candidatePool);
         assertEq(p.slot, 5);
         assertEq(p.newFee, 0);
-        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(p.snapshotBlock, start + VOTING_DELAY);
         assertEq(channel.donateCalls(), 1);
         assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
     }
@@ -306,7 +309,7 @@ contract AureumGovernanceTest is Test {
     function test_proposeFee_happyPath_depositsAndRecords() public {
         uint256 start = block.number;
         vm.expectEmit(address(gov));
-        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.FeeChange, proposer, start, start + VOTING_PERIOD, TOTAL_SUPPLY);
+        emit AureumGovernance.ProposalCreated(1, AureumGovernance.ProposalType.FeeChange, proposer, start, start + VOTING_DELAY, start + VOTING_DELAY + VOTING_PERIOD);
         uint256 id = _proposeFee();
         assertEq(id, 1);
         assertEq(gov.proposalCount(), 1);
@@ -316,7 +319,7 @@ contract AureumGovernanceTest is Test {
         assertEq(p.newFee, FEE_OK);
         assertEq(p.newPool, address(0));
         assertEq(p.slot, 0);
-        assertEq(p.snapshotTotalSupply, TOTAL_SUPPLY);
+        assertEq(p.snapshotBlock, start + VOTING_DELAY);
         assertEq(channel.donateCalls(), 1);
         assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
     }
@@ -337,6 +340,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_castVote_accruesForVotes() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         uint256 w = 300_000e18;
         votingWeight.setGovernanceWeight(voterA, w);
         vm.expectEmit(address(gov));
@@ -350,6 +354,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_castVote_accruesAgainstVotes() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         uint256 w = 200_000e18;
         votingWeight.setGovernanceWeight(voterA, w);
         vm.prank(voterA);
@@ -360,6 +365,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_castVote_multipleVotersAccumulate() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         uint256 wA = 300_000e18;
         uint256 wB = 150_000e18;
         votingWeight.setGovernanceWeight(voterA, wA);
@@ -372,19 +378,20 @@ contract AureumGovernanceTest is Test {
         assertEq(p.forVotes, wA);
         assertEq(p.againstVotes, wB);
     }
-    function test_castVote_pokesVoterBeforeAccrual() public {
+    function test_castVote_doesNotPokeVoter() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         uint256 w = 100_000e18;
         votingWeight.setGovernanceWeight(voterA, w);
         vm.prank(voterA);
         gov.castVote(id, true);
-        assertEq(votingWeight.pokeCount(), 1);
-        assertEq(votingWeight.lastPoked(), voterA);
+        assertEq(votingWeight.pokeCount(), 0);
         AureumGovernance.Proposal memory p = gov.getProposal(id);
         assertEq(p.forVotes, w);
     }
     function test_castVote_zeroWeightNoOp() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         vm.expectEmit(address(gov));
         emit AureumGovernance.VoteCast(id, voterA, true, 0);
         vm.prank(voterA);
@@ -396,6 +403,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_castVote_revert_doubleVote() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 100_000e18);
         vm.prank(voterA);
         gov.castVote(id, true);
@@ -412,42 +420,62 @@ contract AureumGovernanceTest is Test {
     function test_castVote_windowBoundaryStrict() public {
         uint256 id = _proposeGauge();
         AureumGovernance.Proposal memory p = gov.getProposal(id);
-        uint256 endBlock = p.endBlock;
         votingWeight.setGovernanceWeight(voterA, 100_000e18);
         votingWeight.setGovernanceWeight(voterB, 50_000e18);
-        vm.roll(endBlock);
+        // at snapshotBlock the proposal is still Pending: castVote reverts
+        vm.roll(p.snapshotBlock);
+        vm.prank(voterA);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotActive.selector, id));
+        gov.castVote(id, true);
+        // snapshotBlock + 1 is the first votable block
+        vm.roll(p.snapshotBlock + 1);
         vm.prank(voterA);
         gov.castVote(id, true);
-        p = gov.getProposal(id);
-        assertEq(p.forVotes, 100_000e18);
-        vm.roll(endBlock + 1);
+        assertEq(gov.getProposal(id).forVotes, 100_000e18);
+        // endBlock is the last votable block (fresh voter)
+        vm.roll(p.endBlock);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        assertEq(gov.getProposal(id).againstVotes, 50_000e18);
+        // endBlock + 1 is closed: the window gate reverts before the double-vote guard
+        vm.roll(p.endBlock + 1);
         vm.prank(voterB);
         vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotActive.selector, id));
-        gov.castVote(id, false);
+        gov.castVote(id, true);
     }
-    function test_state_active_duringWindowAndAtEndBlock() public {
+    function test_state_pendingThenActiveWindow() public {
         uint256 id = _proposeGauge();
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active));
         AureumGovernance.Proposal memory p = gov.getProposal(id);
+        // Pending immediately after creation (block.number == startBlock)
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Pending));
+        // Pending at snapshotBlock (boundary is strict)
+        vm.roll(p.snapshotBlock);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Pending));
+        // Active at snapshotBlock + 1
+        vm.roll(p.snapshotBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active));
+        // Active at endBlock (inclusive)
         vm.roll(p.endBlock);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active));
     }
     function test_state_quorumBoundaryStrict() public {
         uint256 id1 = _proposeGauge();
+        uint256 id2 = _proposeGauge();
+        AureumGovernance.Proposal memory p = gov.getProposal(id1);
+        vm.roll(p.snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 200_000e18);
         vm.prank(voterA);
         gov.castVote(id1, true);
-        uint256 id2 = _proposeGauge();
         votingWeight.setGovernanceWeight(voterB, 200_000e18 - 1);
         vm.prank(voterB);
         gov.castVote(id2, true);
-        AureumGovernance.Proposal memory p = gov.getProposal(id1);
         vm.roll(p.endBlock + 1);
         assertEq(uint256(gov.state(id1)), uint256(AureumGovernance.ProposalState.Succeeded));
         assertEq(uint256(gov.state(id2)), uint256(AureumGovernance.ProposalState.Defeated));
     }
     function test_state_gauge_simpleMajorityPass() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 200_000e18);
         votingWeight.setGovernanceWeight(voterB, 100_000e18);
         vm.prank(voterA);
@@ -460,6 +488,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_state_gauge_tieDefeated() public {
         uint256 id = _proposeGauge();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 150_000e18);
         votingWeight.setGovernanceWeight(voterB, 150_000e18);
         vm.prank(voterA);
@@ -472,6 +501,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_state_fee_simpleMajorityPass() public {
         uint256 id = _proposeFee();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 250_000e18);
         votingWeight.setGovernanceWeight(voterB, 100_000e18);
         vm.prank(voterA);
@@ -484,6 +514,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_state_composition_supermajorityExactPass() public {
         uint256 id = _proposeComposition();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 200_000e18);
         votingWeight.setGovernanceWeight(voterB, 100_000e18);
         vm.prank(voterA);
@@ -496,6 +527,7 @@ contract AureumGovernanceTest is Test {
     }
     function test_state_composition_belowSupermajorityDefeated() public {
         uint256 id = _proposeComposition();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
         votingWeight.setGovernanceWeight(voterA, 175_000e18);
         votingWeight.setGovernanceWeight(voterB, 125_000e18);
         vm.prank(voterA);
@@ -583,14 +615,16 @@ contract AureumGovernanceTest is Test {
         uint256 id1 = _proposeFee();
         uint256 id2 = _proposeFee();
         votingWeight.setGovernanceWeight(voterA, TOTAL_SUPPLY);
+        AureumGovernance.Proposal memory p = gov.getProposal(id1);
+        vm.roll(p.snapshotBlock + 1);
         vm.prank(voterA);
         gov.castVote(id1, true);
         vm.prank(voterA);
         gov.castVote(id2, true);
-        vm.roll(block.number + VOTING_PERIOD + 1);
+        vm.roll(p.endBlock + 1);
         gov.queue(id1);
         gov.queue(id2);
-        AureumGovernance.Proposal memory p = gov.getProposal(id1);
+        p = gov.getProposal(id1);
         vm.roll(p.eta);
         gov.execute(id1);
         assertEq(vault.staticFeeOf(feePool), FEE_OK);

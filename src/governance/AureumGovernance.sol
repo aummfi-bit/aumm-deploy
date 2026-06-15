@@ -23,6 +23,7 @@ import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
 contract AureumGovernance {
     using SafeERC20 for IERC20;
 
+    uint256 internal constant VOTING_DELAY_BLOCKS = AureumTime.BLOCKS_PER_DAY;
     uint256 internal constant VOTING_PERIOD_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
     uint256 internal constant EXECUTION_TIMELOCK_BLOCKS = 2 * AureumTime.BLOCKS_PER_DAY;
     uint256 internal constant EXECUTION_GRACE_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
@@ -94,7 +95,8 @@ contract AureumGovernance {
         Succeeded,
         Queued,
         Executed,
-        Expired
+        Expired,
+        Pending
     }
 
     struct Proposal {
@@ -102,7 +104,7 @@ contract AureumGovernance {
         ProposalType proposalType;
         uint256 startBlock;
         uint256 endBlock;
-        uint256 snapshotTotalSupply;
+        uint256 snapshotBlock;
         uint256 forVotes;
         uint256 againstVotes;
         uint256 eta;
@@ -123,8 +125,8 @@ contract AureumGovernance {
         ProposalType proposalType,
         address indexed proposer,
         uint256 startBlock,
-        uint256 endBlock,
-        uint256 snapshotTotalSupply
+        uint256 snapshotBlock,
+        uint256 endBlock
     );
     event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 weight);
     event ProposalQueued(uint256 indexed proposalId, uint256 eta);
@@ -182,7 +184,7 @@ contract AureumGovernance {
         revert InvalidPayToken();
     }
 
-    /// @notice Shared propose tail — pull deposit, donate to Bodensee, snapshot total supply, record proposal.
+    /// @notice Shared propose tail — pull deposit, donate to Bodensee, stamp the voting-delay snapshot block, record proposal.
     /// @param proposalType_ gauge, composition, or fee variant.
     /// @param targetPool_ fee or gauge target; zero when unused.
     /// @param newPool_ composition replacement pool; zero when unused.
@@ -198,11 +200,11 @@ contract AureumGovernance {
         payToken_.safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
         BODENSEE_CHANNEL.donate(payToken_, amount);
         proposalId = ++proposalCount;
-        uint256 snapshot = VOTING_WEIGHT.totalSupply();
         uint256 start = block.number;
-        uint256 end = start + VOTING_PERIOD_BLOCKS;
-        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotTotalSupply: snapshot, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_ });
-        emit ProposalCreated(proposalId, proposalType_, msg.sender, start, end, snapshot);
+        uint256 snapshotBlock = start + VOTING_DELAY_BLOCKS;
+        uint256 end = snapshotBlock + VOTING_PERIOD_BLOCKS;
+        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotBlock: snapshotBlock, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_ });
+        emit ProposalCreated(proposalId, proposalType_, msg.sender, start, snapshotBlock, end);
     }
 
     /// @notice Propose a gauge challenge to revoke an active pilot gauge.
@@ -244,18 +246,18 @@ contract AureumGovernance {
     /// @notice Cast a snapshot-weighted vote on an active proposal.
     /// @param proposalId 1-based proposal identifier.
     /// @param support `true` for, `false` against.
-    /// @dev `poke` refreshes the caller's checkpoint before reading `governanceWeight` so the vote uses the
-    ///      weight at the vote block (qualification cliff + on-ramp applied inside `VotingWeight`; no local
-    ///      dampening). A zero-weight caller accrues nothing (Compound-parity no-op, not a revert). The
-    ///      `hasVoted` guard is set before the external `poke` call (checks-effects-interactions) so a
-    ///      reentrant `castVote` reverts `AlreadyVoted`.
+    /// @dev Weight is read via `getPastVotes(msg.sender, p.snapshotBlock)` — the caller's checkpoint frozen at
+    ///      the proposal's snapshot block (F-06). A voter must `poke` themselves during the `Pending`
+    ///      voting-delay window (on or before `snapshotBlock`) for their weight to count; an un-poked or
+    ///      since-withdrawn voter reads 0 (Compound-parity no-op, not a revert). Voting is gated to the Active
+    ///      window `snapshotBlock < block.number <= endBlock`; a `Pending` or closed proposal reverts
+    ///      `ProposalNotActive`. The `hasVoted` guard is set before the external (view) `getPastVotes` read.
     function castVote(uint256 proposalId, bool support) external {
         Proposal storage p = _proposals[proposalId];
-        if (block.number < p.startBlock || block.number > p.endBlock) revert ProposalNotActive(proposalId);
+        if (block.number <= p.snapshotBlock || block.number > p.endBlock) revert ProposalNotActive(proposalId);
         if (hasVoted[proposalId][msg.sender]) revert AlreadyVoted(msg.sender, proposalId);
         hasVoted[proposalId][msg.sender] = true;
-        VOTING_WEIGHT.poke(msg.sender);
-        uint256 weight = VOTING_WEIGHT.governanceWeight(msg.sender);
+        uint256 weight = VOTING_WEIGHT.getPastVotes(msg.sender, p.snapshotBlock);
         if (support) {
             p.forVotes += weight;
         } else {
@@ -267,11 +269,14 @@ contract AureumGovernance {
     /// @notice Derive the lifecycle state of a proposal from stored fields.
     /// @param proposalId 1-based proposal identifier.
     /// @return Current `ProposalState` — non-existent or unvoted proposals derive to `Defeated`.
-    /// @dev Voting is `Active` while `block.number <= endBlock`; tally is evaluated only after
-    ///      `endBlock` per K-D6c.
+    /// @dev `Pending` during the voting-delay window (`block.number <= snapshotBlock`, F-06); `Active` while
+    ///      `snapshotBlock < block.number <= endBlock`; the tally is evaluated only after `endBlock` per
+    ///      K-D6c. A non-existent proposal (`snapshotBlock == endBlock == 0`) derives to `Defeated`, never
+    ///      `Pending`, since `block.number > 0`.
     function state(uint256 proposalId) public view returns (ProposalState) {
         Proposal storage p = _proposals[proposalId];
         if (p.executed) return ProposalState.Executed;
+        if (block.number <= p.snapshotBlock) return ProposalState.Pending;
         if (block.number <= p.endBlock) return ProposalState.Active;
         if (!_voteSucceeded(p)) return ProposalState.Defeated;
         if (p.eta == 0) return ProposalState.Succeeded;
@@ -284,14 +289,15 @@ contract AureumGovernance {
     /// @return `true` when turnout and majority thresholds are met.
     /// @dev Quorum is 20% turnout per `QUORUM_BPS`. `CompositionChallenge` requires integer-exact 2/3
     ///      supermajority; `GaugeChallenge` + `FeeChange` require simple majority, per K-D6c.
-    /// @dev F-01 — the quorum denominator reads `VOTING_WEIGHT.totalSupply()` live at tally-time, not the
-    ///      stored propose-time `snapshotTotalSupply`. `_totalQualifiedWeight` is a lazy poke-accumulator that
-    ///      grows as holders poke in, so a stale propose-time snapshot lets turnout exceed 100% of it; the live
-    ///      read tracks the same clock as the `poke`-weighted `forVotes` / `againstVotes`. `snapshotTotalSupply`
-    ///      is retained for the `ProposalCreated` event / off-chain reference only.
+    /// @dev F-06 — both the numerator (`forVotes` + `againstVotes`, each a `getPastVotes(voter, snapshotBlock)`
+    ///      read in `castVote`) and the denominator (`getPastTotalSupply(p.snapshotBlock)`) are frozen at the
+    ///      same snapshot block, so turnout cannot exceed 100% of the denominator by construction. This
+    ///      supersedes the F-01 live `totalSupply()` read: freezing both sides at `snapshotBlock` closes the
+    ///      F-01 >100%-turnout face AND the F-06 post-`endBlock` denominator-inflation grief (a `poke` after
+    ///      `endBlock` no longer moves the denominator this proposal reads).
     function _voteSucceeded(Proposal storage p) internal view returns (bool) {
         uint256 totalVotes = p.forVotes + p.againstVotes;
-        if (totalVotes * 10_000 < VOTING_WEIGHT.totalSupply() * QUORUM_BPS) return false; // 10_000 = basis-points denominator
+        if (totalVotes * 10_000 < VOTING_WEIGHT.getPastTotalSupply(p.snapshotBlock) * QUORUM_BPS) return false; // 10_000 = basis-points denominator
         if (p.proposalType == ProposalType.CompositionChallenge) {
             return p.forVotes * 3 >= totalVotes * 2;
         }
