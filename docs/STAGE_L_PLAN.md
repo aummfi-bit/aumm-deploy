@@ -39,7 +39,7 @@ Stage L ships the Incendiary Boost producer (canonical F-2): a registry that sel
 
 ## Decisions
 
-Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 LOCKED at L1.0 pre-flight; L-D16—L-D17 LOCKED at L2.1 pre-flight). See NOTES for full bodies.
+Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1; L-D10—L-D15 at L1.0; L-D16—L-D17 at L2.1; L-D18 at L3.1; L-D19 at L3.2; L-D20 at L4.1; L-D21—L-D23 at L5.0; L-D24 at L4.2; L-D25 at L7.0). See NOTES for full bodies.
 
 | # | Status | Decision (summary) | Locked at |
 | --- | --- | --- | --- |
@@ -66,6 +66,8 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 | L-D21 | LOCKED | L5.1 cap basis: `_epochEmissionIntegral(epoch)` era-split walk (mirrors `_lpTrancheIntegral`) — `Σ blockEmissionRate × subLen` over ≤2 era sub-intervals (epoch straddles ≤1 halving); `_epochCap = integral × BOOST_CAP_BPS / 10_000`. Both `internal view`. | L5.0 |
 | L-D22 | LOCKED | L5.2 placement: `_placeBoost(pool, entitlement) internal` FCFS walk-forward from `epochIndex(now)+1` — `alloc = min(remaining, _epochCap(e) − epochSkimAllocated[e])` into `epochSkimAllocated[e]` + `epochPoolSkim[e][pool]` until exhausted; emit `BoostPlaced`. | L5.0 |
 | L-D23 | LOCKED | L5.3 view strategy: direct epoch-walk both views (crystallize DROPPED, supersedes L-D9; L-D17 slots cancelled; storage final at L2.1b). `integratedSkim`/`boostIntegral` widen stubs pure→view, sum `_epochOverlapBlocks × (bucket / BLOCKS_PER_EPOCH)`; per-block model (i) tiling; conservation `Σ_pools boostIntegral ≤ integratedSkim` (amends L-D8, cap-safe). | L5.0 |
+| L-D24 | LOCKED | L4.2 `buyBoost` mutating wiring: drops `view` → `external returns (uint256 entitlement)`; after the L-D20 gates + entitlement quote, the L-D2 deposit tail (`safeTransferFrom(buyer → BODENSEE_CHANNEL)` + `BODENSEE_CHANNEL.donate`) runs, then `_placeBoost(pool, entitlement)`, then `emit BoostPurchased(buyer, pool, payToken, amount, entitlement)`. `SafeERC20` import; no reentrancy guard (svZCHF/sUSDS non-callback; `AureumGovernance._createProposal` precedent). | L4.2 |
+| L-D25 | LOCKED | L7.1 delivery leg (I13 fix-forward on the tagged `EmissionDistributor`): concrete-only `mapping(address => uint256) public poolBoostCursor`; in `_settlePool` after the CCB `poolAccDebt` rebase, a block guarded by `incendiaryRegistry != address(0)` adds `boostIntegral(pool, cursor+1, block.number).divDown(poolTotalLP[pool])` to `poolAccRewardPerLP[pool]` and always advances the cursor; NO `recordEmissions` (L-D15); sits OUTSIDE `if (poolAllocation > 0)`. Blast radius ZERO (all settle-path tests run registry `address(0)`). | L7.0 |
 
 ---
 
@@ -127,7 +129,7 @@ Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoc
 
 ### L7 — `EmissionDistributor` fix-forward (per L-D8; I13)
 
-- **L7.1** per-pool settle/claim adds the `boostIntegral` leg (reads the registry, adds to the pool's score-based share, mints via the existing K-D7 router) — sized at L1.0; invariant `Σ_pools boostIntegral = integratedSkim` honored. Cursor §8e.1.
+- **L7.1** per-pool settle/claim adds the `boostIntegral` leg (reads the registry, adds to the pool's score-based share, mints via the existing K-D7 router) — sized at L1.0; invariant `Σ_pools boostIntegral ≤ integratedSkim` honored (relaxed per L-D23, cap-safe). Cursor §8e.1.
 
 ### L8 — Tests (6 sub-steps)
 
@@ -169,6 +171,17 @@ Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoc
 | L4.1-pre | `b60a3c1` + `7b9c8f9` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D20 LOCKED (buyBoost gates + rate-scaled valuation: raw deposit→scaled-18 before EMA pricing; plain-integer BPS haircut; L4.1a/b safe-scaffold split) |
 | L4.1a | `fd56e80` | `src/incendiary/IncendiaryRegistry.sol` — `_payTokenIndex` + `_valueInAuMM` valuation internals (L-D20: rate-scaled deposit ÷ mature EMA via ScalingHelpers) |
 | L4.1b | `e489371` | `src/incendiary/IncendiaryRegistry.sol` — `buyBoost` gated quote + `BoostsNotOpen`/`PoolNotGauged`/`ZeroAmount` (L-D20: 5 gates, plain-integer BPS haircut, view scaffold) |
+| L4.2-pre | `63dc6cc` | `docs/STAGE_L_NOTES.md` — L-D24 LOCKED (buyBoost mutating wiring: deposit tail + placement + `BoostPurchased` event shape) |
+| L4.2 | `ff62dad` | `src/incendiary/IncendiaryRegistry.sol` — `buyBoost` wired (SafeERC20 + deposit tail + `_placeBoost` call + `BoostPurchased`); drops `view` (L-D24) |
+| L5.0-pre | `cc96945` + `05cb308` + `3a1ec90` + `749372a` | `docs/STAGE_L_NOTES.md` + `docs/STAGE_L_PLAN.md` — L-D21/L-D22/L-D23 LOCKED (cap-basis era-split, FCFS placement, direct epoch-walk views; crystallize DROPPED, conservation =→≤) + Decisions mirror + L-D8/L-D9/L-D14/L-D17 back-references |
+| L5.1 | `220827f` | `src/incendiary/IncendiaryRegistry.sol` — `_epochEmissionIntegral` (era-split walk) + `_epochCap` (15% BPS) (L-D21) |
+| L5.2 | `cfc3bdb` | `src/incendiary/IncendiaryRegistry.sol` — `BoostPlaced` event + `_placeBoost` FCFS walk-forward (L-D22) |
+| L5.3 | `7085bd0` | `src/incendiary/IncendiaryRegistry.sol` — `integratedSkim` + `boostIntegral` direct epoch-walk view bodies + `_epochOverlapBlocks` helper (L-D23) |
+| L7.1-pre | `a17231d` | `docs/STAGE_L_NOTES.md` — L-D25 LOCK (`EmissionDistributor` boost-delivery leg, I13 fix-forward, zero blast radius) |
+| L7.1 | `3cbda5f` | `src/emission/EmissionDistributor.sol` — `poolBoostCursor` slot + `_settlePool` boost-delivery leg (L-D25, I13 fix-forward) |
+| L7.2a | `9950a77` | `src/incendiary/IncendiaryRegistry.sol` — @dev header rewrite, crystallize stale ref removed (L-D23) |
+| L7.2b | `3cbcd77` | `src/incendiary/IIncendiaryRegistry.sol` — `integratedSkim` @dev splice, crystallize stale ref removed (L-D23) |
+| L7.2c | `2af4325` | `docs/STAGE_L_PLAN.md` — roadmap reconciled to L-D23 direct epoch-walk (crystallize-cache dropped, L6 absorbed into L5.3) |
 
 ---
 
