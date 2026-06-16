@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 import { StageIIntegrationFixture } from "./StageIIntegration.t.sol";
 import { DeployStageL } from "../../script/DeployStageL.s.sol";
 import { IncendiaryRegistry } from "../../src/incendiary/IncendiaryRegistry.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 /**
  * @title DeployStageLForkTest
@@ -68,5 +69,33 @@ contract DeployStageLForkTest is StageIIntegrationFixture {
         assertEq(registry.GENESIS_BLOCK(), aumm.GENESIS_BLOCK());
         assertTrue(swapAndDeposit.authorizedDonators(address(registry)), "script addAuthorizedDonator wired the registry");
         assertEq(emissionDistributor.incendiaryRegistry(), address(registry), "script setIncendiaryRegistry wired the registry");
+    }
+
+    function test_DeployStageL_buyBoost_smoke() public {
+        address buyer = makeAddr("deployBoostBuyer");
+        uint256 amount = 10e18;
+        vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
+        registry.updateRailEMA(address(svZchf));
+        vm.roll(block.number + registry.EMA_MATURITY_BLOCKS());
+        deal(address(svZchf), buyer, amount);
+        vm.startPrank(buyer);
+        svZchf.approve(address(registry), amount);
+        uint256 entitlement = registry.buyBoost(pilotPools[0], address(svZchf), amount);
+        vm.stopPrank();
+        assertGt(entitlement, 0, "buyBoost through the script-wired registry placed a nonzero entitlement");
+    }
+
+    function test_DeployStageL_failFast_wrongGovernor_reverts() public {
+        address rando = makeAddr("deployRando");
+        DeployStageL freshScript = new DeployStageL();
+        // vm.expectRevert(bytes4) does not match an error carrying args in this Foundry build —
+        // encode the full error (selector + the distributor.governance() arg the first L-D28 gate reports).
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DeployStageL.DistributorGovernanceNotMultisig.selector,
+                emissionDistributor.governance()
+            )
+        );
+        freshScript.deploy(rando);
     }
 }
