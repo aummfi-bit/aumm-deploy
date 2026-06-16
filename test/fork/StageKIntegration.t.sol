@@ -63,13 +63,16 @@ abstract contract StageKIntegrationFixture is StageIIntegrationFixture {
         realRegistry.setGovernanceContract(address(gov));
     }
 
-    /// @dev K6-deferred EMA shim — VotingWeight now reads the 60-day `tvlEMA` behind the F-04
-    ///      `EMA_MATURITY_BLOCKS` seed-age gate; the shim mocks both `tvlEMA` and a mature
-    ///      `emaSeedBlock` to keep isolating the poke logic under test from oracle pricing and
-    ///      EMA cadence (the R1 empty-roster rationale still applies upstream).
+    /// @dev K6-deferred EMA shim — VotingWeight reads the 60-day `tvlEMA` behind the F-04
+    ///      `EMA_MATURITY_BLOCKS` seed-age gate and the F-05 `EMA_STALENESS_BLOCKS` freshness
+    ///      gate; the shim mocks `tvlEMA`, a mature `emaSeedBlock`, and a fresh
+    ///      `lastEMAUpdateBlock` (stamped at `block.number`) to keep isolating the poke logic
+    ///      under test from oracle pricing and EMA cadence (the R1 empty-roster rationale still
+    ///      applies upstream).
     function _mockPoolEma(address pool, uint256 svzchfValue) internal {
         vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.tvlEMA.selector, pool), abi.encode(svzchfValue));
         vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.emaSeedBlock.selector, pool), abi.encode(uint256(1)));
+        vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.lastEMAUpdateBlock.selector, pool), abi.encode(block.number));
     }
 }
 
@@ -173,12 +176,13 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
         svZchf.approve(address(gov), 1_000e18);
         uint256 id = gov.proposeCompositionChallenge(slot, candidate, svZchf);
 
-        // 3. Vote FOR with the qualifying voter (single 100% turnout).
+        // 3. Roll into the Active window — past the F-06 voting-delay `snapshotBlock` — then vote FOR (single 100% turnout). The line-above `poke` (at `startBlock <= snapshotBlock`) is the checkpoint `getPastVotes` reads at the snapshot, so no re-poke is needed.
+        AureumGovernance.Proposal memory pv = gov.getProposal(id);
+        vm.roll(pv.snapshotBlock + 1);
         vm.prank(voter);
         gov.castVote(id, true);
 
         // 4. Close the voting window — quorum (20%) + 2/3 supermajority both met.
-        AureumGovernance.Proposal memory pv = gov.getProposal(id);
         vm.roll(pv.endBlock + 1);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded), "succeeded");
 
