@@ -188,6 +188,25 @@ Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoc
 | L7.2a | `9950a77` | `src/incendiary/IncendiaryRegistry.sol` — @dev header rewrite, crystallize stale ref removed (L-D23) |
 | L7.2b | `3cbcd77` | `src/incendiary/IIncendiaryRegistry.sol` — `integratedSkim` @dev splice, crystallize stale ref removed (L-D23) |
 | L7.2c | `2af4325` | `docs/STAGE_L_PLAN.md` — roadmap reconciled to L-D23 direct epoch-walk (crystallize-cache dropped, L6 absorbed into L5.3) |
+| L7.2d | `669944f` | `docs/STAGE_L_PLAN.md` — Decisions mirror L-D24/L-D25 added, L7.1 row ≤ fix, Completion log backfilled (L4.2-pre → L7.2c) |
+| L8.0a | `1957995` | `docs/STAGE_L_NOTES.md` — L-D26 LOCK (L8 harness: `StageLMocks` + `IncendiaryRegistryHarness`, cast-not-inherit) |
+| L8.0b | `02b5dad` | `docs/STAGE_L_PLAN.md` — L-D26 mirror (`StageLMocks` + `IncendiaryRegistryHarness` surfaces, L8.1 a/b/c decomposition) |
+| L8.1a | `dc5b90e` | `test/fork/mocks/StageLMocks.sol` — 4 cast-not-inherit Stage L unit mocks (L-D26) |
+| L8.1b | `709baa6` | `test/unit/harness/IncendiaryRegistryHarness.sol` — 8-arg ctor forward + 7 ext* wrappers (L-D26) |
+| L8.1c-i | `852de6c` | `test/unit/IncendiaryRegistry.t.sol` — `setUp` fixture + 2 `extSpotRate` tests (L-D26) |
+| L8.1c-ii | `412ea5e` | `test/unit/IncendiaryRegistry.t.sol` — 9 EMA tests (`updateRailEMA` + `extMaturePrice`, both rails) (L-D26) |
+| L8.2a | `b16797e` | `test/unit/IncendiaryRegistry.t.sol` — `_seedAndMature` helper + 3 `extValueInAuMM` tests (L-D20) |
+| L8.2b | `43a99b3` | `test/unit/IncendiaryRegistry.t.sol` — 5 `buyBoost` tests (4 gates + happy-path svzchf) (L-D2/L-D4/L-D10/L-D20) |
+| L8.3a | `794f8fd` | `test/unit/IncendiaryRegistry.t.sol` — 3 integral/cap tests (`extEpochEmissionIntegral` + `extEpochCap`, L-D6/L-D21) |
+| L8.3b | `418a254` | `test/unit/IncendiaryRegistry.t.sol` — 4 `extPlaceBoost` tests (single-epoch, spill, stacking, shared-cap) (L-D6/L-D7/L-D9/L-D22) |
+| L8.4a | `85d3ccc` | `test/unit/IncendiaryRegistry.t.sol` — 3 `extEpochOverlapBlocks` tests (full/partial/disjoint) (L5.3/L-D23) |
+| L8.4b | `8825ef7` | `test/unit/IncendiaryRegistry.t.sol` — 3 `integratedSkim` tests (full/partial/empty) (L5.3/L-D23) |
+| L8.4c | `e5d4977` | `test/unit/IncendiaryRegistry.t.sol` — 3 `boostIntegral`/conservation tests (per-pool, exact-divisible, flooring-dust ≤) (L5.3/L-D23) |
+| L8.5a | `0837bf8` | `test/unit/EmissionDistributor.t.sol` — 3 boost-delivery leg tests (L-D25) |
+| L8.5b | `cd4fd61` | `test/unit/EmissionDistributor.t.sol` — 2 boost-cursor tests (`ZeroBoostDue`/`CursorUsedAsNextFrom`) (L-D25) |
+| L8.6-pre | `fa9fbcd` | `docs/STAGE_L_NOTES.md` — L-D27 LOCKED (L8.6 fixture + full claim→mint depth) |
+| L8.6a | `35d33b7` | `test/fork/StageLIntegration.t.sol` — `StageLIntegrationFixture` + wiring test (L-D27) |
+| L8.6b | `2515127` | `test/fork/StageLIntegration.t.sol` — end-to-end `buyBoost`→deliver→claim→mint + L-D23 conservation (L-D27) |
 
 ---
 
