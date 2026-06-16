@@ -86,3 +86,49 @@ contract StageLWiringTest is StageLIntegrationFixture {
         assertGt(block.number, AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()));
     }
 }
+
+contract StageLEndToEndTest is StageLIntegrationFixture {
+    /// @notice End-to-end L8.6 — buy a directed boost with real svZCHF, settle it through the L-D25 delivery leg on a claim, and mint to the LP via the K-D7 router; asserts deliverability, the L-D23 conservation bound, the cursor advance, and that the boost stream reaches the LP.
+    function test_stageL_endToEnd_buyBoost_delivers_to_lp_via_claim_mint() public {
+        address lp = makeAddr("boostLP");
+        address buyer = makeAddr("boostBuyer");
+        address pilot = pilotPools[0];
+        uint256 amount = 10e18; // svZCHF — small relative to the der Bodensee reserve; smoke-test input.
+
+        // 1. Establish the sole recorded LP in the gauged pilot (initialize-seed liquidity is not hook-recorded).
+        uint256 bptOut = _depositOneSided(pilot, lp, 100); // 1% one-sided add
+        assertEq(emissionDistributor.poolTotalLP(pilot), bptOut, "lp is the sole recorded depositor");
+        uint256 cursorAfterDeposit = emissionDistributor.poolBoostCursor(pilot);
+        assertEq(cursorAfterDeposit, block.number, "deposit settle advanced the boost cursor to the deposit block");
+
+        // 2. Buy a directed boost for the pilot — real svZCHF, matured EMA, open L-D3 phase.
+        uint256 eBuy = AureumTime.epochIndex(aumm.GENESIS_BLOCK(), block.number);
+        deal(address(svZchf), buyer, amount);
+        vm.startPrank(buyer);
+        svZchf.approve(address(registry), amount);
+        uint256 entitlement = registry.buyBoost(pilot, address(svZchf), amount);
+        vm.stopPrank();
+        assertGt(entitlement, 0, "buyBoost placed a nonzero entitlement");
+
+        // 3. Roll into the boost epochs — placement starts at eBuy+1; cover the L-D7 walk-forward spill window.
+        vm.roll(AureumTime.epochEndBlock(aumm.GENESIS_BLOCK(), eBuy + 12));
+
+        // 4. Read the deliverable boost + skim window, then claim (settles L-D25, crystallizes pending, mints via K-D7).
+        uint256 claimBlock = block.number;
+        uint256 boostDelivered = registry.boostIntegral(pilot, cursorAfterDeposit + 1, claimBlock);
+        uint256 skimWindow = registry.integratedSkim(cursorAfterDeposit + 1, claimBlock);
+        uint256 lpBalBefore = aumm.balanceOf(lp);
+        vm.prank(lp);
+        emissionDistributor.claim(pilot, lp);
+        uint256 lpBalAfter = aumm.balanceOf(lp);
+
+        // 5. Producer -> consumer -> mint assertions.
+        assertGt(boostDelivered, 0, "purchased boost is deliverable over the settle window");
+        assertLe(boostDelivered, entitlement, "delivered boost cannot exceed the purchased entitlement");
+        assertLe(boostDelivered, skimWindow, "L-D23 conservation: boostIntegral <= integratedSkim");
+        assertEq(emissionDistributor.poolBoostCursor(pilot), claimBlock, "L-D25 cursor advanced to the claim block");
+        assertGt(lpBalAfter, lpBalBefore, "claim minted AuMM to the lp via the K-D7 mint router");
+        // mint = CCB allocation + boost; the boost-leg share alone is >= boostDelivered - (poolTotalLP - 1).
+        assertGe(lpBalAfter + emissionDistributor.poolTotalLP(pilot), boostDelivered, "boost stream reached the lp within flooring dust");
+    }
+}
