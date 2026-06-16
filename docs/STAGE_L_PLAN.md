@@ -83,10 +83,10 @@ Mirror of STAGE_L_NOTES.md Decisions table (L-D1—L-D9 LOCKED wholesale at L0.1
 - [x] (L1.0 pre-flight, §12) der Bodensee spot-rate read mechanism — RESOLVED → L-D11. Direct `balancesLiveScaled18` + `getNormalizedWeights()` for both rails; `TVLOracle.quoteSvZCHF` rejected.
 - [x] (L1.0 pre-flight) `EmissionDistributor` I13 blast-radius sizing — RESOLVED → L-D14. 106-test cohort stays no-op via `incendiaryRegistry != address(0)` guard; new tests at L8.5 are additive only.
 - [x] (L4.1 pre-flight, §12) deposit valuation denomination — raw deposit vs rate-scaled (scaled-18) EMA — RESOLVED → L-D20. Rate-scale the raw deposit via Balancer `toScaled18ApplyRateRoundDown` (PoolData `decimalScalingFactors`/`tokenRates`, round down) before `divDown(ema)`; der Bodensee pay tokens are WITH_RATE (`DeployDerBodensee.s.sol:103-116`).
-- [ ] (resolves L8) Stage L unit cohort green — `test/unit/IncendiaryRegistry.t.sol` + `EmissionDistributor.t.sol` delivery tests.
-- [ ] (resolves L8) `StageLIntegration` fork green — buy → donate → skim → per-pool delivery + conservation invariant.
-- [ ] (resolves L9) `DeployStageL` fork green.
-- [ ] (resolves L9) full split-form regression (D35 / D36) + `stage-l → main` ff-merge + `stage-l-complete` tag + push.
+- [x] (resolves L8) Stage L unit cohort green — `test/unit/IncendiaryRegistry.t.sol` + `EmissionDistributor.t.sol` delivery tests.
+- [x] (resolves L8) `StageLIntegration` fork green — buy → donate → skim → per-pool delivery + conservation invariant.
+- [x] (resolves L9) `DeployStageL` fork green.
+- [x] (resolves L9) full split-form regression (D35 / D36) + `stage-l → main` ff-merge + `stage-l-complete` tag + push.
 
 ---
 
