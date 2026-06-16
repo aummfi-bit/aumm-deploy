@@ -207,6 +207,11 @@ Both view bodies (`integratedSkim`, `boostIntegral`) ship at L5.3 as direct epoc
 | L8.6-pre | `fa9fbcd` | `docs/STAGE_L_NOTES.md` — L-D27 LOCKED (L8.6 fixture + full claim→mint depth) |
 | L8.6a | `35d33b7` | `test/fork/StageLIntegration.t.sol` — `StageLIntegrationFixture` + wiring test (L-D27) |
 | L8.6b | `2515127` | `test/fork/StageLIntegration.t.sol` — end-to-end `buyBoost`→deliver→claim→mint + L-D23 conservation (L-D27) |
+| L9.1-pre | `aceac0c` | `docs/STAGE_L_NOTES.md` — L-D28 LOCKED (L9.1 DeployStageL deploy script design) |
+| L9.1 | `1513af5` | `script/DeployStageL.s.sol` — deploy `IncendiaryRegistry` + dual-gate wire (`addAuthorizedDonator` + `setIncendiaryRegistry`); L-D28 fail-fast preconditions |
+| L9.2a | `c26cbd0` | `test/fork/DeployStageL.t.sol` — `DeployStageLForkTest` fixture + wiring-state test (L-D28) |
+| L9.2b | `08687b8` | `test/fork/DeployStageL.t.sol` — `buyBoost` smoke + fail-fast guard tests (L-D28) |
+| L9.3 | `127447a` | `test/fork/StageKIntegration.t.sol` — F-05 freshness shim + F-06 voting-delay roll (fork-retrofit misses; full split-form gate 824 unit + 99 fork green) |
 
 ---
 
