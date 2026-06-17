@@ -248,6 +248,18 @@ Locked at the L8.6 pre-flight (user 2026-06-15 chose full claim→mint depth ove
 
 ---
 
+### L-D29 — F-07 whitehat fix-forward: `_maturePrice` EMA freshness gate (post-`stage-l-complete`) — status LOCKED
+
+**Provenance — post-tag whitehat fix, not build-line design.** Recorded here for STAGE_L_NOTES completeness; the canonical record is the white-hat ledger `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md` (the F-07 findings-table row + the WL coverage roll-up row + the `## Fix — F-07 (Stage-L)` note). F-07 was surfaced and fixed in a scheduled Stage-L spot review AFTER the `stage-l-complete` tag — fix-forward on `main`, no re-tag, I13-class — commits `0a21b99` (source + test retrofit), `b96227c` (PoC), `d3ece7f` (ledger). Logged as an L-D for design-trace continuity only; it is NOT a pre-tag build-line decision, per the F-06 ledger-note caveat that a stage-design entry would mislabel a post-tag whitehat fix.
+
+**The gap.** The L-D19 / L-D20 maturity gate in `_maturePrice` enforced seed AGE only — `seedBlock == 0` → `EMANotMature` and `block.number - seedBlock < EMA_MATURITY_BLOCKS` (432_000, 60 days) → `EMANotMature` — but never checked sample FRESHNESS. Once a rail's price-EMA seed seasoned 60 days, a mature-but-stale der-Bodensee EMA (never re-sampled, `block.number - lastSampleBlock` unbounded) priced every `buyBoost` deposit→entitlement valuation off the stale stored `rail.ema` indefinitely. The IncendiaryRegistry sibling of the WK-R F-05 `VotingWeight` freshness gap — same class, different EMA consumer (the der-Bodensee PRICE EMA for boost valuation vs F-05's TVL EMA for governance weight).
+
+**The fix.** Adds `EMA_STALENESS_BLOCKS = AureumTime.BLOCKS_PER_EPOCH` (100_800, 14 days / one epoch, L47) and the gate `if (block.number - rail.lastSampleBlock > EMA_STALENESS_BLOCKS) revert EMAStale(payToken, staleness, EMA_STALENESS_BLOCKS);` (L337-338) immediately after the seed-AGE maturity gate. `EMA_MATURITY_BLOCKS` gates seed AGE; the new constant gates seed FRESHNESS — a never-refreshed mature seed is structurally stale the instant the 60-day clock matures. Mirrors F-05's consumer-side gate (same constant name, same one-epoch threshold) but DIFFERS in degradation: F-05 returns 0 weight, whereas the pricing path REVERTS `EMAStale` — a stale EMA must not silently misprice a purchase, so the buy fails closed. `lastSampleBlock` advances only on permissionless `updateRailEMA`, so refresh is anyone-can-call.
+
+**Test surface (I13 blast radius).** The gate is a fail-fast check inside `_maturePrice`, reached by every caller — `buyBoost` via `_valueInAuMM`, plus the `extMaturePrice` / `extValueInAuMM` harness wrappers — so the retrofit added a fresh `updateRailEMA` re-sample before each pre-existing mature-rail test. The initial buyBoost-only blast-radius survey missed the harness-wrapper paths; it surfaced at unit regression and was closed in the `_seedAndMature` helper + `test_extMaturePrice_mature`. Plus a new `test_buyBoost_revert_emaStale` negative and the dedicated PoC `test/whitehat/F07_emaStalePricing.t.sol` (4/4: deeply-stale reverts, fresh prices, staleness == one epoch still flows under strict `>`, +1 reverts). Regression: 825/825 unit + 99/99 fork green.
+
+---
+
 ## Deferred / carry-forward
 
 - **FINDINGS.md corrections (docs; user-side or a later L sub-step):** L269 / L348 "deposit-anything mechanic" → svZCHF / sUSDS only; L369 / L377 governance/Incendiary "shared swap-and-deposit primitive (the hook)" → the actual route is the Stage G `SwapAndDepositToBodensee.donate` channel (the Stage D hook leg is dormant).
