@@ -164,6 +164,7 @@ contract IncendiaryRegistryTest is Test {
     function test_extMaturePrice_mature() public {
         registry.updateRailEMA(address(svzchf));
         vm.roll(GENESIS_BLOCK + 432_000);
+        registry.updateRailEMA(address(svzchf));
         assertEq(registry.extMaturePrice(address(svzchf)), 1e18);
     }
 
@@ -177,6 +178,8 @@ contract IncendiaryRegistryTest is Test {
     function _seedAndMature(address rail) internal {
         registry.updateRailEMA(rail);
         vm.roll(block.number + 432_000);
+        // F-05 — re-sample at the matured block so lastSampleBlock is fresh, not the seed block.
+        registry.updateRailEMA(rail);
     }
 
     function test_extValueInAuMM_svzchf() public {
@@ -224,12 +227,34 @@ contract IncendiaryRegistryTest is Test {
         registry.buyBoost(address(venue), address(svzchf), 0);
     }
 
+    function test_buyBoost_revert_emaStale() public {
+        // Seed the svZCHF rail at genesis, then roll past Year 1 without re-sampling — age
+        // (block.number - seedBlock) clears EMA_MATURITY_BLOCKS, but lastSampleBlock stays at
+        // GENESIS_BLOCK so staleness (block.number - lastSampleBlock) exceeds EMA_STALENESS_BLOCKS:
+        // _maturePrice passes the F-04 maturity gate and reverts on the F-05 freshness gate.
+        registry.updateRailEMA(address(svzchf));
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        gauges.setApproved(address(venue), true);
+
+        uint256 staleness = block.number - GENESIS_BLOCK;
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IncendiaryRegistry.EMAStale.selector,
+                address(svzchf),
+                staleness,
+                registry.EMA_STALENESS_BLOCKS()
+            )
+        );
+        registry.buyBoost(address(venue), address(svzchf), 1000e18);
+    }
+
     function test_buyBoost_happyPath_svzchf() public {
         address buyer = makeAddr("boostBuyer");
         uint256 amount = 1000e18;
 
         registry.updateRailEMA(address(svzchf));
         vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK) + 1);
+        registry.updateRailEMA(address(svzchf));
         aumm.setRate(1e18);
         gauges.setApproved(address(venue), true);
         svzchf.mint(buyer, amount);

@@ -43,6 +43,9 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @notice Blocks a rail's EMA must season before it may price a purchase — 60 days at `BLOCKS_PER_DAY` (L-D5).
     uint256 public constant EMA_MATURITY_BLOCKS = 432_000;
 
+    /// @notice A rail's price EMA must have been refreshed within EMA_STALENESS_BLOCKS (14 days, one epoch) before it may price a purchase — F-05 anti-stale-seed floor.
+    uint256 public constant EMA_STALENESS_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
+
     /// @notice Aggregate per-epoch boost cap — 15% of the epoch's emission integral (L-D6).
     uint256 public constant BOOST_CAP_BPS = 1_500;
 
@@ -151,6 +154,9 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @param age Blocks since the rail's EMA seed, 0 if never seeded.
     /// @param required The maturity threshold, `EMA_MATURITY_BLOCKS`.
     error EMANotMature(address payToken, uint256 age, uint256 required);
+
+    /// @notice `_maturePrice` read a rail whose price EMA exceeds the F-05 14-day freshness floor — last sample stale (F-05 gate).
+    error EMAStale(address payToken, uint256 staleness, uint256 required);
 
     /// @notice `buyBoost` called before the continuous phase opens — purchases are gated until after
     ///         Year 1 (`block.number > year1EndBlock`) so the F-7 Step 1 skim stays phase-aligned (L-D3).
@@ -315,9 +321,10 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /// @notice The rail's mature 60-day price EMA, stable-per-AuMM per L-D17 — the price the L4.1
     ///         `buyBoost` valuation divides the deposit by; reverts unless seasoned 60 days.
-    /// @dev L-D19. Mirrors the F-04 `VotingWeight._positionPower` gate (`VotingWeight.sol:134-138`) but
+    /// @dev L-D19. Mirrors the F-04 / F-05 `VotingWeight._positionPower` gates (`VotingWeight.sol:134-138`) but
     ///      reverts rather than returning 0: unseeded (`seedBlock == 0`, age 0) or still-ramping
-    ///      (`block.number - seedBlock < EMA_MATURITY_BLOCKS`) reverts `EMANotMature`, else returns
+    ///      (`block.number - seedBlock < EMA_MATURITY_BLOCKS`) reverts `EMANotMature`, stale
+    ///      (`block.number - rail.lastSampleBlock > EMA_STALENESS_BLOCKS`) reverts `EMAStale`, else returns
     ///      `rail.ema`. Internal-only, no public price view (L-D5) — maturity is built by `updateRailEMA`,
     ///      not here.
     /// @param payToken The pay-token rail (svZCHF / sUSDS) the price is denominated in.
@@ -327,6 +334,8 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         if (rail.seedBlock == 0) revert EMANotMature(payToken, 0, EMA_MATURITY_BLOCKS);
         uint256 age = block.number - rail.seedBlock;
         if (age < EMA_MATURITY_BLOCKS) revert EMANotMature(payToken, age, EMA_MATURITY_BLOCKS);
+        uint256 staleness = block.number - rail.lastSampleBlock;
+        if (staleness > EMA_STALENESS_BLOCKS) revert EMAStale(payToken, staleness, EMA_STALENESS_BLOCKS);
         ema = rail.ema;
     }
 

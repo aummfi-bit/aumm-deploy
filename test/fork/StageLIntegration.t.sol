@@ -50,6 +50,7 @@ abstract contract StageLIntegrationFixture is StageIIntegrationFixture {
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
         registry.updateRailEMA(address(svZchf));
         vm.roll(block.number + registry.EMA_MATURITY_BLOCKS());
+        registry.updateRailEMA(address(svZchf));
     }
 }
 

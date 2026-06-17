@@ -77,6 +77,7 @@ contract DeployStageLForkTest is StageIIntegrationFixture {
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
         registry.updateRailEMA(address(svZchf));
         vm.roll(block.number + registry.EMA_MATURITY_BLOCKS());
+        registry.updateRailEMA(address(svZchf));
         deal(address(svZchf), buyer, amount);
         vm.startPrank(buyer);
         svZchf.approve(address(registry), amount);
