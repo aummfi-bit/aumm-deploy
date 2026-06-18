@@ -136,6 +136,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      two-flag lock shape per I-D16.
     address private _emissionRecorderAdmin;
 
+    /// @notice Governance-managed allowlist of routers whose `getSender()` the liquidity callbacks trust for recorder attribution (F-09). Empty by default — the recorder dispatch in onAfterAddLiquidity / onAfterRemoveLiquidity is skipped (no credit, no revert) for any non-allowlisted router, so an attacker acting as its own router cannot spoof LP identity into the emission / qualification clock. Populated by governance via `setTrustedRouter` (e.g. the Stage O Aureum Router). Declared last in storage so its slot follows the C-D11 / I-D16 admin slots (3—5), preserving their pinned layout (F-09 fix).
+    mapping(address => bool) public trustedRouter;
+
     // -------------------------------------------------------------------------
     // Impl-side errors
     // -------------------------------------------------------------------------
@@ -186,6 +189,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         via the one-shot setter).
     /// @param recorder The emission recorder (EmissionDistributor) address.
     event EmissionRecorderSet(address indexed recorder);
+
+    /// @notice Emitted when governance allowlists or de-allowlists a router for recorder attribution (F-09).
+    event TrustedRouterSet(address indexed router, bool trusted);
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -286,6 +292,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         emit EmissionRecorderSet(recorder);
     }
 
+    /// @notice Governance allowlist toggle for a router whose `getSender()` is trusted for recorder attribution (F-09).
+    /// @dev Gated by `governanceModule` (the Stage K AureumGovernance authority) — reverts `UnauthorizedCaller` before governance is bound or from any other caller. Unlike the one-shot module setters this is a persistent, repeatable governance lever (routers added/removed over time); it sets no admin flag. The Stage O Aureum Router is allowlisted here when it ships; until then the allowlist is empty and the callback recorder dispatch is dormant (fail-closed).
+    /// @param router  The router address to allow or disallow.
+    /// @param trusted True to trust the router's getSender() for recorder credit; false to revoke.
+    function setTrustedRouter(address router, bool trusted) external {
+        if (msg.sender != governanceModule) revert UnauthorizedCaller(msg.sender);
+        trustedRouter[router] = trusted;
+        emit TrustedRouterSet(router, trusted);
+    }
+
     // -------------------------------------------------------------------------
     // IHooks (BaseHooks)
     // -------------------------------------------------------------------------
@@ -367,7 +383,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory
     ) public override onlyVault returns (bool, uint256[] memory) {
         address recorder = emissionRecorder;
-        if (recorder != address(0)) {
+        // F-09: credit the recorder only from a governance-allowlisted router; a non-allowlisted (e.g. self-)router is skipped (no credit, no revert) so getSender() cannot spoof LP identity.
+        if (recorder != address(0) && trustedRouter[router]) {
             address lp = IRouterSender(router).getSender();
             IEmissionDistributor(recorder).recordDeposit(pool, lp, bptAmountOut);
         }
@@ -392,7 +409,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory
     ) public override onlyVault returns (bool, uint256[] memory) {
         address recorder = emissionRecorder;
-        if (recorder != address(0)) {
+        // F-09: credit the recorder only from a governance-allowlisted router; a non-allowlisted (e.g. self-)router is skipped (no credit, no revert) so getSender() cannot spoof LP identity.
+        if (recorder != address(0) && trustedRouter[router]) {
             address lp = IRouterSender(router).getSender();
             IEmissionDistributor(recorder).recordWithdrawal(pool, lp, bptAmountIn);
         }

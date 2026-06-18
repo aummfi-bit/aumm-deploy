@@ -90,6 +90,14 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
         emissionDistributor.setAuMTContractForPool(pilotPools[0], address(hook)); // I-D9 amend — recorder gate admits the hook as msg.sender
         emissionDistributor.setAuMTContractForPool(pilotPools[1], address(hook));
         emissionDistributor.setAuMTContractForPool(pilotPools[2], address(hook));
+        // F-09 — allowlist this fixture's self-router so the hook's onAfterAddLiquidity /
+        // onAfterRemoveLiquidity recorder dispatch (gated by trustedRouter[router]) fires.
+        // The fixture IS the router — it calls Vault.addLiquidity directly inside unlock,
+        // so the hook resolves router == address(this). Bind governanceModule to the fixture
+        // via the moduleAdmin (GOVERNANCE_MULTISIG), then self-allowlist as that module.
+        vm.prank(GOVERNANCE_MULTISIG); // hook moduleAdmin_ — one-shot setGovernanceModule authority
+        hook.setGovernanceModule(address(this));
+        hook.setTrustedRouter(address(this), true); // address(this) is now the governanceModule
 
         // setMinter not wired — I6 recorder-clock tests exercise recordDeposit/recordWithdrawal only (no mint path).
     }
