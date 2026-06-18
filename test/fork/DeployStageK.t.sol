@@ -185,7 +185,11 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         vm.prank(address(governance));
         gaugeRegistry.seedFoundingPool(pilotPools[0]);
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
+        // F-10 gate: emaSeedBlock=1 (slot 2, ancient → mature); freshness stamped after the year1End roll
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(2))), bytes32(uint256(1)));
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
+        // F-10 gate: stamp lastEMAUpdateBlock=block.number (slot 1, fresh) at the recordScore block year1End+1
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(1))), bytes32(block.number));
         emissionDistributor.recordScore(pilotPools[0]);
         _depositOneSided(pilotPools[0], user, 100);
         vm.roll(block.number + 300);

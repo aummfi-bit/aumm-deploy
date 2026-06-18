@@ -90,16 +90,19 @@ contract MockEMASampler is IEMASampler {
     mapping(address => uint256) private _tvl;
     mapping(address => uint256) public emaSeedBlock;
 
+    /// @notice Sets the pool's TVL EMA and, on first seed, stamps `emaSeedBlock` to 1 — an ancient seed so the F-10 / F-04 maturity gate (EMA_MATURITY_BLOCKS = 432_000) always passes for tests rolling at or after GENESIS_BLOCK_ = 1_000_000. F-10 gate boundaries are exercised by test/whitehat/F10_emaScoreGate.t.sol, not this neutralizing mock.
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;
+        if (emaSeedBlock[pool] == 0) emaSeedBlock[pool] = 1;
     }
 
     function tvlEMA(address pool) external view override returns (uint256) {
         return _tvl[pool];
     }
 
-    function lastEMAUpdateBlock(address) external pure override returns (uint256) {
-        return 0;
+    /// @notice Always-fresh — returns `block.number` so the F-10 freshness gate (`block.number - lastEMAUpdateBlock <= EMA_STALENESS_BLOCKS`) always passes; gate boundaries are exercised by test/whitehat/F10_emaScoreGate.t.sol.
+    function lastEMAUpdateBlock(address) external view override returns (uint256) {
+        return block.number;
     }
 }
 
