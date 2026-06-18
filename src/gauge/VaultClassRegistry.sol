@@ -71,6 +71,9 @@ contract VaultClassRegistry is IVaultClassRegistry {
 
     mapping(uint256 => VaultClassProposal) public proposals;
 
+    /// @notice One-veto-per-address guard per proposal (F-08) — `vetoProposal` reverts `AlreadyVetoed` on a repeat call from the same address, so a single holder cannot stack its own weight across calls to cross the veto threshold.
+    mapping(uint256 => mapping(address => bool)) public hasVetoed;
+
     uint256 public nextProposalId;
 
     mapping(address => bool) public admittedClasses;
@@ -133,6 +136,8 @@ contract VaultClassRegistry is IVaultClassRegistry {
     error ProposalAlreadyFinalized(uint256 proposalId);
 
     error VetoWindowExpired(uint256 proposalId);
+
+    error AlreadyVetoed(uint256 proposalId);
 
     error VetoWindowOpen(uint256 proposalId);
 
@@ -269,11 +274,13 @@ contract VaultClassRegistry is IVaultClassRegistry {
     // -------------------------------------------------------------------------
 
     /// @notice Records voting-weight veto support during the window per G-D9 / G-D19; crossing threshold auto-revokes the proposal.
-    /// @dev Emits `VaultClassVetoed` on every call; bond remains in Bodensee on successful veto per G-D9.
+    /// @dev One veto per address per proposal (F-08): reverts `AlreadyVetoed` on a repeat call. Emits `VaultClassVetoed` on each accepted veto; bond remains in Bodensee on successful veto per G-D9.
     function vetoProposal(uint256 proposalId) external {
         VaultClassProposal storage proposal = proposals[proposalId];
         if (proposal.finalized || proposal.revoked) revert ProposalAlreadyFinalized(proposalId);
         if (block.number > proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowExpired(proposalId);
+        if (hasVetoed[proposalId][msg.sender]) revert AlreadyVetoed(proposalId);
+        hasVetoed[proposalId][msg.sender] = true;
         uint256 weight = votingWeight.governanceWeight(msg.sender);
         proposal.vetoSupport += weight;
         if ((proposal.vetoSupport * 10_000) / votingWeight.totalSupply() >= VETO_THRESHOLD_BPS) {
