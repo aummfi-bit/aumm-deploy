@@ -58,7 +58,7 @@ contract MiliariumRegistry is IMiliariumRegistry, IMiliariumSlotRegistry {
 
     /**
      * @notice Genesis-seeds the registry — binds the initial Miliarium pools to their constellation slots and sets the governance gate (**J-D4**).
-     * @dev Validates `governance_ != address(0)` (`ZeroAddress`) and `slotNumbers.length == pools.length` (`LengthMismatch`); then per pair validates slot ∈ [1, `SLOT_COUNT`] (`InvalidSlot`), pool != `address(0)` (`ZeroAddress`), no duplicate slot (`SlotAlreadyAssigned`), no duplicate pool (`PoolAlreadyRegistered`), binds the pair via `_assign`, and emits `SlotPopulated`. Makes no external calls — H13-safe, so deploy-script fork tests may pass placeholder pool addresses. Stage J seeds `slotNumbers = [2, 3, 7]` with the three Stage E pilot pools. Parameter data location is `memory` per G14.
+     * @dev Validates `governance_ != address(0)` (`ZeroAddress`) and `slotNumbers.length == pools.length` (`LengthMismatch`); then per pair validates slot ∈ [1, `SLOT_COUNT`] (`InvalidSlot`), pool != `address(0)` (`ZeroAddress`), no duplicate slot (`SlotAlreadyAssigned`), no duplicate pool (`PoolAlreadyRegistered`), binds the pair via `_assign`, and emits `SlotPopulated`. Makes no external calls — H13-safe, so deploy-script fork tests may pass placeholder pool addresses. Stage J seeds `slotNumbers = [1, 5, 14]` with the three Stage E pilot pools. Parameter data location is `memory` per G14.
      * @param governance_ Initial governance contract — the Authorizer Safe during Stages A—K, rebound at Stage K via `setGovernanceContract`.
      * @param slotNumbers 1-based constellation slot numbers to seed, each ∈ [1, `SLOT_COUNT`].
      * @param pools Pool occupying each corresponding slot — parallel to `slotNumbers`.

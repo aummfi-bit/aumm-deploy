@@ -16,7 +16,7 @@ import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks
  * @notice Stage J integration base — the real `MiliariumRegistry` wired into the live
  *         `CCBMultiplier` dense-enumeration consumer, CCB stack stood up directly (no fork pool deployment).
  * @dev Self-contained CCB stack — `MockTVLOracle` (the J-D8 mocked TVL leg) feeds a real `EMASampler`; a real
- *      `MiliariumRegistry` genesis-seeded at 1-based slots `[2, 3, 7]` with three synthetic pool addresses
+ *      `MiliariumRegistry` genesis-seeded at 1-based slots `[1, 5, 14]` with three synthetic pool addresses
  *      (governance = `address(this)` so J4.3 may `replaceSlot` without a prank); a `MockMiliariumRegistry`
  *      placeholder and `MockGaugeRegistry` satisfy the `CCBMultiplier` constructor; then the F-D20
  *      `setMiliariumRegistry` handoff re-points the live `CCBMultiplier` onto the real registry. Synthetic pool
@@ -34,9 +34,9 @@ abstract contract StageJIntegrationFixture is Test {
     address[3] internal pilotPools;
 
     function setUp() public virtual {
-        pilotPools[0] = makeAddr("pilot02");
-        pilotPools[1] = makeAddr("pilot03");
-        pilotPools[2] = makeAddr("pilot07");
+        pilotPools[0] = makeAddr("pilot01");
+        pilotPools[1] = makeAddr("pilot05");
+        pilotPools[2] = makeAddr("pilot14");
         registry = _deployRegistry();
         mockOracle = new MockTVLOracle();
         mockMiliarium = new MockMiliariumRegistry(pilotPools);
@@ -48,11 +48,11 @@ abstract contract StageJIntegrationFixture is Test {
     }
 
     function _deployRegistry() private returns (MiliariumRegistry) {
-        // 1-based slots [2, 3, 7] (der Bodensee pilots per 04_tokenomics.md §vii)
+        // 1-based slots [1, 5, 14] (der Bodensee pilots per 04_tokenomics.md §vii)
         uint256[] memory slotNumbers = new uint256[](3);
-        slotNumbers[0] = 2;
-        slotNumbers[1] = 3;
-        slotNumbers[2] = 7;
+        slotNumbers[0] = 1;
+        slotNumbers[1] = 5;
+        slotNumbers[2] = 14;
         address[] memory pools = new address[](3);
         pools[0] = pilotPools[0];
         pools[1] = pilotPools[1];
@@ -94,17 +94,17 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
     }
 
     function test_StageJ_ReplaceSlot_ReEnumerates() external {
-        address newPool = makeAddr("newPilotSlot2");
+        address newPool = makeAddr("newPilotSlot1");
         assertTrue(registry.isMiliarium(pilotPools[0]), "pilot0 member pre-replace");
-        assertEq(registry.poolAtSlot(2), pilotPools[0], "slot 2 holds pilot0 pre-replace");
+        assertEq(registry.poolAtSlot(1), pilotPools[0], "slot 1 holds pilot0 pre-replace");
         // Test contract == governance (registry constructed with address(this)); call directly.
-        registry.replaceSlot(2, newPool);
+        registry.replaceSlot(1, newPool);
         assertEq(registry.miliariumPoolsCount(), 3, "dense count unchanged after replace");
         assertFalse(registry.isMiliarium(pilotPools[0]), "pilot0 dropped from membership");
         assertTrue(registry.isMiliarium(newPool), "newPool added to membership");
-        assertEq(registry.poolAtSlot(2), newPool, "slot 2 now holds newPool");
+        assertEq(registry.poolAtSlot(1), newPool, "slot 1 now holds newPool");
         assertEq(registry.slotOf(pilotPools[0]), 0, "pilot0 slotOf reset to 0 sentinel");
-        assertEq(registry.slotOf(newPool), 2, "newPool slotOf = 2");
+        assertEq(registry.slotOf(newPool), 1, "newPool slotOf = 1");
         bool sawOld;
         bool sawNew;
         for (uint256 i = 0; i < 3; ++i) {
@@ -120,7 +120,7 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
     function test_StageJ_ReplaceSlot_CCBAggregateFollowsSwap() external {
         // Non-fork block.number starts at 1 — advance past the F-D6 epoch cadence.
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
-        address newPool = makeAddr("newPilotSlot2");
+        address newPool = makeAddr("newPilotSlot1");
         // The dropped pilot0 carries a distinctive large TVL that must NOT survive the swap.
         mockOracle.set(pilotPools[0], 9_000e18);
         mockOracle.set(pilotPools[1], UNIFORM_TVL);
@@ -128,7 +128,7 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
         sampler.updateEMA(pilotPools[0]);
         sampler.updateEMA(pilotPools[1]);
         sampler.updateEMA(pilotPools[2]);
-        registry.replaceSlot(2, newPool);
+        registry.replaceSlot(1, newPool);
         mockOracle.set(newPool, UNIFORM_TVL);
         sampler.updateEMA(newPool);
         multiplier.updateMultiplier(newPool);

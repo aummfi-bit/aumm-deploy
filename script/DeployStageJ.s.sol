@@ -7,14 +7,14 @@ import { MiliariumRegistry } from "../src/registry/MiliariumRegistry.sol";
 /**
  * @title DeployStageJ
  * @notice Deploys the Stage J Miliarium slot↔pool registry —
- *         `new MiliariumRegistry(governance_, [2,3,7], [pilot02, pilot03, pilot07])`
+ *         `new MiliariumRegistry(governance_, [1,5,14], [pilot01, pilot05, pilot14])`
  *         per J-D4 constructor-injected genesis seeding and J-D7 stage-close deploy script.
  * @dev H13-safe — `MiliariumRegistry`'s constructor takes only addresses and performs no
  *      external calls, so keccak-derived placeholder env values are valid in fork tests
  *      (contrast with H-D42 / `BodenseeBootstrapChannel`, whose constructor external-calls
  *      into `VAULT` and therefore requires real fork state).
- * @dev I-D18 slot-named env vars — `PILOT_POOL_02`, `PILOT_POOL_03`, `PILOT_POOL_07` name
- *      the three Stage E pilot pool addresses at Miliarium slots 02 / 03 / 07.
+ * @dev I-D18 slot-named env vars — `PILOT_POOL_01`, `PILOT_POOL_05`, `PILOT_POOL_14` name
+ *      the three Stage E pilot pool addresses at Miliarium slots 01 / 05 / 14.
  * @dev `GOVERNANCE_MULTISIG` is the initial `governanceContract` at construction (J-D5);
  *      Stage K rebinds via `setGovernanceContract` during the governance handoff.
  * @dev Production chain position — `DeployStageI` → `DeployStageJ` → `DeployStageK`
@@ -22,9 +22,9 @@ import { MiliariumRegistry } from "../src/registry/MiliariumRegistry.sol";
  * @dev Env vars required (no defaults — a real deploy must never silently fall back to zero values):
  *
  *        GOVERNANCE_MULTISIG   address  — initial governance gate
- *        PILOT_POOL_02         address  — Stage E pilot at slot 02
- *        PILOT_POOL_03         address  — Stage E pilot at slot 03
- *        PILOT_POOL_07         address  — Stage E pilot at slot 07
+ *        PILOT_POOL_01         address  — ixHelvetia pilot (Stage E slot 01)
+ *        PILOT_POOL_05         address  — ixEdelweiss pilot (Stage E slot 05)
+ *        PILOT_POOL_14         address  — ixAurebit pilot (Stage E slot 14)
  */
 contract DeployStageJ is Script {
     /// @notice `forge script` entry — broadcasts registry deployment as GOVERNANCE_MULTISIG.
@@ -46,13 +46,13 @@ contract DeployStageJ is Script {
     /// @dev Builds the genesis seed arrays and deploys `MiliariumRegistry`.
     function _deploy(address governor) internal returns (MiliariumRegistry) {
         uint256[] memory slotNumbers = new uint256[](3);
-        slotNumbers[0] = 2;
-        slotNumbers[1] = 3;
-        slotNumbers[2] = 7;
+        slotNumbers[0] = 1;
+        slotNumbers[1] = 5;
+        slotNumbers[2] = 14;
         address[] memory pools = new address[](3);
-        pools[0] = vm.envAddress("PILOT_POOL_02");
-        pools[1] = vm.envAddress("PILOT_POOL_03");
-        pools[2] = vm.envAddress("PILOT_POOL_07");
+        pools[0] = vm.envAddress("PILOT_POOL_01");
+        pools[1] = vm.envAddress("PILOT_POOL_05");
+        pools[2] = vm.envAddress("PILOT_POOL_14");
         return new MiliariumRegistry(governor, slotNumbers, pools);
     }
 }

@@ -122,14 +122,14 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 **Builds:**
 - `script/pools/deploy-miliarium-pool.s.sol` — parameterized Foundry script. Takes a parameter file (JSON or `.s.sol` struct) describing composition, weights, theme tokens, Rate Providers, initial swap fee. Orchestrates: standard `WeightedPoolFactory.create(...)` → `AureumVault.registerPool(...)` with Aureum-specific parameters including hook attachment and 52% ERC-4626 Quality Gate check at Vault registration.
-- Per-pool parameter files: `script/pools/configs/02_ixHelvetia.json`, `03_ixEdelweiss.json`, `07_ixCambio.json` (slot numbers per `06_miliarium_manifest.md`).
-- Three live pilot pools deployed: **ixHelvetia** (100% ERC-4626: 80% svZCHF + 20% sUSDS, simplest composition, routing anchor), **ixEdelweiss** (46% ixEDEL routing hub, the primary connector pool), **ixCambio** (6-token FX hub per OQ-12/OQ-12a: svZCHF 19% / st-EURA 18% / aEURS 18% / ixEDEL 15% / tGBP 15% / JPYC 15%, exercises MAX_TOKENS edge and 4626-heavy composition).
+- Per-pool parameter files: `script/pools/configs/01_ixHelvetia.s.sol`, `05_ixEdelweiss.s.sol`, `14_ixAurebit.s.sol` (slot numbers per `06_miliarium_manifest.md`).
+- Three live pilot pools deployed: **ixHelvetia** (100% ERC-4626: 80% svZCHF + 20% sUSDS, simplest composition, routing anchor), **ixEdelweiss** (46% ixEDEL routing hub, the primary connector pool), **ixAurebit** (5-asset Standard pool: svZCHF 26% / Aave Prime GHO 26% / ixEDEL 16% / WBTC 16% / cbBTC 16%, Digital Gold / Bitcoin sector, exercises mixed 8/18-decimal composition and the 52% Quality-Gate boundary).
 
 **Dependencies:** hook and Bodensee (D) deployed; AuMM (C) exists.
 
 **Testing strategy:** each pilot pool deployment runs against mainnet fork. Verify pool registers successfully, Quality Gate check passes, hook fires correctly on a test swap, fee routes to Bodensee. Integration tests per pool with realistic token balances.
 
-**Why these three:** maximum composition diversity with minimum count — one pure-stablecoin simplest-case pool, one connector/routing pool, one 6-token FX hub that stresses the edge of Balancer V3 `MAX_TOKENS`. If the framework handles these three, it handles anything in the remaining 25.
+**Why these three:** maximum composition diversity with minimum count — one pure-stablecoin simplest-case pool, one connector/routing pool, one mixed-decimal Bitcoin/gold pool that exercises 8-decimal tokens and the 52% Quality-Gate boundary. If the framework handles these three, it handles anything in the remaining 25.
 
 **Tag:** `stage-e-complete`.
 
@@ -223,7 +223,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 **Goal:** track the slot → pool mapping.
 
 **Builds:**
-- `src/registry/MiliariumRegistry.sol` — 28 slots, each holding a `currentPoolAddress`. Seeded at deploy time with the 3 pilot pools from Stage E at slots 02/03/07 and placeholder zero-addresses for the other 25 slots (populated in Stages M and N).
+- `src/registry/MiliariumRegistry.sol` — 28 slots, each holding a `currentPoolAddress`. Seeded at deploy time with the 3 pilot pools from Stage E at slots 01/05/14 and placeholder zero-addresses for the other 25 slots (populated in Stages M and N).
 - `replaceSlot(slotN, newPoolAddress)` — governance-gated (placeholder address until Stage K, replaced via one-shot setter in Stage K's deployment script).
 - Emits `SlotPopulated(slot, pool, blockNumber)` and `SlotReplaced(slot, oldPool, newPool, blockNumber)`.
 
