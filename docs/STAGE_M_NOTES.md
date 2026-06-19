@@ -58,3 +58,30 @@ The M-D rows below carry the design freeze locked at M0.2 from a pre-flight Opus
 ### M10 — `PILOT_POOL_01/05/14` env-key overlap across `DeployStageI.t.sol` + `DeployStageJ.t.sol` (M1.3; D36-class)
 
 Before M1, `DeployStageJ.t.sol` set `PILOT_POOL_02/03/07` while `DeployStageI.t.sol` set `PILOT_POOL_01/05/14` — disjoint env keys, no race. M1.3's seed correction renamed `DeployStageJ.t.sol`'s keys to `PILOT_POOL_01/05/14`, so the two deploy-script fork tests now share all three keys. Under Foundry's default parallelism a concurrent `vm.setEnv` on a shared key can race (the D36 pattern — one fork test's `vm.setEnv` write clobbering another's value between the write and the `vm.envAddress` read). Mitigation is the established `--threads 1` fork-suite invocation, already required for D36 / `DeployAureumVault.t.sol`; M1.6's `--threads 1` run was race-safe (99/99). The permanent fix is the same deferred D36 item — env-key namespacing in the deploy-script fork tests (or dropping `vm.setEnv` from them) — now spanning two test pairs. No M1 code change beyond the M1.3 rename; logged so a future session knows the `--threads 1` requirement has a second cause.
+
+---
+
+## M2 — Token-availability preflight
+
+> M-D4 / STAGES_OVERVIEW preflight gate. Every component token of the nine Stage M Majors was resolved against `06_miliarium_manifest.md` §xiii (compositions), `07a_tokens.md` (mainnet addresses + Rate Providers), and the per-pool profiles, on the on-disk `aumm-site` clone (per CLAUDE.md §4, not WebFetch). Outcome: 5 of 9 fully resolved and cleared for M3; 4 carry token-availability gaps the spec cannot resolve, deferred to Stage N (M-D7). Per-token addresses are not duplicated here — they live in `07a_tokens.md`; M3 binds them per pool (M-D4). This section records the composition / Quality-Gate / availability verdict + the gaps.
+
+| Slot | Pool | Template | ERC-4626 (Quality Gate) | Verdict |
+| --- | --- | --- | --- | --- |
+| 03 | ixCasper | Standard 26/26/16/16/16 | 84% (fWSTETH + fWETH + svZCHF + waEthwstETH) | M3 — resolved |
+| 08 | ixBrevis | Standard | 52% (svZCHF + waEthUSDC) | M3 — resolved |
+| 09 | ixAltrix | Standard | 52% (svZCHF + waEthUSDC) | M3 — resolved |
+| 10 | ixMediox | Standard | 52% (svZCHF + waEthUSDC) | M3 — resolved |
+| 11 | ixLongus | Non-Standard (TLTon single theme) | ≥52% (svZCHF + waEthUSDC cores) | M3 — resolved |
+| 02 | ixAetheron | Non-Standard 27/27/15/15/16 | 54% (waEthrETH + waEthweETH) | Stage N — waEthrETH wrapper anomaly |
+| 04 | ixViatica | Standard | 68% (svZCHF + GHO + st-EURA) | Stage N — fBRZ no address |
+| 06 | ixLibertas | Non-Standard (7-token USD hub) | 57% (scrvUSD + GHO + sUSDS + sfrxUSD) | Stage N — USDC/USDT address form |
+| 07 | ixCambio | Non-Standard (6-token FX hub) | 55% (svZCHF + st-EURA + aEURS) | Stage N — aEURS no address |
+
+**Gaps (deferred to Stage N per M-D7):**
+
+- **aEURS (07 ixCambio) — QG-critical.** No mainnet address in `07a` ("Aave stata EURS not in Aave address book; verify when listed"). aEURS is 18% of the 55% ERC-4626 numerator — without it the Quality Gate falls to 37%, below the 52% floor. Unbuildable until aEURS resolves or a substitute EUR-4626 is chosen.
+- **fBRZ (04 ixViatica) — composition.** No mainnet address ("Flux docs list no fBRZ"). The 16% Theme A (ERC-20); the 68% Quality Gate survives without it, but the 5-token composition cannot be assembled as specified.
+- **waEthrETH (02 ixAetheron) — QG-critical anomaly.** The profile requires the Aave V3 stataToken wrapper for rETH, but `07a` lists `0xae78736…` = canonical rETH itself (blank vault column, unlike every other waEth token). waEthrETH is 27% of the 54% numerator; the real Aave rETH static-wrapper address must be resolved or it is not QG-eligible.
+- **bare USDC/USDT (06 ixLibertas) — address form.** The profile uses bare ERC-20 USDC/USDT, but `07a` lists their addresses as the waEth wrapper addresses (`0xD4fa…` / `0x7Bc3…`). The Quality Gate holds either way (57%); the bare-vs-wrapped form must be pinned before the pool is built.
+
+**Clean set (Stage M / M3):** the five resolved Majors — **03 ixCasper, 08 ixBrevis, 09 ixAltrix, 10 ixMediox, 11 ixLongus** (canonical slot order) — have every component token + Rate Provider in `07a`, all clearing the 52% Quality Gate. On-chain liveness of the newer theme tokens (the `*on` tokenised-ETF set + the Fluid / Aave LST wrappers) is confirmed at M5 fork-test time.
