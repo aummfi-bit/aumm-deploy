@@ -91,4 +91,5 @@ Full split-form regression green (unit + fork); §11 resume-anchor refresh; this
 | Sub-step | Commit | Summary |
 | --- | --- | --- |
 | M0.2 | `8e3dcb5` | `STAGE_M_NOTES.md` — design freeze M-D1—M-D6 |
-| M0.3 | _(pending)_ | `STAGE_M_PLAN.md` — header + scope + Surfaces + Decisions mirror + M1—M6 roadmap |
+| M0.3 | `edd66e5` | `STAGE_M_PLAN.md` — header + scope + Surfaces + Decisions mirror + M1—M6 roadmap |
+| M1 | `4b15d50` | registry genesis-seed [2,3,7]→[1,5,14] (M-D3) — DeployStageJ seed/env/NatSpec + MiliariumRegistry NatSpec + Stage-J fork tests (replaceSlot 2→1) + STAGES_OVERVIEW pilots ixCambio→ixAurebit; 847/847 + 99/99 green |

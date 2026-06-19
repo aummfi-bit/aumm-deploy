@@ -48,3 +48,13 @@ The M-D rows below carry the design freeze locked at M0.2 from a pre-flight Opus
 **F-10 — `EmissionDistributor.recordScore` ungated `tvlEMA` (Medium, Stage-H contract).** Gap: `recordScore` read `_emaSampler.tvlEMA(pool)` straight into `CCBScore.score` with no maturity or freshness gate, unlike the F-04 / F-05 consumer `VotingWeight._positionPower` — an inflated or cold-seeded EMA flowed into the F-5 emission allocation, diverting AuMM block emission to the attacker's pool. Unlike F-05's quartically-damped governance weight, the emission score is LINEAR in `tvlEMA` (no F-9 root), so the mispricing is undamped → Medium (above the F-05 / F-07 Low). Fix: `_gatedTvlEMA(pool)` (L456) returns 0 when unseeded (`emaSeedBlock == 0`), immature (`< EMA_MATURITY_BLOCKS`, 60 days), or stale (`> EMA_STALENESS_BLOCKS`, 14 days / one epoch), so the pool scores 0 until its EMA is seasoned + fresh; degradation is return-0 (not revert), self-clearing on the next permissionless `recordScore`; EMASampler byte-untouched. The EmissionDistributor mirror of the F-05 / F-07 EMA-consumer freshness-gate family. PoC `test/whitehat/F10_emaScoreGate.t.sol` (7/7) + a `DeployStageK` fork retrofit.
 
 **Disposition + regression.** All three are I13-class fix-forward on `stage-m` (no Stage-G / H / I re-tag). WM carries zero open findings — F-01…F-10 all Fixed. Full split-form regression: 847/847 unit + 99/99 fork green.
+
+---
+
+## Findings
+
+> Implementation incidents, drift caught at audit, env-key gotchas — numbered from M10 per "How this file is organized" (avoids collision with the M-D* planning codes; matches the C10 / D10 / … / J10 pattern).
+
+### M10 — `PILOT_POOL_01/05/14` env-key overlap across `DeployStageI.t.sol` + `DeployStageJ.t.sol` (M1.3; D36-class)
+
+Before M1, `DeployStageJ.t.sol` set `PILOT_POOL_02/03/07` while `DeployStageI.t.sol` set `PILOT_POOL_01/05/14` — disjoint env keys, no race. M1.3's seed correction renamed `DeployStageJ.t.sol`'s keys to `PILOT_POOL_01/05/14`, so the two deploy-script fork tests now share all three keys. Under Foundry's default parallelism a concurrent `vm.setEnv` on a shared key can race (the D36 pattern — one fork test's `vm.setEnv` write clobbering another's value between the write and the `vm.envAddress` read). Mitigation is the established `--threads 1` fork-suite invocation, already required for D36 / `DeployAureumVault.t.sol`; M1.6's `--threads 1` run was race-safe (99/99). The permanent fix is the same deferred D36 item — env-key namespacing in the deploy-script fork tests (or dropping `vm.setEnv` from them) — now spanning two test pairs. No M1 code change beyond the M1.3 rename; logged so a future session knows the `--threads 1` requirement has a second cause.
