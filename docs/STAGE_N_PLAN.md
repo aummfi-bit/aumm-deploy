@@ -117,3 +117,8 @@ WN whitehat pass over the new `src/rate_provider/` surface (N-D6) — first Aure
 | Sub-step | Commit | Summary |
 | --- | --- | --- |
 | N0.1 | `ccfb392` | `STAGE_N_NOTES.md` — design freeze N-D0—N-D6 (18-pool scope; CompositeRateProvider + ERC4626RateProvider surface; ixLibertas bare-stable + 57% QG; M-D10-mirror fork scope; WN whitehat gate) |
+| N0.3 | `14ecff7` | `STAGE_N_PLAN.md` — header + scope + Surfaces + Decisions mirror + N-D7 forward-ref + N1—N7 roadmap |
+| N1 | `06c5b2f` | `docs/STAGES_OVERVIEW.md` — Stage N section fact-fix (real 18-pool N-D0 scope: 16 Sector-3 slots + 02 ixAetheron / 06 ixLibertas Majors; drop fictional pool names + stale ~20 count; add src/rate_provider surface note + {04 ixViatica / 07 ixCambio} deferral rationale) |
+| N2.1 | `17e2650` | `12_ixStrata.s.sol` + `DeployIxStrata.s.sol` — slot 12 Standard, svZCHF 26 / waEthUSDC 26 / ixEDEL 16 / LINK 16 / AAVE 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.2 | `341fcde` | `13_ixForum.s.sol` + `DeployIxForum.s.sol` — slot 13 Standard, svZCHF 26 / waEthUSDT 26 / ixEDEL 16 / SKY 16 / LDO 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.3 | `a7031ca` | `15_ixRegistrum.s.sol` + `DeployIxRegistrum.s.sol` — slot 15 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / ETHPLUS 16 / OPEN 16, 52% ERC-4626 QG at floor; forge build green |
