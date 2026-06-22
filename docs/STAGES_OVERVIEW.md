@@ -62,7 +62,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 | K | Governance + authorizer migration | ~900 | 2 weeks | Large |
 | L | Incendiary Boost | ~300 | 1 week | Small |
 | M | Miliarium pools, Sector 2 (Majors / yield-core, 5 per M-D7) | configs | 1-2 weeks | Deployment |
-| N | Miliarium pools, Sector 3 (Equity + thematic, ~20 incl. 4 ex-M per M-D7) | configs | 1-2 weeks | Deployment |
+| N | Miliarium pools, Sector 3 (Equity + thematic) + 2 resolvable ex-M Majors (18 pools per N-D0; 04/07 deferred) | configs | 1-2 weeks | Deployment |
 | O | Composition challenge / replacement-launch | ~350 | 1 week | Small |
 | P | Holesky full-system deployment + stubs + integration validation | stubs + scripts | 2-3 weeks | Integration |
 | Q | External audit + patch cycle | patches only | 6-10 weeks | Calendar |
@@ -296,13 +296,15 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ## Stage N — Miliarium pools, Sector 3 (Equity + thematic)
 
-**Goal:** deploy the remaining ~20 pools (16 originally-scoped + 4 deferred from Stage M per M-D7).
+**Goal:** deploy the final **18** Miliarium pools (N-D0), completing the 28-slot constellation: the 16 Sector-3 slots — **12 ixStrata, 13 ixForum, 15 ixRegistrum, 16 ixDebitum, 17 ixEquitix, 18 ixInnovix, 19 ixGigantus, 20 ixMagnix, 21 ixNubix, 22 ixMoneta, 23 ixColossix, 24 ixVitalix, 25 ixMedicix, 26 ixMercatura, 27 ixAurix, 28 ixMetallum** — plus the two resolvable Majors deferred from Stage M (M-D7), **02 ixAetheron** and **06 ixLibertas**. (Slots 01 / 05 / 14 are the pilots; 03 / 08 / 09 / 10 / 11 are the Stage-M Majors — hence the gaps in the Sector-3 run.)
 
-**Builds:** per-pool parameter files and deployment runs via the Stage E framework. Expected pools: equity-exposure pools (the `*on` tokenized ETFs — ixNovae, ixArtifex, ixSophia, ixMercatus, and others) and thematic pools (ixDebitum, ixFulmen, ixLumen, and the remaining governance-token / DeFi-native pools).
+**Builds:** per-pool parameter libraries (`script/pools/configs/`) + per-pool deployment wrappers (`script/pools/DeployIx*.s.sol`) via the Stage E framework, plus the bind-only `script/DeployStageN.s.sol` orchestration (M-D9 shape). New this stage: the protocol's first Aureum-owned rate-provider surface — **`src/rate_provider/ERC4626RateProvider.sol`** (scrvUSD / sfrxUSD yield cores with no usable mainnet RP, N-D2) and **`src/rate_provider/CompositeRateProvider.sol`** (the two ixAetheron stata-wrapper cores, N-D1) — the M-D11 Aave-static-wrapper restoration pattern, not a Balancer-submodule edit (§8c). Of the 16 Sector-3 slots, 14 are clean Standard 26/26/16/16/16 (QG = svZCHF 26% + stable-core 26% = 52% floor); the `*on` tokenized equities / ETFs bind as `TokenType.STANDARD` ERC-20 theme legs (address-only, no RP), so they do not gate the Quality Gate.
 
-**Dependencies:** same as Stage M, plus token-availability confirmation is more critical here — per F8d, several theme assets (`Morpho`, `SPK`, `ETHPLUS`, `OPEN`, the `*on` series) need verified on-chain addresses and acceptable liquidity at deployment time. Flux Finance tokens (`fBRZ`, `fWETH`, `fWSTETH`) need Flux's operational status confirmed at deployment time.
+**Deferred (not built):** the two hard-blocked Majors **04 ixViatica** and **07 ixCambio** stay deferred (N-D0) — `fBRZ` (ixViatica theme) has no mainnet address and `aEURS` (ixCambio yield core, QG-critical) is not in the Aave address book; neither resolves to the E-D17 verified-literal bar. They re-enter only once their token / RP composition resolves to verified mainnet literals.
 
-**Testing strategy:** same per-pool validation as Stage M. Additional attention to the `*on` tokenized-ETF pools — these have less battle-tested on-chain behavior than the major yield-core pools in M.
+**Dependencies:** same as Stage M — pool-deployment framework (E) + full governance stack (K) live; founding pools seeded at deploy (M-D6 / K-D9), not gauge-voted. The two sfrxUSD-core Standard pools (**20 ixMagnix**, **27 ixAurix**) and both ex-M Majors depend on the N3 Aureum-deployed RP surface, whose address threads into the `pure`-literal configs and the fork fixture per N-D7 (locked at N3.0).
+
+**Testing strategy:** mainnet fork (`test/fork/StageNIntegration.t.sol` + `test/fork/DeployStageN.t.sol`), mirroring M-D10 — binding-liveness + 52% Quality-Gate re-assert via `evaluateEligibility` + Rate-Provider resolve (`getRate() > 0`, now covering the four new RP instances + the sfrxUSD legs on 20 / 27) + hook attach; not live emission accrual. The new `src/rate_provider/` surface also carries unit tests (N3) and a WN whitehat pass (N7, N-D6) before the tag.
 
 **Tag:** `stage-n-complete`.
 
