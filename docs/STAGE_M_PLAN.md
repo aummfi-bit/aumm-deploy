@@ -1,7 +1,7 @@
 # Stage M — Plan & Sub-Step Roadmap
 > **Status:** M0.2 design freeze COMPLETE — M-D1—M-D6 LOCKED on `stage-m` (`docs/STAGE_M_NOTES.md`, `8e3dcb5`). This file is M0.3 (the sub-step roadmap); M1—M6 execution pending, no code surface landed yet. Companion to STAGE_M_NOTES.md (the running design-decision log).
 >
-> **Last update:** 2026-06-19 — M0.3 catch-up: M0.3.1 (header/scope/Surfaces) + M0.3.2 (Decisions mirror) + M0.3.3 (M1—M6 roadmap) all landed 2026-06-18 without this line being bumped. M-D7 (5-of-9 build-scope narrowing, M2 preflight) mirrored into Decisions at M2.2; M2.3 propagates it through Stage scope / Surfaces / the M3 roadmap (in progress).
+> **Last update:** 2026-06-19 — M3.1—M3.5 complete: all five clean Majors built (03 ixCasper / 08 ixBrevis / 09 ixAltrix / 10 ixMediox / 11 ixLongus) — each a config lib + DeployIx* wrapper, forge build green; M-D8 locked (07a address-disambiguation rule). Completion log caught up M1-close—M3.5. Next: M4 `DeployStageM` orchestration.
 >
 > **Mode:** §13 has no Stage M entry-mode row — default to the Stage-J posture: Opus-high for pool-class / interface / token-literal authoring (the load-bearing per-pool composition surfaces), Sonnet for unit/fork test writing + plan-row housekeeping.
 >
@@ -91,3 +91,12 @@ Full split-form regression green (unit + fork); §11 resume-anchor refresh; this
 | M0.2 | `8e3dcb5` | `STAGE_M_NOTES.md` — design freeze M-D1—M-D6 |
 | M0.3 | `edd66e5` | `STAGE_M_PLAN.md` — header + scope + Surfaces + Decisions mirror + M1—M6 roadmap |
 | M1 | `4b15d50` | registry genesis-seed [2,3,7]→[1,5,14] (M-D3) — DeployStageJ seed/env/NatSpec + MiliariumRegistry NatSpec + Stage-J fork tests (replaceSlot 2→1) + STAGES_OVERVIEW pilots ixCambio→ixAurebit; 847/847 + 99/99 green |
+| M1-close | `3bcfad3` | M1 close (M1.7+M1.8) — `STAGE_M_NOTES.md` M10 (PILOT_POOL env-key overlap, D36-class) + Completion-log seed (M0.3 / M1) |
+| M2 | `f4ac45e` | `STAGE_M_NOTES.md` M2 token-availability preflight — 5/9 Majors resolved (03/08/09/10/11), 4 deferred to Stage N (M-D7) |
+| M2.1—M2.4 | `8237e81` | M-D7 lock — Stage M build scope 9→5 — NOTES + PLAN Decisions + Stage-scope / Surfaces / M3-roadmap + STAGES_OVERVIEW Stage M/N rows |
+| M3.1a—M3.1b | `9bfd8fe` | M-D8 lock — 07a address-disambiguation rule (primary-column binds); ixCasper waEthwstETH = Aave V3 Core (not Lido instance) — NOTES + PLAN Decisions |
+| M3.1c | `8a62b78` | `03_ixCasper.s.sol` + `DeployIxCasper.s.sol` — slot 03 Standard, 84% ERC-4626 QG (+32pp); forge build green |
+| M3.2 | `842656f` | `08_ixBrevis.s.sol` + `DeployIxBrevis.s.sol` — slot 08 Standard, 52% ERC-4626 QG at floor; forge build green |
+| M3.3 | `9493da6` | `09_ixAltrix.s.sol` + `DeployIxAltrix.s.sol` — slot 09 Standard, 52% ERC-4626 QG at floor; forge build green |
+| M3.4 | `63ca0b6` | `10_ixMediox.s.sol` + `DeployIxMediox.s.sol` — slot 10 Standard, 52% ERC-4626 QG at floor; forge build green |
+| M3.5 | `1ddbbc1` | `11_ixLongus.s.sol` + `DeployIxLongus.s.sol` — slot 11 Non-Standard (4-token, TLTon 32%), 52% ERC-4626 QG at floor; forge build green |
