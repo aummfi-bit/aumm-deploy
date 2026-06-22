@@ -61,8 +61,8 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 | J | Miliarium registry | ~200 | 1 week | Small |
 | K | Governance + authorizer migration | ~900 | 2 weeks | Large |
 | L | Incendiary Boost | ~300 | 1 week | Small |
-| M | Miliarium pools, Sector 2 (Majors / yield-core, ~10) | configs | 1-2 weeks | Deployment |
-| N | Miliarium pools, Sector 3 (Equity + thematic, ~14) | configs | 1-2 weeks | Deployment |
+| M | Miliarium pools, Sector 2 (Majors / yield-core, 5 per M-D7) | configs | 1-2 weeks | Deployment |
+| N | Miliarium pools, Sector 3 (Equity + thematic, ~20 incl. 4 ex-M per M-D7) | configs | 1-2 weeks | Deployment |
 | O | Composition challenge / replacement-launch | ~350 | 1 week | Small |
 | P | Holesky full-system deployment + stubs + integration validation | stubs + scripts | 2-3 weeks | Integration |
 | Q | External audit + patch cycle | patches only | 6-10 weeks | Calendar |
@@ -280,7 +280,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ## Stage M — Miliarium pools, Sector 2 (Majors / yield-core)
 
-**Goal:** deploy ~10 Major / yield-core pools.
+**Goal:** deploy 5 Major / yield-core pools (M-D7 — narrowed from the originally-conceived ~10 by the M2 token-availability preflight; the other 4 defer to Stage N).
 
 **Builds:** per-pool parameter files and per-pool deployment runs via the Stage E framework. Expected pools (subject to `07_miliarium_sectors.md` final sectoring): **ixAurum, ixSilva, ixBellator, ixLibertas, ixViatica, ixAetheron**, and the other yield-anchored majors.
 
@@ -296,7 +296,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ## Stage N — Miliarium pools, Sector 3 (Equity + thematic)
 
-**Goal:** deploy the remaining ~14 pools.
+**Goal:** deploy the remaining ~20 pools (16 originally-scoped + 4 deferred from Stage M per M-D7).
 
 **Builds:** per-pool parameter files and deployment runs via the Stage E framework. Expected pools: equity-exposure pools (the `*on` tokenized ETFs — ixNovae, ixArtifex, ixSophia, ixMercatus, and others) and thematic pools (ixDebitum, ixFulmen, ixLumen, and the remaining governance-token / DeFi-native pools).
 
