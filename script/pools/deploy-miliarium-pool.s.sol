@@ -29,7 +29,11 @@ abstract contract MiliariumPoolDeployer is Script {
     /// @notice Sum of normalized weights for ERC-4626 (WITH_RATE + non-zero rate provider) is below 52% of one.
     error QualityGateUnsatisfied(uint256 erc4626WeightSum, uint256 minRequired);
 
-    function _config() internal pure virtual returns (PoolConfig memory);
+    /// @dev Returns the per-pool config. `view` (not `pure`) per N-D7 so the RP-dependent wrappers
+    ///      (ixMagnix 20, ixAurix 27, ixLibertas 06, ixAetheron 02) can resolve their Aureum-deployed
+    ///      Rate-Provider address(es) from env vars; the clean pure-literal wrappers keep `pure override`
+    ///      (`pure ⊆ view`), unchanged. Stage-N I13 fix-forward, no Stage-E re-tag.
+    function _config() internal view virtual returns (PoolConfig memory);
 
     function run() external returns (address pool) {
         PoolConfig memory cfg = _config();
