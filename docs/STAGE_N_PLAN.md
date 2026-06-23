@@ -123,3 +123,15 @@ WN whitehat pass over the new `src/rate_provider/` surface (N-D6) — first Aure
 | N2.1 | `17e2650` | `12_ixStrata.s.sol` + `DeployIxStrata.s.sol` — slot 12 Standard, svZCHF 26 / waEthUSDC 26 / ixEDEL 16 / LINK 16 / AAVE 16, 52% ERC-4626 QG at floor; forge build green |
 | N2.2 | `341fcde` | `13_ixForum.s.sol` + `DeployIxForum.s.sol` — slot 13 Standard, svZCHF 26 / waEthUSDT 26 / ixEDEL 16 / SKY 16 / LDO 16, 52% ERC-4626 QG at floor; forge build green |
 | N2.3 | `a7031ca` | `15_ixRegistrum.s.sol` + `DeployIxRegistrum.s.sol` — slot 15 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / ETHPLUS 16 / OPEN 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.4 | `c5f4357` | `16_ixDebitum.s.sol` + `DeployIxDebitum.s.sol` — slot 16 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / Morpho 16 / SPK 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.5 | `8cb758c` | `17_ixEquitix.s.sol` + `DeployIxEquitix.s.sol` — slot 17 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / SPYon 16 / IVVon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.6 | `7f44b84` | `18_ixInnovix.s.sol` + `DeployIxInnovix.s.sol` — slot 18 Standard, svZCHF 26 / waEthUSDC 26 / ixEDEL 16 / QQQon 16 / QQQX 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.7 | `c0ede47` | `19_ixGigantus.s.sol` + `DeployIxGigantus.s.sol` — slot 19 Standard, svZCHF 26 / waEthUSDT 26 / ixEDEL 16 / NVDAon 16 / TSLAon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.9 | `6ae457a` | `21_ixNubix.s.sol` + `DeployIxNubix.s.sol` — slot 21 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / GOOGLon 16 / AMZNon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.10 | `a539967` | `22_ixMoneta.s.sol` + `DeployIxMoneta.s.sol` — slot 22 Standard, svZCHF 26 / GHO 26 / ixEDEL 16 / JPMon 16 / GSon 16 (GHO = Aave GHO ERC-4626 vault), 52% ERC-4626 QG at floor; forge build green |
+| N2.11 | `663e690` | `23_ixColossix.s.sol` + `DeployIxColossix.s.sol` — slot 23 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / BLKon 16 / BACon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.12 | `bc105c9` | `24_ixVitalix.s.sol` + `DeployIxVitalix.s.sol` — slot 24 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / LLYon 16 / NVOon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.13 | `253634b` | `25_ixMedicix.s.sol` + `DeployIxMedicix.s.sol` — slot 25 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / JNJon 16 / ABBVon 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.14 | `c2b3ebb` | `26_ixMercatura.s.sol` + `DeployIxMercatura.s.sol` — slot 26 Standard, svZCHF 26 / sUSDS 26 / ixEDEL 16 / COIN 16 / HOOD 16, 52% ERC-4626 QG at floor; forge build green |
+| N2.16 | `62c578f` | `28_ixMetallum.s.sol` + `DeployIxMetallum.s.sol` — slot 28 Standard, svZCHF 26 / waEthUSDT 26 / ixEDEL 16 / SLVon 16 / URAon 16, 52% ERC-4626 QG at floor; forge build green |
+| N3.0 | `aa0d2d5` | `STAGE_N_NOTES.md` + `STAGE_N_PLAN.md` — N-D7 LOCKED (RP-address threading = config-param injection via env var; `_config()` pure→view; SFRXUSD/SCRVUSD/composite-RP env keys; run()/QG unchanged) |
