@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 
@@ -31,6 +32,12 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
  *      precedent (`03_ixCasper.s.sol`, `0x8Be2` × `0x72D07D`) still stands as the pattern reference.
  *      Re-authored under `src/`, never a submodule edit (CLAUDE.md §8c).
  *
+ *      F-11 (`docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`, WN whitehat pass): the constructor enforces
+ *      18-decimal `wrapper` shares AND an 18-decimal underlying asset, failing closed otherwise — the same
+ *      guard as `ERC4626RateProvider` (WN.2a), since hop 1 is the identical `previewRedeem(1e18)` call. The
+ *      `underlyingRateProvider` hop is NOT decimal-checked: it is already an `IRateProvider` returning an
+ *      18-decimal FixedPoint rate by Balancer convention, not an ERC-4626/ERC-20 with its own decimals.
+ *
  *      Two immutables (`wrapper`, `underlyingRateProvider`), zero admin, zero storage, no upgrade path — the
  *      minimal reviewable surface (CLAUDE.md §1), WN whitehat-reviewed at N7 (N-D6). Both hops round DOWN
  *      (`previewRedeem`'s `convertToAssets` + `mulDown`), so the composed rate is conservative
@@ -40,15 +47,25 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
 contract CompositeRateProvider is IRateProvider {
     using FixedPoint for uint256;
 
+    /// @notice Thrown when the wrapper vault's share decimals are not 18 (F-11).
+    error InvalidShareDecimals(uint8 actual);
+
+    /// @notice Thrown when the wrapper vault's underlying asset decimals are not 18 (F-11).
+    error InvalidAssetDecimals(uint8 actual);
+
     /// @notice The ERC-4626 wrapper whose one-share redemption value is the first hop.
     IERC4626 public immutable wrapper;
 
-    /// @notice The rate provider for the wrapper's underlying asset (underlying → ETH), the second hop.
+    /// @notice The rate provider for the wrapper's underlying asset, the second hop.
     IRateProvider public immutable underlyingRateProvider;
 
-    /// @param wrapper_ The ERC-4626 wrapper (e.g. waEthrETH, waEthweETH).
-    /// @param underlyingRateProvider_ The underlying asset's rate provider (e.g. Rocket Pool rETH RP, Aave weETH oracle).
+    /// @param wrapper_ The ERC-4626 wrapper (18-decimal shares + 18-decimal asset only, F-11; e.g. ysyBOLD).
+    /// @param underlyingRateProvider_ The underlying asset's rate provider (e.g. ERC4626RateProvider(yBOLD)).
     constructor(IERC4626 wrapper_, IRateProvider underlyingRateProvider_) {
+        uint8 shareDecimals = wrapper_.decimals();
+        if (shareDecimals != 18) revert InvalidShareDecimals(shareDecimals);
+        uint8 assetDecimals = IERC20Metadata(wrapper_.asset()).decimals();
+        if (assetDecimals != 18) revert InvalidAssetDecimals(assetDecimals);
         wrapper = wrapper_;
         underlyingRateProvider = underlyingRateProvider_;
     }
@@ -56,7 +73,7 @@ contract CompositeRateProvider is IRateProvider {
     /// @inheritdoc IRateProvider
     function getRate() external view override returns (uint256) {
         // First hop: wrapper share → underlying (previewRedeem → convertToAssets, rounds down, EIP-4626).
-        // Second hop: underlying → ETH (underlyingRateProvider.getRate()). Composed via FixedPoint mulDown.
+        // Second hop: underlyingRateProvider.getRate(). Composed via FixedPoint mulDown.
         return wrapper.previewRedeem(FixedPoint.ONE).mulDown(underlyingRateProvider.getRate());
     }
 }
