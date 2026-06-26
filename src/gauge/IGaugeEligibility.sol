@@ -39,4 +39,12 @@ interface IGaugeEligibility {
      * @return epoch The current snapshot epoch counter exposed for observability.
      */
     function snapshotEpoch() external view returns (uint256);
+
+    /**
+     * @notice Returns whether `pool` clears the composition-challenge Quality Gate — ≥52% admitted-ERC-4626 weight by `_compute52PctNumerator` plus the canonical fee-routing hook — without running the full activation-criteria suite.
+     * @dev Stage O **O-D2** + **O-D2a** composition-fitness gate (canonical §xxvii registry-level check; supersedes K-D6e). Narrower than `evaluateEligibility`: runs only the **G-D8** 52% quality gate (`_compute52PctNumerator(tokens, weights) >= 0.52e18`) and the **I-D13** canonical-hook assertion — it does NOT run the TVL floor, factory-provenance, or anti-spam checks (a freshly-deployed composition replacement legitimately has no TVL yet). Reverts `ForbiddenToken` on AuMM/AuMT (via `_compute52PctNumerator`, **T-I3**) and `WrongFeeRoutingHook` when the pool's Vault-registered hook is not the canonical fee-routing hook. Consumed by `AureumGovernance.proposeCompositionChallenge` / `_executeProposal` through the `IGaugeRegistry` delegation.
+     * @param pool The candidate replacement pool under evaluation.
+     * @return passes `true` when the pool clears the 52% quality gate and carries the canonical hook.
+     */
+    function meetsCompositionQualityGate(address pool) external view returns (bool);
 }

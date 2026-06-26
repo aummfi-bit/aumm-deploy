@@ -49,6 +49,10 @@ contract MockGaugeEligibility is IGaugeEligibility {
     function snapshotEpoch() external pure override returns (uint256) {
         return 0;
     }
+
+    function meetsCompositionQualityGate(address) external pure override returns (bool) {
+        return false;
+    }
 }
 
 contract MockSwapAndDeposit {

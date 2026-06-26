@@ -370,4 +370,19 @@ contract GaugeEligibility is IGaugeEligibility {
         if (tvl < TVL_FLOOR_SVZCHF) revert TVLFloorNotMet(tvl, TVL_FLOOR_SVZCHF);
         if (numerator < 0.52e18) revert InsufficientQualityGate(numerator);
     }
+
+    /**
+     * @notice Composition-challenge Quality Gate per **O-D2** / **O-D2a** — ≥52% admitted-ERC-4626 weight plus the canonical fee-routing hook, without the TVL floor, factory-provenance, or anti-spam checks `_checkEligibilityCriteria` runs.
+     * @dev Stage O addition (canonical §xxvii registry-level composition check; supersedes K-D6e). Reverts `WrongFeeRoutingHook` if the pool's Vault-registered hook is not the canonical `feeRoutingHook` (**I-D13**); reverts `ForbiddenToken` on AuMM/AuMT via `_compute52PctNumerator` (**T-I3**, **G-D10**). Returns `false` (does not revert) on a sub-0.52e18 numerator — the **G-D8** quality bar — so the caller (`AureumGovernance` via `IGaugeRegistry`) can branch on a boolean rather than catching a revert.
+     * @param pool The candidate replacement pool under evaluation.
+     * @return passes `true` when the pool clears the 52% quality gate and carries the canonical hook.
+     */
+    function meetsCompositionQualityGate(address pool) external view override returns (bool) {
+        address poolHook = IVault(vault).getHooksConfig(pool).hooksContract;
+        if (poolHook != feeRoutingHook) revert WrongFeeRoutingHook(pool, poolHook);
+        IERC20[] memory tokens = IVault(vault).getPoolTokens(pool);
+        uint256[] memory weights = IWeightedPool(pool).getNormalizedWeights();
+        uint256 numerator = _compute52PctNumerator(tokens, weights);
+        return numerator >= 0.52e18;
+    }
 }
