@@ -115,16 +115,20 @@ contract RateProviderTest is Test {
 
 // --- file-local mocks ---
 
-/// @notice Minimal ERC-4626 stub exposing only previewRedeem, the single method the rate providers call.
-///         previewRedeem(shares) = shares * numerator / denominator floors, mirroring EIP-4626
-///         convertToAssets round-down. Cast to IERC4626 at the call site.
+/// @notice Minimal ERC-4626 stub exposing previewRedeem plus the decimals()/asset() pair the F-11
+///         constructor guard reads. previewRedeem(shares) = shares * numerator / denominator floors,
+///         mirroring EIP-4626 convertToAssets round-down. 18-decimal shares + 18-decimal asset so the
+///         providers' F-11 guard passes; non-18-decimal cases live in test/whitehat/F11. Cast to
+///         IERC4626 at the call site.
 contract MockPreviewVault {
     uint256 public numerator;
     uint256 public denominator;
+    address internal immutable _asset;
 
     constructor(uint256 numerator_, uint256 denominator_) {
         numerator = numerator_;
         denominator = denominator_;
+        _asset = address(new MockDecimalsToken(18));
     }
 
     function set(uint256 numerator_, uint256 denominator_) external {
@@ -132,8 +136,26 @@ contract MockPreviewVault {
         denominator = denominator_;
     }
 
+    function decimals() external pure returns (uint8) {
+        return 18;
+    }
+
+    function asset() external view returns (address) {
+        return _asset;
+    }
+
     function previewRedeem(uint256 shares) external view returns (uint256) {
         return shares * numerator / denominator;
+    }
+}
+
+/// @notice Minimal token exposing only decimals(), so MockPreviewVault.asset() satisfies the F-11
+///         guard's IERC20Metadata(asset).decimals() == 18 check.
+contract MockDecimalsToken {
+    uint8 public immutable decimals;
+
+    constructor(uint8 decimals_) {
+        decimals = decimals_;
     }
 }
 
