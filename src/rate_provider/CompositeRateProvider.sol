@@ -13,16 +13,23 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
  * @notice Aureum-owned `IRateProvider` for an ERC-4626 wrapper over a rate-bearing underlying (a two-hop
  *         exchange rate). `getRate()` returns
  *         `wrapper.previewRedeem(FixedPoint.ONE).mulDown(underlyingRateProvider.getRate())` — composing the
- *         wrapper-share→underlying rate (round-down `convertToAssets`, EIP-4626) with the underlying→ETH
- *         rate, both 18-decimal fixed point, into a single wrapper-share→ETH rate.
+ *         wrapper-share→underlying rate (round-down `convertToAssets`, EIP-4626) with the underlying's own
+ *         rate, both 18-decimal fixed point, into a single composed wrapper-share rate.
  *
- * @dev N-D1 (`docs/STAGE_N_NOTES.md`): the M-D11 composite-RP restoration pattern. Deployed twice for
- *      ixAetheron (slot 02): (waEthrETH wrapper, Rocket Pool rETH rate provider) and (waEthweETH wrapper,
- *      Aave weETH oracle) — each an Aave stataToken wrapper whose own Rate Provider is absent or revert-class
- *      (the M-D11 anomaly), so the rate is reconstructed as wrapper-shares → underlying-LST → ETH. Mirrors
- *      the `03_ixCasper.s.sol` fWSTETH composite precedent (`0x8Be2` × `0x72D07D`). Re-authored under `src/`,
- *      never a submodule edit (CLAUDE.md §8c). Its address threads into the config lib + N6 fork fixture by
- *      env-var injection per N-D7.
+ * @dev N-D9 (`docs/STAGE_N_NOTES.md`): the live consumer — the ysyBOLD yield core shared by ixLibertas (06),
+ *      ixMagnix (20) and ixAurix (27). Deployed as `CompositeRateProvider(ysyBOLD, ERC4626RateProvider(yBOLD))`:
+ *      hop 1 is ysyBOLD-share → yBOLD (this contract's `wrapper.previewRedeem`, the Yearn staked-yBOLD
+ *      `convertToAssets`); hop 2 is yBOLD → BOLD (the inner `ERC4626RateProvider`'s `previewRedeem`). The
+ *      composite replaces the dead-rate `ERC4626RateProvider(sfrxUSD)`, whose mainnet `previewRedeem` returns
+ *      zero post-Fraxtal migration (the N6 RP-watch). Its address threads into the 06/20/27 config libs + the
+ *      N6 fork fixture by env-var injection per N-D7.
+ *
+ *      N-D1 (the M-D11 composite-RP restoration for ixAetheron slot 02 — waEthrETH / waEthweETH stataToken
+ *      wrappers over LSTs, reconstructed as wrapper-shares → underlying-LST → ETH) was the original motivating
+ *      design but was superseded before deployment: ixAetheron now resolves sfrxETH / wOETH via plain
+ *      `ERC4626RateProvider` instances, so N-D9 is this contract's first real consumer. The fWSTETH composite
+ *      precedent (`03_ixCasper.s.sol`, `0x8Be2` × `0x72D07D`) still stands as the pattern reference.
+ *      Re-authored under `src/`, never a submodule edit (CLAUDE.md §8c).
  *
  *      Two immutables (`wrapper`, `underlyingRateProvider`), zero admin, zero storage, no upgrade path — the
  *      minimal reviewable surface (CLAUDE.md §1), WN whitehat-reviewed at N7 (N-D6). Both hops round DOWN
