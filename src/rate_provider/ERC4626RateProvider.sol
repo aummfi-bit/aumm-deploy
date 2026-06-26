@@ -17,10 +17,13 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
  * @dev N-D2 (`docs/STAGE_N_NOTES.md`): a faithful re-implementation of the Balancer submodule pattern
  *      `lib/balancer-v3-monorepo/pkg/vault/contracts/test/ERC4626RateProvider.sol`, re-authored under
  *      `src/` rather than edited in place — CLAUDE.md §8c keeps the Balancer tree byte-identical to
- *      audited source. Deployed for the two QG-critical ERC-4626 yield cores whose `07a_tokens.md`
- *      Rate-Provider column is absent: scrvUSD (ixLibertas 06) and sfrxUSD (ixLibertas 06 + ixMagnix 20
- *      + ixAurix 27, one shared instance per N-D2). Its address threads into the config libs + N6 fork
- *      fixture by env-var injection per N-D7.
+ *      audited source. Deployed for the ERC-4626 yield cores whose `07a_tokens.md` Rate-Provider column
+ *      is absent: scrvUSD (ixLibertas 06, N-D2); sfrxETH + wOETH (ixAetheron 02, N-D8 — native
+ *      ETH-staking 4626 cores); and yBOLD (the inner hop of the ysyBOLD `CompositeRateProvider`, shared
+ *      across ixLibertas 06 / ixMagnix 20 / ixAurix 27, N-D9 — yBOLD → BOLD). The original N-D2 sfrxUSD
+ *      leg was superseded by N-D9: sfrxUSD's mainnet `previewRedeem` returns zero post-Fraxtal migration,
+ *      so ysyBOLD replaces it, rated via a `CompositeRateProvider` over this provider rather than directly.
+ *      Each instance's address threads into the config libs + N6 fork fixture by env-var injection per N-D7.
  *
  *      One immutable (`wrappedToken`), zero admin, zero storage, no upgrade path — the minimal reviewable
  *      surface (CLAUDE.md §1), WN whitehat-reviewed at N7 (N-D6). `previewRedeem` rounds DOWN per EIP-4626,
