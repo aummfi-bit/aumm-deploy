@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 
@@ -25,16 +26,35 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
  *      so ysyBOLD replaces it, rated via a `CompositeRateProvider` over this provider rather than directly.
  *      Each instance's address threads into the config libs + N6 fork fixture by env-var injection per N-D7.
  *
+ *      F-11 (`docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`, WN whitehat pass): the constructor enforces
+ *      18-decimal shares AND an 18-decimal underlying asset, failing closed otherwise. `getRate()` returns
+ *      `previewRedeem(1e18)` with no decimal scaling — a faithful Balancer-pattern rate for an 18/18 vault,
+ *      but a silent under- or over-statement for any other decimal pairing that would still clear the
+ *      deploy-time `getRate() > 0` gate (the gate the N-D9 sfrxUSD zero-rate bug was caught by — it checks
+ *      liveness, not scale). All five current consumers are 18/18; the guard is forward-looking
+ *      defense-in-depth, not a fix to a live bug.
+ *
  *      One immutable (`wrappedToken`), zero admin, zero storage, no upgrade path — the minimal reviewable
  *      surface (CLAUDE.md §1), WN whitehat-reviewed at N7 (N-D6). `previewRedeem` rounds DOWN per EIP-4626,
  *      so the reported rate is conservative (never over-stated), matching the submodule's rounding posture.
  */
 contract ERC4626RateProvider is IRateProvider {
+    /// @notice Thrown when the wrapped vault's share decimals are not 18 (F-11).
+    error InvalidShareDecimals(uint8 actual);
+
+    /// @notice Thrown when the wrapped vault's underlying asset decimals are not 18 (F-11).
+    error InvalidAssetDecimals(uint8 actual);
+
     /// @notice The ERC-4626 vault whose one-share redemption value this provider reports.
     IERC4626 public immutable wrappedToken;
 
-    /// @param wrappedToken_ The ERC-4626 yield vault (e.g. scrvUSD, sfrxUSD).
+    /// @param wrappedToken_ The ERC-4626 yield vault (18-decimal shares + 18-decimal asset only, F-11;
+    ///        e.g. scrvUSD, sfrxETH, wOETH, yBOLD).
     constructor(IERC4626 wrappedToken_) {
+        uint8 shareDecimals = wrappedToken_.decimals();
+        if (shareDecimals != 18) revert InvalidShareDecimals(shareDecimals);
+        uint8 assetDecimals = IERC20Metadata(wrappedToken_.asset()).decimals();
+        if (assetDecimals != 18) revert InvalidAssetDecimals(assetDecimals);
         wrappedToken = wrappedToken_;
     }
 
