@@ -1,0 +1,60 @@
+# STAGE_O_NOTES.md — Stage O Design Freeze + Findings Log
+
+**Stage:** O — Composition Challenge / Replacement-Launch Path.
+**Status:** Design freeze. Locked 2026-06-26 on branch `stage-o` (cut from `main` @ ef8cf54 = `stage-n-complete`). Execution truth until superseded by explicit amend. No code lands until this freeze locks (§12 ambiguity-gate).
+**Canonical spec:** `aummfi-bit/aumm-site` — composition challenge rule `10_constitution.md` §xxvii (Composition Challenge Rule); cold-start + permissionless gauge activation `08_bootstrap.md` §xxi / §xxiv. This file records repo-side decisions; canonical-spec prose edits are user-owned follow-up.
+**Related:** `STAGES_OVERVIEW.md` Stage O; `FINDINGS.md` OQ-7 / OQ-13 (composition) + OQ-G1–G4 (auto-gauge pivot); `STAGE_K_NOTES.md` K-D6a–K-D6e (governance proposal machinery); `STAGE_G_PRECHECK_AUTO_GAUGE.md` (pivot record); `STAGE_I_NOTES.md` I-D13 (hook-required eligibility).
+
+**Framing.** Stage O is not a fresh build. The atomic deprecate-and-replace execute skeleton shipped in Stage K (K-D6a–K-D6e): `AureumGovernance.proposeCompositionChallenge` plus the `_executeProposal` CompositionChallenge branch (atomic `revokeGauge(old)` → `MiliariumRegistry.replaceSlot(slot, new)` → `GaugeRegistry.registerGaugeFromComposition(new)`), all `onlyGovernance`. Stage O closes the one gap that skeleton left open — the programmatic composition-fitness gate canonical §xxvii requires — corrects stale boost documentation, then proves the path on a mainnet fork. The `STAGES_OVERVIEW.md` "~350 LOC" estimate predates the K skeleton and overstates O.
+
+---
+
+## O-D0 — Scope: K shipped the skeleton; O closes the §xxvii fitness gate.
+
+Verified at O pre-flight (grep-and-confirm against `stage-o` @ ef8cf54): the atomic composition execute path is live from Stage K. Stage O scopes to exactly three things: (1) the programmatic composition-fitness gate (O-D2 / O-D2a); (2) the no-automatic-boost stale-doc correction (O-D3 / O-D4); (3) the fork + unit tests (O-D9). Router (O-D5) and pool restoration (O-D6) are out of scope.
+
+## O-D1 — Composition challenge survives the auto-gauge pivot as a 2/3 vote.
+
+The auto-gauge pivot (OQ-G1–G4 / `STAGE_G_PRECHECK_AUTO_GAUGE.md`, 2026-05-05) removed gauge *approval* from the governance surface (C-2: four proposal types → three), not the composition challenge. Canonical §xxvii confirms four governance actions: three vote-to-approve (gauge challenge, fee change, composition challenge — the `AureumGovernance.ProposalType` enum) plus Vault-Class admission (proposal-with-veto — `VaultClassRegistry.proposeVaultClass` / `vetoProposal`, the priced "new ERC-4626 token eligibility" action funded by a vault-class admission bond, G-D9). Ordinary pool gauging is automatic (≥52% admitted-ERC-4626 weight → permissionless `activateGauge`, no vote). Composition challenge remains a 20%-quorum / 2/3-supermajority tessera-weighted vote (§xxvii; K-D6c). K's `proposeCompositionChallenge` + `_executeProposal` shapes are confirmed correct — no change.
+
+## O-D2 — The programmatic composition-fitness gate (the Stage O build). Supersedes K-D6e.
+
+Canonical §xxvii Composition Challenge Rule: like-for-like is enforced two ways — programmatic checks at the registry level for properties the contract can verify (token-type composition, weight bounds, 4626 Quality Gate compliance) plus semantic checks via the governance review. K-D6e skipped the programmatic leg ("the 52% ERC-4626 like-for-like gate is enforced at the candidate pool's deployment by the factory, not re-checked here"). That premise is hollow: Aureum uses stock Balancer V3 factories as-is (OQ-14 — no ERC-4626-ratio enforcement), and the composition gauge path (`registerGaugeFromComposition`, G-D7 path 2) bypasses `GaugeEligibility`. Composition is therefore the only gauge path with no on-chain 52% enforcement. Stage O adds it:
+
+- **New view** `meetsCompositionQualityGate(address pool) external view returns (bool)` on `GaugeEligibility` (+ `IGaugeEligibility`). Computes `_compute52PctNumerator(tokens, weights) >= 0.52e18` over `IVault.getPoolTokens(pool)` + `IWeightedPool(pool).getNormalizedWeights()`. Reverts `ForbiddenToken` on AuMM/AuMT (inherited from `_compute52PctNumerator`, T-I3). **Narrower than `_checkEligibilityCriteria`** — it runs neither the TVL floor nor factory provenance nor the anti-spam fee (per §xxvii "no permissionless-activation criteria check is run"; a freshly-deployed replacement legitimately has no TVL yet).
+- **Wiring (K-constructor-stable).** `AureumGovernance` reaches the view through its existing `GAUGE_REGISTRY` immutable: `IGaugeRegistry` gains a delegating `meetsCompositionQualityGate(pool)` that `GaugeRegistry` forwards to `IGaugeEligibility(gaugeEligibility)` (the registry already holds that immutable, G-D16d / G-D22). The K-tagged `AureumGovernance` 8-immutable constructor is untouched. Per G16, the `IGaugeRegistry` change requires updating every `is IGaugeRegistry` inheritor; the authoritative set is enumerated via `grep -rn "is IGaugeRegistry" src/ test/ script/` at the O-D2 implementation sub-step (production `GaugeRegistry` plus the test mocks in `test/fork/mocks/CCBMocks.sol`, `test/unit/VotingWeight.t.sol`, `test/unit/EmissionDistributor.t.sol`, `test/unit/AureumGovernance.t.sol`, `test/unit/CCBMultiplier.t.sol`).
+- **Call sites.** (a) `proposeCompositionChallenge` — fail-fast, before the `_createProposal` deposit pull, so a proposer is not charged the 1,000-svZCHF deposit on an ineligible pool. (b) `_executeProposal` CompositionChallenge branch — authoritative re-check, since the admitted-class set can change during the ~14-day vote (a `VaultClassRegistry` finalize/veto between propose and execute). New revert `CompositionQualityGateFailed(address pool)` raised by the caller when the view returns false. A pool eligible at propose but ineligible at execute cannot be slotted; the proposal expires (deposit already donated, non-refundable per §xxiv — acceptable).
+- Semantic fit (same sector, same template role) stays with the 2/3 vote.
+
+## O-D2a — The composition QG also asserts the canonical fee-routing hook.
+
+`meetsCompositionQualityGate` additionally asserts `IVault(vault).getHooksConfig(pool).hooksContract == feeRoutingHook`, reverting `WrongFeeRoutingHook(pool, actualHook)` (the I-D13 gate, mirrored from `_checkEligibilityCriteria`). Rationale: a composition replacement becomes a gauged Miliarium pool via `registerGaugeFromComposition`; per I-D13 (`FINDINGS.md` L1290) only canonical-hook pools route protocol fees to der Bodensee and carry AuMT governance weight. Seating a non-hook pool in a constellation slot would gauge a pool that does not route fees — worse than the permissionless path it bypasses. Additive to §xxvii's literal programmatic list (defense-in-depth). Error surface: structural disqualifiers revert with their specific errors (`ForbiddenToken`, `WrongFeeRoutingHook`); a 52%-threshold miss returns `false` and the caller raises `CompositionQualityGateFailed`.
+
+## O-D3 — No automatic 90-day boost; composition cold-start = optional Incendiary Boost.
+
+Canonical `08_bootstrap.md` §xxi ("No multiplier boost at activation … Cold-start support comes from Incendiary Boost (user-funded, optional)"), §xxvii ("Incendiary Boost remains available as for any other gauged pool"), §xxiv ("Optional Incendiary Boost applies as normal"). The "90-day boost activated" in `STAGES_OVERVIEW.md` Stage O, `FINDINGS.md` OQ-7 (Q2), and the FINDINGS "Composition replacement … 90-day boost (Stage O wire-up)" note is stale — it predates the auto-gauge pivot's removal of activation boosts. Stage O wires no boost. Repo-doc corrections (separate Cursor sub-steps): the `STAGES_OVERVIEW.md` Stage O bullet (drop "with 90-day boost activated") and the two `FINDINGS.md` references. Canonical spec already says no boost — no aumm-site edit required.
+
+## O-D4 — `CCBMultiplier.activateBoost` is orphaned; flagged, not removed in O.
+
+Grep-confirmed at O pre-flight: `activateBoost` and its constants (`GAUGE_BOOST_DURATION_BLOCKS = 648_000`, `BOOST_FACTOR = 12e17`, `boostExpiryBlock`) have zero production callers — only tests exercise them. Stage F (F-D17) built the machinery anticipating a caller (OQ-7's composition boost, or gauge activation); the auto-gauge pivot's "no boost at activation" (O-D3) removed the activation caller and the K composition path never wired it. It stays externally reachable (gated `isGaugeApproved(msg.sender)`). Stage O does not remove it — `CCBMultiplier` is `stage-f-complete`-tagged; excising load-bearing-looking code from a tagged stage is a separate decision (I13-class). Added to the Stage-P whitehat sweep queue (CLAUDE.md §11) as "orphaned activation-boost machinery — confirm deprecate-and-remove vs re-wire."
+
+## O-D5 — No Aureum Router build (D33 closed).
+
+D33 ("Aureum's own Router → Stage O", CLAUDE.md §11) resolves to: no custom Router. The Balancer V3 Router is open-source and structurally identical; Aureum redeploys that same source bound to the Aureum Vault. The mainnet Router instance is bound to the mainnet Vault (D32) — the binding is per-deployment, not the source. This is a Stage-P full-system-deployment concern (deploy-script wiring), not a Stage O contract build. D33 closes; no O scope.
+
+## O-D6 — Pool restoration stays deferred.
+
+04 ixViatica / 07 ixCambio / the ixCasper waEthwstETH composite leg remain blocked on the E-D17 verified-mainnet-literal bar (fBRZ has no mainnet address; aEURS is not in the Aave address book; the waEthwstETH leg needs an Aureum-deployed `CompositeRateProvider` instance). O-D2's composition path is the on-chain mechanism for slotting them once literals resolve, but the blocker is data availability, not mechanism. No restoration in Stage O.
+
+## O-D7 — K-D6e supersession (fix-forward, no re-tag).
+
+O-D2 corrects K-D6e's "52% not re-checked at composition" per canonical §xxvii. The correction lands fix-forward on `stage-o`; the `stage-k-complete` tag is left untouched (I13-class — a new validation gate added to a tagged-complete stage's contract is a current-branch add-on, not a re-tag; precedent I-D13 on `GaugeEligibility`). O-D2 is the controlling decision over K-D6e for the composition-fitness question.
+
+## O-D8 — Branch posture: fresh `stage-o` off `main`.
+
+Stage O proceeds on `stage-o`, cut from `main` @ ef8cf54 (= `stage-n-complete`). Restores the canonical per-stage branch convention (Stages A–K each branched; Stage N's continuation on `stage-m` was the anomaly). Close: tag `stage-o-complete`, ff-merge to `main`.
+
+## O-D9 — Test strategy.
+
+- **Unit** (`test/unit/GaugeEligibility.t.sol` additions): `meetsCompositionQualityGate` — a ≥52%-admitted-ERC-4626 pool returns true; a <52% pool returns false; a forbidden-token (AuMM/AuMT) pool reverts `ForbiddenToken`; a wrong-hook pool reverts `WrongFeeRoutingHook` (O-D2a). The `IGaugeRegistry` delegation pass-through returns the same verdict.
+- **Fork** (`test/fork/StageOIntegration.t.sol`): on the mainnet fork, deploy a candidate replacement pool, run a composition challenge propose → castVote → queue → execute against a seeded slot, and assert (a) atomic `revokeGauge(old)` + `replaceSlot(slot, new)` + `registerGaugeFromComposition(new)`; (b) the QG gate accepts a conforming candidate and rejects a <52% candidate at both propose and execute; (c) the deprecated pool's fee-routing hook still fires on a post-deprecation swap (§xxvii / Q1.5); (d) no boost is applied to the replacement (O-D3). Mirrors K4.7b's composition-lifecycle fork test; reuses the Stage-K / Stage-G fixtures.
