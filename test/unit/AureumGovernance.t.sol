@@ -59,6 +59,13 @@ contract MockGaugeRegistry {
     function registerGaugeFromComposition(address pool) external {
         registered[pool] = true;
     }
+    mapping(address => bool) public compositionGateFails;
+    function setCompositionGateFails(address pool, bool fails_) external {
+        compositionGateFails[pool] = fails_;
+    }
+    function meetsCompositionQualityGate(address pool) external view returns (bool) {
+        return !compositionGateFails[pool];
+    }
 }
 contract MockSlotRegistry {
     mapping(address => uint256) public slotOfPool;
@@ -638,5 +645,26 @@ contract AureumGovernanceTest is Test {
         gov.execute(id);
         vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalAlreadyExecuted.selector, id));
         gov.execute(id);
+    }
+    function test_proposeComposition_revert_qualityGateFails_noDeposit() public {
+        gaugeReg.setCompositionGateFails(candidatePool, true);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.CompositionQualityGateFailed.selector, candidatePool));
+        vm.prank(proposer);
+        gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
+        assertEq(channel.donateCalls(), 0);
+        assertEq(gov.proposalCount(), 0);
+    }
+    function test_execute_compositionChallenge_revert_qualityGateFailsAtExecute() public {
+        uint256 id = _proposeComposition();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gaugeReg.setCompositionGateFails(candidatePool, true);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.CompositionQualityGateFailed.selector, candidatePool));
+        gov.execute(id);
+        assertFalse(gaugeReg.revoked(occupantPool));
+        assertEq(slotReg.poolAtSlot(5), occupantPool);
+        assertFalse(gaugeReg.registered(candidatePool));
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertFalse(p.executed);
     }
 }

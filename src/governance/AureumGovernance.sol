@@ -145,6 +145,7 @@ contract AureumGovernance {
     error InvalidFeeValue(uint256 fee);
     error InvalidGaugeTarget(address pool);
     error InvalidCompositionTarget(uint256 slot);
+    error CompositionQualityGateFailed(address pool);
 
     constructor(
         IVotingWeight votingWeight_,
@@ -227,6 +228,7 @@ contract AureumGovernance {
         if (slot_ == 0 || slot_ > 28) revert InvalidCompositionTarget(slot_); // 28 = Miliarium constellation size
         if (newPool_ == address(0)) revert ZeroAddress();
         if (SLOT_REGISTRY.poolAtSlot(slot_) == address(0)) revert InvalidCompositionTarget(slot_);
+        if (!GAUGE_REGISTRY.meetsCompositionQualityGate(newPool_)) revert CompositionQualityGateFailed(newPool_);
         proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, payToken_);
     }
 
@@ -349,6 +351,7 @@ contract AureumGovernance {
         if (p.proposalType == ProposalType.GaugeChallenge) {
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
         } else if (p.proposalType == ProposalType.CompositionChallenge) {
+            if (!GAUGE_REGISTRY.meetsCompositionQualityGate(p.newPool)) revert CompositionQualityGateFailed(p.newPool);
             address oldPool = SLOT_REGISTRY.poolAtSlot(p.slot);
             GAUGE_REGISTRY.revokeGauge(oldPool);
             SLOT_REGISTRY.replaceSlot(p.slot, p.newPool);
