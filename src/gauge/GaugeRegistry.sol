@@ -188,4 +188,9 @@ contract GaugeRegistry is IGaugeRegistry {
     function gaugeStatus(address pool) external view override returns (GaugeStatus) {
         return _gaugeStatus[pool];
     }
+
+    /// @inheritdoc IGaugeRegistry
+    function meetsCompositionQualityGate(address pool) external view override returns (bool) {
+        return IGaugeEligibility(gaugeEligibility).meetsCompositionQualityGate(pool);
+    }
 }

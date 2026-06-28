@@ -74,4 +74,6 @@ contract MockGaugeRegistry is IGaugeRegistry {
     function revokeGauge(address) external override {}
 
     function setGovernanceContract(address) external override {}
+
+    function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
 }

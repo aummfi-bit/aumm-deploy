@@ -41,6 +41,7 @@ contract MockGaugeRegistry is IGaugeRegistry {
     function seedFoundingPools(address[] calldata) external override {}
     function revokeGauge(address) external override {}
     function setGovernanceContract(address) external override {}
+    function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
 }
 /// @notice Test-only mock for `IMiliariumRegistry` — settable dense pool list.
 contract MockMiliariumRegistry is IMiliariumRegistry {

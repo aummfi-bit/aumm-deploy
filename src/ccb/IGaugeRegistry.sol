@@ -111,4 +111,10 @@ interface IGaugeRegistry {
     /// @dev Reverts `NotGovernance(caller)` on non-governance call; emits `GovernanceTransferred(old, newGovernance)` on success. The Stage A–K Authorizer Safe per **CLAUDE.md** §1 is the initial governance; Stage K migrates to the on-chain governance contract per **CLAUDE.md** §2.
     /// @param newGovernance The new governance contract address.
     function setGovernanceContract(address newGovernance) external;
+
+    /// @notice Composition-challenge Quality Gate for a candidate replacement `pool` — delegates to `IGaugeEligibility.meetsCompositionQualityGate`: ≥52% admitted-ERC-4626 weight plus the canonical fee-routing hook, without the full activation-criteria suite.
+    /// @dev Stage O **O-D2** / **O-D2a** — the `GaugeRegistry` implementation forwards to its `gaugeEligibility` immutable (**G-D16d**), so `AureumGovernance` can reach the gate through its existing `GAUGE_REGISTRY` handle and the K-tagged governance constructor stays unchanged. Reverts `WrongFeeRoutingHook` (non-canonical hook) and `ForbiddenToken` (AuMM/AuMT) per the eligibility delegate; returns `false` on a sub-52% numerator. Canonical §xxvii registry-level check; supersedes K-D6e.
+    /// @param pool The candidate replacement pool under evaluation.
+    /// @return passes True when `pool` clears the 52% quality gate and carries the canonical hook.
+    function meetsCompositionQualityGate(address pool) external view returns (bool);
 }
