@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { HooksConfig } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { IBasePoolFactory } from "@balancer-labs/v3-interfaces/contracts/vault/IBasePoolFactory.sol";
 
 import { StageKIntegrationFixture } from "./StageKIntegration.t.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
@@ -25,6 +26,7 @@ abstract contract StageOIntegrationFixture is StageKIntegrationFixture {
         HooksConfig memory hc;
         hc.hooksContract = address(hook);
         vm.mockCall(address(vault), abi.encodeWithSignature("getHooksConfig(address)", candidate), abi.encode(hc));
+        vm.mockCall(address(awpf), abi.encodeWithSelector(IBasePoolFactory.isPoolFromFactory.selector, candidate), abi.encode(true));
         IERC20[] memory tokens = new IERC20[](1);
         tokens[0] = IERC20(address(susds));
         vm.mockCall(address(vault), abi.encodeWithSignature("getPoolTokens(address)", candidate), abi.encode(tokens));
@@ -39,6 +41,7 @@ abstract contract StageOIntegrationFixture is StageKIntegrationFixture {
         HooksConfig memory hc;
         hc.hooksContract = address(hook);
         vm.mockCall(address(vault), abi.encodeWithSignature("getHooksConfig(address)", candidate), abi.encode(hc));
+        vm.mockCall(address(awpf), abi.encodeWithSelector(IBasePoolFactory.isPoolFromFactory.selector, candidate), abi.encode(true));
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = IERC20(address(susds));
         tokens[1] = IERC20(address(new NonYieldLeg()));

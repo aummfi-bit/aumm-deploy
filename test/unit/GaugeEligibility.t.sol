@@ -929,6 +929,7 @@ contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
             abi.encodeWithSignature("getPoolTokens(address)", pool),
             abi.encode(tokensArr)
         );
+        mockFactory.setPoolFromFactory(pool, true);
     }
 
     function _admittedToken() internal returns (MockERC4626Token token) {
@@ -984,17 +985,17 @@ contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
         eligibility.meetsCompositionQualityGate(pool);
     }
 
-    function testMeetsCompositionQualityGateIgnoresTvlFloorAndFactoryWhitelist() public {
+    function testMeetsCompositionQualityGateIgnoresTvlFloor() public {
         address[] memory tokens = new address[](1);
         tokens[0] = address(_admittedToken());
         uint256[] memory weights = new uint256[](1);
         weights[0] = 1e18;
         address pool = _wireCompositionPool(tokens, weights);
-        mockFactory.setPoolFromFactory(pool, false);
         mockTvlOracle.setTvl(pool, 0);
+        // The composition gate runs no TVL floor (O-D2) — a factory-provenanced, ≥52% pool with zero TVL passes:
         assertTrue(eligibility.meetsCompositionQualityGate(pool));
-        // Full eligibility rejects the same pool — at the factory-provenance gate, which precedes the TVL floor in _checkEligibilityCriteria.
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.PoolTypeNotWhitelisted.selector, address(mockFactory)));
+        // Full eligibility rejects the same pool at the TVL floor (factory provenance is set by _wireCompositionPool):
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.TVLFloorNotMet.selector, uint256(0), uint256(10_000e18)));
         eligibility.evaluateEligibility(pool);
     }
 }
