@@ -919,3 +919,83 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     }
 }
 
+contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
+    function _wireCompositionPool(address[] memory tokensArr, uint256[] memory weightsArr) internal returns (address pool) {
+        MockWeightedPool weightedPool = new MockWeightedPool();
+        weightedPool.setNormalizedWeights(weightsArr);
+        pool = address(weightedPool);
+        vm.mockCall(
+            vault,
+            abi.encodeWithSignature("getPoolTokens(address)", pool),
+            abi.encode(tokensArr)
+        );
+    }
+
+    function _admittedToken() internal returns (MockERC4626Token token) {
+        token = new MockERC4626Token(makeAddr("compositionAdmittedAsset"));
+        mockVaultClassRegistry.setAdmittedClass(address(token), true);
+    }
+
+    function testMeetsCompositionQualityGateAtFiftyTwoPercentPasses() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedToken());
+        tokens[1] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.52e18;
+        weights[1] = 0.48e18;
+        address pool = _wireCompositionPool(tokens, weights);
+        assertTrue(eligibility.meetsCompositionQualityGate(pool));
+    }
+
+    function testMeetsCompositionQualityGateBelowFiftyTwoPercentReturnsFalse() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(_admittedToken());
+        tokens[1] = address(new MockERC20Plain());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.51e18;
+        weights[1] = 0.49e18;
+        address pool = _wireCompositionPool(tokens, weights);
+        assertFalse(eligibility.meetsCompositionQualityGate(pool));
+    }
+
+    function testMeetsCompositionQualityGateForbiddenTokenReverts() public {
+        address[] memory tokens = new address[](2);
+        tokens[0] = auMM;
+        tokens[1] = address(_admittedToken());
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        address pool = _wireCompositionPool(tokens, weights);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, auMM));
+        eligibility.meetsCompositionQualityGate(pool);
+    }
+
+    function testMeetsCompositionQualityGateWrongHookReverts() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedToken());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wireCompositionPool(tokens, weights);
+        address wrongHook = makeAddr("compositionWrongHook");
+        HooksConfig memory hc;
+        hc.hooksContract = wrongHook;
+        vm.mockCall(vault, abi.encodeWithSignature("getHooksConfig(address)", pool), abi.encode(hc));
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.WrongFeeRoutingHook.selector, pool, wrongHook));
+        eligibility.meetsCompositionQualityGate(pool);
+    }
+
+    function testMeetsCompositionQualityGateIgnoresTvlFloorAndFactoryWhitelist() public {
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(_admittedToken());
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        address pool = _wireCompositionPool(tokens, weights);
+        mockFactory.setPoolFromFactory(pool, false);
+        mockTvlOracle.setTvl(pool, 0);
+        assertTrue(eligibility.meetsCompositionQualityGate(pool));
+        // Full eligibility rejects the same pool — at the factory-provenance gate, which precedes the TVL floor in _checkEligibilityCriteria.
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.PoolTypeNotWhitelisted.selector, address(mockFactory)));
+        eligibility.evaluateEligibility(pool);
+    }
+}
+
