@@ -321,7 +321,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
   - 2/3-supermajority vote from governance (K) has passed.
 - Atomic execution in one governance-execute transaction:
   - Call `gaugeRegistry.revokeGauge(oldPool)` — AuMT on the deprecated pool loses governance weight at this block.
-  - Call `gaugeRegistry.registerGaugeFromComposition(newPool)` (or equivalent **governance-only** entry — exact name at Stage G lock) with 90-day boost activated.
+  - Call `gaugeRegistry.registerGaugeFromComposition(newPool)` (or equivalent **governance-only** entry — exact name at Stage G lock) — no automatic boost (**O-D3**); cold-start support is the optional Incendiary Boost available to any gauged pool, per `08_bootstrap.md` §xxi.
   - Call `miliariumRegistry.replaceSlot(slotN, newPoolAddress)`.
   - The deprecated pool's hook stays attached per Q1.5 — it continues routing fees to Bodensee for as long as anyone trades on it.
 
