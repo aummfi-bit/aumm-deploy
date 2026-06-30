@@ -1,8 +1,8 @@
 # Stage O — Plan & Sub-Step Roadmap
 
-> **Status:** Stage O OPEN — design freeze LOCKED (`docs/STAGE_O_NOTES.md`, O-D0—O-D9 + O-D2a; committed `bd6ae82`). No code landed yet. Companion to STAGE_O_NOTES.md (the design-decision log); this file is the sub-step sequence + Completion Log + grep-verifiable checkpoints.
+> **Status:** Stage O COMPLETE — tagged `stage-o-complete`, ff-merged to `main` (O-D8). The OQ-7 composition-fitness gate (`GaugeEligibility.meetsCompositionQualityGate`, O-D2 / O-D2a, supersedes K-D6e) + WO whitehat F-12 fix; 872 unit + 124 fork green. Companion to STAGE_O_NOTES.md (the design-decision log); this file is the sub-step sequence + Completion Log + grep-verifiable checkpoints.
 >
-> **Last update:** 2026-06-26 — O0.1 (freeze) committed `bd6ae82`; O0.2 (this roadmap) authored. Next: O1.1.
+> **Last update:** 2026-06-30 — O7.2 (Stage O close) committed; full regression 872 unit + 124 fork green; tag `stage-o-complete` placed at the O7.2-backfill commit, ff-merged to `main`. Stage O COMPLETE. Next: Stage P.
 >
 > **Mode:** Opus high (§13 Stage-O default — the composition-gate wiring touches a tagged-complete contract (`AureumGovernance`) + an interface (`IGaugeRegistry`, G16)). Drops to Sonnet for: the G16 compile-stubs (O2.3), the stale-doc edits (O6), unit-test transcription once the harness is confirmed, and Completion-Log housekeeping.
 >
@@ -100,5 +100,12 @@ New `test/fork/StageOIntegration.t.sol` mirroring the K4.7b composition-lifecycl
 | Sub-step | Commit | Status |
 | --- | --- | --- |
 | O0.1 | bd6ae82 | ✅ docs/STAGE_O_NOTES.md — design freeze (O-D0—O-D9 + O-D2a) |
-| O0.2 | (this) | docs/STAGE_O_PLAN.md — plan + sub-step roadmap |
-| O1.1—O7.2 | — | PENDING |
+| O0.2 | a9eea66 | ✅ docs/STAGE_O_PLAN.md — plan + sub-step roadmap |
+| O1 | 0d07659 | ✅ src/gauge/IGaugeEligibility.sol + GaugeEligibility.sol — `meetsCompositionQualityGate` view (≥52% numerator + canonical-hook assert O-D2a + ForbiddenToken; narrower than `_checkEligibilityCriteria`) |
+| O2 | 433d340 | ✅ src/ccb/IGaugeRegistry.sol + src/gauge/GaugeRegistry.sol — delegating pass-through to `IGaugeEligibility`; G16 compile-stubs on the 4 other `is IGaugeRegistry` inheritors |
+| O3 | 7de8f4f | ✅ src/governance/AureumGovernance.sol + test/unit/AureumGovernance.t.sol — `CompositionQualityGateFailed` gate at `proposeCompositionChallenge` (pre-deposit) + `_executeProposal` (pre-mutation); I13 mock retrofit |
+| O4 | 6417818 | ✅ test/unit/GaugeEligibility.t.sol — `GaugeEligibilityCompositionGateTest` (accept at 52% / reject below / ForbiddenToken / WrongHook / TVL-floor-blind) |
+| O5 | e6efdf9 | ✅ test/fork/StageOIntegration.t.sol — composition lifecycle (Approach B): accept + atomic replace, reject at propose & execute, deprecated-hook survives, no boost (O-D3) |
+| O6 | c0fba45 | ✅ docs/STAGES_OVERVIEW.md + docs/FINDINGS.md — strike stale "90-day boost" composition claim (O-D3; 5 occurrences) |
+| O7.1 (WO) | b7d64a6 + e3ab8cf + add6e75 + 7100736 | ✅ WO whitehat pass — F-12 (Low) Fixed: `isPoolFromFactory` provenance check added to the gate (b7d64a6 fix + e3ab8cf PoC + add6e75 docs + 7100736 ledger 119→124) |
+| O7.2 | PENDING_O7 | ✅ Stage O close — CLAUDE.md §11 + STAGES_OVERVIEW.md (Completion + master row) + STAGE_O_PLAN.md Completion Log; 872 unit + 124 fork green; tag `stage-o-complete`; ff-merge → `main` |
