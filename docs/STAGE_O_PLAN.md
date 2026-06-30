@@ -108,4 +108,4 @@ New `test/fork/StageOIntegration.t.sol` mirroring the K4.7b composition-lifecycl
 | O5 | e6efdf9 | ✅ test/fork/StageOIntegration.t.sol — composition lifecycle (Approach B): accept + atomic replace, reject at propose & execute, deprecated-hook survives, no boost (O-D3) |
 | O6 | c0fba45 | ✅ docs/STAGES_OVERVIEW.md + docs/FINDINGS.md — strike stale "90-day boost" composition claim (O-D3; 5 occurrences) |
 | O7.1 (WO) | b7d64a6 + e3ab8cf + add6e75 + 7100736 | ✅ WO whitehat pass — F-12 (Low) Fixed: `isPoolFromFactory` provenance check added to the gate (b7d64a6 fix + e3ab8cf PoC + add6e75 docs + 7100736 ledger 119→124) |
-| O7.2 | PENDING_O7 | ✅ Stage O close — CLAUDE.md §11 + STAGES_OVERVIEW.md (Completion + master row) + STAGE_O_PLAN.md Completion Log; 872 unit + 124 fork green; tag `stage-o-complete`; ff-merge → `main` |
+| O7.2 | e69252f | ✅ Stage O close — CLAUDE.md §11 + STAGES_OVERVIEW.md (Completion + master row) + STAGE_O_PLAN.md Completion Log; 872 unit + 124 fork green; tag `stage-o-complete`; ff-merge → `main` |
