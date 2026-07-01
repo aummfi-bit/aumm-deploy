@@ -2,7 +2,7 @@
 
 > **Status:** Stage P OPEN — P0.1 design freeze committed (`6aebebe`, P-D0—P-D11 + four amendments); P0.2 (this plan) in flight. Two workstreams: **(A)** the white-hat back-fill sweep (opens the stage), **(B)** full-system deployment + dual integration validation. Companion to STAGE_P_NOTES.md (the design-decision log); this file is the sub-step sequence + the WH contract×surface matrix + the Completion Log + grep-verifiable checkpoints.
 >
-> **Last update:** 2026-06-30 — P0.1 freeze committed; P0.2 plan authoring (split P0.2a reference-half + P0.2b roadmap). Branch `stage-p` @ `6aebebe` (cut from `main` @ f50b4cd = `stage-o-complete`, P-D4). Regression baseline carried from Stage O: 872 unit + 124 fork green. Next: P0.3 (testnet reconciliation — P-D1 amended to network-agnostic; Holesky→network-agnostic doc strike), then P1 (WH-D pass).
+> **Last update:** 2026-07-01 — P0 complete (freeze `6aebebe` + plan `6f913ac` + testnet reconciliation `ff32941`/`4696112`); P1 WH-D fee-routing back-fill audited (S2/S5/S6 — F-13 S5 Low Accepted-risk logged; S2/S6 NO FINDING). Branch `stage-p` @ `4696112` (cut from `main` @ f50b4cd = `stage-o-complete`, P-D4). Regression baseline carried from Stage O: 872 unit + 124 fork green. Next: P2 (WH-G pass).
 >
 > **Mode:** Opus high entry — the white-hat sweep (audit reasoning) + the O-D4 / P-D8 `activateBoost` removal (I13, tagged contract) are §13 Opus-high beats. The §13 table's "P/Q/R extra-high" is the formal-verification character of Stage Q's Act proofs + Stage R; Stage P's optional hevm shakeout (P7) is not that beat. Drops to Sonnet for: PoC-test transcription once a finding's attack path is characterised, stub-template transcription (P8), Completion-Log housekeeping, and the P0.3 doc strike (O-D3-class).
 >
@@ -151,4 +151,7 @@ Two-commit PENDING_P (P-D4): the close commit writes `PENDING_P` (the `STAGES_OV
 | Sub-step | Commit | Status |
 | --- | --- | --- |
 | P0.1 | `6aebebe` | ✅ docs/STAGE_P_NOTES.md — design freeze (P-D0—P-D11; four amendments) |
-| P0.2 | `PENDING` | docs/STAGE_P_PLAN.md — plan + WH contract×surface matrix + P0—P11 roadmap (P0.2a + P0.2b; hash backfilled at P0.3) |
+| P0.2 | `6f913ac` | ✅ docs/STAGE_P_PLAN.md — plan + WH contract×surface matrix + P0—P11 roadmap (P0.2a + P0.2b) |
+| P0.3ab | `ff32941` | ✅ STAGE_P_NOTES.md + STAGE_P_PLAN.md — P-D1 testnet posture amended to network-agnostic; live target Sepolia/Hoodi deferred to P-bis |
+| P0.3cd | `4696112` | ✅ FINDINGS.md + STAGES_OVERVIEW.md — Holesky→network-agnostic doc strike (P-D1b); FINDINGS supersession-preserved, STAGES_OVERVIEW live-sequence rewritten |
+| P1 (WH-D) | `PENDING` | 🔄 WH-D Stage-D fee-routing back-fill — S2/S5/S6 on AureumFeeRoutingHook + AureumProtocolFeeController; F-13 (S5 Low, Accepted-risk) logged, S2/S6 NO FINDING; ledger coverage roll-up filled (hash backfilled next sub-step) |
