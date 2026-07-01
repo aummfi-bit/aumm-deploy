@@ -553,6 +553,18 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(ret, 9_999);
     }
 
+    function test_onAfterSwap_skipsPoolWithNoBodenseeRail() public {
+        // P-D12 (2) fail-safe — a pool holding neither svZCHF nor sUSDS (e.g. ixAetheron) has no Bodensee rail, so onAfterSwap returns early without collecting or routing even with a pending fee; a broken skip would reach the fee-to-address(0) conversion and revert, so a clean pass-through return is the proof.
+        vm.prank(vault);
+        hook.onRegister(address(0), poolC, _tc(address(zchf), address(aumm), address(tokenY)), _lm());
+        assertEq(hook.poolBodenseeDepositToken(poolC), address(0), "poolC has no Bodensee rail");
+        _setForward(poolC, address(zchf), 50e18);
+        vm.prank(vault);
+        (bool ok, uint256 ret) = hook.onAfterSwap(_afterSwap(poolC, address(0xDEAD), 777));
+        assertTrue(ok, "onAfterSwap returns success");
+        assertEq(ret, 777, "amountCalculatedRaw passed through unchanged");
+    }
+
     function test_onAfterSwap_branchA_svZchfFee() public {
         // Branch A: feeToken == SV_ZCHF, phase-1 no-op, phase-2 sweep.
         uint256 amount = 100e18;
