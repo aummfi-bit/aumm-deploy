@@ -153,6 +153,9 @@ contract AureumFeeRoutingHookTest is Test {
             admin,
             "slot 4 is not _incendiaryAdmin"
         );
+        // F-14 / P-D12 — onAfterSwap now skips routing for a pool whose svZCHF-membership was not cached at onRegister, so register poolAb through onRegister with an svZCHF-containing tokenConfig (mirrors production: pools register before swaps) so poolHasSvZchf[poolAb] is true and the routing path runs.
+        vm.prank(vault);
+        hook.onRegister(address(0), poolAb, _tc(address(zchf), address(aumm), address(svZchf)), _lm());
     }
 
     // -------------------------------------------------------------------------

@@ -139,6 +139,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice Governance-managed allowlist of routers whose `getSender()` the liquidity callbacks trust for recorder attribution (F-09). Empty by default — the recorder dispatch in onAfterAddLiquidity / onAfterRemoveLiquidity is skipped (no credit, no revert) for any non-allowlisted router, so an attacker acting as its own router cannot spoof LP identity into the emission / qualification clock. Populated by governance via `setTrustedRouter` (e.g. the Stage O Aureum Router). Declared last in storage so its slot follows the C-D11 / I-D16 admin slots (3—5), preserving their pinned layout (F-09 fix).
     mapping(address => bool) public trustedRouter;
 
+    /// @notice F-14 / P-D12 per-pool svZCHF-membership cache, set once at onRegister; onAfterSwap skips fee routing for a pool whose token set omits svZCHF because the on-pool fee->svZCHF conversion in _swapFeeAndDeposit would otherwise revert the user's swap; Balancer V3 pool token sets are immutable post-registration so the cache never staleness-drifts; declared after trustedRouter to preserve the C-D11 / I-D16 / F-09 slot layout.
+    mapping(address => bool) public poolHasSvZchf;
+
     // -------------------------------------------------------------------------
     // Impl-side errors
     // -------------------------------------------------------------------------
@@ -320,12 +323,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         address pool,
         TokenConfig[] memory tokenConfig,
         LiquidityManagement calldata
-    ) public view override onlyVault returns (bool) {
+    ) public override onlyVault returns (bool) {
         if (pool == DER_BODENSEE) return false;
         uint256 len = tokenConfig.length;
+        bool hasSvZchf = false;
         for (uint256 i = 0; i < len; ++i) {
-            if (address(tokenConfig[i].token) == DER_BODENSEE) return false;
+            address token = address(tokenConfig[i].token);
+            if (token == DER_BODENSEE) return false;
+            if (token == address(SV_ZCHF)) hasSvZchf = true;
         }
+        poolHasSvZchf[pool] = hasSvZchf;
         return true;
     }
     /// @inheritdoc BaseHooks
@@ -333,6 +340,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         AfterSwapParams calldata params
     ) public override onlyVault returns (bool, uint256) {
         if (params.router == address(this)) {
+            return (true, params.amountCalculatedRaw);
+        }
+
+        // F-14 / P-D12 — a pool whose token set omits svZCHF skips collect/convert/route (its 50% protocol fee still accrues in the Vault, governance-withdrawable via AureumProtocolFeeController.withdrawProtocolFees) rather than reverting the user swap.
+        if (!poolHasSvZchf[params.pool]) {
             return (true, params.amountCalculatedRaw);
         }
 

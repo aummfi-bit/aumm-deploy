@@ -580,12 +580,14 @@ contract AureumFeeRoutingHookForkTest is Test {
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 
-    function test_Fork_F14_SwapRevertsOnPoolWithoutSvZchf() public {
+    function test_Fork_F14_FailSafeSkipsRoutingOnPoolWithoutSvZchf() public {
         _initializeBodensee();
         _initializeNoSvZchfPool();
         deal(address(susds), address(this), 10e18, true);
-        // F-14: svZCHF not a token of noSvZchfPool, so onAfterSwap conversion swap reverts, reverting the user swap.
-        vm.expectRevert();
+        uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+        // F-14 / P-D12 fail-safe: poolHasSvZchf[noSvZchfPool] is false so onAfterSwap skips collect/convert/route, the swap succeeds (no revert), and no fee is routed to Bodensee (no new BPT); contrast test_Fork_SwapRoutesFeeToBodensee which DOES route on an svZCHF pool.
         vault.unlock(abi.encodeCall(this._performSwapOnNoSvZchfPoolCallback, (10e18)));
+        assertFalse(hook.poolHasSvZchf(noSvZchfPool), "noSvZchfPool cached non-svZCHF");
+        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "no Bodensee routing for non-svZCHF pool");
     }
 }
