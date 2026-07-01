@@ -47,6 +47,7 @@ contract AureumFeeRoutingHookForkTest is Test {
     bytes32 internal constant VAULT_SALT = bytes32(uint256(1));
     bytes32 internal constant BODENSEE_SALT = bytes32(uint256(2));
     bytes32 internal constant TRADING_POOL_SALT = bytes32(uint256(3));
+    bytes32 internal constant NO_SVZCHF_POOL_SALT = bytes32(uint256(4));
     uint32 internal constant PAUSE_WINDOW_DURATION = uint32(4 * 365 days);
     uint256 internal constant BUFFER_PERIOD_DURATION = 90 days;
     uint256 internal constant MIN_TRADE_AMOUNT = 1_000_000;
@@ -70,6 +71,7 @@ contract AureumFeeRoutingHookForkTest is Test {
     IVault internal vault;
     address internal bodenseePool;
     address internal tradingPool;
+    address internal noSvZchfPool;
     IERC20 internal svZchf;
     IERC4626 internal susds;
 
@@ -176,6 +178,23 @@ contract AureumFeeRoutingHookForkTest is Test {
             false,
             TRADING_POOL_SALT
         );
+
+        noSvZchfPool = wpf.create(
+            "aumm-sUSDS-50-50",
+            "AUMM-SUSDS",
+            _noSvZchfPoolTokenConfigs(),
+            _tradingPoolWeights(),
+            PoolRoleAccounts({
+                pauseManager: GOVERNANCE_MULTISIG,
+                swapFeeManager: GOVERNANCE_MULTISIG,
+                poolCreator: address(0)
+            }),
+            0.0075e18,
+            address(hook),
+            false,
+            false,
+            NO_SVZCHF_POOL_SALT
+        );
     }
 
     function _bodenseeTokenConfigs() private view returns (TokenConfig[] memory) {
@@ -268,6 +287,26 @@ contract AureumFeeRoutingHookForkTest is Test {
     function _tradingPoolTokenConfigs() private view returns (TokenConfig[] memory) {
         address t0 = address(aumm);
         address t1 = address(svZchf);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        TokenConfig[] memory tokens = new TokenConfig[](2);
+        tokens[0] = TokenConfig({
+            token: IERC20(t0),
+            tokenType: TokenType.STANDARD,
+            rateProvider: IRateProvider(address(0)),
+            paysYieldFees: false
+        });
+        tokens[1] = TokenConfig({
+            token: IERC20(t1),
+            tokenType: TokenType.STANDARD,
+            rateProvider: IRateProvider(address(0)),
+            paysYieldFees: false
+        });
+        return tokens;
+    }
+
+    function _noSvZchfPoolTokenConfigs() private view returns (TokenConfig[] memory) {
+        address t0 = address(aumm);
+        address t1 = address(susds);
         if (t0 > t1) (t0, t1) = (t1, t0);
         TokenConfig[] memory tokens = new TokenConfig[](2);
         tokens[0] = TokenConfig({
@@ -388,6 +427,55 @@ contract AureumFeeRoutingHookForkTest is Test {
     }
 
     // -------------------------------------------------------------------------
+    // No-svZCHF pool fork init + swap callback — F-14 PoC (WH-G.2)
+    // -------------------------------------------------------------------------
+
+    function _initializeNoSvZchfPool() internal returns (uint256 bptOut) {
+        deal(address(aumm), address(this), INIT_SEED, true);
+        deal(address(susds), address(this), INIT_SEED, true);
+
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializeNoSvZchfPoolCallback, ()));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializeNoSvZchfPoolCallback() external returns (uint256 bptOut) {
+        require(msg.sender == address(vault), "onlyVault");
+        address t0 = address(aumm);
+        address t1 = address(susds);
+        if (t0 > t1) (t0, t1) = (t1, t0);
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = IERC20(t0);
+        tokens[1] = IERC20(t1);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = INIT_SEED;
+        amountsIn[1] = INIT_SEED;
+
+        bptOut = vault.initialize(noSvZchfPool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i <= 1; ++i) {
+            tokens[i].safeTransfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    function _performSwapOnNoSvZchfPoolCallback(uint256 swapAmount) external {
+        require(msg.sender == address(vault), "onlyVault");
+        (, uint256 amountIn, uint256 amountOut) = vault.swap(
+            VaultSwapParams({
+                kind: SwapKind.EXACT_IN,
+                pool: noSvZchfPool,
+                tokenIn: IERC20(address(susds)),
+                tokenOut: IERC20(address(aumm)),
+                amountGivenRaw: swapAmount,
+                limitRaw: 0,
+                userData: ""
+            })
+        );
+        IERC20(address(susds)).safeTransfer(address(vault), amountIn);
+        vault.settle(IERC20(address(susds)), amountIn);
+        vault.sendTo(IERC20(address(aumm)), address(this), amountOut);
+    }
+
+    // -------------------------------------------------------------------------
     // D7.1b–D7.1g — test bodies (empty in D7.1a)
     // -------------------------------------------------------------------------
 
@@ -490,5 +578,14 @@ contract AureumFeeRoutingHookForkTest is Test {
         // swap + one-sided addLiquidity, minting new BPT.
         assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
         assertEq(svZchf.balanceOf(address(hook)), 0);
+    }
+
+    function test_Fork_F14_SwapRevertsOnPoolWithoutSvZchf() public {
+        _initializeBodensee();
+        _initializeNoSvZchfPool();
+        deal(address(susds), address(this), 10e18, true);
+        // F-14: svZCHF not a token of noSvZchfPool, so onAfterSwap conversion swap reverts, reverting the user swap.
+        vm.expectRevert();
+        vault.unlock(abi.encodeCall(this._performSwapOnNoSvZchfPoolCallback, (10e18)));
     }
 }
