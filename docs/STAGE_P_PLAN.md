@@ -2,7 +2,7 @@
 
 > **Status:** Stage P OPEN — P0.1 design freeze committed (`6aebebe`, P-D0—P-D11 + four amendments); P0.2 (this plan) in flight. Two workstreams: **(A)** the white-hat back-fill sweep (opens the stage), **(B)** full-system deployment + dual integration validation. Companion to STAGE_P_NOTES.md (the design-decision log); this file is the sub-step sequence + the WH contract×surface matrix + the Completion Log + grep-verifiable checkpoints.
 >
-> **Last update:** 2026-06-30 — P0.1 freeze committed; P0.2 plan authoring (split P0.2a reference-half + P0.2b roadmap). Branch `stage-p` @ `6aebebe` (cut from `main` @ f50b4cd = `stage-o-complete`, P-D4). Regression baseline carried from Stage O: 872 unit + 124 fork green. Next: P0.3 (Holesky→Hoodi doc strike), then P1 (WH-D pass).
+> **Last update:** 2026-06-30 — P0.1 freeze committed; P0.2 plan authoring (split P0.2a reference-half + P0.2b roadmap). Branch `stage-p` @ `6aebebe` (cut from `main` @ f50b4cd = `stage-o-complete`, P-D4). Regression baseline carried from Stage O: 872 unit + 124 fork green. Next: P0.3 (testnet reconciliation — P-D1 amended to network-agnostic; Holesky→network-agnostic doc strike), then P1 (WH-D pass).
 >
 > **Mode:** Opus high entry — the white-hat sweep (audit reasoning) + the O-D4 / P-D8 `activateBoost` removal (I13, tagged contract) are §13 Opus-high beats. The §13 table's "P/Q/R extra-high" is the formal-verification character of Stage Q's Act proofs + Stage R; Stage P's optional hevm shakeout (P7) is not that beat. Drops to Sonnet for: PoC-test transcription once a finding's attack path is characterised, stub-template transcription (P8), Completion-Log housekeeping, and the P0.3 doc strike (O-D3-class).
 >
@@ -11,12 +11,12 @@
 ---
 ## Stage scope
 
-Stage P is the first stage where the whole stack runs as one system — the integration boundary every prior stage built toward, and the pre-audit hardening pass before Stage Q's external audit + code freeze. Two workstreams. **(A) White-hat back-fill sweep** (opens the stage, P-D5 / P-D6): the per-stage audit cadence began at the Stage K close, so Stages D / G / H / I / J / L were never audited in isolation — Stage P runs those back-fill passes (WH-D…WH-L), then the four named cross-seams a per-stage pass cannot see, then the INV-2 invariant harness and the O-D4 / P-D8 `activateBoost` removal, then an optional hevm symbolic shakeout. **(B) Full-system deployment** (P-D1 / P-D2 / P-D3): tiered testnet token stubs, network-parameterised deploy scripts pointed at Hoodi (Sepolia a drop-in), the Balancer V3 substrate redeploy, and dual integration validation — Tenderly mainnet-fork e2e (real literals) is the primary `stage-p-complete` gate; the live Hoodi broadcast + the `aumm-app` frontend wiring is the deferred P-bis sub-phase. All sweep fixes land fix-forward on `stage-p`; no tagged stage is re-tagged (P-D5, I13-class).
+Stage P is the first stage where the whole stack runs as one system — the integration boundary every prior stage built toward, and the pre-audit hardening pass before Stage Q's external audit + code freeze. Two workstreams. **(A) White-hat back-fill sweep** (opens the stage, P-D5 / P-D6): the per-stage audit cadence began at the Stage K close, so Stages D / G / H / I / J / L were never audited in isolation — Stage P runs those back-fill passes (WH-D…WH-L), then the four named cross-seams a per-stage pass cannot see, then the INV-2 invariant harness and the O-D4 / P-D8 `activateBoost` removal, then an optional hevm symbolic shakeout. **(B) Full-system deployment** (P-D1 / P-D2 / P-D3): tiered testnet token stubs, network-parameterised deploy scripts (the live testnet target — Sepolia or Hoodi — is a P-bis decision per P-D1), the Balancer V3 substrate redeploy, and dual integration validation — Tenderly mainnet-fork e2e (real literals) is the primary `stage-p-complete` gate; the live testnet broadcast + the `aumm-app` frontend wiring is the deferred P-bis sub-phase. All sweep fixes land fix-forward on `stage-p`; no tagged stage is re-tagged (P-D5, I13-class).
 
 ### Surfaces produced at Stage P
 | Artifact | Workstream | Sub-step | Purpose |
 | --- | --- | --- | --- |
-| `docs/FINDINGS.md` + `docs/STAGES_OVERVIEW.md` (Hoodi) | B | P0.3 | P-D1b Holesky→Hoodi strike (O-D3-class) |
+| `docs/FINDINGS.md` + `docs/STAGES_OVERVIEW.md` (testnet) | B | P0.3 | P-D1b Holesky→network-agnostic strike (O-D3-class) |
 | `test/whitehat/F-NN_*.t.sol` PoCs | A | P1—P6 | per-finding Foundry PoCs (mirror F-01…F-12) |
 | `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md` rows + roll-up | A | P1—P7 | ledger findings + per-surface coverage attestation |
 | `test/invariant/*.t.sol` + `ReferenceEmission.sol` | A | P6 | INV-1/6 + INV-2 (non-circular) + INV-3 (+ INV-4 opt) harness |
@@ -28,12 +28,12 @@ Stage P is the first stage where the whole stack runs as one system — the inte
 | `STAGE_P_PLAN.md` / `CLAUDE.md` §11 / `STAGES_OVERVIEW.md` / ledger | — | P11 | Stage P close + tag `stage-p-complete` |
 
 ### Surfaces NOT produced at Stage P
-- No live-network broadcast — Hoodi or mainnet `--broadcast` is the deferred P-bis sub-phase (§8b / §8c, P-D3).
+- No live-network broadcast — a live testnet or mainnet `--broadcast` is the deferred P-bis sub-phase (§8b / §8c, P-D3).
 - No `aumm-app` frontend wiring — external repo, OQ-18, P-bis.
 - No re-audit of the K / L / M / N / O fixes (F-01…F-12 all Fixed) — Stage P back-fills the never-audited pre-K stages only, unless a fix-forward diff reopens a surface (P-D11).
 - No Router source fork — the Balancer V3 Router source is redeployed bound to the Aureum Vault, not forked (D33 / O-D5).
 - No pool restoration — 04 ixViatica / 07 ixCambio / the ixCasper waEthwstETH leg stay deferred on the E-D17 bar (O-D6).
-- No `aumm-site` canonical-spec edit — the spec names no testnet; the Hoodi strike is repo-side only (P-D1b).
+- No `aumm-site` canonical-spec edit — the spec names no testnet; the Holesky→network-agnostic strike is repo-side only (P-D1b).
 - No Act spec / formal proofs — Stage Q owns the formal-verification budget; hevm (P7) is kept separate (P-D9).
 
 ---
@@ -44,9 +44,9 @@ Mirror of `STAGE_P_NOTES.md` (P-D0—P-D11, LOCKED at P0.1 from the Stage-P pre-
 | # | Decision (one-line) | Sub-step |
 | --- | --- | --- |
 | P-D0 | Two workstreams (A sweep opens, B deploy); gated P-bis; sweep-before-deploy | P0—P11 |
-| P-D0b | Tenderly mainnet-fork e2e (real literals) = primary close gate; Hoodi + stubs = P-bis | P10 |
-| P-D1 | Testnet = Hoodi; network-param scripts (Sepolia drop-in); supersedes OQ-16 | P0.3 / P9 |
-| P-D1b | `FINDINGS.md` + `STAGES_OVERVIEW.md` Holesky→Hoodi strike (O-D3-class) | P0.3 |
+| P-D0b | Tenderly mainnet-fork e2e (real literals) = primary close gate; live testnet + stubs = P-bis | P10 |
+| P-D1 | Testnet posture network-agnostic; live target (Sepolia/Hoodi) deferred to P-bis; supersedes OQ-16 | P0.3 / P9 |
+| P-D1b | `FINDINGS.md` + `STAGES_OVERVIEW.md` Holesky→network-agnostic strike (O-D3-class) | P0.3 |
 | P-D2 | Tiered stubs (A anchors / B ERC4626 / C ERC20 / D wiring); AuMM + RPs deploy real | P8 |
 | P-D3 | Broadcast-gated — scripts + Tenderly fork only; no `--broadcast` in Stage P | P9 / P10 |
 | P-D4 | Fresh `stage-p` off `main` @ f50b4cd; two-commit PENDING_P close | P0 / P11 |
@@ -93,8 +93,8 @@ Cross-seam steps (P6.1—P6.4) and the INV harness (P6.5) draw their assertions 
 ### P0 — Stage entry: freeze + plan + testnet-doc reconciliation
 - **P0.1** — `docs/STAGE_P_NOTES.md` design freeze (P-D0—P-D11 + four amendments). ✅ `6aebebe`.
 - **P0.2** — `docs/STAGE_P_PLAN.md` — P0.2a reference half (scope + decisions + WH matrix) + P0.2b roadmap + Completion Log. This sub-step.
-- **P0.3** — P-D1b Holesky→Hoodi strike: `docs/FINDINGS.md` OQ-15 / OQ-16 (testnet = Hoodi, Sepolia a drop-in; the migration OQ-16 itself anticipated) + `docs/STAGES_OVERVIEW.md` Stage P heading + body. O-D3-class repo-side docs fix; no `aumm-site` edit. Sonnet beat.
-- Checkpoint: grep returns zero residual "Holesky" hits outside the superseded-by-Hoodi context; the network-param rationale present.
+- **P0.3** — testnet reconciliation (network-agnostic, the P-D1 amendment): P0.3a `STAGE_P_NOTES.md` P-D1 amend + P0.3b this file's testnet-site rewrite (Opus — design + multi-site) → P0.3c `docs/FINDINGS.md` OQ-15 / OQ-16 + P0.3d `docs/STAGES_OVERVIEW.md` Stage P heading + body (Sonnet — Holesky→network-agnostic strike; the live testnet target deferred to P-bis). O-D3-class repo-side docs fix; no `aumm-site` edit.
+- Checkpoint: `grep -n Holesky` returns zero residual hits outside the explicit supersession context; the testnet-name grep shows only the two network-agnostic candidate-pair mentions (no single-testnet commitment phrasing survives); the network-agnostic + P-bis-deferral rationale present.
 
 ### P1 — WH-D pass (Stage D fee-routing surface, P-D6)
 Execute the WH-D.* matrix rows (S2 / S5 / S6) over `AureumFeeRoutingHook` + `AureumProtocolFeeController`. `*.1` is S2 fee conservation (the crown-jewel fee surface — no mint path here). Fix-forward on `stage-p`, no Stage-D re-tag (P-D5).
@@ -143,7 +143,7 @@ Tenderly mainnet-fork e2e (`test/fork/StagePIntegration.t.sol` or a devnet run) 
 - Checkpoint: e2e green on the real-state fork; regression count logged; coverage confirms the audited surfaces are reached.
 
 ### P11 — Stage P close
-Two-commit PENDING_P (P-D4): the close commit writes `PENDING_P` (the `STAGES_OVERVIEW.md` master row + this Completion Log; `CLAUDE.md` §11 stays hash-free) → a `*-backfill` commit substitutes the real hash → tag `stage-p-complete` at the backfill commit → ff-merge `stage-p` → `main`. The whitehat ledger coverage roll-up is complete before the tag (process-doc §2). P-bis (the live Hoodi broadcast + the `aumm-app` frontend) is deferred beyond the tag.
+Two-commit PENDING_P (P-D4): the close commit writes `PENDING_P` (the `STAGES_OVERVIEW.md` master row + this Completion Log; `CLAUDE.md` §11 stays hash-free) → a `*-backfill` commit substitutes the real hash → tag `stage-p-complete` at the backfill commit → ff-merge `stage-p` → `main`. The whitehat ledger coverage roll-up is complete before the tag (process-doc §2). P-bis (the live testnet broadcast + the `aumm-app` frontend) is deferred beyond the tag.
 - Checkpoint: the ledger carries zero open findings; the tag sits at the backfill commit on `main`; regression count logged.
 
 ---
