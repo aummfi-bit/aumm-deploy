@@ -20,7 +20,7 @@
 2. **Close F1 early.** The fee-routing hook (OQ-1) and der Bodensee land in Stage D, right after the AuMM token makes Bodensee deployable. This retires the F1 architectural gap at the earliest mechanically possible point.
 3. **Coupling rule.** Two contract groups merge into one stage if and only if neither has independent testability against a mainnet fork. Example: emission distributor and gauge registry were initially coupled under this rule, then split once the testing angle was found — emission distributor tests against the gauge registry from Stage G, gauge registry tests via test-harness calls without real emissions.
 4. **Each stage is independently testable against mainnet fork**, tagged in git, and documented with a completion-log row in its own `STAGE_X_PLAN.md`. Same discipline as Stages A and B.
-5. **Mainnet is the LAST stage.** Testnet (Holesky hybrid per OQ-15) and external audit (OQ-17, firm deferred) happen before mainnet.
+5. **Mainnet is the LAST stage.** Testnet (hybrid per OQ-15 — network-agnostic target, P-D1) and external audit (OQ-17, firm deferred) happen before mainnet.
 6. **Frontend is out of scope for this sequence.** Per OQ-18, frontend lives in separate repo `aumm-app` with its own plan. Stage P depends on the frontend MVP being ready; coordination is a project-management item, not part of this contract sequence.
 
 **Terminology:** following OQ-5, block numbers are canonical time units everywhere in the protocol. Calendar terms ("month," "year," "14 days") are aliases. `BLOCKS_PER_MONTH = 219,000`, `BLOCKS_PER_EPOCH = 100,800`, `BLOCKS_PER_YEAR = 2,628,000`, `BLOCKS_PER_ERA = 10,512,000`.
@@ -64,7 +64,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 | M | Miliarium pools, Sector 2 (Majors / yield-core, 5 per M-D7) | configs | 1-2 weeks | Deployment |
 | N | Miliarium pools, Sector 3 (Equity + thematic) + 2 resolvable ex-M Majors (18 pools per N-D0; 04/07 deferred) | configs | 1-2 weeks | Deployment |
 | O | Composition challenge / replacement-launch | ~350 | 1 week | Small |
-| P | Holesky full-system deployment + stubs + integration validation | stubs + scripts | 2-3 weeks | Integration |
+| P | Full-system deployment + stubs + integration validation | stubs + scripts | 2-3 weeks | Integration |
 | Q | External audit + patch cycle | patches only | 6-10 weeks | Calendar |
 | R | Mainnet deployment | scripts | 1 week | Launch |
 
@@ -337,25 +337,25 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ---
 
-## Stage P — Holesky full-system deployment + testnet stubs + integration validation
+## Stage P — Full-system deployment + testnet stubs + integration validation
 
 **Goal:** get the full protocol running as one system on a public testnet. First stage where the whole stack exists in one deployment.
 
 **Builds:**
 - `test-stubs/` — minimal stub contracts for: svZCHF, sUSDS, ixEDEL, and the major theme tokens (waEth wrappers, Aave Prime GHO, fBRZ, `*on` tokenized-asset stand-ins, JPYC, tGBP). Each stub: deterministic, non-upgradeable, ~50-100 LOC, implements the relevant interfaces (`IERC20`, `IERC4626` with `totalAssets` / `convertToShares` / `convertToAssets`, NAV-providing methods for ixEDEL). Kept under the same audit-inheritance discipline as real contracts.
-- Holesky deployment scripts for the full Aureum stack pointing at the stubs.
-- Frontend integration: the `aumm-app` MVP (separate repo per OQ-18) wires against the Holesky deployment.
+- Testnet deployment scripts (network-parameterised per P-D1) for the full Aureum stack pointing at the stubs.
+- Frontend integration: the `aumm-app` MVP (separate repo per OQ-18) wires against the testnet deployment (the live target is a P-bis decision, P-D1).
 
 **Dependencies:** all prior stages (C through O) complete and tagged. Frontend MVP ready (OQ-18/OQ-19 — external dependency, not part of this contract sequence).
 
 **Testing strategy:** end-to-end validation of the full system:
 - Governance flows: submit and pass each of the **three** proposal types (gauge challenge, composition challenge, fee).
 - **Gauge activation workflow:** satisfy Stage G eligibility on a deployed non-Miliarium pool (`activateGauge`), verify AuMM emission path opens without a vote.
-- Fee routing through hook: real trades on Holesky-deployed Miliarium pools, verify svZCHF reaches Bodensee.
-- CCB scoring: advance Holesky blocks to simulate a protocol-month, verify multiplier updates and EMA decay.
+- Fee routing through hook: real trades on testnet-deployed Miliarium pools, verify svZCHF reaches Bodensee.
+- CCB scoring: advance testnet blocks to simulate a protocol-month, verify multiplier updates and EMA decay.
 - Composition challenge dry-run: deploy a replacement candidate, submit proposal, pass supermajority, verify replacement.
 - Authorizer migration: execute the `Vault.setAuthorizer` transaction, verify governance now holds authorizer power.
-- Halving boundary (if feasible given Holesky's block rate and time-budget): simulate a halving transition.
+- Halving boundary (if feasible given the testnet's block rate and time-budget): simulate a halving transition.
 - Symbolic-execution pass (pre-audit): run hevm (Argot Collective) against the Aureum-owned contracts — especially the OQ-1 fee-routing hook, CCB multiplier/EMA engine, and the authorizer-migration window invariants — as cheap shakeout before Stage Q's code freeze. Intent is to catch the class of issues the tier-1 audit would otherwise find on billed hours.
 
 **Mainnet-fork complement:** during this stage, also run the Aureum stack against a Tenderly mainnet-fork devnet for integration testing against real Frankencoin / Aave V3 / Reserve Protocol DTF / Sky / Flux behavior. Not publicly accessible; used by the founding team and (in Stage Q) the audit firm.
