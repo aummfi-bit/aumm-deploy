@@ -156,7 +156,7 @@ abstract contract StageGIntegrationFixture is Test {
         bodenseePool = wpf.create("der-Bodensee", "BODENSEE", _bodenseeTokenConfigs(), _bodenseeWeights(), PoolRoleAccounts({pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: address(0), poolCreator: address(0)}), 0.0075e18, address(0), true, false, BODENSEE_SALT);
         assert(bodenseePool == predictedBodensee);
 
-        hook = new AureumFeeRoutingHook(address(vault), predictedBodensee, svZchf, IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG);
+        hook = new AureumFeeRoutingHook(address(vault), predictedBodensee, svZchf, IERC20(address(susds)), IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG);
         assert(address(hook) == hookAddr);
 
         awpf = new AureumWeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);

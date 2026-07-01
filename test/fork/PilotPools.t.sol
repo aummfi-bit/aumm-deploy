@@ -154,7 +154,7 @@ abstract contract MiliariumPilotPoolBase is Test {
         assert(bodenseePool == predictedBodensee);
 
         hook = new AureumFeeRoutingHook(
-            address(vault), predictedBodensee, svZchf, IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG
+            address(vault), predictedBodensee, svZchf, IERC20(address(susds)), IERC20(address(aumm)), address(controller), GOVERNANCE_MULTISIG
         );
         assert(address(hook) == hookAddr);
 

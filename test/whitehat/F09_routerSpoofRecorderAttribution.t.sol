@@ -68,6 +68,7 @@ contract F09_RouterSpoofRecorderAttributionTest is Test {
 
     MockERC20 internal zchf;
     MockERC4626 internal svZchf;
+    MockERC20 internal susds;
     MockERC20 internal aumm;
     AureumFeeRoutingHook internal hook;
     RecorderSpy internal recorder;
@@ -87,12 +88,14 @@ contract F09_RouterSpoofRecorderAttributionTest is Test {
 
         zchf = new MockERC20("Frankencoin", "ZCHF", 18);
         svZchf = new MockERC4626(IERC20(address(zchf)), "svZCHF", "svZCHF");
+        susds = new MockERC20("Savings USDS", "sUSDS", 18);
         aumm = new MockERC20("Aureum", "AuMM", 18);
 
         hook = new AureumFeeRoutingHook(
             vault,
             bodensee,
             IERC20(address(svZchf)),
+            IERC20(address(susds)),
             IERC20(address(aumm)),
             feeController,
             moduleAdmin

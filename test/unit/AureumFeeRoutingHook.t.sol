@@ -53,6 +53,7 @@ contract AureumFeeRoutingHookTest is Test {
 
     MockERC20 internal zchf;
     MockERC4626 internal svZchf;
+    MockERC20 internal susds;
     MockERC20 internal aumm;
     MockERC20 internal tokenY;
 
@@ -106,6 +107,7 @@ contract AureumFeeRoutingHookTest is Test {
         svZchf = new MockERC4626(IERC20(address(zchf)), "Savings Frankencoin", "svZCHF");
         aumm   = new MockERC20("Aureum", "AuMM", 18);
         tokenY = new MockERC20("Other", "Y", 18);
+        susds = new MockERC20("Savings USDS", "sUSDS", 18);
 
         feeController = new MockFeeController();
 
@@ -113,6 +115,7 @@ contract AureumFeeRoutingHookTest is Test {
             vault,
             bodensee,
             IERC20(address(svZchf)),
+            IERC20(address(susds)),
             IERC20(address(aumm)),
             address(feeController),
             admin
@@ -153,7 +156,7 @@ contract AureumFeeRoutingHookTest is Test {
             admin,
             "slot 4 is not _incendiaryAdmin"
         );
-        // F-14 / P-D12 — onAfterSwap now skips routing for a pool whose svZCHF-membership was not cached at onRegister, so register poolAb through onRegister with an svZCHF-containing tokenConfig (mirrors production: pools register before swaps) so poolHasSvZchf[poolAb] is true and the routing path runs.
+        // F-14 / P-D12 — onAfterSwap now skips routing for a pool whose svZCHF-membership was not cached at onRegister, so register poolAb through onRegister with an svZCHF-containing tokenConfig (mirrors production: pools register before swaps) so poolBodenseeDepositToken[poolAb] is svZCHF (the registered svZCHF-containing config sets the pool's rail to svZCHF) and the routing path runs.
         vm.prank(vault);
         hook.onRegister(address(0), poolAb, _tc(address(zchf), address(aumm), address(svZchf)), _lm());
     }
@@ -257,7 +260,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroVault() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            address(0), bodensee, IERC20(address(svZchf)), IERC20(address(aumm)),
+            address(0), bodensee, IERC20(address(svZchf)), IERC20(address(susds)), IERC20(address(aumm)),
             address(feeController), admin
         );
     }
@@ -265,7 +268,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroBodensee() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            vault, address(0), IERC20(address(svZchf)), IERC20(address(aumm)),
+            vault, address(0), IERC20(address(svZchf)), IERC20(address(susds)), IERC20(address(aumm)),
             address(feeController), admin
         );
     }
@@ -273,7 +276,15 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroSvZchf() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            vault, bodensee, IERC20(address(0)), IERC20(address(aumm)),
+            vault, bodensee, IERC20(address(0)), IERC20(address(susds)), IERC20(address(aumm)),
+            address(feeController), admin
+        );
+    }
+
+    function test_constructor_revertsOnZeroSusds() public {
+        vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
+        new AureumFeeRoutingHook(
+            vault, bodensee, IERC20(address(svZchf)), IERC20(address(0)), IERC20(address(aumm)),
             address(feeController), admin
         );
     }
@@ -281,7 +292,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroAuMM() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            vault, bodensee, IERC20(address(svZchf)), IERC20(address(0)),
+            vault, bodensee, IERC20(address(svZchf)), IERC20(address(susds)), IERC20(address(0)),
             address(feeController), admin
         );
     }
@@ -289,7 +300,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroFeeController() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            vault, bodensee, IERC20(address(svZchf)), IERC20(address(aumm)),
+            vault, bodensee, IERC20(address(svZchf)), IERC20(address(susds)), IERC20(address(aumm)),
             address(0), admin
         );
     }
@@ -297,7 +308,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_constructor_revertsOnZeroModuleAdmin() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         new AureumFeeRoutingHook(
-            vault, bodensee, IERC20(address(svZchf)), IERC20(address(aumm)),
+            vault, bodensee, IERC20(address(svZchf)), IERC20(address(susds)), IERC20(address(aumm)),
             address(feeController), address(0)
         );
     }
@@ -310,7 +321,7 @@ contract AureumFeeRoutingHookTest is Test {
         MockERC20 notVault = new MockERC20("Fake", "FAKE", 18);
         vm.expectRevert();
         new AureumFeeRoutingHook(
-            vault, bodensee, IERC20(address(notVault)), IERC20(address(aumm)),
+            vault, bodensee, IERC20(address(notVault)), IERC20(address(susds)), IERC20(address(aumm)),
             address(feeController), admin
         );
     }

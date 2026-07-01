@@ -93,6 +93,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     // slither-disable-next-line naming-convention
     IERC20 public immutable ZCHF;
 
+    /// @notice sUSDS — the secondary Bodensee deposit rail per P-D12 (2).
+    ///         Impl-side only (not in IAureumFeeRoutingHook); set at construction.
+    // slither-disable-next-line naming-convention
+    IERC20 public immutable SUSDS;
+
     // -------------------------------------------------------------------------
     // Post-construction state
     // -------------------------------------------------------------------------
@@ -139,8 +144,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice Governance-managed allowlist of routers whose `getSender()` the liquidity callbacks trust for recorder attribution (F-09). Empty by default — the recorder dispatch in onAfterAddLiquidity / onAfterRemoveLiquidity is skipped (no credit, no revert) for any non-allowlisted router, so an attacker acting as its own router cannot spoof LP identity into the emission / qualification clock. Populated by governance via `setTrustedRouter` (e.g. the Stage O Aureum Router). Declared last in storage so its slot follows the C-D11 / I-D16 admin slots (3—5), preserving their pinned layout (F-09 fix).
     mapping(address => bool) public trustedRouter;
 
-    /// @notice F-14 / P-D12 per-pool svZCHF-membership cache, set once at onRegister; onAfterSwap skips fee routing for a pool whose token set omits svZCHF because the on-pool fee->svZCHF conversion in _swapFeeAndDeposit would otherwise revert the user's swap; Balancer V3 pool token sets are immutable post-registration so the cache never staleness-drifts; declared after trustedRouter to preserve the C-D11 / I-D16 / F-09 slot layout.
-    mapping(address => bool) public poolHasSvZchf;
+    /// @notice per-pool Bodensee deposit rail per P-D12 (2), set once at onRegister — svZCHF if the pool holds it (preferred), else sUSDS if the pool holds it, else address(0) (skip in onAfterSwap, no revert); immutable pool token sets so the cache never staleness-drifts.
+    mapping(address => address) public poolBodenseeDepositToken;
 
     // -------------------------------------------------------------------------
     // Impl-side errors
@@ -211,6 +216,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @param vault_          The Balancer V3 Vault.
     /// @param derBodensee_    der-Bodensee pool address.
     /// @param svZchf_         svZCHF (ERC-4626 vault share over ZCHF).
+    /// @param susds_          sUSDS — secondary Bodensee deposit rail per P-D12 (2).
     /// @param aumm_           AuMM ERC-20.
     /// @param feeController_  AureumProtocolFeeController — sanctioned
     ///                        caller for routeYieldFee.
@@ -220,6 +226,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         address vault_,
         address derBodensee_,
         IERC20 svZchf_,
+        IERC20 susds_,
         IERC20 aumm_,
         address feeController_,
         address moduleAdmin_
@@ -227,6 +234,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         if (vault_ == address(0))           revert ZeroAddress();
         if (derBodensee_ == address(0))     revert ZeroAddress();
         if (address(svZchf_) == address(0)) revert ZeroAddress();
+        if (address(susds_) == address(0)) revert ZeroAddress();
         if (address(aumm_) == address(0))   revert ZeroAddress();
         if (feeController_ == address(0))   revert ZeroAddress();
         if (moduleAdmin_ == address(0))     revert ZeroAddress();
@@ -234,6 +242,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         AUREUM_VAULT = vault_;
         DER_BODENSEE = derBodensee_;
         SV_ZCHF = svZchf_;
+        SUSDS = susds_;
         AUMM = aumm_;
         FEE_CONTROLLER = feeController_;
         ZCHF = IERC20(IERC4626(address(svZchf_)).asset());
@@ -326,13 +335,17 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ) public override onlyVault returns (bool) {
         if (pool == DER_BODENSEE) return false;
         uint256 len = tokenConfig.length;
-        bool hasSvZchf = false;
+        address depositToken = address(0);
         for (uint256 i = 0; i < len; ++i) {
             address token = address(tokenConfig[i].token);
             if (token == DER_BODENSEE) return false;
-            if (token == address(SV_ZCHF)) hasSvZchf = true;
+            if (token == address(SV_ZCHF)) {
+                depositToken = address(SV_ZCHF);
+            } else if (token == address(SUSDS) && depositToken == address(0)) {
+                depositToken = address(SUSDS);
+            }
         }
-        poolHasSvZchf[pool] = hasSvZchf;
+        poolBodenseeDepositToken[pool] = depositToken;
         return true;
     }
     /// @inheritdoc BaseHooks
@@ -343,8 +356,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             return (true, params.amountCalculatedRaw);
         }
 
-        // F-14 / P-D12 — a pool whose token set omits svZCHF skips collect/convert/route (its 50% protocol fee still accrues in the Vault, governance-withdrawable via AureumProtocolFeeController.withdrawProtocolFees) rather than reverting the user swap.
-        if (!poolHasSvZchf[params.pool]) {
+        // F-14 / P-D12 (2) — poolBodenseeDepositToken[params.pool] == address(0) skips collect/convert/route (its 50% protocol fee still accrues in the Vault, governance-withdrawable via AureumProtocolFeeController.withdrawProtocolFees) rather than reverting the user swap.
+        address depositToken = poolBodenseeDepositToken[params.pool];
+        if (depositToken == address(0)) {
             return (true, params.amountCalculatedRaw);
         }
 
@@ -359,7 +373,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 tokens[i],
                 forwardedAmounts[i],
                 params.pool,
-                address(this)
+                address(this),
+                IERC20(depositToken)
             );
             // onAfterSwap is onlyVault under the Vault's open unlock; external calls are into the Vault itself (the protocol's reentrancy guard); CEI ordering preserved. See D8 NOTES F1.
             // slither-disable-next-line reentrancy-events
@@ -436,44 +451,46 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @dev Shared internal primitive consumed by onAfterSwap and the
     ///      three IAureumFeeRoutingHook external entry points. Two-phase
     ///      per the Stage D plan D3.3:
-    ///      Phase 1 — convert `feeToken` to svZCHF on this hook's balance.
-    ///      If `amount == 0`, return `0` as `bptMinted`. If `feeToken` is svZCHF, no-op
-    ///      (hook already holds `amount` svZCHF from the caller). If
-    ///      `feeToken` is ZCHF, `forceApprove` then ERC-4626 `deposit`
+    ///      Phase 1 — convert `feeToken` to the deposit token on this hook's balance.
+    ///      If `amount == 0`, return `0` as `bptMinted`. If `feeToken` is the deposit token, no-op
+    ///      (hook already holds `amount` from the caller). If
+    ///      `feeToken` is ZCHF and the deposit token is svZCHF, `forceApprove` then ERC-4626 `deposit`
     ///      into this hook. Otherwise require `swapPool != 0` and
-    ///      nested-swap to svZCHF via `_swapExactInFeeTokenToSvZchfViaVault`;
+    ///      nested-swap to the deposit token via `_swapExactInFeeTokenToDepositTokenViaVault`;
     ///      revert `UnsupportedFeeToken` if `swapPool == 0` for a
     ///      non—ZCHF—family token.
-    ///      Phase 2 — one-sided add the hook's entire svZCHF balance
+    ///      Phase 2 — one-sided add the hook's entire deposit-token balance
     ///      into der-Bodensee via `_addLiquidityOneSidedToBodenseeViaVault`,
     ///      minting BPT to `bptRecipient`; returns `bptMinted` from phase 2.
-    ///      Balance-sweep is intentional: any svZCHF held by this hook
+    ///      Balance-sweep is intentional: any deposit token held by this hook
     ///      is protocol-owned and Bodensee-bound, including dust from
     ///      prior partial fills or donations (per D3.3.4 Q1 / Option X).
     function _swapFeeAndDeposit(
         IERC20 feeToken,
         uint256 amount,
         address swapPool,
-        address bptRecipient
+        address bptRecipient,
+        IERC20 depositToken
     ) private returns (uint256 bptMinted) {
         if (amount == 0) return 0;
 
-        if (address(feeToken) == address(SV_ZCHF)) {
-            // No-op: hook already holds `amount` svZCHF from the caller.
-        } else if (address(feeToken) == address(ZCHF)) {
+        if (address(feeToken) == address(depositToken)) {
+            // No-op: hook already holds `amount` of the deposit token from the caller.
+        } else if (address(depositToken) == address(SV_ZCHF) && address(feeToken) == address(ZCHF)) {
             IERC20(address(ZCHF)).forceApprove(address(SV_ZCHF), amount);
-            // Balance-sweep: phase-2 reads SV_ZCHF.balanceOf(this) at L336; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
+            // Balance-sweep: phase-2 reads depositToken.balanceOf(this) at L336; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
             // slither-disable-next-line unused-return,calls-loop
             IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
         } else {
             if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
-            _swapExactInFeeTokenToSvZchfViaVault(feeToken, amount, swapPool);
+            _swapExactInFeeTokenToDepositTokenViaVault(feeToken, amount, swapPool, depositToken);
         }
 
         // Traced external call inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F4.
         // slither-disable-next-line calls-loop
         bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
-            SV_ZCHF.balanceOf(address(this)),
+            depositToken,
+            depositToken.balanceOf(address(this)),
             bptRecipient
         );
     }
@@ -482,17 +499,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      is this contract, so the hook owns the transient-accounting deltas
     ///      and must clear them before the outer `unlock` closes. Order:
     ///      `swap`, then transfer `tokenIn` to the Vault and `settle`, then
-    ///      `sendTo` svZCHF to this hook—mirroring `RouterCommon._takeTokenIn`
+    ///      `sendTo` the deposit token to this hook—mirroring `RouterCommon._takeTokenIn`
     ///      and `_sendTokenOut` around `_vault.swap`. `limitRaw == 0` accepts
     ///      any `amountOut` for this protocol-internal leg (same trade-off
     ///      class as `minBptAmountOut == 0` on the phase-2 one-sided add
     ///      into der-Bodensee per the Stage D plan). Recursion: the
     ///      nested `swap` invokes `onAfterSwap` again with
     ///      `params.router == address(this)`; D10 early-return applies.
-    function _swapExactInFeeTokenToSvZchfViaVault(
+    function _swapExactInFeeTokenToDepositTokenViaVault(
         IERC20 feeToken,
         uint256 amount,
-        address swapPool
+        address swapPool,
+        IERC20 depositToken
     ) private {
         // Tuple discard: amountCalculated == amountOut for EXACT_IN, redundant; bounded fee-token loop. See D8 NOTES F5/F7.
         // slither-disable-next-line unused-return,calls-loop
@@ -501,7 +519,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 kind: SwapKind.EXACT_IN,
                 pool: swapPool,
                 tokenIn: feeToken,
-                tokenOut: SV_ZCHF,
+                tokenOut: depositToken,
                 amountGivenRaw: amount,
                 limitRaw: 0,
                 userData: bytes("")
@@ -513,25 +531,25 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         _vault.settle(feeToken, amountIn);
         // Vault sendTo inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F9.
         // slither-disable-next-line calls-loop
-        _vault.sendTo(SV_ZCHF, address(this), amountOut);
+        _vault.sendTo(depositToken, address(this), amountOut);
     }
 
     /// @dev Nested one-sided add from this hook: inside `IVault.addLiquidity`,
     ///      `msg.sender` is this contract, so the hook owns the transient
     ///      deltas and must clear them before the outer `unlock` closes.
-    ///      Order: `addLiquidity`, then transfer SV_ZCHF to the Vault and
+    ///      Order: `addLiquidity`, then transfer the deposit token to the Vault and
     ///      `settle`. BPT is minted to `to` via the `AddLiquidityParams.to`
     ///      field, so no `sendTo` is needed to realise the credit leg.
     ///      Returns `bptAmountOut` from the Vault.
     ///      `minBptAmountOut == 0` accepts any `bptAmountOut` for this
     ///      protocol-internal leg (same trade-off class as `limitRaw == 0`
-    ///      in `_swapExactInFeeTokenToSvZchfViaVault`; MEV/sandwich risk
+    ///      in `_swapExactInFeeTokenToDepositTokenViaVault`; MEV/sandwich risk
     ///      internalised, tracked as a Stage Q audit surface per
     ///      `STAGE_D_PLAN.md:L703`). `getPoolTokenCountAndIndexOfToken`
-    ///      reverts natively if `DER_BODENSEE` does not contain SV_ZCHF
+    ///      reverts natively if `DER_BODENSEE` does not contain the deposit token
     ///      — no custom error path. Debits are settled using the returned
-    ///      `amountsIn[svZchfIndex]` (actual consumed), not the caller-
-    ///      supplied `svZchfAmount`, per defensive-coding convention.
+    ///      `amountsIn[depositIndex]` (actual consumed), not the caller-
+    ///      supplied `depositAmount`, per defensive-coding convention.
     ///      Precedent for nested-Vault-add-from-hook:
     ///      `lib/balancer-v3-monorepo/pkg/pool-hooks/contracts/ExitFeeHookExample.sol:160`
     ///      (different kind — DONATION — and different callback —
@@ -540,19 +558,20 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      hook as delta-owner). Router-vs-Vault mechanism drift resolution
     ///      recorded at D20 in `docs/STAGE_D_NOTES.md`.
     function _addLiquidityOneSidedToBodenseeViaVault(
-        uint256 svZchfAmount,
+        IERC20 depositToken,
+        uint256 depositAmount,
         address to
     ) private returns (uint256 bptAmountOut) {
-        // svZchfAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
+        // depositAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
         // slither-disable-next-line incorrect-equality
-        if (svZchfAmount == 0) return 0;
+        if (depositAmount == 0) return 0;
         // getPoolTokenCountAndIndexOfToken call inside bounded fee-token loop in onAfterSwap. See D8 NOTES F13.
         // slither-disable-next-line calls-loop
-        (uint256 tokenCount, uint256 svZchfIndex) =
-            _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, SV_ZCHF);
+        (uint256 tokenCount, uint256 depositIndex) =
+            _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, depositToken);
 
         uint256[] memory maxAmountsIn = new uint256[](tokenCount);
-        maxAmountsIn[svZchfIndex] = svZchfAmount;
+        maxAmountsIn[depositIndex] = depositAmount;
 
         // Tuple discard: returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
         // slither-disable-next-line unused-return,calls-loop
@@ -568,10 +587,10 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         );
         bptAmountOut = bptOut;
 
-        SV_ZCHF.safeTransfer(address(_vault), amountsIn[svZchfIndex]);
-        // settle returns credit equal to amountsIn[svZchfIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
+        depositToken.safeTransfer(address(_vault), amountsIn[depositIndex]);
+        // settle returns credit equal to amountsIn[depositIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
         // slither-disable-next-line unused-return,calls-loop
-        _vault.settle(SV_ZCHF, amountsIn[svZchfIndex]);
+        _vault.settle(depositToken, amountsIn[depositIndex]);
     }
 
     // -------------------------------------------------------------------------
@@ -614,7 +633,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             feeToken,
             feeAmount,
             pool,
-            caller
+            caller,
+            IERC20(poolBodenseeDepositToken[pool])
         );
     }
 
@@ -655,7 +675,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             token,
             amount,
             address(0),
-            caller
+            caller,
+            SV_ZCHF
         );
     }
 
@@ -696,7 +717,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             token,
             amount,
             address(0),
-            caller
+            caller,
+            SV_ZCHF
         );
     }
 }
