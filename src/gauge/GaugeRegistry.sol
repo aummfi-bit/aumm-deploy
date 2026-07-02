@@ -245,6 +245,11 @@ contract GaugeRegistry is IGaugeRegistry {
         return IGaugeEligibility(gaugeEligibility).meetsCompositionQualityGate(pool);
     }
 
+    /// @inheritdoc IGaugeRegistry
+    function poolEmissionCapBps(address pool) external view override returns (uint256) {
+        return GaugeEligibility(gaugeEligibility).poolEmissionCapBps(pool);
+    }
+
     /// @notice Returns the number of currently Active gauges — **P-D13** part (1); consumed by the F-10 efficiency tournament to bound its enumeration loop.
     function gaugeCount() external view returns (uint256) {
         return _activeGauges.length();
