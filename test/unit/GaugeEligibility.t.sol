@@ -680,16 +680,25 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
     }
 
-    function testEfficiencyDataUnavailableRevertsPostWarmup() public {
+    function testZeroDenominatorSkippedPostWarmup() public {
         address p = makeAddr("pEffUnavailable");
         address[] memory pools = new address[](1);
         pools[0] = p;
 
         _advanceWarmup(pools);
 
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.EfficiencyDataUnavailable.selector, p));
+        // Post-warmup (epoch 4: newEpoch - firstTournamentEpoch == 3, not < SMOOTHING_EPOCHS) with
+        // denominatorSma == 0 (mock default): the pool is skipped — excluded from ranking, no cap,
+        // no revert — per P-D15 (3). One dead gauge must not brick the permissionless tournament.
+        vm.recordLogs();
         vm.prank(gaugeRegistry);
         eligibility.computeEpochSnapshot(pools);
+
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(eligibility.currentSnapshotEpoch(), 4);
+        assertEq(eligibility.lastSnapshotEpoch(p), 0);
+        assertEq(eligibility.isFavoredCohort(p), false);
+        assertEq(eligibility.poolEmissionCapBps(p), 0);
     }
 
     function testGaugeEfficiencyRisingEmitsOnAscension() public {
