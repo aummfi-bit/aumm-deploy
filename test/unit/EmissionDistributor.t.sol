@@ -86,7 +86,13 @@ contract MockGaugeRegistry is IGaugeRegistry {
     function setGovernanceContract(address) external override {}
 
     function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
-    function poolEmissionCapBps(address) external view override returns (uint256 capBps) {}
+    mapping(address => uint256) private _emissionCapBps;
+    function setPoolEmissionCapBps(address pool, uint256 capBps) external {
+        _emissionCapBps[pool] = capBps;
+    }
+    function poolEmissionCapBps(address pool) external view override returns (uint256 capBps) {
+        return _emissionCapBps[pool];
+    }
 }
 
 contract MockEMASampler is IEMASampler {
@@ -584,6 +590,78 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.f5Total(), 100e18);
         assertEq(distributor.poolScore(POOL_A), 0);
         assertEq(distributor.totalScore(), 0);
+    }
+
+    /// @notice Confirms the F-10 emission-cap clamp (P-D16 / P-D13 (4)) reduces `effective_new` to `capLimit = capT.divDown(1e18 - capT).mulDown(S_other)` when a capped pool's natural F-5 score exceeds its cap ceiling past month-13 — `POOL_A` @ 100 bps recorded at `year1EndBlock + 1` against `POOL_B`'s 900e18 uncapped score. Asserts the exact floored clamped `poolScore`, that the clamp fired (`poolScore` < the 100e18 pre-clamp effective), that `totalScore == S_other + clamped` (F16f single-clamped-local total/pool agreement), that raw `f5Score`/`f5Total` stay UNCLAMPED (clamp confined to the reshaped effective/emission channel), and that `ScoreUpdated` carries the clamped `newScore`.
+    function test_RecordScore_EmissionCapClamp_ReducesEffectiveWhenOverCap() public {
+        gauges.setApproved(POOL_B, true);
+        ema.setTVLEMA(POOL_B, 900e18);
+        mult.setMultiplier(POOL_B, 1e18);
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        gauges.setPoolEmissionCapBps(POOL_A, 100);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        distributor.recordScore(POOL_B);
+
+        uint256 sOther = 900e18;
+        uint256 capT = 100 * 1e14;
+        uint256 expectedCapLimit = (capT * 1e18 / (1e18 - capT)) * sOther / 1e18;
+
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, expectedCapLimit);
+        distributor.recordScore(POOL_A);
+
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 1000e18);
+        assertEq(distributor.poolScore(POOL_A), expectedCapLimit);
+        assertLt(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), sOther + expectedCapLimit);
+    }
+
+    /// @notice Confirms the clamp no-ops past the month-13 gate when `poolEmissionCapBps == 0` — the `capBps != 0` guard; `POOL_A` recorded at `year1EndBlock + 1` with no cap set writes its full effective F-5 score (100e18) unclamped.
+    function test_RecordScore_EmissionCapClamp_NoOpWhenCapBpsZero() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+    }
+
+    /// @notice Confirms the clamp does NOT bite one block before month-13 — the `block.number >= year1EndBlock + 1` gate (P-D14 (3)); `POOL_A` carries a 100 bps cap but is recorded at EXACTLY `year1EndBlock`, so the clamp block is skipped and the full effective F-5 score (100e18) is written.
+    function test_RecordScore_EmissionCapClamp_NoOpBelowMonth13Gate() public {
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 100e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        gauges.setPoolEmissionCapBps(POOL_A, 100);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_));
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.f5Score(POOL_A), 100e18);
+        assertEq(distributor.f5Total(), 100e18);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+    }
+
+    /// @notice Confirms the `effective_new > capLimit` guard leaves an under-cap pool unclamped past month-13 — `POOL_A`'s natural 5e18 score sits below its ~9.09e18 cap ceiling (100 bps against `POOL_B`'s 900e18 S_other), so recordScore writes 5e18 unchanged and `totalScore` aggregates it in full.
+    function test_RecordScore_EmissionCapClamp_NoClampWhenUnderCapLimit() public {
+        gauges.setApproved(POOL_B, true);
+        ema.setTVLEMA(POOL_B, 900e18);
+        mult.setMultiplier(POOL_B, 1e18);
+        gauges.setApproved(POOL_A, true);
+        ema.setTVLEMA(POOL_A, 5e18);
+        mult.setMultiplier(POOL_A, 1e18);
+        gauges.setPoolEmissionCapBps(POOL_A, 100);
+        vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        distributor.recordScore(POOL_B);
+        distributor.recordScore(POOL_A);
+        assertEq(distributor.f5Score(POOL_A), 5e18);
+        assertEq(distributor.f5Total(), 905e18);
+        assertEq(distributor.poolScore(POOL_A), 5e18);
+        assertEq(distributor.totalScore(), 905e18);
     }
 
     /* ---------- recordDeposit tests (H-D16 / H-D21 / H-D25) ---------- */
