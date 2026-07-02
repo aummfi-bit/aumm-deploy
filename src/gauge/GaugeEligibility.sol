@@ -74,6 +74,9 @@ contract GaugeEligibility is IGaugeEligibility {
 
     uint256 public currentSnapshotEpoch;
 
+    /// @notice F-10 per-pool emission cap in basis points assigned by the last `computeEpochSnapshot` — 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%) — **P-D13 (3)** / **P-D15 (2)**. Written each epoch for every ranked pool (including 0 that un-caps a pool which climbed back into the top 85% — self-correction per spec L129). Skipped pools (cold-start, warmup, post-warmup zero-denominator) retain their prior value per **P-D15 (4)**. Consumed by the EmissionDistributor via `IGaugeRegistry` delegation (F16e / F16f).
+    mapping(address => uint256) public poolEmissionCapBps;
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
@@ -121,8 +124,6 @@ contract GaugeEligibility is IGaugeEligibility {
     error TVLFloorNotMet(uint256 tvl, uint256 floor);
 
     error InsufficientQualityGate(uint256 numerator);
-
-    error EfficiencyDataUnavailable(address pool);
 
     error OnlyGaugeRegistry(address caller);
 
@@ -207,7 +208,7 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /**
      * @notice F-10 efficiency tournament epoch snapshot per **G-D3** + **OQ-G1** + **T-I5** + **G-D5** + **G-D22** + **G-D23** — reads pre-smoothed efficiency inputs, ranks post-grace survivors, assigns cohorts, emits transition events on cohort crossings.
-     * @dev Caller-gated by **G-D22** via `onlyGaugeRegistry` (the wired GaugeRegistry binding from G2.4-post's F-D23 one-shot setter). Per-pool zero-handling precedence per **G-D23 (v)**: cold-start grace (first sighting writes `firstTournamentEpoch[pool] = newEpoch`, pool is skipped without revert) → warmup window (`newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS`, pool is skipped without revert) → post-warmup `denominatorSma == 0` reverts `EfficiencyDataUnavailable(pool)` → ratio compute `(numeratorSma * 1e18) / denominatorSma` (1e18 fixed-point, dimensionless per F-10 price-agnostic). Survivors sorted descending by `efficiencyRatio` via in-memory insertion sort with address-ascending tiebreak per **G-D23 (iv)** / **T-T3** stable-sort determinism — no storage write during sort. Cutoff `favoredCount = (nRanked * 15 + 99) / 100` per **G-D3** ceiling arithmetic. Transition events fire exactly once per pool per epoch per **G-D5** with reshaped ABI per **G-D23 (iii)**: top-to-bottom → `GaugeEfficiencyDropped` (**T-T2**); bottom-to-top → `GaugeEfficiencyRising` (**T-T1**). Per-pool emission-share caps NOT applied here — F-10 caps deferred to Stage H emission distributor per **G-D15b**. Caller (GaugeRegistry) responsible for passing a deduped `eligiblePools` set.
+     * @dev Caller-gated by **G-D22** via `onlyGaugeRegistry` (the wired GaugeRegistry binding from G2.4-post's F-D23 one-shot setter). Per-pool zero-handling precedence per **G-D23 (v)**: cold-start grace (first sighting writes `firstTournamentEpoch[pool] = newEpoch`, pool is skipped without revert) → warmup window (`newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS`, pool is skipped without revert) → post-warmup `denominatorSma == 0` skips the pool (excluded from ranking, no cap, no revert per **P-D15 (3)**) → ratio compute `(numeratorSma * 1e18) / denominatorSma` (1e18 fixed-point, dimensionless per F-10 price-agnostic). Survivors sorted descending by `efficiencyRatio` via in-memory insertion sort with address-ascending tiebreak per **G-D23 (iv)** / **T-T3** stable-sort determinism — no storage write during sort. Cutoff `favoredCount = (nRanked * 15 + 99) / 100` per **G-D3** ceiling arithmetic (favored top cohort); per-pool emission caps assigned to `poolEmissionCapBps` by floor-percentile tiers per **P-D13 (3)** / **P-D15 (1)** — 10 bps (bottom 5%), 50 bps (bottom 10–5%), 100 bps (bottom 15–10%), 0 (top 85%), via `cap{10,50,100}Count = floor(nRanked × {5,10,15} / 100)`. Transition events fire exactly once per pool per epoch per **G-D5** with reshaped ABI per **G-D23 (iii)**: top-to-bottom → `GaugeEfficiencyDropped` (**T-T2**); bottom-to-top → `GaugeEfficiencyRising` (**T-T1**). Per-pool emission caps ARE assigned here to `poolEmissionCapBps` per **P-D13 (3)** / **P-D15** — the F-16 fix supersedes the **G-D15b** Stage-H deferral; the EmissionDistributor consumes them via `IGaugeRegistry` delegation (F16e / F16f). Caller (GaugeRegistry) responsible for passing a deduped `eligiblePools` set.
      * @param eligiblePools Pre-filtered set of eligible Balancer V3 pools (deduped by caller per G-D22).
      */
     function computeEpochSnapshot(address[] calldata eligiblePools) external onlyGaugeRegistry {
@@ -236,7 +237,8 @@ contract GaugeEligibility is IGaugeEligibility {
             }
 
             if (denominatorSma == 0) {
-                revert EfficiencyDataUnavailable(pool);
+                // P-D15 (3) — post-warmup zero-denominator pool skipped (excluded from ranking, no cap, no revert): one dead gauge must not brick the permissionless tournament.
+                continue;
             }
 
             uint256 efficiencyRatio = (numeratorSma * 1e18) / denominatorSma;
@@ -272,8 +274,11 @@ contract GaugeEligibility is IGaugeEligibility {
             rankedRatios[j] = ratioI;
         }
 
-        // Pass 3 — ceiling 15% cutoff + cohort assignment + transition events (G-D3 + G-D5).
+        // Pass 3 — ceiling 15% favored cutoff + floor bottom-tier caps + cohort assignment + transition events (G-D3 + G-D5 + P-D15 (1)).
         uint256 favoredCount = (nRanked * 15 + 99) / 100;
+        uint256 cap10Count = (nRanked * 5) / 100;
+        uint256 cap50Count = (nRanked * 10) / 100;
+        uint256 cap100Count = (nRanked * 15) / 100;
         for (uint256 i = 0; i < nRanked; ++i) {
             address pool = rankedPools[i];
             bool wasFavored = isFavoredCohort[pool];
@@ -288,6 +293,13 @@ contract GaugeEligibility is IGaugeEligibility {
                     pool, newEpoch, rankedNumeratorSma[i], rankedDenominatorSma[i], rankedRatios[i]
                 );
             }
+
+            uint256 capBps;
+            if (i >= nRanked - cap10Count) capBps = 10;
+            else if (i >= nRanked - cap50Count) capBps = 50;
+            else if (i >= nRanked - cap100Count) capBps = 100;
+            else capBps = 0;
+            poolEmissionCapBps[pool] = capBps;
 
             isFavoredCohort[pool] = isFavored;
             lastSnapshotEpoch[pool] = newEpoch;
