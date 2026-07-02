@@ -483,6 +483,19 @@ contract EmissionDistributor is IEmissionDistributor {
             effective_new = alpha.mulDown(score_F5_new);
         }
         uint256 oldEffective = poolScore[pool];
+        // F16f / P-D13 (4) — F-10 emission-cap clamp. Post-month-13, a tournament-capped pool's
+        // effective score is limited so its emission share resolves to ~cap_t; the excess redistributes
+        // to uncapped pools pro-rata by score (spec L125). No-op below the gate or when uncapped (capBps == 0).
+        if (block.number >= AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) {
+            uint256 capBps = _gaugeRegistry.poolEmissionCapBps(pool);
+            if (capBps != 0) {
+                uint256 capT = capBps * 1e14; // bps -> 1e18 fixed-point (100 bps = 1e16 = 1%)
+                uint256 capLimit = capT.divDown(1e18 - capT).mulDown(totalScore - oldEffective);
+                if (effective_new > capLimit) {
+                    effective_new = capLimit;
+                }
+            }
+        }
         totalScore = _applySignedDelta(totalScore, effective_new.toInt256() - oldEffective.toInt256());
         poolScore[pool] = effective_new;
         emit ScoreUpdated(pool, oldEffective, effective_new);
