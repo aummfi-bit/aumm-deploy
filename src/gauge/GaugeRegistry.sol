@@ -8,11 +8,13 @@ import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IGaugeEligibility} from "./IGaugeEligibility.sol";
 import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {GaugeEligibility} from "./GaugeEligibility.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
 
 /**
  * @title GaugeRegistry
  * @notice Gauge state machine for pool activation — three paths: permissionless `activateGauge` (**OQ-G3** anti-spam fee + eligibility), governance `registerGaugeFromComposition`, and governance `seedFoundingPool` / `seedFoundingPools`; revocation via `revokeGauge`. Cross-references: **G-D7** — three activation paths — **G-D17** — `Revoked` is terminal — no Stage G recovery to `Active`.
- * @dev **G3.5** concrete state machine over the **G3.2 → G3.5** lineage — **G3.2** scaffold + **G3.3** constructor + `setGovernanceContract` + `activateGauge` (with **G3.3-pre-fix2c** typed-domain correction and **G3.3-fix1** `abstract` keyword + `external override` modifier per **G-D24** Schedule (a)) + **G3.4** `registerGaugeFromComposition` + `revokeGauge` + `isGaugeApproved` + `gaugeStatus` + **G3.5** `seedFoundingPool` + `seedFoundingPools` with the `abstract` keyword removed (8 of 8 `IGaugeRegistry` functions implemented; contract concrete). Four-argument constructor with zero-address checks (**ZeroAddress**) and raw `address` stores per **G-D16d**; Stage K `setGovernanceContract` handoff with `GovernanceTransferred` emit; **OQ-G3** permissionless `activateGauge` per the **G-D16c** five-step ordering (status precheck → fee pull → fee push → Bodensee routing → fee event → try/catch eligibility → state write + activated event) with non-reverting failure path; governance composition (`registerGaugeFromComposition` per **G-D7** path 2) and governance founding (`seedFoundingPool` scalar + `seedFoundingPools` inlined batch per **G-D16b** + **STAGE_G_PRECHECK_AUTO_GAUGE** C-4) — both bypass eligibility and the anti-spam fee; `revokeGauge` flips `Active → Revoked` per **G-D17** (terminal at Stage G; no entrypoint writes `Revoked → Active`); `isGaugeApproved` returns `_gaugeStatus[pool] == GaugeStatus.Active` per Stage F compat (**G-D16a**). Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy.
+ * @dev **G3.5** concrete state machine over the **G3.2 → G3.5** lineage — **G3.2** scaffold + **G3.3** constructor + `setGovernanceContract` + `activateGauge` (with **G3.3-pre-fix2c** typed-domain correction and **G3.3-fix1** `abstract` keyword + `external override` modifier per **G-D24** Schedule (a)) + **G3.4** `registerGaugeFromComposition` + `revokeGauge` + `isGaugeApproved` + `gaugeStatus` + **G3.5** `seedFoundingPool` + `seedFoundingPools` with the `abstract` keyword removed (8 of 8 `IGaugeRegistry` functions implemented; contract concrete). Five-argument constructor — four address arguments with zero-address checks (**ZeroAddress**) and raw `address` stores per **G-D16d**, plus a fifth `genesisBlock_` (`uint256`) bound raw to `GENESIS_BLOCK` with no zero-check per **P-D14 (1)**; Stage K `setGovernanceContract` handoff with `GovernanceTransferred` emit; **OQ-G3** permissionless `activateGauge` per the **G-D16c** five-step ordering (status precheck → fee pull → fee push → Bodensee routing → fee event → try/catch eligibility → state write + activated event) with non-reverting failure path; governance composition (`registerGaugeFromComposition` per **G-D7** path 2) and governance founding (`seedFoundingPool` scalar + `seedFoundingPools` inlined batch per **G-D16b** + **STAGE_G_PRECHECK_AUTO_GAUGE** C-4) — both bypass eligibility and the anti-spam fee; `revokeGauge` flips `Active → Revoked` per **G-D17** (terminal at Stage G; no entrypoint writes `Revoked → Active`); `isGaugeApproved` returns `_gaugeStatus[pool] == GaugeStatus.Active` per Stage F compat (**G-D16a**). Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy. **F16c additions per P-D14** — `GENESIS_BLOCK` immutable (5th constructor arg, anchors F-10 tournament epoch cadence + month-13 gate); `lastTournamentEpoch` cadence storage (one snapshot per `BLOCKS_PER_EPOCH`); permissionless `advanceTournament()` (F-10 efficiency tournament caller — concrete-only, not on `IGaugeRegistry`).
  */
 contract GaugeRegistry is IGaugeRegistry {
     using SafeERC20 for IERC20;
@@ -38,6 +40,9 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice Eligibility evaluator binding — `GaugeEligibility` deploys first with this registry as its `gaugeRegistrySetter_` authority per **G-D22**; the registry then receives the eligibility address as a constructor arg, and the deployer calls `GaugeEligibility.setGaugeRegistry(this)` post-deploy. Cast to `IGaugeEligibility(gaugeEligibility)` at every call site per **G-D16d**.
     address public immutable gaugeEligibility;
 
+    /// @notice Stage H genesis block anchoring the F-10 efficiency tournament epoch cadence (`AureumTime.epochIndex`) and the month-13 activation gate (`AureumTime.year1EndBlock(GENESIS_BLOCK) + 1`) — **P-D14 (1)**. Bound raw with no zero-check (uint256, accepts any value); same precedent as `AuMM.sol` L37, `EfficiencyOracle.sol` L30, and `EmissionDistributor.sol` L47. P9 deploy invariant: MUST equal `EfficiencyOracle.GENESIS_BLOCK` == `EmissionDistributor.GENESIS_BLOCK` — the tournament's epoch accounting and the distributor's month-13 cap gate must switch on the same block.
+    uint256 public immutable GENESIS_BLOCK;
+
     // ----------------------------------------------------------------------------
     // Storage
     // ----------------------------------------------------------------------------
@@ -51,11 +56,27 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice Governance authority for restricted entrypoints (`registerGaugeFromComposition`, `seedFoundingPool`, `seedFoundingPools`, `revokeGauge`, `setGovernanceContract`). Not `immutable` — Stage K rebinding via `setGovernanceContract`.
     address public governanceContract;
 
+    /// @notice F-10 tournament cadence tracker — **P-D14 (2)**. Stores the epoch index of the last completed `advanceTournament` run; 0 until the first post-month-13 call. `advanceTournament` enforces `currentEpoch > lastTournamentEpoch` — exactly one snapshot per `BLOCKS_PER_EPOCH`.
+    uint256 public lastTournamentEpoch;
+
     // ----------------------------------------------------------------------------
     // Custom errors
     // ----------------------------------------------------------------------------
 
     error ZeroAddress();
+
+    /// @notice Reverts `advanceTournament` calls before the month-13 boundary (`AureumTime.year1EndBlock(GENESIS_BLOCK) + 1`) — **P-D14 (3)**.
+    error TournamentNotActive();
+
+    /// @notice Reverts `advanceTournament` calls when the current epoch index has not advanced beyond `lastTournamentEpoch` — **P-D14 (2)**; enforces one snapshot per `BLOCKS_PER_EPOCH`.
+    error TournamentEpochNotElapsed();
+
+    // ----------------------------------------------------------------------------
+    // Events
+    // ----------------------------------------------------------------------------
+
+    /// @notice Emitted at the end of each successful `advanceTournament` call — **P-D14 (4)**; concrete-only (not on `IGaugeRegistry`). `epoch` is the `AureumTime.epochIndex` value snapshotted; `gaugeCount` is the Active-gauge set size passed to `computeEpochSnapshot`.
+    event TournamentAdvanced(uint256 indexed epoch, uint256 gaugeCount);
 
     // ----------------------------------------------------------------------------
     // Modifier
@@ -71,18 +92,20 @@ contract GaugeRegistry is IGaugeRegistry {
     // ----------------------------------------------------------------------------
 
     /**
-     * @notice Wires the four deploy-time dependencies for the gauge state machine, the OQ-G3 anti-spam fee path, and the Stage K governance handoff.
-     * @dev Performs four zero-address checks (**ZeroAddress**) before any state assignment — any zero input reverts before storage binds. Stores all four arguments as raw `address` per **G-D16d** (Path (A), all-immutable). Cross-references: **G-D16d**, **G-D22** (deploy order — `GaugeEligibility` first with `gaugeRegistrySetter_`; `GaugeRegistry` second with `eligibility_` constructor arg; `GaugeEligibility.setGaugeRegistry(this)` post-deploy).
+     * @notice Wires four address deploy-time dependencies for the gauge state machine, the OQ-G3 anti-spam fee path, and the Stage K governance handoff, plus the genesis block anchor for the F-10 efficiency tournament cadence and month-13 gate.
+     * @dev Performs four zero-address checks (**ZeroAddress**) on the four address arguments before any state assignment — any zero address reverts before storage binds. Stores the four address arguments as raw `address` per **G-D16d** (Path (A), all-immutable). The fifth argument `genesisBlock_` binds `GENESIS_BLOCK` raw with no zero-check (uint256, accepts any value) per **P-D14 (1)** — same precedent as `AuMM.sol`, `EfficiencyOracle.sol`, and `EmissionDistributor.sol`. Cross-references: **G-D16d**, **G-D22** (deploy order — `GaugeEligibility` first with `gaugeRegistrySetter_`; `GaugeRegistry` second with `eligibility_` constructor arg; `GaugeEligibility.setGaugeRegistry(this)` post-deploy), **P-D14 (1)** (P9 deploy invariant: `GENESIS_BLOCK` MUST equal `EfficiencyOracle.GENESIS_BLOCK` == `EmissionDistributor.GENESIS_BLOCK`).
      * @param governance Initial governance authority for restricted entrypoints (Stage A–K Authorizer Safe per CLAUDE.md §1; rebound at Stage K via `setGovernanceContract`).
      * @param eligibility_ The deployed `GaugeEligibility` contract address — cast to `IGaugeEligibility(gaugeEligibility)` at every call site per **G-D16d**.
      * @param swapAndDeposit_ The deployed `SwapAndDepositToBodensee` helper address — cast to `SwapAndDepositToBodensee(swapAndDeposit)` at every call site per **G-D16d**.
      * @param svZCHF_ The svZCHF token address — cast to `IERC20(svZCHF)` at every call site per **G-D16d**.
+     * @param genesisBlock_ Stage H genesis block anchoring the F-10 tournament epoch cadence (`AureumTime.epochIndex`) and the month-13 activation gate (`AureumTime.year1EndBlock(GENESIS_BLOCK) + 1`). Bound raw with no zero-check per **P-D14 (1)**; P9 deploy invariant: MUST equal `EfficiencyOracle.GENESIS_BLOCK` == `EmissionDistributor.GENESIS_BLOCK`.
      */
     constructor(
         address governance,
         address eligibility_,
         address swapAndDeposit_,
-        address svZCHF_
+        address svZCHF_,
+        uint256 genesisBlock_
     ) {
         if (governance == address(0)) revert ZeroAddress();
         if (eligibility_ == address(0)) revert ZeroAddress();
@@ -93,6 +116,7 @@ contract GaugeRegistry is IGaugeRegistry {
         gaugeEligibility = eligibility_;
         swapAndDeposit = swapAndDeposit_;
         svZCHF = svZCHF_;
+        GENESIS_BLOCK = genesisBlock_;
     }
 
     // ----------------------------------------------------------------------------
@@ -183,6 +207,23 @@ contract GaugeRegistry is IGaugeRegistry {
             _activeGauges.add(pool);
             emit GaugeActivated(pool, GaugeActivationPath.Founding);
         }
+    }
+
+    // ----------------------------------------------------------------------------
+    // External — F-10 efficiency tournament (P-D14)
+    // ----------------------------------------------------------------------------
+
+    /**
+     * @notice Permissionless F-10 efficiency tournament caller — advances the epoch snapshot by one `BLOCKS_PER_EPOCH` step, driving tier assignment and emission-cap updates for all Active gauges — **P-D14 (2)-(4)**.
+     * @dev Gate order per **P-D14 (3)-(4)**: (1) `TournamentNotActive` — reverts before `AureumTime.year1EndBlock(GENESIS_BLOCK) + 1` (month-13 boundary, honoring P-D13 amendment (b)); (2) `TournamentEpochNotElapsed` — reverts when `currentEpoch <= lastTournamentEpoch` (one snapshot per `BLOCKS_PER_EPOCH`); (3) `lastTournamentEpoch = currentEpoch` written before the external call (CEI — a reverting snapshot rolls back the write); (4) `GaugeEligibility(gaugeEligibility).computeEpochSnapshot(...)` — concrete cast per **G2.5** (`computeEpochSnapshot` is concrete-only on `GaugeEligibility`, absent from `IGaugeEligibility`; confirmed by reading `src/gauge/IGaugeEligibility.sol`); (5) `_activeGauges.values()` supplies the complete deduped Active-gauge set (EnumerableSet invariant — satisfies the "caller passes a deduped set" contract at `GaugeEligibility` L210). At F16c the snapshot sorts + emits transition events; F-16 emission caps land at F16d. Concrete-only — not on `IGaugeRegistry`; interface plumbing deferred to F16e with the G16 sweep.
+     */
+    function advanceTournament() external {
+        if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
+        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (currentEpoch <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
+        lastTournamentEpoch = currentEpoch;
+        GaugeEligibility(gaugeEligibility).computeEpochSnapshot(_activeGauges.values());
+        emit TournamentAdvanced(currentEpoch, _activeGauges.length());
     }
 
     // ----------------------------------------------------------------------------
