@@ -88,7 +88,7 @@ contract GaugeRegistryTest is Test {
         eligibility = new MockGaugeEligibility();
         swapper = new MockSwapAndDeposit();
         svZchf = new MockERC20("svZCHF", "svZCHF");
-        registry = new GaugeRegistry(GOVERNANCE, address(eligibility), address(swapper), address(svZchf));
+        registry = new GaugeRegistry(GOVERNANCE, address(eligibility), address(swapper), address(svZchf), block.number);
 
         vm.label(address(registry), "GaugeRegistry");
         vm.label(address(eligibility), "MockGaugeEligibility");

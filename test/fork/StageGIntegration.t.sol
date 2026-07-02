@@ -210,7 +210,7 @@ abstract contract StageGIntegrationFixture is Test {
         genesisTypes[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
         vaultClassRegistry = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
         gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockVotingWeight), address(this), address(mockEfficiencyOracle), address(hook));
-        gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf));
+        gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf), block.number);
 
         swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));
         swapAndDeposit.setGaugeRegistry(address(gaugeRegistry));
