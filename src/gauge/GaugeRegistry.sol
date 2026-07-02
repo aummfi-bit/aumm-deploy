@@ -7,6 +7,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IGaugeEligibility} from "./IGaugeEligibility.sol";
 import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 /**
  * @title GaugeRegistry
@@ -15,6 +16,7 @@ import {SwapAndDepositToBodensee} from "./SwapAndDepositToBodensee.sol";
  */
 contract GaugeRegistry is IGaugeRegistry {
     using SafeERC20 for IERC20;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     // ----------------------------------------------------------------------------
     // Constants
@@ -42,6 +44,9 @@ contract GaugeRegistry is IGaugeRegistry {
 
     /// @notice Per-pool gauge state machine — **G-D17** terminal `Revoked`; `Active` gauges satisfy Stage F `isGaugeApproved` via **G-D16a** compat semantics.
     mapping(address => GaugeStatus) private _gaugeStatus;
+
+    /// @notice Complete Active-gauge enumeration consumed by the F-10 efficiency tournament — **P-D13** part (1); maintained by all four activation paths (activateGauge, registerGaugeFromComposition, seedFoundingPool, seedFoundingPools) and removed by revokeGauge.
+    EnumerableSet.AddressSet private _activeGauges;
 
     /// @notice Governance authority for restricted entrypoints (`registerGaugeFromComposition`, `seedFoundingPool`, `seedFoundingPools`, `revokeGauge`, `setGovernanceContract`). Not `immutable` — Stage K rebinding via `setGovernanceContract`.
     address public governanceContract;
@@ -127,6 +132,7 @@ contract GaugeRegistry is IGaugeRegistry {
         }
 
         _gaugeStatus[pool] = GaugeStatus.Active;
+        _activeGauges.add(pool);
         emit GaugeActivated(pool, GaugeActivationPath.Permissionless);
     }
 
@@ -140,6 +146,7 @@ contract GaugeRegistry is IGaugeRegistry {
         if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
         if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
         _gaugeStatus[pool] = GaugeStatus.Active;
+        _activeGauges.add(pool);
         emit GaugeActivated(pool, GaugeActivationPath.Composition);
     }
 
@@ -147,6 +154,7 @@ contract GaugeRegistry is IGaugeRegistry {
     function revokeGauge(address pool) external override onlyGovernance {
         if (_gaugeStatus[pool] != GaugeStatus.Active) revert NotGauged(pool);
         _gaugeStatus[pool] = GaugeStatus.Revoked;
+        _activeGauges.remove(pool);
         emit GaugeRevoked(pool);
     }
 
@@ -160,6 +168,7 @@ contract GaugeRegistry is IGaugeRegistry {
         if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
         if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
         _gaugeStatus[pool] = GaugeStatus.Active;
+        _activeGauges.add(pool);
         emit GaugeActivated(pool, GaugeActivationPath.Founding);
     }
 
@@ -171,6 +180,7 @@ contract GaugeRegistry is IGaugeRegistry {
             if (status == GaugeStatus.Active) revert AlreadyGauged(pool);
             if (status == GaugeStatus.Revoked) revert AlreadyRevoked(pool);
             _gaugeStatus[pool] = GaugeStatus.Active;
+            _activeGauges.add(pool);
             emit GaugeActivated(pool, GaugeActivationPath.Founding);
         }
     }
@@ -192,5 +202,15 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @inheritdoc IGaugeRegistry
     function meetsCompositionQualityGate(address pool) external view override returns (bool) {
         return IGaugeEligibility(gaugeEligibility).meetsCompositionQualityGate(pool);
+    }
+
+    /// @notice Returns the number of currently Active gauges — **P-D13** part (1); consumed by the F-10 efficiency tournament to bound its enumeration loop.
+    function gaugeCount() external view returns (uint256) {
+        return _activeGauges.length();
+    }
+
+    /// @notice Returns the Active-gauge address at `index` in the enumeration set — **P-D13** part (1); reverts if `index >= gaugeCount()`.
+    function gaugeAt(uint256 index) external view returns (address) {
+        return _activeGauges.at(index);
     }
 }
