@@ -818,6 +818,45 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         }
     }
 
+    function testCapTierAssignmentNRanked20() public {
+        address[] memory pools = new address[](20);
+        for (uint256 i = 0; i < 20; ++i) {
+            pools[i] = makeAddr(string.concat("captier", vm.toString(i)));
+            mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
+        }
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        // Descending efficiency (pool0 best, pool19 worst). Floor tiers at nRanked=20:
+        // cap10Count = floor(20*5/100) = 1, cap50Count = floor(20*10/100) = 2, cap100Count = floor(20*15/100) = 3.
+        assertEq(eligibility.poolEmissionCapBps(pools[19]), 10);  // bottom 5%   -> 0.1%
+        assertEq(eligibility.poolEmissionCapBps(pools[18]), 50);  // bottom 10-5% -> 0.5%
+        assertEq(eligibility.poolEmissionCapBps(pools[17]), 100); // bottom 15-10% -> 1%
+        assertEq(eligibility.poolEmissionCapBps(pools[16]), 0);   // top 85% (first uncapped rank)
+        assertEq(eligibility.poolEmissionCapBps(pools[0]), 0);    // most efficient
+    }
+
+    function testCapTierNoCapsUnderThreshold() public {
+        // nRanked = 6: cap100Count = floor(6*15/100) = 0 -> no pool is capped (P-D15 (1) floor degradation).
+        address[] memory pools = new address[](6);
+        for (uint256 i = 0; i < 6; ++i) {
+            pools[i] = makeAddr(string.concat("nocaptier", vm.toString(i)));
+            mockEfficiencyOracle.setEfficiencyInputs(pools[i], (500 - i) * 1e18, 50e18);
+        }
+
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        for (uint256 j = 0; j < 6; ++j) {
+            assertEq(eligibility.poolEmissionCapBps(pools[j]), 0);
+        }
+    }
+
     function testCeilingCutoffNRanked100() public {
         address[] memory pools = new address[](100);
         for (uint256 i = 0; i < 100; ++i) {
