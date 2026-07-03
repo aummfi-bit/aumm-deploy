@@ -60,6 +60,17 @@ contract MockAuMM is ERC20, IAuMM {
     }
 }
 
+/// @notice Minimal ERC-20 stand-in for a Balancer V3 BPT (pool token) so POOL_A / POOL_B carry real
+///         `balanceOf` code — the F-17 / P-D18 `_syncDown` reconciliation reads a live BPT balance at every
+///         settle site. Ungated `mint` seeds test holders (no minter gate, unlike MockAuMM).
+contract MockBpt is ERC20 {
+    constructor() ERC20("Aureum BPT", "BPT") {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
 contract MockGaugeRegistry is IGaugeRegistry {
     mapping(address => bool) private _approved;
 
@@ -192,8 +203,8 @@ contract EmissionDistributorTest is Test {
     uint256 internal constant GENESIS_BLOCK_ = 1_000_000;
     address internal constant GOV = address(0xC0FE);
     address internal constant AUMT_REC = address(0xA0DC);
-    address internal constant POOL_A = address(0xA1);
-    address internal constant POOL_B = address(0xB2);
+    address internal POOL_A;
+    address internal POOL_B;
     address internal constant USER_1 = address(0xE1);
     address internal constant USER_2 = address(0xE2);
     address internal constant DUMMY_CHANNEL = address(0xC4A9);
@@ -229,6 +240,15 @@ contract EmissionDistributorTest is Test {
         vm.prank(GOV);
         distributor.setMintRouter(address(router));
         effOracle.setEmissionsRecorder(address(distributor));
+        // F-17 / P-D18: give POOL_A / POOL_B real BPT code and seed USER_1 / USER_2 a large live
+        // balance so `_syncDown`'s reference (balanceOf +/- amount) always dominates recorded userLP —
+        // the reconciliation is a universal no-op here, preserving every H-D16 / H-D25 stake assertion.
+        POOL_A = address(new MockBpt());
+        POOL_B = address(new MockBpt());
+        MockBpt(POOL_A).mint(USER_1, 1e30);
+        MockBpt(POOL_A).mint(USER_2, 1e30);
+        MockBpt(POOL_B).mint(USER_1, 1e30);
+        MockBpt(POOL_B).mint(USER_2, 1e30);
         vm.prank(GOV);
         distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
         vm.roll(GENESIS_BLOCK_);
@@ -753,20 +773,22 @@ contract EmissionDistributorTest is Test {
         distributor.recordWithdrawal(POOL_A, USER_1, 100e18);
     }
 
-    /// @notice Reverts with arithmetic underflow (Panic 0x11) when `recordWithdrawal` is called with an amount exceeding the user's recorded stake — H-D16 trust-the-recorder posture; no typed error declared.
-    function test_RevertWhen_RecordWithdrawalUnderflowOnOverWithdrawal() public {
+    /// @notice Confirms `recordWithdrawal` with an amount exceeding the user's recorded stake clamps the debit to `userLP` and zeroes both `userLP` and `poolTotalLP` WITHOUT reverting — the F-17 / P-D18 recipient-liveness clamp (supersedes the H-D16 trust-the-recorder underflow-revert posture; a holder can never be bricked out of a canonical exit by a phantom-inflated over-withdrawal).
+    function test_RecordWithdrawal_OverWithdrawalClampsToStakeNoRevert() public {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
         vm.prank(AUMT_REC);
-        vm.expectRevert();
         distributor.recordWithdrawal(POOL_A, USER_1, 150e18);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+        assertEq(distributor.poolTotalLP(POOL_A), 0);
     }
 
-    /// @notice Reverts with arithmetic underflow (Panic 0x11) when `recordWithdrawal` is called for a user with no prior deposit — H-D16 trust-the-recorder posture; no typed error declared.
-    function test_RevertWhen_RecordWithdrawalUnderflowOnNoPriorDeposit() public {
+    /// @notice Confirms `recordWithdrawal` for a user with no prior deposit clamps the debit to zero and leaves `userLP` / `poolTotalLP` at zero WITHOUT reverting — the F-17 / P-D18 recipient-liveness clamp (supersedes the H-D16 underflow-revert posture; a recipient holding out-of-band BPT with no recorded stake can still call the canonical exit path).
+    function test_RecordWithdrawal_NoPriorDepositClampsToZeroNoRevert() public {
         vm.prank(AUMT_REC);
-        vm.expectRevert();
         distributor.recordWithdrawal(POOL_A, USER_1, 1);
+        assertEq(distributor.userLP(POOL_A, USER_1), 0);
+        assertEq(distributor.poolTotalLP(POOL_A), 0);
     }
 
     /// @notice Confirms a partial `recordWithdrawal` decrements `userLP` and `poolTotalLP` by the withdrawn amount — H-D16 stake-decrement path leaving a residual stake.

@@ -151,6 +151,11 @@ interface IEmissionDistributor {
     /// @param amount The AuMT amount withdrawn.
     function recordWithdrawal(address pool, address user, uint256 amount) external;
 
+    /// @notice Permissionlessly reconciles `holder`'s recorded stake in `pool` down to their live BPT balance (F-17 / P-D18).
+    /// @dev Downward-only forfeit-delta reconciliation — ratchets `userLP` / `poolTotalLP` down to `holder`'s live
+    ///      BPT balance and resets the §viii clock, forfeiting the out-of-band-moved delta's pending. No-op when in sync.
+    function syncPosition(address pool, address holder) external;
+
     /// @notice Claims accrued AuMM rewards for `msg.sender` in `pool`, minting to `to`.
     /// @dev Per H-D20 sequence: run `_accrueGlobal` then `_settlePool` then settle the caller against the
     ///      pool-effective accumulator; compute `amount = pendingClaim(pool, msg.sender)`; zero-amount

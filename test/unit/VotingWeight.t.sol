@@ -94,6 +94,7 @@ contract MockRecorder is IEmissionDistributor {
     function recordScore(address) external override {}
     function recordDeposit(address, address, uint256) external override {}
     function recordWithdrawal(address, address, uint256) external override {}
+    function syncPosition(address, address) external override {}
     function claim(address, address) external override {}
     function setGovernanceContract(address) external override {}
     function setAuMTContractForPool(address, address) external override {}

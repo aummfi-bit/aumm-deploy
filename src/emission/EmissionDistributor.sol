@@ -14,6 +14,7 @@ import {IEfficiencyOracle} from "../gauge/IEfficiencyOracle.sol";
 import {CCBScore} from "../ccb/CCBScore.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
 import {IIncendiaryRegistry} from "../incendiary/IIncendiaryRegistry.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title EmissionDistributor — Aureum Stage H pool-scoped emission distributor per H-D4—H-D5 + H-D15—H-D23
 /// @notice Two-tier MasterChef / Synthetix accumulator topology: global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy-settle per H-D15. Permissionless `recordScore(pool)` writes the F-5 absolute score per H-D17 with F12 signed-delta `totalScore` middleware per H-D19. AuMT recorder (Stage I) drives `recordDeposit` / `recordWithdrawal`; user-facing `claim(pool, to)` is the sole mint entry per H-D20, routed through `mintRouter.mintFor` per K-D7.
@@ -503,6 +504,35 @@ contract EmissionDistributor is IEmissionDistributor {
 
     /* ---------- Recorder mutators (H-D16 / H-D21 / H-D25) ---------- */
 
+    /* ---------- F-17 downward reconciliation (WH-I.1 / P-D18) ---------- */
+
+    /// @notice Ratchets `user`'s recorded stake in `pool` down to a reference live-BPT balance, forfeiting the
+    ///         withdrawn delta's pending (P-D18 forfeit-delta — "you move you lose"). No-op when the recorded
+    ///         stake does not exceed `referenceBalance`.
+    /// @dev Settles first (so the phantom delta's pre-sync share is distributed then stranded per H-D24), then
+    ///      drops `userLP` and `poolTotalLP` in lockstep by the same delta and resets the §viii clock. Reducing
+    ///      `userLP` WITHOUT touching `userRewardDebt` forfeits the delta's pending by construction: the live
+    ///      form `(acc - userRewardDebt).mulDown(userLP)` simply drops by `(acc - userRewardDebt).mulDown(delta)`,
+    ///      never crystallized into `pendingBalance`. Downward-only — the OQ-25 upward leg stays delta-based in
+    ///      `recordDeposit`, so market / transferred BPT confers nothing.
+    function _syncDown(address pool, address user, uint256 referenceBalance) internal {
+        uint256 recorded = userLP[pool][user];
+        if (recorded <= referenceBalance) return;
+        _accrueGlobal();
+        _settlePool(pool);
+        poolTotalLP[pool] -= (recorded - referenceBalance);
+        userLP[pool][user] = referenceBalance;
+        effectiveQualBlock[pool][user] = 0;
+    }
+
+    /// @notice Permissionlessly reconciles `holder`'s recorded stake in `pool` down to their live BPT balance.
+    /// @dev F-17 / P-D18 — anyone may sync any holder so honest LPs / keepers de-dilute the emission denominator
+    ///      against a phantom position left by an out-of-band BPT move (a plain transfer or a non-trusted-router
+    ///      removal that never reached the recorder). Forfeit-delta per `_syncDown`.
+    function syncPosition(address pool, address holder) external override {
+        _syncDown(pool, holder, IERC20(pool).balanceOf(holder));
+    }
+
     /**
      * @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated per H-D16.
      * @dev I-D9 / H-D21 / H-D25 single-snapshot MasterChef variant — (a) `onlyAuMTContract(pool)` gate reverts `NotAuMTContract(pool, msg.sender)` on non-recorder callers (pre-binding `auMTContractByPool[pool] == address(0)` posture causes all callers to revert because `msg.sender` cannot equal zero); (b) H-D21 lazy accrual tick `_accrueGlobal()` then per-pool settle `_settlePool(pool)` BEFORE any user-state mutation, ensuring `poolAccRewardPerLP[pool]` is fresh against `block.number`; (c) cache `acc = poolAccRewardPerLP[pool]` (the H-D24 per-LP-unit accumulator); (d) compute `pending = (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user])` against the pre-deposit user state per H-D25 — FixedPoint mulDown converts (FixedPoint per-LP-unit AuMM × LP-unit count) into AuMM-wei; (e) H-D25 zero-skip — when `pending > 0` crystallize via `pendingBalance[pool][user] += pending` (no separate event — single `DepositRecorded` per call per H-D16); (f) increment user stake `userLP[pool][user] += amount` and pool aggregate `poolTotalLP[pool] += amount` AFTER the pending math so the snapshot is computed against pre-deposit `userLP`; (g) rebase `userRewardDebt[pool][user] = acc` per H-D16 / H-D25 — subsequent `pendingClaim` derivations start the live-delta clock from the fresh accumulator; (h) emit `DepositRecorded(pool, user, amount)`. First-deposit behavior: when `userLP[pool][user] == 0` pre-deposit, `pending = (acc - 0).mulDown(0) = 0` regardless of `acc` magnitude — the zero-skip elides the no-op `pendingBalance` write; the debt rebase `userRewardDebt[pool][user] = acc` correctly initializes the per-user snapshot. No-underflow invariant on `acc - userRewardDebt[pool][user]`: `userRewardDebt[pool][user]` is only ever written as a snapshot of `poolAccRewardPerLP[pool]` (here and at `recordWithdrawal` / `claim`), which is monotonically non-decreasing per H-D24; so `userRewardDebt[pool][user] <= acc` always holds. Zero-amount deposits are permitted — the interface does not declare an `amount > 0` guard and the H-D16 prose does not impose one (AuMT recorder filters upstream); the function still runs the full accrue/settle/pending-crystallization sequence and emits the event. The `pendingBalance` crystallization step is the load-bearing departure from the Sushi MasterChef V2 auto-claim-at-deposit pattern: H-D20 fixes the mint at the `claim` site only (routed through `mintRouter.mintFor` per K-D7), so the pre-deposit allocation cannot transfer here — it accumulates in `pendingBalance` until the user calls `claim` (H4.7). Local cache `acc` (poolAccRewardPerLP SLOAD) eliminates the redundant read between the pending math and the debt rebase. No reentrancy guard — no external calls between the gate and the event (the EfficiencyOracle push in `_settlePool` per H-D23 happens before any user-state mutation).
@@ -511,6 +541,8 @@ contract EmissionDistributor is IEmissionDistributor {
      * @param amount The AuMT amount deposited (same scale as `userLP`); zero permitted.
      */
     function recordDeposit(address pool, address user, uint256 amount) external override onlyAuMTContract(pool) {
+        uint256 heldPreMint = IERC20(pool).balanceOf(user);
+        _syncDown(pool, user, heldPreMint > amount ? heldPreMint - amount : 0);
         _accrueGlobal();
         _settlePool(pool);
         uint256 acc = poolAccRewardPerLP[pool];
@@ -545,6 +577,7 @@ contract EmissionDistributor is IEmissionDistributor {
      * @param amount The AuMT amount withdrawn; zero permitted.
      */
     function recordWithdrawal(address pool, address user, uint256 amount) external override onlyAuMTContract(pool) {
+        _syncDown(pool, user, IERC20(pool).balanceOf(user) + amount);
         _accrueGlobal();
         _settlePool(pool);
         uint256 acc = poolAccRewardPerLP[pool];
@@ -557,8 +590,9 @@ contract EmissionDistributor is IEmissionDistributor {
         if (amount > 0) {
             effectiveQualBlock[pool][user] = 0;
         }
-        userLP[pool][user] -= amount;
-        poolTotalLP[pool] -= amount;
+        uint256 debit = amount < userLP[pool][user] ? amount : userLP[pool][user];
+        userLP[pool][user] -= debit;
+        poolTotalLP[pool] -= debit;
         userRewardDebt[pool][user] = acc;
         emit WithdrawalRecorded(pool, user, amount);
     }
@@ -574,6 +608,7 @@ contract EmissionDistributor is IEmissionDistributor {
     function claim(address pool, address to) external override {
         _accrueGlobal();
         _settlePool(pool);
+        _syncDown(pool, msg.sender, IERC20(pool).balanceOf(msg.sender));
         address user = msg.sender;
         uint256 acc = poolAccRewardPerLP[pool];
         uint256 amount = pendingBalance[pool][user] + (acc - userRewardDebt[pool][user]).mulDown(userLP[pool][user]);
