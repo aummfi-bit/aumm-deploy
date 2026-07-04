@@ -66,6 +66,8 @@ contract AuMMDistributorIntegrationTest is Test {
         vm.prank(GOV);
         distributor.setMintRouter(address(router));
         effOracle.setEmissionsRecorder(address(distributor));
+        // F-17 / P-D18: POOL_A is a code-less test constant; large `balanceOf` no-ops the _syncDown reconciliation.
+        vm.mockCall(POOL_A, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.prank(GOV);
         distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
         vm.roll(GENESIS_BLOCK_);

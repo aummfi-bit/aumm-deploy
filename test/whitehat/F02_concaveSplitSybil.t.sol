@@ -33,6 +33,8 @@ contract F02_ConcaveSplitSybilTest is Test {
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
         vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        // F-17 / P-D18: POOL is a code-less test constant; large `balanceOf` no-ops the _positionPower read-cap.
+        vm.mockCall(POOL, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.roll(START_BLOCK);
         address[] memory pools = new address[](1);
         pools[0] = POOL;

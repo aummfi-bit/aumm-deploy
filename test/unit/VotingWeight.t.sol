@@ -130,6 +130,10 @@ contract VotingWeightTest is Test {
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
         vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        // F-17 / P-D18: POOL_A/B/C are code-less test constants; large `balanceOf` no-ops the _positionPower read-cap.
+        vm.mockCall(POOL_A, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_B, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_C, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.roll(START_BLOCK);
     }
     // --- constructor zero-checks ---

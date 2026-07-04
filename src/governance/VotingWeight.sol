@@ -9,6 +9,7 @@ import { IEmissionDistributor } from "../emission/IEmissionDistributor.sol";
 import { AureumTime } from "../lib/AureumTime.sol";
 import { Checkpoints } from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title VotingWeight
  * @notice Value-weighted governance reader per K-D5 — a stateful poke-accumulator delivering an exact
@@ -129,7 +130,7 @@ contract VotingWeight is IVotingWeight {
     ///      underflow because `_totalQualifiedWeight >= _holderWeight[holder]` (the holder's checkpoint is
     ///      one summand of the total), so `_totalQualifiedWeight - (oldWeight - newWeight) >= newWeight`.
     ///      No-op short-circuit when the aggregate is unchanged. Anyone may poke any holder — this is how a
-    ///      withdrawn holder's stale checkpoint is reset to its live zero (§viii withdrawal-reset). All
+    ///      withdrawn holder's stale checkpoint is reset to its live zero (§viii withdrawal-reset) — and, via the F-17 / P-D18 `_positionPower` read-cap, how a holder who moved their BPT out-of-band is reset to their capped-live weight ahead of any recorder `syncPosition`. All
     ///      dependency calls are `view`, so there is no reentrancy surface and writes follow every read.
     /// @param holder The holder whose checkpoint is refreshed.
     function poke(address holder) external {
@@ -153,9 +154,9 @@ contract VotingWeight is IVotingWeight {
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
     /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity + freshness — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), has never seeded, or was last refreshed more than EMA_STALENESS_BLOCKS (14 days) ago confers 0 (F-04 anti-spot-pump; F-05 anti-stale-seed); (c) clock from the recorder
     ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
-    ///      `userLP / poolTotalLP` (OQ-25), timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
+    ///      `min(userLP, live BPT balanceOf) / poolTotalLP` — the F-17 / P-D18 read-cap denies a phantom position (recorded userLP over live balance, from an out-of-band BPT move) any power, denominator left uncapped (heals via `syncPosition`), so the cap only under-counts (OQ-25); timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
     ///      poolPower * share * timeFactor — the holder leg is linear, so the position is split-invariant across wallets (F-02). Every
-    ///      degenerate input (immature/never-seeded/stale EMA, zero LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
+    ///      degenerate input (immature/never-seeded/stale EMA, zero LP, fully-moved capped LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
     /// @param holder The holder.
     /// @return The position's governance power (18-dec).
@@ -172,6 +173,12 @@ contract VotingWeight is IVotingWeight {
         uint256 totalLP = RECORDER.poolTotalLP(pool);
         if (totalLP == 0) return 0;
         uint256 lp = RECORDER.userLP(pool, holder);
+        // F-17 / P-D18 read-cap: cap the numerator at the holder's live BPT balance so a phantom position
+        // (recorded userLP over balanceOf, from an out-of-band BPT move that skipped the recorder) confers no
+        // governance power. Denominator (poolTotalLP) stays uncapped — it heals via
+        // EmissionDistributor.syncPosition — so the cap only ever under-counts.
+        uint256 held = IERC20(pool).balanceOf(holder);
+        if (held < lp) lp = held;
         if (lp == 0) return 0;
         uint256 ema = EMA_SAMPLER.tvlEMA(pool);
         if (ema == 0) return 0;

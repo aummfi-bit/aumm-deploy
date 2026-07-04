@@ -59,6 +59,11 @@ contract RecorderClockTest is Test {
         effOracle.setEmissionsRecorder(address(distributor));
         vm.prank(GOV);
         distributor.setAuMTContractForPool(POOL_A, AUMT_REC);
+        // F-17 / P-D18: POOL_A / POOL_B are code-less test constants; give them a large `balanceOf` so the
+        // EmissionDistributor `_syncDown` reconciliation reads a live balance dominating every recorded userLP
+        // here — the reconciliation is a universal no-op, preserving the I-D14 clock assertions.
+        vm.mockCall(POOL_A, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_B, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.roll(GENESIS_BLOCK_);
     }
 
