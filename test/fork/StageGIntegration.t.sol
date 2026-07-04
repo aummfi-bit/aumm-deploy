@@ -199,6 +199,18 @@ abstract contract StageGIntegrationFixture is Test {
         amts2[4] = 1_000e18;
         _initializePool(pilotPools[2], tokens2, amts2);
 
+        // F-17 / P-D18 (fork fixtures): these harnesses credit the recorder (userLP) to a label LP while the
+        // BPT is held by the harness (to: address(this) in _depositCallback) or the position is staged via
+        // synthetic recordDeposit — an artificial "credited but holdless" state the F-17 balanceOf-receipt cap
+        // correctly treats as a phantom (zero weight / zero mint). Mock the pilot pools' PUBLIC balanceOf to a
+        // dominating value so EmissionDistributor._syncDown and VotingWeight._positionPower no-op across these
+        // fixtures — the receipt invariant is proven in the unit suites and the real-BPT faithful test. Vault
+        // BPT accounting is untouched: BalancerPoolToken.balanceOf (L78) is a view into the Vault ledger and
+        // removeLiquidity burns via the Vault-internal _burn (Vault.sol:1018), never the pool's public balanceOf.
+        for (uint256 i = 0; i < pilotPools.length; ++i) {
+            vm.mockCall(pilotPools[i], abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        }
+
         mockTVLOracle = new MockTVLOracle();
         mockEfficiencyOracle = new MockEfficiencyOracle();
         mockVotingWeight = new MockVotingWeight();
