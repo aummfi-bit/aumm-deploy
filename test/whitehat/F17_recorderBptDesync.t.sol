@@ -174,10 +174,13 @@ contract F17_RecorderBptDesyncTest is Test {
         assertEq(bpt.balanceOf(sink), STAKE);
     }
 
-    /// @notice ROI (S9) — the phantom position mints AuMM emission with zero locked capital: add via the trusted
-    ///         router, recover 100% of the BPT via a non-trusted router, then claim the full one-block emission
-    ///         (1e18) as if the capital were still staked.
-    function test_F17_phantomPositionMintsEmissionWithZeroCapital() public {
+    /// @notice P-D18 fix confirmed (S9) — the phantom position can no longer monetize emission. Identical setup to
+    ///         the exploit (trusted add, non-trusted 100%-BPT recovery), but on `claim` the `_syncDown` reconciliation
+    ///         reads the attacker's live balanceOf (0) and ratchets `userLP` / `poolTotalLP` down to zero WITHOUT
+    ///         crystallizing — the phantom delta's one-block emission is forfeited (H-D24, stranded in the accumulator),
+    ///         so the mint is exactly zero and the recorder denominator heals. Pre-claim phantom (userLP == STAKE,
+    ///         balanceOf == 0) is unchanged from tests 1-2; the fix neutralizes it at the claim seam, not at desync.
+    function test_F17_phantomClaimForfeitsEmissionAndHealsRecorder() public {
         gauges.setApproved(address(bpt), true);
         ema.setTVLEMA(address(bpt), 100e18);
         mult.setMultiplier(address(bpt), 1e18);
@@ -194,6 +197,10 @@ contract F17_RecorderBptDesyncTest is Test {
         vm.prank(attacker);
         distributor.claim(address(bpt), sink);
 
-        assertEq(aumm.balanceOf(sink), 1e18);
+        // P-D18: claim's _syncDown reconciles the phantom — mints exactly zero (the forfeited one-block emission
+        // strands in poolAccRewardPerLP per H-D24) and heals userLP / poolTotalLP to the live-balance zero.
+        assertEq(aumm.balanceOf(sink), 0);
+        assertEq(distributor.userLP(address(bpt), attacker), 0);
+        assertEq(distributor.poolTotalLP(address(bpt)), 0);
     }
 }
