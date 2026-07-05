@@ -155,6 +155,35 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         assertEq(votingWeight.governanceWeight(lp), 0, "withdrawal resets weight at the eqb==0 gate");
         assertEq(votingWeight.totalSupply(), 0, "withdrawn-position weight removed from total");
     }
+
+    /// @notice F-17 / P-D18 faithful end-to-end (S9) — proves the receipt invariant on the REAL stack with a real
+    ///         BPT holder, unmasked. Clears the fixture's F-17 balanceOf no-op mock, hands the freshly-minted BPT
+    ///         to the recorded LP (so balanceOf(lp) == userLP), and shows (a) an in-sync holder past the cliff
+    ///         confers nonzero weight, then (b) moving the BPT out-of-band via a plain ERC-20 transfer — which
+    ///         skips the recorder — drops balanceOf(lp) to zero and the VotingWeight._positionPower read-cap
+    ///         forfeits the weight. This is the production path the other fork fixtures shortcut past (harness
+    ///         holds the BPT); here the attributed LP genuinely holds its receipt.
+    function test_F17_realBptHolder_weightTracksLiveBalance() public {
+        vm.clearMockedCalls(); // drop the fixture-wide F-17 balanceOf no-op — this test reads the REAL live balance
+        address pool = pilotPools[0];
+        address lp = makeAddr("faithfulLp");
+
+        uint256 bptOut = _depositOneSided(pool, lp, 100); // recorder credits lp; BPT is minted to the harness
+        IERC20(pool).transfer(lp, bptOut);                // hand the receipt to the recorded LP: balanceOf(lp) == userLP
+        assertEq(IERC20(pool).balanceOf(lp), emissionDistributor.userLP(pool, lp), "lp holds BPT == recorded userLP (in sync)");
+
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockPoolEma(pool, 1_000e18);
+        votingWeight.poke(lp);
+        assertGt(votingWeight.governanceWeight(lp), 0, "real in-sync BPT holder confers nonzero weight");
+
+        // Move the receipt out-of-band (plain ERC-20 transfer skips the recorder) — the read-cap must forfeit weight.
+        vm.prank(lp);
+        IERC20(pool).transfer(makeAddr("elsewhere"), bptOut);
+        assertEq(IERC20(pool).balanceOf(lp), 0, "BPT moved out of lp");
+        votingWeight.poke(lp);
+        assertEq(votingWeight.governanceWeight(lp), 0, "F-17 read-cap: out-of-band-moved BPT forfeits weight on the real stack");
+    }
 }
 
 contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
