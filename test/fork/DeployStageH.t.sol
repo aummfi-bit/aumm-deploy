@@ -3,8 +3,6 @@ pragma solidity ^0.8.26;
 
 import { StageGIntegrationFixture } from "./StageGIntegration.t.sol";
 
-import { TVLOracle } from "../../src/emission/TVLOracle.sol";
-import { EfficiencyOracle } from "../../src/emission/EfficiencyOracle.sol";
 import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 
@@ -64,8 +62,8 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
     // GOVERNANCE_MULTISIG is INHERITED from StageGIntegrationFixture L64.
     // -------------------------------------------------------------------------
 
-    address internal constant VAULT_EXPLORER_PLACEHOLDER =
-        address(uint160(uint256(keccak256("vaultExplorer"))));
+    address internal constant EFFICIENCY_ORACLE_PLACEHOLDER =
+        address(uint160(uint256(keccak256("efficiencyOracle"))));
     address internal constant EMA_SAMPLER_PLACEHOLDER =
         address(uint160(uint256(keccak256("emaSampler"))));
     address internal constant CCB_MULTIPLIER_PLACEHOLDER =
@@ -108,7 +106,7 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("GAUGE_REGISTRY", vm.toString(address(gaugeRegistry)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("VAULT_EXPLORER", vm.toString(VAULT_EXPLORER_PLACEHOLDER));
+        vm.setEnv("EFFICIENCY_ORACLE", vm.toString(EFFICIENCY_ORACLE_PLACEHOLDER));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("EMA_SAMPLER", vm.toString(EMA_SAMPLER_PLACEHOLDER));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
@@ -152,17 +150,9 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
             "emissionDistributor.auMTContractByPool(bodenseePool) must be address(0) post-deploy per H-D7 Option C + I-D9 deferred binding"
         );
 
-        // (3c)-(3f) Step 7 governance handoffs — all four emission-stack contracts.
-        assertEq(
-            deployStageHScript.tvlOracle().governance(),
-            GOVERNANCE_MULTISIG,
-            "tvlOracle governance handoff"
-        );
-        assertEq(
-            deployStageHScript.efficiencyOracle().governance(),
-            GOVERNANCE_MULTISIG,
-            "efficiencyOracle governance handoff"
-        );
+        // (3c)-(3d) Step 4 governance handoffs — the two emission-stack contracts DeployStageH
+        //           deploys. TVLOracle + EfficiencyOracle handoffs moved to the DeployStageF
+        //           test per P-D28.
         assertEq(
             deployStageHScript.bodenseeBootstrapChannel().governance(),
             GOVERNANCE_MULTISIG,
@@ -174,35 +164,15 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
             "emissionDistributor governance handoff"
         );
 
-        // (3g) Step 6 wiring: EfficiencyOracle emissionsRecorder → EmissionDistributor.
-        assertEq(
-            deployStageHScript.efficiencyOracle().emissionsRecorder(),
-            address(emissionDistributor),
-            "efficiencyOracle.emissionsRecorder"
-        );
+        // (3e) The efficiencyOracle.setEmissionsRecorder(distributor) wiring is cross-script
+        //      (EfficiencyOracle in DeployStageF, the distributor here) and moved to the P9.5
+        //      orchestrator per P-D28; it is asserted in the P9.6 orchestrator test, not here.
 
-        // (3h) BODENSEE_POOL immutable threaded into BodenseeBootstrapChannel.
+        // (3f) BODENSEE_POOL immutable threaded into BodenseeBootstrapChannel.
         assertEq(
             deployStageHScript.bodenseeBootstrapChannel().BODENSEE_POOL(),
             bodenseePool,
             "bodenseeBootstrapChannel.BODENSEE_POOL"
-        );
-
-        // (3i) BODENSEE_POOL immutable threaded into TVLOracle.
-        assertEq(
-            deployStageHScript.tvlOracle().BODENSEE_POOL(),
-            bodenseePool,
-            "tvlOracle.BODENSEE_POOL"
-        );
-
-        // (3j) GENESIS_BLOCK derivation — H-D42 single-source-of-truth:
-        //      script derives genesisBlock from aumm.GENESIS_BLOCK() and
-        //      passes it to downstream constructors; verify EfficiencyOracle
-        //      received the same value.
-        assertEq(
-            deployStageHScript.efficiencyOracle().GENESIS_BLOCK(),
-            aumm.GENESIS_BLOCK(),
-            "efficiencyOracle.GENESIS_BLOCK derives from aumm.GENESIS_BLOCK()"
         );
 
         // (4) Positive setMinter proof — Stage K simulation.
