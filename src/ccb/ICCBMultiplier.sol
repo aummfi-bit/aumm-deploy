@@ -11,10 +11,10 @@ pragma solidity ^0.8.26;
 ///      interface-only retrofit, no changes to the Stage F concrete contract or its deployment bytecode).
 ///      Robustness Backport register entry RB-005 — propagation of the typed-domain hygiene to Stage F itself
 ///      (adding `is ICCBMultiplier` to the concrete contract) is left to a future review and is NOT done here.
-///      Return-value contract per `FINDINGS.md` OQ-23: `1e18` for non-Miliarium pools, `1.2e18` while the
-///      (deprecated-at-G-D13) 90-day boost gate would have been active — the gate is retained as a no-op at
-///      Stage G close so Stage H consumes the unconditional `M_i[pool]` path in practice — or the latest
-///      evolved `M_i[pool]` otherwise; all return values are 18-decimal fixed-point.
+///      Return-value contract per `FINDINGS.md` OQ-23: `1e18` (`INITIAL_MULTIPLIER`) for non-Miliarium
+///      pools and for unwritten `M_i[pool]`, or the latest evolved `M_i[pool]` otherwise; all return
+///      values are 18-decimal fixed-point. A former third regime (elevated return during an active
+///      boost window) was removed at P6.6 per P-D22 (O-D4).
 interface ICCBMultiplier {
     /// @notice — per-pool CCB multiplier `CCB_mult(pool)` in 18-decimal fixed-point.
     /// @dev — cross-references OQ-23 for the full return-value contract and the F-7 Step 3 consumer formula

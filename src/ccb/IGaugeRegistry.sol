@@ -3,8 +3,14 @@ pragma solidity ^0.8.26;
 
 /// @title IGaugeRegistry — gauge state machine + three activation paths + revocation surface
 /// @notice Public interface to Stage G `GaugeRegistry` (`src/gauge/GaugeRegistry.sol`) — exposes the three activation entrypoints (permissionless `activateGauge` per **OQ-G3**, governance `registerGaugeFromComposition` and `seedFoundingPool` / `seedFoundingPools`), revocation (`revokeGauge`), the Stage K governance handoff (`setGovernanceContract`), and read views (`gaugeStatus`, `isGaugeApproved`).
-/// @dev Cross-references: **G-D7** (three activation paths), **G-D13** (no boost across paths), **G-D16a** (extend-in-place; Stage F `isGaugeApproved(address)` selector + ABI preserved verbatim), **G-D16b** (scalar + batch seed), **G-D16c** (try/catch + non-reverting + `GaugeActivationFailed` per **OQ-G3**), **G-D17** (Revoked is terminal at Stage G), **F-D17** (Stage F `CCBMultiplier` consumer of `isGaugeApproved(msg.sender)`).
-///      Stage F compat: `CCBMultiplier.activateBoost` (`src/ccb/CCBMultiplier.sol`) calls `isGaugeApproved(msg.sender)` per **F-D17**; the Stage G `GaugeRegistry` implementation returns `_gaugeStatus[caller] == GaugeStatus.Active`. The selector + ABI are unchanged from Stage F per **G-D16a**; additive symbols below do not alter it.
+/// @dev Cross-references: **G-D7** (three activation paths), **G-D13** (no boost across paths), **G-D16a** (extend-in-place; Stage F `isGaugeApproved(address)` selector + ABI preserved verbatim), **G-D16b** (scalar + batch seed), **G-D16c** (try/catch + non-reverting + `GaugeActivationFailed` per **OQ-G3**), **G-D17** (Revoked is terminal at Stage G).
+///      Stage F compat: the `isGaugeApproved(address)` selector + ABI are unchanged from the Stage F
+///      placeholder per **G-D16a**; the Stage G `GaugeRegistry` implementation returns
+///      `_gaugeStatus[caller] == GaugeStatus.Active`. The original Stage F consumer (a gauge-gated
+///      boost path on the CCB multiplier) was removed at P6.6 per **P-D22** (**O-D4**); current
+///      consumers are `EmissionDistributor.recordScore` (**H-D5** / **H-D17**), `AureumGovernance`
+///      fee-target validation, `VotingWeight` gauge-weight zeroing, and `IncendiaryRegistry`'s
+///      **L-D10** purchase gate. Additive symbols below do not alter the selector or ABI.
 interface IGaugeRegistry {
     /// @notice Gauge state machine — `None` (never gauged), `Active` (currently approved), `Revoked` (terminally revoked per **G-D17**).
     /// @dev Revoked is terminal at Stage G — no entrypoint writes Revoked → Active. Cross-references: **G-D17**.
@@ -71,7 +77,9 @@ interface IGaugeRegistry {
     /// @param pool The pool that is not currently Active.
     error NotGauged(address pool);
 
-    /// @notice Whether `gauge` is currently registered as an approved gauge authorized to trigger boost activation on Miliarium pools.
+    /// @notice Whether `gauge` is currently registered as an approved gauge — the Stage-G-authoritative
+    ///         approval state consumed by `EmissionDistributor.recordScore`, `AureumGovernance`,
+    ///         `VotingWeight`, and `IncendiaryRegistry`.
     /// @param gauge The address checked for gauge approval (callers typically pass `msg.sender`).
     /// @return True if `gauge` is approved; otherwise false.
     function isGaugeApproved(address gauge) external view returns (bool);
