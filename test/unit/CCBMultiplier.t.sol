@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
-import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -37,35 +36,6 @@ contract MockMiliariumRegistry is IMiliariumRegistry {
     }
 }
 
-contract MockGaugeRegistry is IGaugeRegistry {
-    mapping(address => bool) private _approved;
-
-    function setApproved(address gauge, bool flag) external {
-        _approved[gauge] = flag;
-    }
-
-    function isGaugeApproved(address gauge) external view override returns (bool) {
-        return _approved[gauge];
-    }
-
-    function gaugeStatus(address) external view override returns (GaugeStatus status) {}
-
-    function activateGauge(address) external override {}
-
-    function registerGaugeFromComposition(address) external override {}
-
-    function seedFoundingPool(address) external override {}
-
-    function seedFoundingPools(address[] calldata) external override {}
-
-    function revokeGauge(address) external override {}
-
-    function setGovernanceContract(address) external override {}
-
-    function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
-    function poolEmissionCapBps(address) external view override returns (uint256 capBps) {}
-}
-
 contract MockEMASampler is IEMASampler {
     mapping(address => uint256) private _tvl;
     mapping(address => uint256) private _lastBlock;
@@ -94,30 +64,25 @@ contract CCBMultiplierTest is Test {
 
     CCBMultiplier internal multiplier;
     MockMiliariumRegistry internal registry;
-    MockGaugeRegistry internal gaugeReg;
     MockEMASampler internal ema;
 
     uint256 internal constant START_BLOCK = 200_000;
     address internal constant POOL_A = address(0xA1);
     address internal constant POOL_B = address(0xB2);
     address internal constant POOL_C = address(0xC3);
-    address internal constant GAUGE_CALLER = address(0xCA11);
 
     uint256 constant STEP_SIZE = 5e16;
     int256 constant STEP_DELTA_I256 = 5e16;
     uint256 constant CLAMP_FLOOR = 0.75e18;
     uint256 constant CLAMP_CEILING = 1.25e18;
     uint256 constant INITIAL_MULTIPLIER = 1e18;
-    uint256 constant BOOST_FACTOR = 12e17;
-    uint256 constant BOOST_DURATION = 648_000;
     uint256 constant DEAD_ZONE = 1e15;
     uint256 constant ONE = 1e18;
 
     function setUp() public {
         registry = new MockMiliariumRegistry();
-        gaugeReg = new MockGaugeRegistry();
         ema = new MockEMASampler();
-        multiplier = new CCBMultiplier(registry, gaugeReg, ema);
+        multiplier = new CCBMultiplier(registry, ema);
         vm.roll(START_BLOCK);
     }
 
@@ -137,37 +102,18 @@ contract CCBMultiplierTest is Test {
         assertEq(address(multiplier.miliariumRegistry()), address(registry));
     }
 
-    function test_constructor_wiresGaugeRegistry() public view {
-        assertEq(address(multiplier.gaugeRegistry()), address(gaugeReg));
-    }
-
     function test_constructor_setsRegistrySetter() public view {
         assertEq(multiplier.registrySetter(), address(this));
     }
 
-    function test_constructor_setsGaugeRegistrySetter() public view {
-        assertEq(multiplier.gaugeRegistrySetter(), address(this));
-    }
-
     function test_constructor_revertsZeroMiliariumRegistry() public {
         vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        new CCBMultiplier(
-            IMiliariumRegistry(address(0)), IGaugeRegistry(address(gaugeReg)), IEMASampler(address(ema))
-        );
-    }
-
-    function test_constructor_revertsZeroGaugeRegistry() public {
-        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        new CCBMultiplier(
-            IMiliariumRegistry(address(registry)), IGaugeRegistry(address(0)), IEMASampler(address(ema))
-        );
+        new CCBMultiplier(IMiliariumRegistry(address(0)), IEMASampler(address(ema)));
     }
 
     function test_constructor_revertsZeroEmaSampler() public {
         vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        new CCBMultiplier(
-            IMiliariumRegistry(address(registry)), IGaugeRegistry(address(gaugeReg)), IEMASampler(address(0))
-        );
+        new CCBMultiplier(IMiliariumRegistry(address(registry)), IEMASampler(address(0)));
     }
 
     // -------------------------------------------------------------------------
@@ -207,161 +153,6 @@ contract CCBMultiplierTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // setGaugeRegistry
-    // -------------------------------------------------------------------------
-
-    function test_setGaugeRegistry_success() public {
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-        assertEq(address(multiplier.gaugeRegistry()), address(nextG));
-    }
-
-    function test_setGaugeRegistry_zerosGaugeRegistrySetter() public {
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-        assertEq(multiplier.gaugeRegistrySetter(), address(0));
-    }
-
-    function test_setGaugeRegistry_revertsNonSetter() public {
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        vm.prank(address(0xBEEF));
-        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-    }
-
-    function test_setGaugeRegistry_revertsZeroAddress() public {
-        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(0)));
-    }
-
-    function test_setGaugeRegistry_revertsAfterSeal() public {
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-        MockGaugeRegistry third = new MockGaugeRegistry();
-        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(third)));
-    }
-
-    function test_setRegistry_sealIndependence() public {
-        MockMiliariumRegistry nextM = new MockMiliariumRegistry();
-        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextM)));
-        assertTrue(multiplier.gaugeRegistrySetter() != address(0));
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-        assertEq(multiplier.registrySetter(), address(0));
-    }
-
-    function test_setRegistry_sealIndependence_gaugeFirst() public {
-        MockGaugeRegistry nextG = new MockGaugeRegistry();
-        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextG)));
-        assertTrue(multiplier.registrySetter() != address(0));
-        MockMiliariumRegistry nextM = new MockMiliariumRegistry();
-        multiplier.setMiliariumRegistry(IMiliariumRegistry(address(nextM)));
-        assertEq(multiplier.gaugeRegistrySetter(), address(0));
-    }
-
-    // -------------------------------------------------------------------------
-    // activateBoost
-    // -------------------------------------------------------------------------
-
-    function test_activateBoost_setsBoostExpiry() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.boostExpiryBlock(POOL_A), START_BLOCK + BOOST_DURATION);
-    }
-
-    function test_activateBoost_resetsMi_coldStart() public {
-        assertEq(multiplier.M_i(POOL_A), 0);
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
-    }
-
-    function test_activateBoost_resetsMi_preEvolved() public {
-        address[] memory pl = new address[](1);
-        pl[0] = POOL_A;
-        registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        assertTrue(multiplier.M_i(POOL_A) != INITIAL_MULTIPLIER);
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
-    }
-
-    function test_activateBoost_revertsNonApprovedGauge() public {
-        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.OnlyApprovedGauge.selector, address(this)));
-        multiplier.activateBoost(POOL_A);
-    }
-
-    function test_activateBoost_revertsNonMiliarium() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.NotMiliariumPool.selector, POOL_A));
-        multiplier.activateBoost(POOL_A);
-    }
-
-    function test_activateBoost_revertsActiveBoost() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 nextBlock = START_BLOCK + 1;
-        vm.roll(nextBlock);
-        vm.prank(GAUGE_CALLER);
-        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.BoostAlreadyActive.selector, POOL_A));
-        multiplier.activateBoost(POOL_A);
-    }
-
-    function test_activateBoost_successAtExpiryBoundary() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 boundary = START_BLOCK + BOOST_DURATION;
-        vm.roll(boundary);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.boostExpiryBlock(POOL_A), boundary + BOOST_DURATION);
-    }
-
-    function test_activateBoost_successAfterExpiry() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 afterExpiry = START_BLOCK + BOOST_DURATION + 1;
-        vm.roll(afterExpiry);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.boostExpiryBlock(POOL_A), afterExpiry + BOOST_DURATION);
-    }
-
-    function test_activateBoost_reactivation_resetsEvolvedMi() public {
-        address[] memory pl = new address[](1);
-        pl[0] = POOL_A;
-        registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 targetBlock = START_BLOCK + BOOST_DURATION + AureumTime.BLOCKS_PER_EPOCH;
-        vm.roll(targetBlock);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        assertTrue(multiplier.M_i(POOL_A) != INITIAL_MULTIPLIER);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
-    }
-
-    // -------------------------------------------------------------------------
     // updateMultiplier
     // -------------------------------------------------------------------------
 
@@ -381,44 +172,6 @@ contract CCBMultiplierTest is Test {
         vm.roll(b);
         uint256 nextEl = multiplier.lastMultiplierUpdateBlock(POOL_A) + AureumTime.BLOCKS_PER_EPOCH;
         vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, b, nextEl));
-        multiplier.updateMultiplier(POOL_A);
-    }
-
-    function test_updateMultiplier_boostNoOp_noStateChange() public {
-        address[] memory pl = new address[](1);
-        pl[0] = POOL_A;
-        registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        uint256 lbBefore = multiplier.lastMultiplierUpdateBlock(POOL_A);
-        uint256 aggBefore = multiplier.lastProtocolAggregateEMA();
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 miBefore = multiplier.M_i(POOL_A);
-        uint256 cadenceBlock = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
-        vm.roll(cadenceBlock);
-        multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miBefore);
-        assertEq(multiplier.lastMultiplierUpdateBlock(POOL_A), lbBefore);
-        assertEq(multiplier.lastProtocolAggregateEMA(), aggBefore);
-    }
-
-    function test_updateMultiplier_tooEarlyDuringBoost_reverts() public {
-        address[] memory pl = new address[](1);
-        pl[0] = POOL_A;
-        registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 almostNext = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH - 1;
-        vm.roll(almostNext);
-        uint256 nextEl = multiplier.lastMultiplierUpdateBlock(POOL_A) + AureumTime.BLOCKS_PER_EPOCH;
-        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, almostNext, nextEl));
         multiplier.updateMultiplier(POOL_A);
     }
 
@@ -798,54 +551,11 @@ contract CCBMultiplierTest is Test {
         assertEq(multiplier.lastProtocolAggregateEMA(), 777e18);
     }
 
-    function test_updateMultiplier_atBoostExpiry_resumesState() public {
-        address[] memory pl = new address[](1);
-        pl[0] = POOL_A;
-        registry.setPoolList(pl);
-        registry.setMiliarium(POOL_A, true);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        uint256 aggBeforeBoost = multiplier.lastProtocolAggregateEMA();
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 midBoost = block.number + AureumTime.BLOCKS_PER_EPOCH;
-        vm.roll(midBoost);
-        multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), aggBeforeBoost);
-        uint256 expiryBlock = multiplier.boostExpiryBlock(POOL_A);
-        vm.roll(expiryBlock);
-        uint256 lbBeforeExpiry = multiplier.lastMultiplierUpdateBlock(POOL_A);
-        ema.setTVLEMA(POOL_A, 1000e18);
-        multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 1000e18);
-        assertGt(multiplier.lastMultiplierUpdateBlock(POOL_A), lbBeforeExpiry);
-    }
-
     // -------------------------------------------------------------------------
     // getMultiplier
     // -------------------------------------------------------------------------
 
     function test_getMultiplier_nonMiliarium_returnsInitial() public view {
-        assertEq(multiplier.getMultiplier(POOL_A), INITIAL_MULTIPLIER);
-    }
-
-    function test_getMultiplier_activeboost_returnsBoostFactor() public {
-        registry.setMiliarium(POOL_A, true);
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        assertEq(multiplier.getMultiplier(POOL_A), BOOST_FACTOR);
-    }
-
-    function test_getMultiplier_atBoostExpiryBoundary_notBoostFactor() public {
-        gaugeReg.setApproved(GAUGE_CALLER, true);
-        registry.setMiliarium(POOL_A, true);
-        vm.prank(GAUGE_CALLER);
-        multiplier.activateBoost(POOL_A);
-        uint256 boundary = START_BLOCK + BOOST_DURATION;
-        vm.roll(boundary);
-        assertTrue(multiplier.getMultiplier(POOL_A) != BOOST_FACTOR);
         assertEq(multiplier.getMultiplier(POOL_A), INITIAL_MULTIPLIER);
     }
 
