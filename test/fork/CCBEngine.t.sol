@@ -30,9 +30,8 @@ import { EMASampler } from "../../src/ccb/EMASampler.sol";
 import { CCBScore } from "../../src/ccb/CCBScore.sol";
 import { CCBShare } from "../../src/ccb/CCBShare.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
-import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
+import { MockTVLOracle, MockMiliariumRegistry } from "./mocks/CCBMocks.sol";
 import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
-import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { ITVLOracle } from "../../src/ccb/ITVLOracle.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
@@ -79,8 +78,6 @@ abstract contract CCBEngineFixture is Test {
     // State — CCB engine
     MockTVLOracle internal mockOracle;
     MockMiliariumRegistry internal mockMiliarium;
-    MockGaugeRegistry internal gaugePlaceholder;
-    MockGaugeRegistry internal mockGauge;
     EMASampler internal sampler;
     CCBMultiplier internal multiplier;
 
@@ -191,13 +188,8 @@ abstract contract CCBEngineFixture is Test {
 
         mockOracle = new MockTVLOracle();
         mockMiliarium = new MockMiliariumRegistry(pilotPools);
-        gaugePlaceholder = new MockGaugeRegistry();
-        mockGauge = new MockGaugeRegistry();
         sampler = new EMASampler(mockOracle);
-        multiplier = new CCBMultiplier(mockMiliarium, gaugePlaceholder, IEMASampler(address(sampler)));
-
-        multiplier.setGaugeRegistry(mockGauge);
-        mockGauge.setApproved(address(this), true);
+        multiplier = new CCBMultiplier(mockMiliarium, IEMASampler(address(sampler)));
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
@@ -373,20 +365,6 @@ contract CCBEngineEMAPathTest is CCBEngineFixture {
             sampler.updateEMA(pilotPools[i]);
             assertEq(sampler.tvlEMA(pilotPools[i]), expectedEMA, "F-4 smoothing");
         }
-    }
-}
-
-contract CCBEngineBoostLifecycleTest is CCBEngineFixture {
-    uint256 constant INITIAL_MULTIPLIER = 1e18;
-    uint256 constant BOOST_FACTOR = 12e17;
-    uint256 constant GAUGE_BOOST_DURATION_BLOCKS = 648_000;
-
-    function test_Fork_CCBEngine_BoostLifecycle_ActivateAndExpire() external {
-        address pool = pilotPools[0];
-        multiplier.activateBoost(pool);
-        assertEq(multiplier.getMultiplier(pool), BOOST_FACTOR, "active boost returns BOOST_FACTOR");
-        vm.roll(block.number + GAUGE_BOOST_DURATION_BLOCKS);
-        assertEq(multiplier.getMultiplier(pool), INITIAL_MULTIPLIER, "post-expiry returns M_i baseline");
     }
 }
 
