@@ -32,7 +32,6 @@ contract DeployStageJTest is Test {
         // CCBMultiplier wiring smoke — prove the deployed registry satisfies IMiliariumRegistry without a full oracle stack.
         CCBMultiplier smoke = new CCBMultiplier(
             IMiliariumRegistry(address(deployed)),
-            IGaugeRegistry(makeAddr("gauge")),
             IEMASampler(makeAddr("sampler"))
         );
         assertEq(

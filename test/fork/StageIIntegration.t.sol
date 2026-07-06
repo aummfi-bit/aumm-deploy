@@ -56,7 +56,7 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
 
         emaSampler = new EMASampler(tvlOracle);
 
-        ccbMultiplier = new CCBMultiplier(miliariumRegistry, gaugeRegistry, IEMASampler(address(emaSampler)));
+        ccbMultiplier = new CCBMultiplier(miliariumRegistry, IEMASampler(address(emaSampler)));
 
         efficiencyOracle = new EfficiencyOracle(
             tvlOracle,
