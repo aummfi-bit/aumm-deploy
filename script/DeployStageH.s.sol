@@ -4,13 +4,9 @@ pragma solidity ^0.8.26;
 import { Script } from "forge-std/Script.sol";
 
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import { IVaultExplorer } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 
 import { AuMM } from "../src/token/AuMM.sol";
 import { IAuMM } from "../src/token/IAuMM.sol";
-import { TVLOracle } from "../src/emission/TVLOracle.sol";
-import { ITVLOracle } from "../src/ccb/ITVLOracle.sol";
-import { EfficiencyOracle } from "../src/emission/EfficiencyOracle.sol";
 import { IEfficiencyOracle } from "../src/gauge/IEfficiencyOracle.sol";
 import { BodenseeBootstrapChannel } from "../src/emission/BodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
@@ -98,8 +94,6 @@ contract DeployStageH is Script {
     // -------------------------------------------------------------------------
 
     AuMM public aumm;
-    TVLOracle public tvlOracle;
-    EfficiencyOracle public efficiencyOracle;
     BodenseeBootstrapChannel public bodenseeBootstrapChannel;
     EmissionDistributor public emissionDistributor;
 
@@ -139,46 +133,26 @@ contract DeployStageH is Script {
         // -- 0. Read config from env (no defaults on purpose) ----------------
         // H-D42: AuMM consumed as input; genesisBlock derived from aumm.GENESIS_BLOCK()
         // (single source of truth — no separate GENESIS_BLOCK env var).
+        // P-D28: TVLOracle + EfficiencyOracle moved to DeployStageF; EFFICIENCY_ORACLE
+        // is consumed as an input here alongside EMA_SAMPLER + CCB_MULTIPLIER.
 
-        address governanceMultisig          = vm.envAddress("GOVERNANCE_MULTISIG");
-        aumm                                = AuMM(vm.envAddress("AUMM"));
-        IVault vault                        = IVault(vm.envAddress("VAULT"));
-        IVaultExplorer vaultExplorer        = IVaultExplorer(vm.envAddress("VAULT_EXPLORER"));
-        address bodenseePool                = vm.envAddress("BODENSEE_POOL");
-        address svzchf                      = vm.envAddress("SVZCHF");
-        IGaugeRegistry gaugeRegistry        = IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY"));
-        IEMASampler emaSampler              = IEMASampler(vm.envAddress("EMA_SAMPLER"));
-        ICCBMultiplier ccbMultiplier        = ICCBMultiplier(vm.envAddress("CCB_MULTIPLIER"));
+        address governanceMultisig           = vm.envAddress("GOVERNANCE_MULTISIG");
+        aumm                                 = AuMM(vm.envAddress("AUMM"));
+        IVault vault                         = IVault(vm.envAddress("VAULT"));
+        address bodenseePool                 = vm.envAddress("BODENSEE_POOL");
+        IGaugeRegistry gaugeRegistry         = IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY"));
+        IEMASampler emaSampler               = IEMASampler(vm.envAddress("EMA_SAMPLER"));
+        ICCBMultiplier ccbMultiplier         = ICCBMultiplier(vm.envAddress("CCB_MULTIPLIER"));
+        IEfficiencyOracle efficiencyOracle   = IEfficiencyOracle(vm.envAddress("EFFICIENCY_ORACLE"));
         IMiliariumRegistry miliariumRegistry = IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY"));
-        uint256 genesisBlock                = aumm.GENESIS_BLOCK();
+        uint256 genesisBlock                 = aumm.GENESIS_BLOCK();
 
         // -- 1. AuMM consumed as input per H-D42; setMinter() not called per H-D7 Option C --
-        // Input precondition aumm.minter() == address(0) asserted at Step 8.
+        // Input precondition aumm.minter() == address(0) asserted at Step 4.
         // Input precondition _minterAdmin == GOVERNANCE_MULTISIG is the caller's
         // responsibility — surfaces at Stage K governance migration if violated.
 
-        // -- 2. TVLOracle — empty tokenToUnderlying seed; governance populates post-deploy --
-
-        address[] memory emptySeed = new address[](0);
-        tvlOracle = new TVLOracle(
-            vaultExplorer,
-            bodenseePool,
-            svzchf,
-            deployer,
-            emptySeed,
-            emptySeed
-        );
-
-        // -- 3. EfficiencyOracle -----------------------------------------------
-
-        efficiencyOracle = new EfficiencyOracle(
-            ITVLOracle(address(tvlOracle)),
-            address(aumm),
-            genesisBlock,
-            deployer
-        );
-
-        // -- 4. BodenseeBootstrapChannel ----------------------------------------
+        // -- 2. BodenseeBootstrapChannel ----------------------------------------
 
         bodenseeBootstrapChannel = new BodenseeBootstrapChannel(
             vault,
@@ -188,31 +162,28 @@ contract DeployStageH is Script {
             deployer
         );
 
-        // -- 5. EmissionDistributor ---------------------------------------------
+        // -- 3. EmissionDistributor ---------------------------------------------
 
         emissionDistributor = new EmissionDistributor(
             IAuMM(address(aumm)),
             gaugeRegistry,
             emaSampler,
             ccbMultiplier,
-            IEfficiencyOracle(address(efficiencyOracle)),
+            efficiencyOracle,
             miliariumRegistry,
             genesisBlock,
             deployer
         );
 
-        // -- 6. Post-deploy wiring — EfficiencyOracle → EmissionDistributor ----
+        // -- 4. Governance handoff to GOVERNANCE_MULTISIG ----------------------
+        // P-D28: TVLOracle + EfficiencyOracle handoffs happen in DeployStageF; the
+        // efficiencyOracle.setEmissionsRecorder(distributor) wiring is the P9.5
+        // orchestrator's job (cross-script — EfficiencyOracle in F, distributor here).
 
-        efficiencyOracle.setEmissionsRecorder(address(emissionDistributor));
-
-        // -- 7. Governance handoff to GOVERNANCE_MULTISIG ----------------------
-
-        tvlOracle.setGovernanceContract(governanceMultisig);
-        efficiencyOracle.setGovernanceContract(governanceMultisig);
         bodenseeBootstrapChannel.setGovernanceContract(governanceMultisig);
         emissionDistributor.setGovernanceContract(governanceMultisig);
 
-        // -- 8. Invariant assertion — H-D7 Option C + H-D42 input precondition --------
+        // -- 5. Invariant assertion — H-D7 Option C + H-D42 input precondition --------
         // A MinterNotZero revert here means the AUMM env var pointed at an AuMM
         // whose setMinter() was already called, which the Stage K migration cannot
         // then proceed against.
