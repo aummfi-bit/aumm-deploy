@@ -22,7 +22,7 @@ Stage P is the first stage where the whole stack runs as one system — the inte
 | `test/invariant/*.t.sol` + `ReferenceEmission.sol` | A | P6 | INV-1/6 + INV-2 (non-circular) + INV-3 (+ INV-4 opt) harness |
 | `src/ccb/CCBMultiplier.sol` (edit) | A | P6 | O-D4 / P-D8 `activateBoost` + boost-machinery removal (I13) |
 | `test-stubs/*.sol` (Tier A—D) | B | P8 | testnet token stubs + `TestnetTokenRegistry` |
-| `script/DeployStageP.s.sol` (+ network-param) | B | P9 | full-stack orchestrator + Balancer V3 Router redeploy (D33 / O-D5) |
+| `script/DeployStageP.s.sol` (+ granular P9 scripts) | B | P9 | full-stack thin orchestrator (P-D25); no Balancer periphery deploy (P-D26 / P-D27) |
 | `test/fork/StagePIntegration.t.sol` | B | P10 | Tenderly mainnet-fork e2e (real literals) |
 | hevm artifacts (optional) | A | P7 | S5 / S7 / S8-relabeled symbolic shakeout |
 | `STAGE_P_PLAN.md` / `CLAUDE.md` §11 / `STAGES_OVERVIEW.md` / ledger | — | P11 | Stage P close + tag `stage-p-complete` |
@@ -31,7 +31,7 @@ Stage P is the first stage where the whole stack runs as one system — the inte
 - No live-network broadcast — a live testnet or mainnet `--broadcast` is the deferred P-bis sub-phase (§8b / §8c, P-D3).
 - No `aumm-app` frontend wiring — external repo, OQ-18, P-bis.
 - No re-audit of the K / L / M / N / O fixes (F-01…F-12 all Fixed) — Stage P back-fills the never-audited pre-K stages only, unless a fix-forward diff reopens a surface (P-D11).
-- No Router source fork — the Balancer V3 Router source is redeployed bound to the Aureum Vault, not forked (D33 / O-D5).
+- No Balancer periphery deploy — the canonical Router redeploy is P-bis (P-D26, the deliberately-excluded permit2 dependency); VaultExplorer is not deployed at all (P-D27 — the Vault itself serves the two consumed selectors). No Router source fork either way (D33 / O-D5).
 - No pool restoration — 04 ixViatica / 07 ixCambio / the ixCasper waEthwstETH leg stay deferred on the E-D17 bar (O-D6).
 - No `aumm-site` canonical-spec edit — the spec names no testnet; the Holesky→network-agnostic strike is repo-side only (P-D1b).
 - No Act spec / formal proofs — Stage Q owns the formal-verification budget; hevm (P7) is kept separate (P-D9).
@@ -137,7 +137,7 @@ Off the `stage-p-complete` critical path — see P-D23. The tier spec below is r
 
 ### P9 — Deploy scripts + Balancer V3 substrate (workstream B, P-D3 / P-D25)
 Granular per-stage deploy scripts for the never-scripted surfaces + the thin `DeployStageP.s.sol` orchestrator — P-D25 (user-adjudicated 2026-07-06): one source of truth per constructor call lives in the granular script; the orchestrator owns only sequence + fail-fast assertions, and the P10 fork fixture inherits it (H13 pattern). Network-parameterised (RPC + chain-id from env); no `--broadcast` (P-D3). The canonical deploy order (stage lettering is NOT the order — M/N binds precede K; `Vault.setAuthorizer` is the final mutation), the `DeployStageH` split rationale, the WH-P6 (b)/(c) new binds, and the assertion set are locked in P-D25 (the Router redeploy + its `setTrustedRouter` orchestrator bind refined to P-bis by P-D26).
-- **P9.1** — `script/DeployVaultExplorer.s.sol`: canonical Balancer V3 `VaultExplorer` redeployed against the Aureum Vault (D32 immutable vault binding makes the mainnet instance unreachable; `TVLOracle` consumes it, H-D9). Its first `forge build` doubles as the G10 compile-probe (no `new VaultExplorer(` exists in the tree). The canonical `Router` redeploy is DEFERRED to P-bis (P-D26 — the deliberately-excluded permit2 dependency); the P10 e2e drives swaps + liquidity via the D32 (β) `Vault.unlock` pattern and seats a test-side trusted unlock harness for the F-09 recorder path.
+- **P9.1** — RESOLVED, no deploy (P-D27): Stage P deploys NO Balancer periphery. The G10 compile-probe ran and produced two findings — a solc Internal Compiler Error building upstream `VaultExplorer` under the pinned via_ir/9999 profile, and independent redundancy: `TVLOracle`'s only two explorer calls (`getPoolTokens` / `getPoolData`) are selector-identical on `IVaultExtension`, so `VAULT_EXPLORER` = `IVaultExplorer(address(aureumVault))` — the established StageH/I/L fixture pattern — is bound at P9.3 where `TVLOracle` deploys. The canonical `Router` redeploy stays DEFERRED to P-bis (P-D26 — the deliberately-excluded permit2 dependency); the P10 e2e drives swaps + liquidity via the D32 (β) `Vault.unlock` pattern and seats a test-side trusted unlock harness for the F-09 recorder path.
 - **P9.2** — `script/DeployFeeRoutingHook.s.sol`: the 7-arg hook deploy, pre-compute-aware (D-D21 / D36 — `DeployAureumVault` already stored the predicted hook address in the controller; the hook must land at that address).
 - **P9.3** — `script/DeployStageF.s.sol` (TVLOracle → EfficiencyOracle → EMASampler → CCBMultiplier) + the `DeployStageH` split: H gains TVL_ORACLE + EFFICIENCY_ORACLE env keys, keeps channel + distributor only; `test/fork/DeployStageH.t.sol` retrofit — I13 blast radius sized at this sub-step's pre-flight.
 - **P9.4** — `script/DeployStageG.s.sol` (SwapAndDeposit → VaultClassRegistry → GaugeEligibility → GaugeRegistry → the `setGaugeRegistry` seal). P-D25 named opens (a)/(b) — the `auMT_` production value + the VCR genesis manifest source — resolve at this sub-step's drafting.
