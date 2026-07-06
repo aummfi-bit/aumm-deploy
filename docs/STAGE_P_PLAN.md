@@ -88,7 +88,7 @@ Cross-seam steps (P6.1—P6.4) and the INV harness (P6.5) draw their assertions 
 ---
 ## Sub-step roadmap (P0—P11)
 
-> Execution spine. Workstream A (the white-hat sweep) opens the stage and runs P1—P7 in back-fill order (WH-D→G→H→I→J→L per P-D6), then the cross-seam synthesis + invariant harness + O-D4 fix (P6), then the optional hevm shakeout (P7, fixed there per P-D9). Workstream B (deployment) follows P8—P10; P11 closes. Sweep-before-deploy is deliberate (P-D0): the deploy scripts wire contracts the sweep may patch fix-forward. Each WH pass is a sequence of §8e.1 steps drawn from the matrix above — one surface × one contract (process-doc §1), severity-ordered (§4), each ending in a §9 attestation. Every numbered sub-step is one §8e.1 per §8e.
+> Execution spine. Workstream A (the white-hat sweep) opens the stage and runs P1—P7 in back-fill order (WH-D→G→H→I→J→L per P-D6), then the cross-seam synthesis + invariant harness + O-D4 fix (P6), then the optional hevm shakeout (P7, fixed there per P-D9). Workstream B (deployment) is P9—P10; P11 closes on the real-token gate — P8 (testnet token stubs) is DEFERRED to P-bis per P-D23, off the `stage-p-complete` critical path. Sweep-before-deploy is deliberate (P-D0): the deploy scripts wire contracts the sweep may patch fix-forward. Each WH pass is a sequence of §8e.1 steps drawn from the matrix above — one surface × one contract (process-doc §1), severity-ordered (§4), each ending in a §9 attestation. Every numbered sub-step is one §8e.1 per §8e.
 
 ### P0 — Stage entry: freeze + plan + testnet-doc reconciliation
 - **P0.1** — `docs/STAGE_P_NOTES.md` design freeze (P-D0—P-D11 + four amendments). ✅ `6aebebe`.
@@ -127,7 +127,8 @@ WH-I.* rows (S9 attribution + S8 recorder gate). Per I-D14 there is no `AuMT.sol
 §8b decision: install hevm (Argot Collective) — presented + approved at this sub-step, not pre-committed at the freeze. Targets S5 (the OQ-1 hook), S7 (the CCB / EMA engine), S8-relabeled (the `AureumGovernanceAuthorizer` timelock / emergency window + the `Vault.setAuthorizer` one-shot migration). Optional pre-audit shakeout, NOT a `stage-p-complete` gate; Act stays Stage Q (P-D9). If install is blocked, attest "hevm deferred to Q" and proceed.
 - Checkpoint: hevm proof output (or the deferral attestation); no gate on the close.
 
-### P8 — Testnet token stubs (P-D2, workstream B)
+### P8 — Testnet token stubs (P-D2, workstream B) — **DEFERRED TO P-BIS (P-D23, 2026-07-06)**
+Off the `stage-p-complete` critical path — see P-D23. The tier spec below is retained as the P-bis build reference; NAV / fidelity locked in P-D23 (Tier A: fixed 1:1 ERC-4626 NAV; ixEDEL: plain deterministic ERC-20, no DTF re-implementation).
 - **P8.1** — Tier A protocol anchors: `svZCHF`, `sUSDS`, `ixEDEL` (NAV / DTF shape), spec-faithful, non-upgradeable, under audit-inheritance discipline.
 - **P8.2** — Tier B: one `StubERC4626` template (+ optional waEth-style wrapper variant), N deterministic instances.
 - **P8.3** — Tier C: one `StubERC20` template (`*on` equities, BTC wrappers, plain stables, JPYC / tGBP / fBRZ stand-ins).
