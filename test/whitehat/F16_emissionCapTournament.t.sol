@@ -59,7 +59,6 @@ contract F16_EmissionCapTournamentTest is Test {
             PLACEHOLDER,          // tvlOracle_
             PLACEHOLDER,          // vault_
             PLACEHOLDER,          // auMM_
-            PLACEHOLDER,          // auMT_
             address(this),        // gaugeRegistrySetter_ (this test calls setGaugeRegistry)
             address(effOracle),   // efficiencyOracle_ (real ranking input source)
             PLACEHOLDER           // feeRoutingHook_

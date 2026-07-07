@@ -86,7 +86,7 @@ abstract contract StageGIntegrationFixture is Test {
     GaugeEligibility internal gaugeEligibility;
     GaugeRegistry internal gaugeRegistry;
 
-    // State — Mocks (TVL from CCBMocks per OQ-22 carry-forward; Efficiency + AuMT from StageGMocks per G-D25c)
+    // State — Mocks (TVL from CCBMocks per OQ-22 carry-forward; Efficiency + VotingWeight from StageGMocks per G-D25c)
     MockTVLOracle internal mockTVLOracle;
     MockEfficiencyOracle internal mockEfficiencyOracle;
     MockVotingWeight internal mockVotingWeight;
@@ -218,7 +218,7 @@ abstract contract StageGIntegrationFixture is Test {
         IVaultClassRegistry.AdmissionType[] memory genesisTypes = new IVaultClassRegistry.AdmissionType[](1);
         genesisTypes[0] = IVaultClassRegistry.AdmissionType.ImplementationAddress;
         vaultClassRegistry = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
-        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(mockVotingWeight), address(this), address(mockEfficiencyOracle), address(hook));
+        gaugeEligibility = new GaugeEligibility(address(awpf), address(vaultClassRegistry), address(mockTVLOracle), address(vault), address(aumm), address(this), address(mockEfficiencyOracle), address(hook));
         gaugeRegistry = new GaugeRegistry(address(this), address(gaugeEligibility), address(swapAndDeposit), address(svZchf), block.number);
 
         swapAndDeposit.setVaultClassRegistry(address(vaultClassRegistry));

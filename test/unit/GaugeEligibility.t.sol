@@ -118,8 +118,6 @@ abstract contract GaugeEligibilityFixture is Test {
 
     address public auMM;
 
-    address public auMT;
-
     address public gaugeRegistrySetter;
 
     address public gaugeRegistry;
@@ -135,7 +133,6 @@ abstract contract GaugeEligibilityFixture is Test {
         mockFactory = new MockBasePoolFactory();
         vault = makeAddr("vault");
         auMM = makeAddr("auMM");
-        auMT = makeAddr("auMT");
         gaugeRegistrySetter = makeAddr("gaugeRegistrySetter");
         gaugeRegistry = makeAddr("gaugeRegistry");
         feeRoutingHook = makeAddr("feeRoutingHook");
@@ -145,7 +142,6 @@ abstract contract GaugeEligibilityFixture is Test {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -165,7 +161,6 @@ abstract contract GaugeEligibilityFixture is Test {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             freshSetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -185,7 +180,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -200,7 +194,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -215,7 +208,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(0),
             vault,
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -230,7 +222,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockTvlOracle),
             address(0),
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -244,22 +235,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockVaultClassRegistry),
             address(mockTvlOracle),
             vault,
-            address(0),
-            auMT,
-            gaugeRegistrySetter,
-            address(mockEfficiencyOracle),
-            feeRoutingHook
-        );
-    }
-
-    function testConstructorRevertsOnZeroAuMT() public {
-        vm.expectRevert(GaugeEligibility.ZeroAddress.selector);
-        new GaugeEligibility(
-            address(mockFactory),
-            address(mockVaultClassRegistry),
-            address(mockTvlOracle),
-            vault,
-            auMM,
             address(0),
             gaugeRegistrySetter,
             address(mockEfficiencyOracle),
@@ -275,7 +250,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             address(0),
             address(mockEfficiencyOracle),
             feeRoutingHook
@@ -290,7 +264,6 @@ contract GaugeEligibilityWiringTest is GaugeEligibilityFixture {
             address(mockTvlOracle),
             vault,
             auMM,
-            auMT,
             gaugeRegistrySetter,
             address(0),
             feeRoutingHook
@@ -373,18 +346,6 @@ contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
         weights[1] = 0.4e18;
         address pool = _wirePool(tokens, weights);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, auMM));
-        eligibility.evaluateEligibility(pool);
-    }
-
-    function testForbiddenTokenAuMTRevertsAtPositionOne() public {
-        address[] memory tokens = new address[](2);
-        tokens[0] = address(_admittedFourSixTwoSix());
-        tokens[1] = auMT;
-        uint256[] memory weights = new uint256[](2);
-        weights[0] = 0.6e18;
-        weights[1] = 0.4e18;
-        address pool = _wirePool(tokens, weights);
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, auMT));
         eligibility.evaluateEligibility(pool);
     }
 

@@ -43,7 +43,6 @@ contract F12_CompositionGateFactoryProvenanceTest is Test {
             makeAddr("tvlOracle"),
             vault,
             makeAddr("auMM"),
-            makeAddr("auMT"),
             makeAddr("gaugeRegistrySetter"),
             makeAddr("efficiencyOracle"),
             feeRoutingHook
