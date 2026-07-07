@@ -83,9 +83,9 @@ contract DeployStageGForkTest is StageGIntegrationFixture {
 
         // (3) Constructor immutables/authorities threaded from env + deployer.
         // moduleAdmin self-burns to address(0) once BOTH registries are wired (G-D12 atomic burn);
-        // donateAuthorizer persists (multi-shot per G-D21).
+        // donateAuthorizer handed off deployer -> GOVERNANCE_MULTISIG at the end of _deploy (P-D31 Class C).
         assertEq(sad.moduleAdmin(), address(0), "sad.moduleAdmin burned post-seal (G-D12)");
-        assertEq(sad.donateAuthorizer(), address(deployScript), "sad.donateAuthorizer");
+        assertEq(sad.donateAuthorizer(), GOVERNANCE_MULTISIG, "sad.donateAuthorizer handed off (P-D31 Class C)");
         assertEq(elig.approvedFactory(), address(awpf), "elig.approvedFactory");
         assertEq(elig.vault(), address(vault), "elig.vault");
         assertEq(elig.tvlOracle(), address(mockTVLOracle), "elig.tvlOracle");
@@ -97,7 +97,7 @@ contract DeployStageGForkTest is StageGIntegrationFixture {
         assertEq(reg.gaugeEligibility(), address(elig), "reg.gaugeEligibility");
         assertEq(reg.swapAndDeposit(), address(sad), "reg.swapAndDeposit");
         assertEq(reg.svZCHF(), address(svZchf), "reg.svZCHF");
-        assertEq(reg.governanceContract(), address(deployScript), "reg.governance = deployer");
+        assertEq(reg.governanceContract(), GOVERNANCE_MULTISIG, "reg.governance = GOVERNANCE_MULTISIG (P-D31 Class B)");
         assertEq(reg.GENESIS_BLOCK(), aumm.GENESIS_BLOCK(), "reg.GENESIS_BLOCK == aumm.GENESIS_BLOCK");
 
         // (4) The 4-call internal seal.
@@ -123,9 +123,10 @@ contract DeployStageGForkTest is StageGIntegrationFixture {
             );
         }
 
-        // (6) Stage-K governance/voting handoffs deferred (P-D25 / K14) — not done by DeployStageG.
-        assertEq(vcr.votingWeightSetter(), address(deployScript), "votingWeightSetter retained for DeployStageK");
-        assertEq(vcr.governanceSetter(), address(deployScript), "governanceSetter retained for DeployStageK");
+        // (6) Class-B governance authorities bound to GOVERNANCE_MULTISIG at construction (P-D31); the
+        //     setVotingWeight / setGovernanceContract WIRING stays deferred to K / the P9.5 orchestrator.
+        assertEq(vcr.votingWeightSetter(), GOVERNANCE_MULTISIG, "votingWeightSetter = GOVERNANCE_MULTISIG (P-D31 Class B; K consumes)");
+        assertEq(vcr.governanceSetter(), GOVERNANCE_MULTISIG, "governanceSetter = GOVERNANCE_MULTISIG (P-D31 Class B; orchestrator consumes)");
         assertEq(address(vcr.votingWeight()), address(0), "setVotingWeight deferred");
         assertEq(vcr.governanceContract(), address(0), "setGovernanceContract deferred");
     }
