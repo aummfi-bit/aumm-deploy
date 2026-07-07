@@ -18,10 +18,11 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
 /**
  * @title DeployStageH
  * @notice Deploys the Stage H emission stack in a single broadcast:
- *         TVLOracle, EfficiencyOracle, BodenseeBootstrapChannel,
- *         and EmissionDistributor. AuMM is consumed as an input via the
- *         AUMM env var per H-D42 — it must already be deployed before
- *         this script runs.
+ *         BodenseeBootstrapChannel and EmissionDistributor. AuMM is
+ *         consumed as an input via the AUMM env var per H-D42 — it must
+ *         already be deployed before this script runs. Per P-D28 the
+ *         TVLOracle + EfficiencyOracle deploys moved to DeployStageF;
+ *         EfficiencyOracle is consumed here as the EFFICIENCY_ORACLE input.
  *
  * @dev H-D42 — AuMM is a Stage H input, not a Stage H output. The
  *      chicken-and-egg: `BodenseeBootstrapChannel`'s constructor calls
@@ -43,39 +44,41 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
  *      address(0)`). The Stage K governance migration can then invoke
  *      `setMinter()` exactly once to wire the resolved minter target per
  *      H-D41 (Option A or Option B). The post-deploy invariant assertion
- *      in `_deploy` Step 8 confirms `aumm.minter() == address(0)` before
+ *      in `_deploy` Step 5 confirms `aumm.minter() == address(0)` before
  *      returning — a `MinterNotZero` revert surfaces a misconfigured AuMM
  *      input rather than an in-script deployment error.
  *
  * @dev `genesisBlock` is derived from `aumm.GENESIS_BLOCK()` (public
  *      immutable) rather than a separate env var — single source of truth,
  *      no drift possible between the AuMM emission schedule anchor and the
- *      downstream `EfficiencyOracle`, `BodenseeBootstrapChannel`, and
- *      `EmissionDistributor` constructor arguments.
+ *      downstream `BodenseeBootstrapChannel` and `EmissionDistributor`
+ *      constructor arguments.
  *
  * @dev Governance handoff pattern — the deployer address is passed as
- *      `initialGovernance` to the four governance-bearing contracts
- *      (TVLOracle, EfficiencyOracle, BodenseeBootstrapChannel,
- *      EmissionDistributor).  After post-deploy wiring (Step 6,
- *      `efficiencyOracle.setEmissionsRecorder`), Step 7 calls
- *      `setGovernanceContract(GOVERNANCE_MULTISIG)` on all four contracts
- *      in sequence, leaving the deployer with no residual authority.
+ *      `initialGovernance` to the two governance-bearing contracts this
+ *      script deploys (BodenseeBootstrapChannel, EmissionDistributor).
+ *      Step 4 calls `setGovernanceContract(GOVERNANCE_MULTISIG)` on both
+ *      in sequence, leaving the deployer with no residual authority. Per
+ *      P-D28 the TVLOracle + EfficiencyOracle handoffs happen in
+ *      DeployStageF, and the `efficiencyOracle.setEmissionsRecorder`
+ *      wiring (cross-script — EfficiencyOracle in F, the distributor
+ *      here) is the P9.5 orchestrator's job.
  *
  * @dev Env vars required (no defaults — a real deploy must never silently
  *      fall back to zero values):
  *
- *        GOVERNANCE_MULTISIG   address  — final governance for all four emission-stack
- *                                         contracts; must match the AuMM input's
- *                                         _minterAdmin (verify before deploy)
+ *        GOVERNANCE_MULTISIG   address  — final governance for the two emission-stack
+ *                                         contracts deployed here; must match the AuMM
+ *                                         input's _minterAdmin (verify before deploy)
  *        AUMM                  address  — AuMM ERC-20 (H-D42 input; must satisfy
  *                                         minter() == address(0) precondition)
  *        VAULT                 address  — Balancer V3 Vault (BodenseeBootstrapChannel H-D12)
- *        VAULT_EXPLORER        address  — Balancer V3 IVaultExplorer (TVLOracle H-D9)
  *        BODENSEE_POOL         address  — bootstrap destination per H-D14
- *        SVZCHF                address  — svZCHF numéraire per H-D9
  *        GAUGE_REGISTRY        address  — Stage G GaugeRegistry (EmissionDistributor H-D5)
  *        EMA_SAMPLER           address  — Stage F EMASampler (EmissionDistributor H-D17)
  *        CCB_MULTIPLIER        address  — Stage F CCBMultiplier (EmissionDistributor H-D17)
+ *        EFFICIENCY_ORACLE     address  — Stage F EfficiencyOracle (EmissionDistributor
+ *                                         5th arg, P-D28 input)
  *        MILIARIUM_REGISTRY    address  — Stage J placeholder (EmissionDistributor H-D31)
  */
 contract DeployStageH is Script {
@@ -117,9 +120,9 @@ contract DeployStageH is Script {
      *         `run()` but without `vm.startBroadcast`, so it can be called
      *         directly from a fork test as `deployer.deploy(address(this))`.
      *         The `deployer` argument is the address used as `initialGovernance`
-     *         for the four governance-bearing contracts — it must be the address
-     *         that owns the current CREATE context so that Step 6 wiring
-     *         succeeds before the Step 7 handoff fires.
+     *         for the two governance-bearing contracts — it must be the address
+     *         that owns the current CREATE context so that the Step 4 governance
+     *         handoff fires from the authority that deployed them.
      */
     function deploy(address deployer) external returns (EmissionDistributor) {
         return _deploy(deployer);
