@@ -16,10 +16,13 @@ import { DeployStageH } from "../../script/DeployStageH.s.sol";
  *         the script contract and calls `deploy(address(deployStageHScript))`
  *         to run the Stage H emission-stack deploy sequence. Asserts the
  *         resulting H-D7 Option C invariant (`aumm.minter() == address(0)`
- *         post-deploy), all four Step 7 governance handoffs, the Step 6
- *         `efficiencyOracle.emissionsRecorder` wiring, the `BODENSEE_POOL`
- *         and `GENESIS_BLOCK` immutable threadings, and a positive `setMinter`
- *         proof confirming the slot is consumable after deploy.
+ *         post-deploy), the two Step 4 governance handoffs (BodenseeBootstrapChannel
+ *         + EmissionDistributor), the `BODENSEE_POOL` immutable threading into
+ *         BodenseeBootstrapChannel, and a positive `setMinter` proof confirming
+ *         the slot is consumable after deploy. Per P-D28 the TVLOracle +
+ *         EfficiencyOracle handoffs move to the DeployStageF test and the
+ *         cross-script `efficiencyOracle.setEmissionsRecorder` assertion to the
+ *         P9.6 orchestrator test.
  *
  *         Per H-D42 this test cannot use keccak256 placeholders for VAULT /
  *         AUMM / BODENSEE_POOL — `BodenseeBootstrapChannel`'s constructor calls
@@ -44,17 +47,16 @@ import { DeployStageH } from "../../script/DeployStageH.s.sol";
  *      Per D35 split-form + D36 `--threads 1` belt + H-D40 canonical
  *      fork-test invocation pattern.
  *
- * @dev `VAULT_EXPLORER` / `EMA_SAMPLER` / `CCB_MULTIPLIER` / `MILIARIUM_REGISTRY`
- *      retain keccak256 placeholder addresses: their receivers (`TVLOracle`
- *      `vaultExplorer` slot, `EmissionDistributor` `emaSampler` / `ccbMultiplier` /
- *      `_miliariumRegistry` slots) have pure-storage constructors with only
+ * @dev `EFFICIENCY_ORACLE` / `EMA_SAMPLER` / `CCB_MULTIPLIER` / `MILIARIUM_REGISTRY`
+ *      retain keccak256 placeholder addresses: their receiver `EmissionDistributor`
+ *      binds them into its `_efficiencyOracle` / `_emaSampler` / `_ccbMultiplier` /
+ *      `_miliariumRegistry` immutable slots via a pure-storage constructor with only
  *      `ZeroAddress` guards and no external calls at construction time. The
- *      script's correctness against real fork state is validated by the four
- *      contracts that DO interact with real fork state: VAULT
+ *      script's correctness against real fork state is validated by the three env
+ *      inputs that DO interact with real fork state: VAULT
  *      (`BodenseeBootstrapChannel` constructor H-D12 `getPoolTokens` call),
  *      AUMM (H-D42 env-read + H-D7 Option C `minter()` invariant), and
- *      BODENSEE_POOL (immutable threading into both `BodenseeBootstrapChannel`
- *      and `TVLOracle`).
+ *      BODENSEE_POOL (immutable threading into `BodenseeBootstrapChannel`).
  */
 contract DeployStageHForkTest is StageGIntegrationFixture {
     // -------------------------------------------------------------------------
@@ -102,8 +104,6 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("BODENSEE_POOL", vm.toString(bodenseePool));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("SVZCHF", vm.toString(address(svZchf)));
-        /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("GAUGE_REGISTRY", vm.toString(address(gaugeRegistry)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("EFFICIENCY_ORACLE", vm.toString(EFFICIENCY_ORACLE_PLACEHOLDER));
@@ -126,7 +126,7 @@ contract DeployStageHForkTest is StageGIntegrationFixture {
         // (2) Run the deploy sequence. Pass the script's own address as
         //     `deployer` — mirrors DeployAureumVaultForkTest L98 convention
         //     `factory = deployer.deploy(address(deployer))`. The script
-        //     contract owns the CREATE context for Step 7 governance handoff.
+        //     contract owns the CREATE context for the Step 4 governance handoff.
         emissionDistributor = deployStageHScript.deploy(address(deployStageHScript));
 
         // (3a) AUMM env-read landed in the script's aumm state slot.
