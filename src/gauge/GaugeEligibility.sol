@@ -43,9 +43,6 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice T-I3 forbidden-token block — AuMM; compared against every pool token in the 52% path.
     address internal immutable _auMM;
 
-    /// @notice T-I3 forbidden-token block — AuMT; compared against every pool token in the 52% path.
-    address internal immutable _auMT;
-
     // -------------------------------------------------------------------------
     // Constants (G-D15 G2.0 lock)
     // -------------------------------------------------------------------------
@@ -153,7 +150,6 @@ contract GaugeEligibility is IGaugeEligibility {
      * @param tvlOracle_ Oracle binding for TVL / fee inputs at **G2.4+** / **G2.5**.
      * @param vault_ Balancer V3 vault for pool token reads at **G2.4+**.
      * @param auMM_ T-I3 forbidden token — AuMM.
-     * @param auMT_ T-I3 forbidden token — AuMT.
      * @param gaugeRegistrySetter_ One-shot setter authority for wiring `gaugeRegistry` post-deploy per **G-D22**.
      * @param efficiencyOracle_ **G-D23 (i)** + **G-D23 (ii)** F-10 efficiency oracle binding (sibling to `tvlOracle`) for the OQ-G1 canonical formula at **G2.5**.
      */
@@ -163,7 +159,6 @@ contract GaugeEligibility is IGaugeEligibility {
         address tvlOracle_,
         address vault_,
         address auMM_,
-        address auMT_,
         address gaugeRegistrySetter_,
         address efficiencyOracle_,
         address feeRoutingHook_
@@ -173,7 +168,6 @@ contract GaugeEligibility is IGaugeEligibility {
         if (tvlOracle_ == address(0)) revert ZeroAddress();
         if (vault_ == address(0)) revert ZeroAddress();
         if (auMM_ == address(0)) revert ZeroAddress();
-        if (auMT_ == address(0)) revert ZeroAddress();
         if (gaugeRegistrySetter_ == address(0)) revert ZeroAddress();
         if (efficiencyOracle_ == address(0)) revert ZeroAddress();
         if (feeRoutingHook_ == address(0)) revert ZeroAddress();
@@ -183,7 +177,6 @@ contract GaugeEligibility is IGaugeEligibility {
         tvlOracle = tvlOracle_;
         vault = vault_;
         _auMM = auMM_;
-        _auMT = auMT_;
         gaugeRegistrySetter = gaugeRegistrySetter_;
         efficiencyOracle = efficiencyOracle_;
         feeRoutingHook = feeRoutingHook_;
@@ -341,7 +334,7 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /**
      * @notice Accumulates normalized weights for ERC-4626 pool tokens whose underlying implementation class is admitted — the **G-D8** 52% Quality Gate numerator.
-     * @dev **G-D10** — `try IERC4626(token).asset()`/`catch` discriminates ERC-4626Claiming candidates from plain ERC-20s; **T-I3** blocks AuMM / AuMT before the probe. Non-4626 tokens hit an empty `catch` and add **0**; admitted 4626 tokens add `weights[i]`.
+     * @dev **G-D10** — `try IERC4626(token).asset()`/`catch` discriminates ERC-4626Claiming candidates from plain ERC-20s; **T-I3** blocks AuMM before the probe. Non-4626 tokens hit an empty `catch` and add **0**; admitted 4626 tokens add `weights[i]`.
      * @param tokens Pool token set aligned index-wise with `weights`.
      * @param weights Normalized weights from `IBasePool.getNormalizedWeights` — same length as `tokens`.
      * @return numerator Sum of weights for admitted ERC-4626 classes, **1e18**-scale fixed-point compatible with the half-pool bar.
@@ -354,7 +347,7 @@ contract GaugeEligibility is IGaugeEligibility {
         uint256 length = tokens.length;
         for (uint256 i = 0; i < length; ++i) {
             address token = address(tokens[i]);
-            if (token == _auMM || token == _auMT) revert ForbiddenToken(token);
+            if (token == _auMM) revert ForbiddenToken(token);
 
             try IERC4626(token).asset() returns (address) {
                 if (IVaultClassRegistry(vaultClassRegistry).isAdmittedClass(token)) {
@@ -385,7 +378,7 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /**
      * @notice Composition-challenge Quality Gate per **O-D2** / **O-D2a** — ≥52% admitted-ERC-4626 weight, the canonical fee-routing hook, and Aureum-factory provenance, without the TVL floor or anti-spam checks `_checkEligibilityCriteria` runs.
-     * @dev Stage O addition (canonical §xxvii registry-level composition check; supersedes K-D6e). Reverts `WrongFeeRoutingHook` if the pool's Vault-registered hook is not the canonical `feeRoutingHook` (**I-D13**); reverts `ForbiddenToken` on AuMM/AuMT via `_compute52PctNumerator` (**T-I3**, **G-D10**); reverts `PoolTypeNotWhitelisted` if the pool is not from the approved Aureum weighted-pool factory (**F-12** — provenance is what makes the pool's self-reported `getNormalizedWeights` trustworthy, since the canonical hook's `onRegister` does not gate by factory). Returns `false` (does not revert) on a sub-0.52e18 numerator — the **G-D8** quality bar — so the caller (`AureumGovernance` via `IGaugeRegistry`) can branch on a boolean rather than catching a revert.
+     * @dev Stage O addition (canonical §xxvii registry-level composition check; supersedes K-D6e). Reverts `WrongFeeRoutingHook` if the pool's Vault-registered hook is not the canonical `feeRoutingHook` (**I-D13**); reverts `ForbiddenToken` on AuMM via `_compute52PctNumerator` (**T-I3**, **G-D10**); reverts `PoolTypeNotWhitelisted` if the pool is not from the approved Aureum weighted-pool factory (**F-12** — provenance is what makes the pool's self-reported `getNormalizedWeights` trustworthy, since the canonical hook's `onRegister` does not gate by factory). Returns `false` (does not revert) on a sub-0.52e18 numerator — the **G-D8** quality bar — so the caller (`AureumGovernance` via `IGaugeRegistry`) can branch on a boolean rather than catching a revert.
      * @param pool The candidate replacement pool under evaluation.
      * @return passes `true` when the pool clears the 52% quality gate, carries the canonical hook, and is factory-provenanced.
      */
