@@ -176,7 +176,7 @@ A token implementing `asset()` for any reason (legitimate or scam) is therefore 
 
 **Detection is interface-introspection, not registry preregistration.** The detection path is stateless on the registry side — `VaultClassRegistry` only stores class admissions; per-token classification is computed on-the-fly at each eligibility evaluation. This keeps the registry's state surface minimal.
 
-**Test invariant tie-in.** **T-I3** (forbidden tokens AuMM, AuMT) is **independent** of this detection — AuMM and AuMT are blocked by direct address comparison regardless of their `asset()` interface, since they cannot appear as weighted pool tokens for activation by construction. The G-D10 detection method runs only after the T-I3 forbidden-token check passes.
+**Test invariant tie-in.** **T-I3** (forbidden token AuMM) is **independent** of this detection — AuMM is blocked by direct address comparison regardless of its `asset()` interface, since it cannot appear as a weighted pool token for activation by construction. The G-D10 detection method runs only after the T-I3 forbidden-token check passes. (Narrowed from AuMM + AuMT to AuMM-only per **P-D29** — post-I-D14 there is no standalone AuMT ERC-20 to forbid; AuMT is per-pool BPT.)
 
 ---
 
@@ -947,7 +947,7 @@ Rationale: reversing (2) before (1) surfaces `InsufficientQualityGate` while the
 | --- | --- |
 | T-I1 | No pool becomes gauged without **all** criteria `true` in one transaction boundary |
 | T-I2 | Anti-spam fee **never** refunds; failed partial checks still consume fee (per product spec) |
-| T-I3 | **Forbidden tokens** — AuMM, AuMT cannot appear as weighted pool tokens for activation |
+| T-I3 | **Forbidden token** — AuMM cannot appear as a weighted pool token for activation (AuMT clause dissolved post-I-D14 per **P-D29**) |
 | T-I4 | **Fast-track selector** absent — bytecode / interface has no Sandbox fast-track entry |
 | T-I5 | **Epoch snapshot** determinism — two calls at same block see same eligibility set |
 | T-I6 | **Revoked is terminal** — `activateGauge(pool)`, `registerGaugeFromComposition(pool)`, `seedFoundingPool(pool)` each revert `AlreadyRevoked` against a Revoked status; no Stage G entrypoint writes `Revoked → Active` (per **G-D17**) |
