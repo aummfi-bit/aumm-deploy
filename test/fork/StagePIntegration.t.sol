@@ -25,6 +25,36 @@ import { DeployStageP } from "../../script/DeployStageP.s.sol";
 import { DeployFeeRoutingHook } from "../../script/DeployFeeRoutingHook.s.sol";
 import { DeployAuMM } from "../../script/DeployAuMM.s.sol";
 import { DeployAureumWeightedPoolFactory } from "../../script/DeployAureumWeightedPoolFactory.s.sol";
+import { ERC4626RateProvider } from "../../src/rate_provider/ERC4626RateProvider.sol";
+import { CompositeRateProvider } from "../../src/rate_provider/CompositeRateProvider.sol";
+import { IxAetheronConfig } from "../../script/pools/configs/02_ixAetheron.s.sol";
+import { IxLibertasConfig } from "../../script/pools/configs/06_ixLibertas.s.sol";
+import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
+import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
+import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
+import { DeployIxCasper } from "../../script/pools/DeployIxCasper.s.sol";
+import { DeployIxBrevis } from "../../script/pools/DeployIxBrevis.s.sol";
+import { DeployIxAltrix } from "../../script/pools/DeployIxAltrix.s.sol";
+import { DeployIxMediox } from "../../script/pools/DeployIxMediox.s.sol";
+import { DeployIxLongus } from "../../script/pools/DeployIxLongus.s.sol";
+import { DeployIxAetheron } from "../../script/pools/DeployIxAetheron.s.sol";
+import { DeployIxLibertas } from "../../script/pools/DeployIxLibertas.s.sol";
+import { DeployIxStrata } from "../../script/pools/DeployIxStrata.s.sol";
+import { DeployIxForum } from "../../script/pools/DeployIxForum.s.sol";
+import { DeployIxRegistrum } from "../../script/pools/DeployIxRegistrum.s.sol";
+import { DeployIxDebitum } from "../../script/pools/DeployIxDebitum.s.sol";
+import { DeployIxEquitix } from "../../script/pools/DeployIxEquitix.s.sol";
+import { DeployIxInnovix } from "../../script/pools/DeployIxInnovix.s.sol";
+import { DeployIxGigantus } from "../../script/pools/DeployIxGigantus.s.sol";
+import { DeployIxMagnix } from "../../script/pools/DeployIxMagnix.s.sol";
+import { DeployIxNubix } from "../../script/pools/DeployIxNubix.s.sol";
+import { DeployIxMoneta } from "../../script/pools/DeployIxMoneta.s.sol";
+import { DeployIxColossix } from "../../script/pools/DeployIxColossix.s.sol";
+import { DeployIxVitalix } from "../../script/pools/DeployIxVitalix.s.sol";
+import { DeployIxMedicix } from "../../script/pools/DeployIxMedicix.s.sol";
+import { DeployIxMercatura } from "../../script/pools/DeployIxMercatura.s.sol";
+import { DeployIxAurix } from "../../script/pools/DeployIxAurix.s.sol";
+import { DeployIxMetallum } from "../../script/pools/DeployIxMetallum.s.sol";
 
 /**
  * @title StagePIntegrationFixture
@@ -46,6 +76,10 @@ abstract contract StagePIntegrationFixture is Test {
     address internal constant SUSDS_RATE_PROVIDER = 0x1195BE91e78ab25494C855826FF595Eef784d47B;
     address internal constant SV_ZCHF_RATE_PROVIDER = 0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c;
     uint256 internal constant INIT_SEED = 1_000e18;
+    address internal constant EMERGENCY_MULTISIG = address(uint160(uint256(keccak256("emergencyMultisig"))));
+    // N-D9 RP-plumbing literals (verified mainnet). yBOLD is the two-hop intermediary only — never a pool token.
+    address internal constant YSYBOLD = 0x23346B04a7f55b8760E5860AA5A77383D63491cD;
+    address internal constant YBOLD = 0x9F4330700a36B29952869fac9b33f45EEdd8A3d8;
 
     DeployStageP internal orchestrator;
     DeployFeeRoutingHook internal hookScript;
@@ -156,7 +190,139 @@ abstract contract StagePIntegrationFixture is Test {
         vm.setEnv("AUREUM_WEIGHTED_POOL_FACTORY", vm.toString(address(awpf)));
 
         _initializeBodensee();
-        // P10.1b continues here — pilots (+init) / Majors / Sector-3 (+ RP prelude) / the remaining 34-key env wire / orchestrator.deploy().
+        // --- Pilots (initialized — G parity, E10/E-D25 per-token seed amounts) ---
+        pilotPools[0] = new DeployIxHelvetia().run();
+        IERC20[] memory tokens0 = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory amts0 = new uint256[](2);
+        amts0[0] = INIT_SEED;
+        amts0[1] = INIT_SEED;
+        _initializePool(pilotPools[0], tokens0, amts0);
+
+        pilotPools[1] = new DeployIxEdelweiss().run();
+        IERC20[] memory tokens1 = vault.getPoolTokens(pilotPools[1]);
+        uint256[] memory amts1 = new uint256[](4);
+        amts1[0] = 1_000e6;
+        amts1[1] = 1_000e6;
+        amts1[2] = 1_000e18;
+        amts1[3] = 1_000e18;
+        _initializePool(pilotPools[1], tokens1, amts1);
+
+        pilotPools[2] = new DeployIxAurebit().run();
+        IERC20[] memory tokens2 = vault.getPoolTokens(pilotPools[2]);
+        uint256[] memory amts2 = new uint256[](5);
+        amts2[0] = 1_000e8;
+        amts2[1] = 1_000e18;
+        amts2[2] = 1_000e8;
+        amts2[3] = 1_000e18;
+        amts2[4] = 1_000e18;
+        _initializePool(pilotPools[2], tokens2, amts2);
+
+        // --- Majors (bind-only, uninitialized — M parity) ---
+        majorPools[0] = new DeployIxCasper().run();
+        majorPools[1] = new DeployIxBrevis().run();
+        majorPools[2] = new DeployIxAltrix().run();
+        majorPools[3] = new DeployIxMediox().run();
+        majorPools[4] = new DeployIxLongus().run();
+
+        // --- Rate providers — MUST precede the 02/06/20/27 Sector-3 deploys (N-D9; the configs read these env keys during .run()) ---
+        ERC4626RateProvider sfrxEthRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.SFRXETH));
+        ERC4626RateProvider wOethRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.WOETH));
+        ERC4626RateProvider scrvUsdRp = new ERC4626RateProvider(IERC4626(IxLibertasConfig.SCRVUSD));
+        ERC4626RateProvider yBoldRp = new ERC4626RateProvider(IERC4626(YBOLD));
+        CompositeRateProvider ysyBoldRp = new CompositeRateProvider(IERC4626(YSYBOLD), yBoldRp);
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("SFRXETH_RATE_PROVIDER", vm.toString(address(sfrxEthRp)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WOETH_RATE_PROVIDER", vm.toString(address(wOethRp)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("SCRVUSD_RATE_PROVIDER", vm.toString(address(scrvUsdRp)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("YSYBOLD_RATE_PROVIDER", vm.toString(address(ysyBoldRp)));
+
+        // --- Sector-3 (bind-only, uninitialized — N parity, N-D0 canonical slot order) ---
+        stageNPools[0] = new DeployIxAetheron().run();
+        stageNPools[1] = new DeployIxLibertas().run();
+        stageNPools[2] = new DeployIxStrata().run();
+        stageNPools[3] = new DeployIxForum().run();
+        stageNPools[4] = new DeployIxRegistrum().run();
+        stageNPools[5] = new DeployIxDebitum().run();
+        stageNPools[6] = new DeployIxEquitix().run();
+        stageNPools[7] = new DeployIxInnovix().run();
+        stageNPools[8] = new DeployIxGigantus().run();
+        stageNPools[9] = new DeployIxMagnix().run();
+        stageNPools[10] = new DeployIxNubix().run();
+        stageNPools[11] = new DeployIxMoneta().run();
+        stageNPools[12] = new DeployIxColossix().run();
+        stageNPools[13] = new DeployIxVitalix().run();
+        stageNPools[14] = new DeployIxMedicix().run();
+        stageNPools[15] = new DeployIxMercatura().run();
+        stageNPools[16] = new DeployIxAurix().run();
+        stageNPools[17] = new DeployIxMetallum().run();
+
+        // --- Env wire: base-layer scalars + the 26-pool roster (P-D34; WEIGHTED_POOL_FACTORY = awpf is the F-12 provenance binding) ---
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("VAULT", vm.toString(address(vault)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("BODENSEE_POOL", vm.toString(bodenseePool));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WEIGHTED_POOL_FACTORY", vm.toString(address(awpf)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("EMERGENCY_MULTISIG", vm.toString(EMERGENCY_MULTISIG));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_01", vm.toString(pilotPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_05", vm.toString(pilotPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_14", vm.toString(pilotPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_03", vm.toString(majorPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_08", vm.toString(majorPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_09", vm.toString(majorPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_10", vm.toString(majorPools[3]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_11", vm.toString(majorPools[4]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_02", vm.toString(stageNPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_06", vm.toString(stageNPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_12", vm.toString(stageNPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_13", vm.toString(stageNPools[3]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_15", vm.toString(stageNPools[4]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_16", vm.toString(stageNPools[5]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_17", vm.toString(stageNPools[6]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_18", vm.toString(stageNPools[7]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_19", vm.toString(stageNPools[8]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_20", vm.toString(stageNPools[9]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_21", vm.toString(stageNPools[10]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_22", vm.toString(stageNPools[11]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_23", vm.toString(stageNPools[12]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_24", vm.toString(stageNPools[13]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_25", vm.toString(stageNPools[14]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_26", vm.toString(stageNPools[15]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_27", vm.toString(stageNPools[16]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_28", vm.toString(stageNPools[17]));
+
+        // --- Orchestrate: DeployStageP runs J→F→G→H→setEmissionsRecorder→I→M→N→(seedFoundingPool×3 + setGovernanceContract)→L→K, then asserts the four post-conditions in-run ---
+        orchestrator.deploy();
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
