@@ -25,9 +25,9 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
  *         DeployStageH; EMASampler + CCBMultiplier are net-new production deploys
  *         (previously built only inside fork fixtures).
  *
- * @dev P-D28 — governance handoff: TVLOracle + EfficiencyOracle deploy with governance =
- *      deployer, then hand off to GOVERNANCE_MULTISIG (mirroring the DeployStageH
- *      deployer-then-handoff pattern). EMASampler + CCBMultiplier carry no governance slot.
+ * @dev P-D28 / P-D35 — governance: EfficiencyOracle deploys with governance = deployer, then
+ *      hands off to GOVERNANCE_MULTISIG (the DeployStageH pattern); TVLOracle deploys with
+ *      governance = GOVERNANCE_MULTISIG directly (its `_initialGovernance` also pins `registrySetter`, which must be the Stage-K wire-(8) caller). EMASampler + CCBMultiplier carry no governance slot.
  *      This script does NOT call efficiencyOracle.setEmissionsRecorder — the distributor is
  *      born in DeployStageH; that cross-script wiring is the P9.5 DeployStageP orchestrator's
  *      job (Option 1, P-D28), executed as the multisig after F and H.
@@ -45,7 +45,7 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
  *
  * @dev Env vars required (no defaults — a real deploy must never silently fall back to zero):
  *
- *        GOVERNANCE_MULTISIG  address  — the governance handoff target for TVLOracle + EfficiencyOracle
+ *        GOVERNANCE_MULTISIG  address  — TVLOracle governance + registrySetter (P-D35); EfficiencyOracle handoff target
  *        AUMM                 address  — deployed AuMM (genesisBlock source; EfficiencyOracle input)
  *        VAULT_EXPLORER       address  — the Aureum Vault address (P-D27; TVLOracle input)
  *        BODENSEE_POOL        address  — der Bodensee pool (TVLOracle input)
@@ -67,7 +67,7 @@ contract DeployStageF is Script {
     }
 
     /// @notice Testable entry — same sequence without broadcast; deployer is the initial governance
-    ///         for TVLOracle + EfficiencyOracle (it must own the CREATE context so the handoff succeeds).
+    ///         for EfficiencyOracle (it must own the CREATE context so that handoff succeeds); TVLOracle takes GOVERNANCE_MULTISIG directly (P-D35).
     function deploy(address deployer)
         external
         returns (TVLOracle, EfficiencyOracle, EMASampler, CCBMultiplier)
@@ -92,7 +92,7 @@ contract DeployStageF is Script {
             vaultExplorer,
             bodenseePool,
             svzchf,
-            deployer,
+            governanceMultisig,
             emptySeed,
             emptySeed
         );
@@ -114,10 +114,11 @@ contract DeployStageF is Script {
             IEMASampler(address(emaSampler))
         );
 
-        // -- 5. Governance handoff — TVLOracle + EfficiencyOracle to GOVERNANCE_MULTISIG (P-D28).
-        //      EMASampler + CCBMultiplier carry no governance slot. setEmissionsRecorder is
-        //      deferred to the P9.5 orchestrator (the distributor is born in DeployStageH).
-        tvlOracle.setGovernanceContract(governanceMultisig);
+        // -- 5. Governance handoff — EfficiencyOracle to GOVERNANCE_MULTISIG (P-D28). TVLOracle
+        //      is born at GOVERNANCE_MULTISIG (P-D35 — no handoff; its _initialGovernance also
+        //      pins registrySetter for the Stage-K wire-(8) bind). EMASampler + CCBMultiplier
+        //      carry no governance slot. setEmissionsRecorder is deferred to the P9.5
+        //      orchestrator (the distributor is born in DeployStageH).
         efficiencyOracle.setGovernanceContract(governanceMultisig);
 
         console2.log("Stage F engine deployed:");

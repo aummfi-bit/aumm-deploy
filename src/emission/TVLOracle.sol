@@ -50,7 +50,7 @@ contract TVLOracle is ITVLOracle {
     /// @notice Live Miliarium registry — bound once via `setMiliariumRegistry` at the Stage K (K7) handoff per K-D8; `address(0)` pre-binding, in which case `_constellationRatio` runs its reverse-map leg only (exact pre-K6 behavior). Once bound, `_constellationRatio` enumerates this dense view (`miliariumPoolsCount` / `miliariumPoolAt`) as its second leg.
     IMiliariumRegistry public miliariumRegistry;
 
-    /// @notice Deployer-pinned authority for the one-shot `setMiliariumRegistry`, F-D20 self-seal mirroring `CCBMultiplier` — set to `msg.sender` at construction, self-zeros on the first successful bind so the registry is sealed thereafter.
+    /// @notice Governance-pinned authority for the one-shot `setMiliariumRegistry`, F-D20 self-seal mirroring `CCBMultiplier` — set to `_initialGovernance` at construction (the unified governor / `GOVERNANCE_MULTISIG` under `DeployStageF`), self-zeros on the first successful bind so the registry is sealed thereafter. Pinned to the governance identity, not the CREATE agent, per P-D35 (the orchestrator split-identity fix).
     address public registrySetter;
 
     /* ---------- Errors ---------- */
@@ -101,7 +101,7 @@ contract TVLOracle is ITVLOracle {
      * @param _vaultExplorer Balancer V3 `IVaultExplorer` — read entry for `getPoolData` / `balancesLiveScaled18` per H-D9 Step 1.
      * @param _bodenseePool Der Bodensee pool address — immutable constellation member per H-D8.
      * @param _svzchf svZCHF numéraire address per H-D9 — quote currency for `tvl()` and a permitted constellation pool token (svZCHF dual-role). Reverts `ZeroAddress` on zero input.
-     * @param _initialGovernance Initial governance — Stage A–K Authorizer Safe at deploy; Stage K rebind via `setGovernanceContract` per H-D8.
+     * @param _initialGovernance Initial governance — Stage A–K Authorizer Safe / `GOVERNANCE_MULTISIG` at deploy; governance rebinds via `setGovernanceContract` per H-D8. Also pins `registrySetter` (the one-shot `setMiliariumRegistry` authority) per P-D35; that slot self-zeros on the first bind.
      * @param _tokensSeed Tokens whose wrapper → underlying mapping is seeded at construction per H-D9 (STANDARD tokens use self-mapping where `_tokensSeed[i] == _underlyingsSeed[i]`).
      * @param _underlyingsSeed Per-index underlying address corresponding to `_tokensSeed[i]`; `_tokensSeed.length` must equal `_underlyingsSeed.length`.
      */
@@ -128,7 +128,7 @@ contract TVLOracle is ITVLOracle {
         for (uint256 i = 0; i < _tokensSeed.length; i++) {
             tokenToUnderlying[_tokensSeed[i]] = _underlyingsSeed[i];
         }
-        registrySetter = msg.sender;
+        registrySetter = _initialGovernance;
     }
 
     /* ---------- Governance ---------- */
@@ -187,7 +187,7 @@ contract TVLOracle is ITVLOracle {
 
     /**
      * @notice One-shot bind of the live Miliarium registry at the Stage K (K7) handoff per K-D8 — mirrors the `CCBMultiplier` F-D20 self-seal.
-     * @dev Callable exactly once, by the deployer-pinned `registrySetter`. The authority check fires before the zero guard, so caller-side errors report `OnlyRegistrySetter` regardless of `newRegistry`. Binds `miliariumRegistry` then zeros `registrySetter` to seal — subsequent calls revert `OnlyRegistrySetter` because no caller holds `address(0)`. The `_constellationRatio` second leg (K6.2) enumerates the bound registry's dense view. Reverts `ZeroAddress` on a zero `newRegistry`; emits `MiliariumRegistrySet`.
+     * @dev Callable exactly once, by the `_initialGovernance`-pinned `registrySetter` (per P-D35). The authority check fires before the zero guard, so caller-side errors report `OnlyRegistrySetter` regardless of `newRegistry`. Binds `miliariumRegistry` then zeros `registrySetter` to seal — subsequent calls revert `OnlyRegistrySetter` because no caller holds `address(0)`. The `_constellationRatio` second leg (K6.2) enumerates the bound registry's dense view. Reverts `ZeroAddress` on a zero `newRegistry`; emits `MiliariumRegistrySet`.
      * @param newRegistry Concrete `IMiliariumRegistry` deployed at Stage J — must be non-zero.
      */
     function setMiliariumRegistry(IMiliariumRegistry newRegistry) external {

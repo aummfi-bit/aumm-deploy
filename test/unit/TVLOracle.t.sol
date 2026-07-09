@@ -510,6 +510,7 @@ contract TVLOracleTest is Test {
         MockMiliariumRegistry reg = new MockMiliariumRegistry();
         vm.expectEmit(true, false, false, false);
         emit TVLOracle.MiliariumRegistrySet(address(reg));
+        vm.prank(GOVERNANCE);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
         assertEq(address(oracle.miliariumRegistry()), address(reg));
         assertEq(oracle.registrySetter(), address(0));
@@ -517,6 +518,7 @@ contract TVLOracleTest is Test {
 
     function test_setMiliariumRegistry_revert_alreadySet() public {
         MockMiliariumRegistry reg = new MockMiliariumRegistry();
+        vm.prank(GOVERNANCE);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
         vm.expectRevert(TVLOracle.OnlyRegistrySetter.selector);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
@@ -531,6 +533,7 @@ contract TVLOracleTest is Test {
 
     function test_setMiliariumRegistry_revert_zeroAddress() public {
         vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        vm.prank(GOVERNANCE);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(0)));
     }
 
@@ -557,6 +560,7 @@ contract TVLOracleTest is Test {
         assertEq(oracle.tvl(pool), 0);
         MockMiliariumRegistry reg = new MockMiliariumRegistry();
         reg.addPool(venue);
+        vm.prank(GOVERNANCE);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
         // Leg 2 now prices via the venue: 50e18 * (200/100) = 100e18
         assertEq(oracle.tvl(pool), 100e18);
@@ -588,6 +592,7 @@ contract TVLOracleTest is Test {
         _addVenue(venueB, bTokens, bBals);
         MockMiliariumRegistry reg = new MockMiliariumRegistry();
         reg.addPool(venueB);
+        vm.prank(GOVERNANCE);
         oracle.setMiliariumRegistry(IMiliariumRegistry(address(reg)));
         address[] memory pTokens = new address[](1);
         pTokens[0] = tokU;
