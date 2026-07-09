@@ -4,6 +4,7 @@ pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
+import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -713,5 +714,33 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         // zero hook residue
         assertEq(svZchf.balanceOf(address(hook)), 0);
         assertEq(susds.balanceOf(address(hook)), 0);
+    }
+
+    /// @notice P-D36 Leg D — CCB month-walk: updateMultiplier's BLOCKS_PER_EPOCH cadence + F-8
+    ///         anti-cyclical evolution on the orchestrator-deployed engine reading the K-wire-(8)-bound
+    ///         registry. Only pilot 01 is EMA-matured (via _matureStack), so poolEMA >> currentAgg/28 and
+    ///         the intra channel steps M_i down -STEP_SIZE each epoch off INITIAL_MULTIPLIER. No prank —
+    ///         updateMultiplier is permissionless (the P-D38 handle-cache is kept for uniformity).
+    function test_legD_ccbMonthWalkEvolvesMultiplier() public {
+        address lp = makeAddr("p10_legD_lp");
+        _matureStack(lp);
+        CCBMultiplier ccb = orchestrator.ccbMultiplier();
+        uint256 initial = ccb.INITIAL_MULTIPLIER();
+        // fresh pool → INITIAL_MULTIPLIER (M_i unwritten)
+        assertEq(ccb.getMultiplier(pilotPools[0]), initial);
+        // epoch 1 — cadence trivially met on the fork (block >> BLOCKS_PER_EPOCH); intra step fires down
+        ccb.updateMultiplier(pilotPools[0]);
+        uint256 afterFirst = ccb.getMultiplier(pilotPools[0]);
+        assertLt(afterFirst, initial);
+        // cadence gate — immediate re-call reverts TooEarly(current, current + BLOCKS_PER_EPOCH);
+        // full encoding per the CCBMultiplier.t.sol L174 precedent (arg-carrying error — bare-selector exact-match fails).
+        vm.expectRevert(
+            abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, block.number, block.number + 100_800)
+        );
+        ccb.updateMultiplier(pilotPools[0]);
+        // epoch 2 — advance one BLOCKS_PER_EPOCH; the walk continues to evolve M_i
+        vm.roll(block.number + 100_800);
+        ccb.updateMultiplier(pilotPools[0]);
+        assertLt(ccb.getMultiplier(pilotPools[0]), afterFirst);
     }
 }
