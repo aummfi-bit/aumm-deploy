@@ -245,6 +245,8 @@ contract TVLOracle is ITVLOracle {
      * @return eligible True when `v` holds both `underlying` and `SVZCHF` with positive scaled balances.
      */
     function _venueRatio(address v, address underlying) internal view returns (uint256 ratio, bool eligible) {
+        // F-19 / P-D37 — an uninitialized venue cannot price and would return (0, false) anyway; skip BEFORE the getPoolData read, which carries the Vault's withInitializedPool modifier and reverts PoolNotInitialized.
+        if (!vaultExplorer.isPoolInitialized(v)) return (0, false);
         IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
         PoolData memory data = vaultExplorer.getPoolData(v);
         uint256 balU = 0;
