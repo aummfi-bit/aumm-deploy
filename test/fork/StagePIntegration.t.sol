@@ -13,7 +13,9 @@ import {
     TokenType,
     PoolRoleAccounts,
     AddLiquidityParams,
-    AddLiquidityKind
+    AddLiquidityKind,
+    SwapKind,
+    VaultSwapParams
 } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
@@ -624,6 +626,39 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         }
     }
 
+    // Transcribed from PilotPools.t.sol L325-L355 per P-D36/CLAUDE.md L330 — two-arg deal per E10; plain transfer, no SafeERC20.
+    function _performSwap(address pool, IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn)
+        internal
+        returns (uint256 amountOut)
+    {
+        deal(address(tokenIn), address(this), amountIn);
+        bytes memory result =
+            vault.unlock(abi.encodeCall(this._performSwapCallback, (pool, tokenIn, tokenOut, amountIn)));
+        amountOut = abi.decode(result, (uint256));
+    }
+
+    function _performSwapCallback(address pool, IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn)
+        external
+        returns (uint256 amountOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        (, uint256 inUsed, uint256 outRcvd) = vault.swap(
+            VaultSwapParams({
+                kind: SwapKind.EXACT_IN,
+                pool: pool,
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                amountGivenRaw: amountIn,
+                limitRaw: 0,
+                userData: ""
+            })
+        );
+        tokenIn.transfer(address(vault), inUsed);
+        vault.settle(tokenIn, inUsed);
+        vault.sendTo(tokenOut, address(this), outRcvd);
+        amountOut = outRcvd;
+    }
+
     function _matureStack(address lp) internal returns (uint256 bptOut) {
         // P-D36 (4) governance token-map seed
         vm.startPrank(address(orchestrator));
@@ -666,5 +701,17 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertGt(aumm.balanceOf(lp), 0);
         // crystallized pending fully paid
         assertEq(d.pendingClaim(pilotPools[0], lp), 0);
+    }
+
+    /// @notice P-D36 Leg B — the D-D21 hook↔controller bake dynamic: onAfterSwap → collectSwapAggregateFeesForHook → convert → one-sided Bodensee add.
+    function test_legB_swapFeeSweepGrowsBodensee() public {
+        uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 amountOut = _performSwap(pilotPools[0], IERC20(address(susds)), svZchf, 1e18);
+        assertGt(amountOut, 0);
+        // Bodensee-growth witness
+        assertGt(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore);
+        // zero hook residue
+        assertEq(svZchf.balanceOf(address(hook)), 0);
+        assertEq(susds.balanceOf(address(hook)), 0);
     }
 }
