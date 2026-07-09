@@ -471,3 +471,83 @@ abstract contract StagePIntegrationFixture is Test {
         }
     }
 }
+
+/**
+ * @title StagePWiringTest
+ * @notice P-D34 two-layer split wiring layer (H13) — the independent external witness of the
+ *         orchestrator's wiring. The four in-run post-conditions already reverted inside
+ *         `deploy()`; this contract re-asserts the key binds from outside.
+ * @dev Reads the fixture's own pool arrays and typed handles (`orchestrator`, `hook`, `vault`,
+ *      `aumm`, `bodenseePool`) — never `vm.env`, so the env oracle the orchestrator's
+ *      `_rosterPools()` consulted is not re-used. No harness seat (`setGovernanceModule` /
+ *      `setTrustedRouter`) — those live only in `StagePEndToEndTest` per P-D34 L459.
+ */
+contract StagePWiringTest is StagePIntegrationFixture {
+    function test_handles_all15NonZero() public view {
+        assertNotEq(address(orchestrator.miliariumRegistry()), address(0));
+        assertNotEq(address(orchestrator.tvlOracle()), address(0));
+        assertNotEq(address(orchestrator.efficiencyOracle()), address(0));
+        assertNotEq(address(orchestrator.emaSampler()), address(0));
+        assertNotEq(address(orchestrator.ccbMultiplier()), address(0));
+        assertNotEq(address(orchestrator.swapAndDeposit()), address(0));
+        assertNotEq(address(orchestrator.vaultClassRegistry()), address(0));
+        assertNotEq(address(orchestrator.gaugeRegistry()), address(0));
+        assertNotEq(address(orchestrator.emissionDistributor()), address(0));
+        assertNotEq(address(orchestrator.bodenseeBootstrapChannel()), address(0));
+        assertNotEq(address(orchestrator.incendiaryRegistry()), address(0));
+        assertNotEq(address(orchestrator.votingWeight()), address(0));
+        assertNotEq(address(orchestrator.governance()), address(0));
+        assertNotEq(address(orchestrator.authorizer()), address(0));
+        assertNotEq(address(orchestrator.minterRouter()), address(0));
+    }
+
+    function test_genesisBlock_uniformAcrossStack() public view {
+        uint256 gb = aumm.GENESIS_BLOCK();
+        assertEq(orchestrator.gaugeRegistry().GENESIS_BLOCK(), gb);
+        assertEq(orchestrator.efficiencyOracle().GENESIS_BLOCK(), gb);
+        assertEq(orchestrator.emissionDistributor().GENESIS_BLOCK(), gb);
+    }
+
+    function test_roster26_gaugedAndRecorderBound() public view {
+        for (uint256 i = 0; i < pilotPools.length; ++i) {
+            address p = pilotPools[i];
+            assertTrue(orchestrator.gaugeRegistry().isGaugeApproved(p));
+            assertEq(orchestrator.emissionDistributor().auMTContractByPool(p), address(hook));
+        }
+        for (uint256 i = 0; i < majorPools.length; ++i) {
+            address p = majorPools[i];
+            assertTrue(orchestrator.gaugeRegistry().isGaugeApproved(p));
+            assertEq(orchestrator.emissionDistributor().auMTContractByPool(p), address(hook));
+        }
+        for (uint256 i = 0; i < stageNPools.length; ++i) {
+            address p = stageNPools[i];
+            assertTrue(orchestrator.gaugeRegistry().isGaugeApproved(p));
+            assertEq(orchestrator.emissionDistributor().auMTContractByPool(p), address(hook));
+        }
+        assertFalse(orchestrator.gaugeRegistry().isGaugeApproved(bodenseePool));
+    }
+
+    function test_wires_stageHandoffsComplete() public view {
+        assertEq(hook.emissionRecorder(), address(orchestrator.emissionDistributor())); // I-D16 hook recorder seat
+        assertEq(orchestrator.efficiencyOracle().emissionsRecorder(), address(orchestrator.emissionDistributor())); // P-D28
+        assertTrue(orchestrator.swapAndDeposit().authorizedDonators(address(orchestrator.incendiaryRegistry()))); // L-D2 deposit tail
+        assertEq(orchestrator.emissionDistributor().incendiaryRegistry(), address(orchestrator.incendiaryRegistry())); // L-D25 boost leg
+        assertEq(address(orchestrator.vaultClassRegistry().votingWeight()), address(orchestrator.votingWeight())); // K wire (1)
+        assertTrue(orchestrator.swapAndDeposit().authorizedDonators(address(orchestrator.governance()))); // K wire (2)
+        assertEq(address(orchestrator.bodenseeBootstrapChannel().mintRouter()), address(orchestrator.minterRouter())); // K wire (3)
+        assertEq(address(orchestrator.emissionDistributor().mintRouter()), address(orchestrator.minterRouter())); // K wire (4)
+        assertEq(aumm.minter(), address(orchestrator.minterRouter())); // K wire (5), C-D11 one-shot
+        assertEq(orchestrator.gaugeRegistry().governanceContract(), address(orchestrator.governance())); // K wire (6)
+        assertEq(orchestrator.miliariumRegistry().governanceContract(), address(orchestrator.governance())); // K wire (7)
+        assertEq(address(orchestrator.tvlOracle().miliariumRegistry()), address(orchestrator.miliariumRegistry())); // K wire (8), F-03/K-D8
+        assertEq(address(vault.getAuthorizer()), address(orchestrator.authorizer())); // K wire (9) / post-condition (4)
+        assertEq(orchestrator.vaultClassRegistry().governanceContract(), address(orchestrator)); // DeployStageP L126, the fork-model unified governor (K never rebinds the VaultClassRegistry governance seat)
+    }
+
+    function test_atRest_moduleUnsetNoTrustedRouter() public view {
+        assertEq(hook.governanceModule(), address(0)); // structurally proves the trustedRouter allowlist is empty — setTrustedRouter is governanceModule-gated, so no call can ever have succeeded
+        assertFalse(hook.trustedRouter(address(orchestrator)));
+        assertFalse(hook.trustedRouter(address(orchestrator.governance())));
+        assertFalse(hook.trustedRouter(address(this)));
+    }
+}
