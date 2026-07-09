@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -10,7 +11,9 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
 import {
     TokenConfig,
     TokenType,
-    PoolRoleAccounts
+    PoolRoleAccounts,
+    AddLiquidityParams,
+    AddLiquidityKind
 } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
@@ -549,5 +552,119 @@ contract StagePWiringTest is StagePIntegrationFixture {
         assertFalse(hook.trustedRouter(address(orchestrator)));
         assertFalse(hook.trustedRouter(address(orchestrator.governance())));
         assertFalse(hook.trustedRouter(address(this)));
+    }
+}
+
+/**
+ * @title StagePEndToEndTest
+ * @notice The P-D36 behavioral layer of the H13 two-layer split — 7 legs as test functions
+ *         on the orchestrator-deployed stack.
+ * @dev This contract IS the trusted router (P-D26 seat) and the LP attributor via getSender();
+ *      NO vm.mockCall / vm.store shims anywhere (P-D36 policy); BPT receipts are handed to the
+ *      recorded LP so the F-17 receipt cap is exercised faithfully.
+ */
+contract StagePEndToEndTest is StagePIntegrationFixture {
+    function setUp() public override {
+        super.setUp();
+        vm.prank(address(orchestrator));
+        hook.setGovernanceModule(address(this));
+        hook.setTrustedRouter(address(this), true);
+    }
+
+    /// @dev Recorded LP for the next liquidity op. The hook resolves the LP via
+    ///      IRouterSender(router).getSender(); this fixture IS the router (it
+    ///      calls Vault.addLiquidity directly inside unlock), so getSender()
+    ///      returns _lpSender. Decoupled from the BPT recipient (address(this)).
+    address internal _lpSender;
+
+    /// @notice IRouterSender shim — the hook calls this on every add/remove.
+    function getSender() external view returns (address) {
+        return _lpSender;
+    }
+
+    /// @dev One-sided UNBALANCED add of `fractionBps`/10000 of token[0]'s current
+    ///      pool balance, recording the deposit for `lp`. Mirrors StageG
+    ///      _initializePool (deal -> unlock -> settle) with addLiquidity in place
+    ///      of initialize.
+    function _depositOneSided(address pool, address lp, uint256 fractionBps)
+        internal
+        returns (uint256 bptOut)
+    {
+        _lpSender = lp;
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(pool);
+        uint256[] memory amountsIn = new uint256[](tokens.length);
+        amountsIn[0] = (balancesRaw[0] * fractionBps) / 10_000;
+        deal(address(tokens[0]), address(this), amountsIn[0]);
+        bytes memory result = vault.unlock(abi.encodeCall(this._depositCallback, (pool, amountsIn)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _depositCallback(address pool, uint256[] memory amountsIn)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, bptOut, ) = vault.addLiquidity(
+            AddLiquidityParams({
+                pool: pool,
+                to: address(this),
+                maxAmountsIn: amountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.UNBALANCED,
+                userData: ""
+            })
+        );
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsIn[i] > 0) {
+                tokens[i].transfer(address(vault), amountsIn[i]);
+                vault.settle(tokens[i], amountsIn[i]);
+            }
+        }
+    }
+
+    function _matureStack(address lp) internal returns (uint256 bptOut) {
+        // P-D36 (4) governance token-map seed
+        vm.startPrank(address(orchestrator));
+        orchestrator.tvlOracle().setTokenUnderlying(address(svZchf), address(svZchf));
+        orchestrator.tvlOracle().setTokenUnderlying(address(susds), address(susds));
+        vm.stopPrank();
+        // StageKIntegration L172 pattern — balanceOf(lp) == userLP for F-17
+        bptOut = _depositOneSided(pilotPools[0], lp, 100);
+        IERC20(pilotPools[0]).transfer(lp, bptOut);
+        // EMA seed
+        orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        // EMA_MATURITY_BLOCKS (60 days, F-04)
+        vm.roll(block.number + 432_000);
+        // freshness refresh (F-05)
+        orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        // F-5 score > 0 in bootstrap via the Miliarium f5Total/28 branch
+        orchestrator.emissionDistributor().recordScore(pilotPools[0]);
+    }
+
+    function test_setUp_harnessSeated() public view {
+        assertEq(hook.governanceModule(), address(this));
+        assertTrue(hook.trustedRouter(address(this)));
+    }
+
+    function test_legA_claimMintsThroughFullRecorderChain() public {
+        address lp = makeAddr("p10_legA_lp");
+        uint256 bptOut = _matureStack(lp);
+        assertGt(bptOut, 0);
+        // F-09 dispatch witness
+        EmissionDistributor d = orchestrator.emissionDistributor();
+        assertEq(d.userLP(pilotPools[0], lp), bptOut);
+        // one epoch accrual window
+        vm.roll(block.number + 100_800);
+        // Handle cached above — vm.prank must be followed DIRECTLY by claim: a chained
+        // orchestrator.emissionDistributor() auto-getter staticcall consumes the prank,
+        // leaving claim's msg.sender = this test contract (zero stake, amount == 0 early return).
+        vm.prank(lp);
+        d.claim(pilotPools[0], lp);
+        // K-D7/I-D16 chain witness: hook dispatch → recorder → score → accrual → mintRouter.mintFor → AuMM mint
+        assertGt(aumm.balanceOf(lp), 0);
+        // crystallized pending fully paid
+        assertEq(d.pendingClaim(pilotPools[0], lp), 0);
     }
 }
