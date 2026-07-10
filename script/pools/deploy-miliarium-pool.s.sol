@@ -62,9 +62,18 @@ abstract contract MiliariumPoolDeployer is Script {
             revert QualityGateUnsatisfied(erc4626WeightSum, MIN_ERC4626_WEIGHT);
         }
 
+        // F-20 / P-D40: swapFeeManager is address(0), NOT governanceMultisig. A non-zero
+        // swapFeeManager is an EXCLUSIVE role (VaultAdmin._ensureAuthenticatedByExclusiveRole)
+        // that locks fee changes to that one address and never consults the authorizer;
+        // address(0) defers to the Vault authorizer, so the Safe (pre-K via AureumAuthorizer)
+        // and then AureumGovernance's FeeChange proposal type (post-K via
+        // AureumGovernanceAuthorizer) both keep the lever, and §xxix multisig dissolution
+        // follows the migrating authorizer rather than a frozen immutable role slot.
+        // pauseManager stays governanceMultisig — it is the NON-exclusive role
+        // (_ensureAuthenticatedByRole) whose governance fall-through already exists.
         PoolRoleAccounts memory roleAccounts = PoolRoleAccounts({
             pauseManager: governanceMultisig,
-            swapFeeManager: governanceMultisig,
+            swapFeeManager: address(0),
             poolCreator: address(0)
         });
 
