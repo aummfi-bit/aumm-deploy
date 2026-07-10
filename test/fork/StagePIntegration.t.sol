@@ -837,4 +837,76 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         // K-wire-6 revoke witness: Active → Revoked (terminal, G-D17).
         assertEq(uint256(gr.gaugeStatus(c2Target)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
     }
+
+    /// @dev P-D39 Leg C1 candidate builder — a REAL uninitialized awpf pool
+    ///      [susds 0.6 WITH_RATE, svZchf 0.4 WITH_RATE], no vm.mockCall (P-D36). Clears BOTH
+    ///      gates: awpf.create's MIN_ERC4626_WEIGHT (both WITH_RATE-with-rate-provider, sum
+    ///      100% ≥ 52%) and meetsCompositionQualityGate's ≥0.52e18 admitted-4626 numerator
+    ///      (susds is a GaugeGenesisManifest-admitted class at 0.6, carrying it alone). Carries
+    ///      the canonical hook (onRegister returns true — neither token is der Bodensee) and awpf
+    ///      provenance (F-12). susds (0xa393…) < svZchf (0xE5F1…) on mainnet, so susds is the
+    ///      sorted tokens[0] holding the 0.6 majority; a wrong order reverts TokensNotSorted.
+    function _buildCompositionCandidate() internal returns (address candidate) {
+        TokenConfig[] memory tokens = new TokenConfig[](2);
+        tokens[0] = TokenConfig({
+            token: IERC20(address(susds)),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        tokens[1] = TokenConfig({
+            token: svZchf,
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        candidate = awpf.create(
+            "P10 C1 Candidate",
+            "C1CAND",
+            tokens,
+            weights,
+            PoolRoleAccounts({ pauseManager: address(0), swapFeeManager: address(0), poolCreator: address(0) }),
+            0.0075e18,
+            address(hook),
+            false,
+            false,
+            keccak256("p10_legC1_candidate")
+        );
+    }
+
+    /// @notice P-D39 Leg C1 — composition challenge propose → vote → queue → execute: the
+    ///         REAL-candidate dual-gate + slot-replace witness. proposeCompositionChallenge
+    ///         gates on meetsCompositionQualityGate at propose; _executeProposal re-checks it,
+    ///         then atomically revokeGauge(old) → replaceSlot(5, candidate) →
+    ///         registerGaugeFromComposition(candidate). Slot 5 = pilot 05 (StageO precedent),
+    ///         so the voter's pilot-01 stack is untouched; the 2/3 supermajority is single-voter
+    ///         trivial. The candidate is uninitialized — the composition gate omits the TVL
+    ///         floor, and F-19/P-D37 backstops any registry read against the slotted candidate.
+    function test_legC1_compositionChallengeReplacesSlotThroughGovernance() public {
+        address voter = makeAddr("p10_legC1_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        // Dual-gate candidate (built via awpf.create, so its MIN_ERC4626_WEIGHT gate already passed).
+        address candidate = _buildCompositionCandidate();
+        assertTrue(gr.meetsCompositionQualityGate(candidate));
+        address oldPool = orchestrator.miliariumRegistry().poolAtSlot(5);
+        assertTrue(oldPool != address(0));
+        // Propose — deposit pulled proposer → BODENSEE_CHANNEL → donate (K wire 2).
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeCompositionChallenge(5, candidate, svZchf);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(voter), 0);
+        _runProposal(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+        // Atomic slot replace: candidate takes slot 5, gauged from composition; old pool revoked.
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidate);
+        assertEq(uint256(gr.gaugeStatus(candidate)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        assertEq(uint256(gr.gaugeStatus(oldPool)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
+    }
 }
