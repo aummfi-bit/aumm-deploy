@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import {PoolRoleAccounts} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {AureumGovernance} from "src/governance/AureumGovernance.sol";
 import {IVotingWeight} from "src/governance/IVotingWeight.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
@@ -94,6 +95,9 @@ contract MockVault {
     function setStaticSwapFeePercentage(address pool, uint256 swapFeePercentage) external {
         staticFeeOf[pool] = swapFeePercentage;
         setFeeCalls++;
+    }
+    function getPoolRoleAccounts(address) external pure returns (PoolRoleAccounts memory roleAccounts) {
+        // all-zero roleAccounts: swapFeeManager == address(0) passes the F-20/P-D40 propose gate
     }
 }
 contract MockBodenseeChannel {

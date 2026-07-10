@@ -146,6 +146,7 @@ contract AureumGovernance {
     error InvalidGaugeTarget(address pool);
     error InvalidCompositionTarget(uint256 slot);
     error CompositionQualityGateFailed(address pool);
+    error ExclusiveSwapFeeManager(address pool, address manager);
 
     constructor(
         IVotingWeight votingWeight_,
@@ -238,10 +239,19 @@ contract AureumGovernance {
     /// @param payToken_ SVZCHF or sUSDS proposal deposit.
     /// @return proposalId 1-based identifier.
     /// @dev Proposer must `approve` this contract for the deposit amount before calling; fee cooldown is enforced at
-    ///      execute time (K4.5), not here.
+    ///      execute time (K4.5), not here. F-20 executability gate (P-D40): reverts `ExclusiveSwapFeeManager` when the
+    ///      pool's Vault `swapFeeManager` role is set to any address other than this contract — the EXCLUSIVE role
+    ///      would foreclose execution at `setStaticSwapFeePercentage` after the bond was already donated. Role
+    ///      accounts are immutable post-registration, so the propose-time check is sufficient (no execute re-check).
     function proposeFeeChange(address targetPool_, uint256 newFee_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (newFee_ < SWAP_FEE_MIN || newFee_ > SWAP_FEE_MAX) revert InvalidFeeValue(newFee_);
         if (targetPool_ == BODENSEE_POOL || !GAUGE_REGISTRY.isGaugeApproved(targetPool_)) revert InvalidFeeTarget(targetPool_);
+        // F-20 / P-D40 executability gate: a non-zero swapFeeManager is an EXCLUSIVE Vault role
+        // (VaultAdmin._ensureAuthenticatedByExclusiveRole) — execute's setStaticSwapFeePercentage
+        // would revert SenderNotAllowed after the bond was already donated. Immutable role, so
+        // propose-time suffices.
+        address manager = VAULT.getPoolRoleAccounts(targetPool_).swapFeeManager;
+        if (manager != address(0) && manager != address(this)) revert ExclusiveSwapFeeManager(targetPool_, manager);
         proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, payToken_);
     }
 
