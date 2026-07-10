@@ -21,7 +21,7 @@ import { PoolConfig } from "script/pools/PoolConfig.sol";
  *      Salt: E-D20 (slot-derived `bytes32(uint256(3))`).
  *      Library shape: E-D21 (per-pool library + Bodensee-tier NatSpec).
  *      Initial swap fee: E-D22 (`0.0002e18` = 0.02%, governance-adjustable
- *      within OQ-11's revised 0.01%–0.30% band; per-pool `swapFeeManager` is `governanceMultisig`).
+ *      within OQ-11's revised 0.01%–0.30% band; per-pool `swapFeeManager` is `address(0)` — F-20/P-D40, defers to the Vault authorizer).
  *      Quality Gate: three ERC-4626 (`TokenType.WITH_RATE` + `convertToAssets`) tokens sum to a 68% numerator
  *      (fWSTETH 26 + fWETH 26 + svZCHF 16 = 0.68e18); wstETH (16%, `TokenType.WITH_RATE` but non-ERC-4626 —
  *      wrap/unwrap + `stEthPerToken`, no `asset()` / `convertToAssets()`) and ixEDEL (16%, `TokenType.STANDARD`)

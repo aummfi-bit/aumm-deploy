@@ -21,7 +21,7 @@ import { PoolConfig } from "script/pools/PoolConfig.sol";
  *      Salt: `docs/STAGE_E_NOTES.md` E-D20 (slot-derived `bytes32(uint256(14))`).
  *      Library shape: `docs/STAGE_E_NOTES.md` E-D21 (per-pool library + Bodensee-tier NatSpec).
  *      Initial swap fee: `docs/STAGE_E_NOTES.md` E-D22 (`0.0002e18` = 0.02%, governance-adjustable
- *      within OQ-11's revised 0.01%–0.30% band; per-pool `swapFeeManager` is `governanceMultisig`).
+ *      within OQ-11's revised 0.01%–0.30% band; per-pool `swapFeeManager` is `address(0)` — F-20/P-D40, defers to the Vault authorizer).
  *      Aave Prime GHO naming convention: `docs/STAGE_E_NOTES.md` §E11 (Aave Prime GHO is the Aave-issued ERC-4626 vault wrapping bare GHO; bare GHO ERC-20 `0x40D16FC0246aD3160Ccc09B8D0D3A2cD28aE6C2f` is not a pilot component).
  *      Quality Gate: 52% ERC-4626 — two of five tokens (Aave Prime GHO, svZCHF) are `TokenType.WITH_RATE`
  *      with non-zero Rate Providers at 0.26 each (sum = 0.52e18); ixEDEL, WBTC, cbBTC are `TokenType.STANDARD`
