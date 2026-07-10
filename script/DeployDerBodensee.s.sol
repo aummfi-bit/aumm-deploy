@@ -31,7 +31,7 @@ import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/W
  *      `setPoolProtocolYieldFeePercentage` revert `SplitIsImmutable`; omit them.
  *      Bodensee parameters follow `docs/STAGE_D_NOTES.md` (Der Bodensee deployment
  *      parameters).
- *      **E-D22 / OQ-11 (2026-04-26 supersession):** Bodensee swap fee is immutable from block 0. `swapFeeManager: address(0)` is Balancer V3's "no one can change" sentinel; `governanceMultisig` retains only `pauseManager`. See `docs/FINDINGS.md` OQ-11 and `docs/STAGE_E_NOTES.md` E-D22.
+ *      **E-D22 / OQ-11 (2026-04-26 supersession, precision-corrected F-20/P-D40):** `swapFeeManager: address(0)` defers fee changes to the Vault authorizer — NOT "no one can change." Der Bodensee's fee is multisig-changeable pre-K via `AureumAuthorizer` and stays unreachable post-K only because `AureumGovernance.proposeFeeChange` excludes `BODENSEE_POOL`, not because the role is frozen; `governanceMultisig` retains only `pauseManager` as an explicit role. See `docs/FINDINGS.md` OQ-11 and `docs/STAGE_E_NOTES.md` E-D22.
  */
 contract DeployDerBodensee is Script {
     function run() external returns (address pool) {
@@ -60,8 +60,9 @@ contract DeployDerBodensee is Script {
         normalizedWeights[1] = _normalizedWeight(t1, aumm);
         normalizedWeights[2] = _normalizedWeight(t2, aumm);
 
-        // E-D22 / OQ-11 supersession: Bodensee swap fee is immutable from block 0.
-        // `swapFeeManager: address(0)` is Balancer V3's "no one can change" sentinel.
+        // E-D22 / OQ-11 (precision-corrected F-20/P-D40): swapFeeManager: address(0) defers to
+        // the Vault authorizer, not "no one can change" — reachable pre-K via AureumAuthorizer,
+        // unreachable post-K only because proposeFeeChange excludes BODENSEE_POOL.
         // See docs/FINDINGS.md OQ-11 (2026-04-26 status) and docs/STAGE_E_NOTES.md E-D22.
         PoolRoleAccounts memory roleAccounts = PoolRoleAccounts({
             pauseManager: governanceMultisig,
