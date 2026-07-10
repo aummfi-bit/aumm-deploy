@@ -6,6 +6,8 @@ import { Test } from "forge-std/Test.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
+import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
+import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -801,5 +803,38 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         _runProposal(id, voter);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
         assertEq(vault.getStaticSwapFeePercentage(pilotPools[0]), NEW_FEE);
+    }
+
+    /// @notice P-D39 Leg C2 — gauge challenge propose → vote → queue → execute: the
+    ///         K-wire-6 revoke witness. All 26 roster pools are slotted, so none clears
+    ///         proposeGaugeChallenge's `gaugeStatus == Active && slotOf == 0` gate; the
+    ///         precondition manufactures an unslotted Active gauge via a governance
+    ///         seedFoundingPool (bypasses eligibility + the anti-spam fee, does NOT slot).
+    ///         Execute routes _executeProposal → GAUGE_REGISTRY.revokeGauge, flipping the
+    ///         target Active → Revoked (terminal per G-D17).
+    function test_legC2_gaugeChallengeRevokesThroughGovernance() public {
+        address voter = makeAddr("p10_legC2_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        // Precondition — manufacture an unslotted Active gauge. gr cached BEFORE the prank
+        // (P-D38): a chained orchestrator.gaugeRegistry() staticcall would consume the
+        // single-shot prank, leaving seedFoundingPool to run as the test contract →
+        // onlyGovernance revert. seedFoundingPool takes any address and does NOT slot it.
+        address c2Target = makeAddr("p10_legC2_target");
+        vm.prank(address(gov));
+        gr.seedFoundingPool(c2Target);
+        assertEq(uint256(gr.gaugeStatus(c2Target)), uint256(IGaugeRegistry.GaugeStatus.Active));
+        // Propose — deposit pulled proposer → BODENSEE_CHANNEL → donate (K wire 2).
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeGaugeChallenge(c2Target, svZchf);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(voter), 0);
+        _runProposal(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+        // K-wire-6 revoke witness: Active → Revoked (terminal, G-D17).
+        assertEq(uint256(gr.gaugeStatus(c2Target)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
     }
 }
