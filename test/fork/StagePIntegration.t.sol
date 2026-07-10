@@ -5,6 +5,7 @@ pragma solidity ^0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
+import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -742,5 +743,63 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         vm.roll(block.number + 100_800);
         ccb.updateMultiplier(pilotPools[0]);
         assertLt(ccb.getMultiplier(pilotPools[0]), afterFirst);
+    }
+
+    // --- P10.3c (P-D39): the three AureumGovernance proposal-type legs ---
+
+    /// @dev K-D6d proposal bond, shared by Legs C1/C2/C3 (AureumGovernance.PROPOSAL_DEPOSIT_SVZCHF is internal, so re-declared here).
+    uint256 internal constant PROPOSAL_DEPOSIT = 1_000e18;
+    /// @dev Leg C3 target fee — inside [SWAP_FEE_MIN 1e14, SWAP_FEE_MAX 3e15] and != pilot 01's 2e14 create fee (E-D22), so the change is observable.
+    uint256 internal constant NEW_FEE = 2e15;
+
+    /// @dev P-D39 voter seating — the REAL _matureStack (no StageO _qualifyVoter mock), then an
+    ///      immediate poke while the EMA is fresh (F-05): the checkpoint written here is what
+    ///      castVote's getPastVotes(snapshotBlock) read finds later (F-06 freeze survives the
+    ///      proposal roll). Chained getter is safe here — poke is permissionless, no prank in
+    ///      flight (P-D38 concerns pranked calls only).
+    function _seatVoter(address voter) internal {
+        _matureStack(voter);
+        orchestrator.votingWeight().poke(voter);
+    }
+
+    /// @dev P-D39 shared proposal lifecycle — the StageO _voteQueueReachEta shape de-mocked, plus
+    ///      execute: roll past the F-06 snapshot, vote FOR (single poked voter, so quorum and any
+    ///      supermajority are trivially met), roll past endBlock, queue, roll to eta, execute.
+    ///      gov handle cached BEFORE the prank (P-D38).
+    function _runProposal(uint256 id, address voter) internal {
+        AureumGovernance gov = orchestrator.governance();
+        AureumGovernance.Proposal memory pv = gov.getProposal(id);
+        vm.roll(pv.snapshotBlock + 1);
+        vm.prank(voter);
+        gov.castVote(id, true);
+        vm.roll(pv.endBlock + 1);
+        gov.queue(id);
+        AureumGovernance.Proposal memory pq = gov.getProposal(id);
+        vm.roll(pq.eta);
+        gov.execute(id);
+    }
+
+    /// @notice P-D39 Leg C3 — fee change propose → vote → queue → execute: the DYNAMIC
+    ///         authorizer-migration witness. _executeProposal routes VAULT.setStaticSwapFeePercentage
+    ///         with msg.sender = governance, permitted only because the migrated
+    ///         AureumGovernanceAuthorizer grants GOVERNANCE_CONTRACT full authority (K wire 9);
+    ///         P10.2 wire (13) asserted only the static getAuthorizer() half. Cooldown is clear:
+    ///         lastFeeChangeBlock == 0 and the fork block height far exceeds FEE_CHANGE_COOLDOWN_BLOCKS.
+    function test_legC3_feeChangeExecutesThroughMigratedAuthorizer() public {
+        address voter = makeAddr("p10_legC3_voter");
+        _seatVoter(voter);
+        AureumGovernance gov = orchestrator.governance();
+        uint256 feeBefore = vault.getStaticSwapFeePercentage(pilotPools[0]);
+        assertNotEq(feeBefore, NEW_FEE);
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeFeeChange(pilotPools[0], NEW_FEE, svZchf);
+        vm.stopPrank();
+        // bond pulled proposer → channel → donate (K wire 2, dynamically witnessed)
+        assertEq(svZchf.balanceOf(voter), 0);
+        _runProposal(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+        assertEq(vault.getStaticSwapFeePercentage(pilotPools[0]), NEW_FEE);
     }
 }
