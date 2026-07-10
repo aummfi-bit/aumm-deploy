@@ -8,6 +8,7 @@ import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -908,5 +909,35 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidate);
         assertEq(uint256(gr.gaugeStatus(candidate)), uint256(IGaugeRegistry.GaugeStatus.Active));
         assertEq(uint256(gr.gaugeStatus(oldPool)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
+    }
+
+    /// @notice P-D41 Leg E — the halving-boundary witness, closing the P-D36 7-leg roster.
+    ///         Part 1: the orchestrator-deployed AuMM halves at the exact era edge
+    ///         (GENESIS_RATE / >>1 / >>2 at the last-Era-0 / first-Era-1 / Era-2 blocks — the
+    ///         AuMM.t.sol idiom against the DEPLOYED instance) and the distributor shares the
+    ///         halving root. Part 2: a claim straddling GENESIS + BLOCKS_PER_ERA fires
+    ///         _accrueGlobal's era-walk tiling (H-D30 — Era-0 blocks at 1e18, Era-1 at 5e17) and
+    ///         still mints; asserted nonzero, not exact-ratio (P-D41 — the magnitude is Part 1's job).
+    function test_legE_halvingBoundaryTilesEmissionAcrossEra() public {
+        // Part 1 — exact era-edge rate witness on the orchestrator-deployed AuMM.
+        uint256 genesis = aumm.GENESIS_BLOCK();
+        uint256 era = AureumTime.BLOCKS_PER_ERA;
+        uint256 genesisRate = aumm.GENESIS_RATE();
+        assertEq(aumm.blockEmissionRate(genesis + era - 1), genesisRate); // last Era-0 block: full rate (edge exclusive)
+        assertEq(aumm.blockEmissionRate(genesis + era), genesisRate >> 1); // first Era-1 block: halved
+        assertEq(aumm.blockEmissionRate(genesis + 2 * era), genesisRate >> 2); // Era 2: quartered
+        assertEq(orchestrator.emissionDistributor().GENESIS_BLOCK(), genesis); // accrual shares the halving root
+
+        // Part 2 — a claim straddling the era boundary still mints (the _accrueGlobal era-walk).
+        address lp = makeAddr("p10_legE_lp");
+        _matureStack(lp); // accrual cursor lands in Era 0 (bootstrap)
+        EmissionDistributor d = orchestrator.emissionDistributor();
+        vm.roll(genesis + era + 100_800); // one epoch into Era 1
+        orchestrator.emaSampler().updateEMA(pilotPools[0]); // F-05 freshness at the Era-1 block
+        d.recordScore(pilotPools[0]); // _accrueGlobal walks the Era-0 → Era-1 boundary
+        // P-D38 handle cache: d set above, vm.prank directly followed by d.claim (no chained getter).
+        vm.prank(lp);
+        d.claim(pilotPools[0], lp);
+        assertGt(aumm.balanceOf(lp), 0); // mint survives the halving-boundary straddle
     }
 }
