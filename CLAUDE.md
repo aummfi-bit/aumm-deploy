@@ -59,18 +59,17 @@ aumm-deploy/
 ├── foundry.toml                  — compiler config matching Balancer mainnet
 ├── foundry.lock                  — pinned dep versions for reproducibility
 ├── docs/
-│   ├── STAGES_OVERVIEW.md        — master C-through-R stage sequence
-│   ├── FINDINGS.md               — resolved + deferred open questions, OQ-1 through OQ-19 + Stage G OQ-G1–G4
+│   ├── STAGES_OVERVIEW.md        — master stage sequence, C through R + the Stage P-bis insert
+│   ├── FINDINGS.md               — OQ ledger: OQ-1 through OQ-25 + Stage G addendum OQ-G1–G4
+│   ├── ROBUSTNESS_BACKPORT_REGISTER.md — RB-* deferred robustness-backport queue
+│   ├── STAGE_X_PLAN.md / _NOTES.md — per-stage plans + notes; Stages A–P complete (current status: §11)
 │   ├── STAGE_G_PRECHECK_AUTO_GAUGE.md — Stage G pivot decision record (auto-gauge)
-│   ├── STAGE_G_NOTES.md          — Stage G design freeze + test matrix (pre-`STAGE_G_PLAN.md`)
-│   ├── STAGE_A_PLAN.md           — complete, tagged stage-a-complete
-│   ├── STAGE_B_PLAN.md / _NOTES.md — complete, tagged stage-b-complete
-│   ├── STAGE_C_PLAN.md / _NOTES.md — complete, tagged stage-c-complete
-│   ├── STAGE_D_PLAN.md / _NOTES.md — in progress (see section 11)
-│   └── balancer_v3_reference.md  — working reference, Balancer V3 substrate notes
+│   ├── balancer_v3_reference.md  — working reference, Balancer V3 substrate notes
+│   └── white_hat/                — AUREUM_WHITEHAT_OUTPUT.md (F-nn findings ledger) + AUREUM_WHITEHAT_PROCESS.md
 ├── src/
-│   ├── vault/                    — Stage B contracts (AureumVault, Factory, FeeController, Authorizer)
-│   ├── lib/                      — Stage C onward; pure libraries (AureumTime, ...)
+│   ├── vault/                    — Stage B (AureumVaultFactory F2, AureumProtocolFeeController, AureumAuthorizer)
+│   ├── factory/                  — AureumWeightedPoolFactory (Aureum-owned weighted-pool factory)
+│   ├── lib/                      — pure libraries (AureumTime)
 │   ├── token/                    — Stage C (AuMM) + Stage I (AuMT)
 │   ├── fee_router/               — Stage D
 │   ├── ccb/                      — Stage F
@@ -78,10 +77,15 @@ aumm-deploy/
 │   ├── emission/                 — Stage H
 │   ├── registry/                 — Stage J
 │   ├── governance/               — Stage K + Stage O
-│   └── incendiary/               — Stage L
+│   ├── incendiary/               — Stage L
+│   └── rate_provider/            — Stage N (ERC4626RateProvider, CompositeRateProvider)
 ├── test/
-│   └── unit/                     — per-file unit tests; fork tests under fork/ when needed
-├── script/                       — deployment scripts
+│   ├── unit/                     — per-file unit tests
+│   ├── fork/                     — mainnet-fork integration tests (split-form invocation per D35)
+│   ├── whitehat/                 — F-nn PoC suites from the white-hat passes
+│   ├── invariant/                — P6.5 invariant harness (emission conservation)
+│   └── mocks/                    — shared mocks
+├── script/                       — deployment scripts (granular per-contract + DeployStageX orchestrators)
 ├── lib/                          — foundry-managed submodules (balancer-v3-monorepo, openzeppelin-contracts, forge-std)
 └── .venv/                        — Python virtualenv for Slither
 ```
@@ -97,7 +101,7 @@ A stage that doesn't yet exist has no directory under `src/` until its first fil
 | File | Purpose |
 | --- | --- |
 | `docs/STAGES_OVERVIEW.md` | Master stage sequence, stage summaries, dependency graph, testing strategy per stage, tags |
-| `docs/FINDINGS.md` | All resolved Open Questions (OQ-1 through OQ-19, OQ-G1–G4 Stage G addendum) plus deferred items. Cross-referenced constantly from stage plans |
+| `docs/FINDINGS.md` | All resolved Open Questions (OQ-1 through OQ-25, plus the Stage G addendum OQ-G1–G4) and deferred items. Cross-referenced constantly from stage plans |
 | `docs/STAGE_G_PRECHECK_AUTO_GAUGE.md` | Stage G auto-gauge pivot — accepted propositions, side-by-side delta, conflicts |
 | `docs/STAGE_G_NOTES.md` | Stage G design freeze (G-D*) + efficiency event schema + test matrix |
 | `docs/STAGE_X_PLAN.md` | Per-stage detailed plan: numbered sub-steps, time estimates, commands, tests, completion log |
@@ -583,19 +587,11 @@ One message, then Claude Code calls the drop back to Opus-high or Sonnet.
 
 | Stage | Entry mode | Drops to Sonnet for |
 | --- | --- | --- |
-| D (current — post-architecture) | Opus high | Read-backs on mock saves, commit drafts |
-| E | Opus high entry, then mostly Sonnet | Scaffolding, config |
-| F (CCB) | Opus extra-high entry, then Opus high | Test harness boilerplate only |
-| G | Opus high | Gauge-weight test writing |
-| H (emission) | Opus extra-high entry, then Opus high | N/A — stay on Opus through halving logic |
-| I (AuMT) | Opus high | LP-receipt test writing |
-| J (registry) | Sonnet entry, Opus for interface design | Most of stage |
-| K (governance handoff) | Opus extra-high | Nothing — stay on Opus |
-| L (incendiary) | Opus high | Test writing after design is set |
-| O (governance modules) | Opus high | Scaffolding |
-| P / Q / R (formal verification) | Opus extra-high | Nothing — stay on Opus |
+| P-bis (current — open-issue close-out + testnet go-live + frontend) | Opus high | Read-backs, commit drafts, deploy-script scaffolding |
+| Q (external audit engagement) | Opus extra-high | Nothing — stay on Opus |
+| R (mainnet deployment) | Opus extra-high | Nothing — stay on Opus |
 
-Stages A, B, C are complete. From Stage D onward, Claude Code announces mode at entry and at each natural beat within the stage.
+Stages A through P are complete; their entry-mode rows live in git history. From Stage P-bis onward, Claude Code announces mode at entry and at each natural beat within the stage.
 
 ### Token discipline (real levers, not ceremony)
 
