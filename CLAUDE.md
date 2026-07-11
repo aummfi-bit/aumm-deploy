@@ -505,6 +505,16 @@ Any ambiguity in **typed domain** (accepted token set, enum, immutable-vs-storag
 
 The ambiguity-gate fires whether the ambiguity is in the canonical spec (`aummfi-bit/aumm-site`), in a stage `_NOTES.md` decision, in a stage `_PLAN.md` body, or in `FINDINGS.md`. The cure is always the same: notes first, code after.
 
+### Blocker classification — fewer, sharper blockers
+
+Extends the ambiguity-gate above — not every audit or pre-flight concern is ambiguity-gate severity. Before flagging something as blocking the next §8e.1, classify it:
+
+* **Blocks contract-spec lock** — changes a typed-domain or state-semantics decision (the ambiguity-gate above) that Cursor is about to materialize in code. A true hard blocker: resolve in notes first.
+* **Pre-mainnet gate** — must be resolved before Stage R broadcast but does not change the current sub-step's slot layout or signature (a deferred robustness backport / `RB-*` row, an ops-custody item like F-14, a coverage-tooling gap like P-D42). Record it in the §11 carry-forward or the `RB-*` register and proceed.
+* **Implementation detail** — a naming, comment, or local-structure preference with no spec or downstream consequence. Note it inline at most; do not block.
+
+Default to fewer, sharper blockers: a long list of mixed-severity "blockers" trains the reader to skim past the one that actually blocks. Unsure between the first two classes → treat as a spec-lock blocker (the §12 default). Unsure between the last two → implementation detail, do not block.
+
 ## 13. Model governance
 
 ### Core principle
