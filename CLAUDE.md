@@ -129,10 +129,15 @@ When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constit
 The plan and notes files use short reference codes. Know them on sight.
 
 * **`OQ-N`** — Open Question N from `docs/FINDINGS.md`. Example: `per OQ-5` means "see OQ-5 in FINDINGS.md" — typically a resolved canonical constant or a settled architectural choice. **`OQ-G1`–`OQ-G4`** — Stage G addendum (gauge pivot), resolved 2026-05-05.
-* **`C-Dn`** — Planning-stage design decision n from `docs/STAGE_C_PLAN.md` (similarly `B-Dn` for Stage B, `D-Dn` for Stage D, etc.). These are the *choices* made while writing the plan, before implementation. Example: `per C-D12` means "see decision C-D12 in STAGE_C_PLAN.md."
-* **`Cn`** (two-digit, like `C10`, `C11`, `C14`) — Implementation-stage finding n from `docs/STAGE_C_NOTES.md`. Numbered from 10 to avoid collision with the `C-D*` planning codes. Example: `C14` is the Cursor autonomous execution incident (section 9).
+* **`C-Dn`** — Planning-stage design decision n from `docs/STAGE_C_PLAN.md` (similarly `B-Dn`, `D-Dn`, … `P-Dn`, and the two-letter `PB-Dn` for Stage P-bis). These are the *choices* made while writing the plan, before implementation. Example: `per C-D12` means "see decision C-D12 in STAGE_C_PLAN.md."
+* **`Xn`** (stage letter + two-digit ≥ 10, no hyphen — e.g. `C14`, `D36`, `E10`, `F12`, `G16`, `H13`, `I13`) — Implementation-stage finding n from `docs/STAGE_X_NOTES.md`, numbered from 10 to avoid collision with the `X-D*` planning codes. Example: `C14` is the Cursor autonomous-execution incident (§9); the §11 engineering-lesson index is the roster of these codes.
 * **`G-Dn`** — Design freeze decision n from `docs/STAGE_G_NOTES.md` (Stage G pivot; pre-`STAGE_G_PLAN.md`).
-* **`F-n`** — Formula n from `11_formulas.md` in `aummfi-bit/aumm-site` (see §4). Example: `F-0 piecewise bootstrap emission decay`.
+* **The `F` reference namespace is overloaded across three sources — disambiguate by form:**
+  - **`F-0`…`F-12`** (hyphen, not zero-padded) — Formula n from `11_formulas.md` in `aummfi-bit/aumm-site` (see §4). Example: `F-0` piecewise bootstrap emission decay; `F-8` the CCB multiplier.
+  - **`F-01`…`F-20`** (hyphen, zero-padded to two digits) — white-hat finding n from `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`. Example: `F-04` the seed-AGE maturity gate; `F-08` veto stacking.
+  - **`F10`…`F14`** (no hyphen) — Stage-F implementation finding from `docs/STAGE_F_NOTES.md` (the `Xn` form above). The padding/hyphenation is the whole disambiguator: `F-8` (formula) ≠ `F-08` (finding) ≠ `F14` (Stage-F note).
+* **`W*` / `WH-*`** — white-hat audit-pass codes; the finding ledger and per-pass detail live in `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`. Forms: the Stage-K pass, `WK-R` (rolling post-K re-audit), `WL`/`WM`/`WN`/`WO` (per-stage spot reviews), and `WH-D`/`WH-G`/…/`WH-P6` (the Stage-P back-fill per-stage passes + cross-seam synthesis). Distinct from the `F-nn` findings those passes produce.
+* **`RB-*`** — Robustness Backport Register entry from `docs/ROBUSTNESS_BACKPORT_REGISTER.md` (deferred hardening items; e.g. `RB-004.0b`, referenced in the `F13` lesson).
 * **`§xxix`** — Section xxix in an `aummfi-bit/aumm-site` numbered spec (see §4).
 * **Block-number constants** — canonical, defined in FINDINGS OQ-3/OQ-4/OQ-5. `BLOCKS_PER_DAY = 7_200`, `BLOCKS_PER_EPOCH = 100_800`, `BLOCKS_PER_MONTH = 219_000`, `BLOCKS_PER_QUARTER = 657_000`, `BLOCKS_PER_YEAR = 2_628_000`, `BLOCKS_PER_ERA = 10_512_000`. **Block numbers are canonical time units everywhere in the protocol.** Calendar terms ("month," "year," "14 days") are aliases.
 
