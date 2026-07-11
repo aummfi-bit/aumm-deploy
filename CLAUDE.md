@@ -109,9 +109,9 @@ A stage that doesn't yet exist has no directory under `src/` until its first fil
 | `docs/balancer_v3_reference.md` | Balancer V3 substrate working notes |
 | `.cursorrules` | Cursor editor conventions + the "Cursor operation scope — executor under Claude Code planning" rules |
 
-### External canonical spec — `aummfi-bit/aumm-site` (read via WebFetch)
+### External canonical spec — `aummfi-bit/aumm-site` (local clone at `/Users/janus/code/aumm-site/`)
 
-The protocol's canonical specification lives in a separate public GitHub repo: <https://github.com/aummfi-bit/aumm-site> (default branch `main`). Claude Code reads from it directly via WebFetch on raw URLs of the form `https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/<file>`.
+The protocol's canonical specification lives in a separate public GitHub repo: <https://github.com/aummfi-bit/aumm-site> (default branch `main`), cloned locally at `/Users/janus/code/aumm-site/`. Claude Code reads the local clone directly — plain §8a file reads (`cat`, `grep`, `sed -n`). Do not read spec content via WebFetch on raw GitHub URLs: that path has confabulated spec literals in past sessions; the on-disk clone is authoritative. If clone freshness is in doubt (a spec edit may have landed upstream), ask the user to run the pull — fetching is a network action and stays user-run.
 
 Layout at the repo root:
 
@@ -120,7 +120,7 @@ Layout at the repo root:
 * **Other prose** — `aureum_schedule.md`, `project_aureum_design_final.md`, `script.md`, `15_overview.md`.
 * **AI-consumption versions** — `llms.txt` (curated index) and `llms-full.txt` (full corpus concatenation) at the repo root, for cases where a single round-trip read is preferred over per-doc fetches.
 
-When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — fetch the doc directly: `WebFetch(url=https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/11_formulas.md, prompt=...)`. **Do not fabricate spec content.** If WebFetch fails or the relevant section is ambiguous after fetch, ask the user to paste from their local clone or the GitHub web view. FINDINGS.md often quotes or summarises the relevant spec passages; checking there first can avoid an unneeded fetch.
+When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — read the file from the clone, e.g. `grep -n` / `sed -n` on `/Users/janus/code/aumm-site/11_formulas.md`. **Do not fabricate spec content.** If the clone is missing or the relevant section is ambiguous after reading, ask the user to paste from the GitHub web view. FINDINGS.md often quotes or summarises the relevant spec passages; checking there first can avoid an unneeded read.
 
 ---
 
@@ -452,7 +452,7 @@ Loop grep-and-confirm per §6 / §8e; all git mutations in user's terminal; Curs
 * Cursor Auto-Run stays "Ask Every Time," Command Allowlist stays empty, Browser / MCP / File-Deletion / External-File Protection toggles stay on.
 * **Claude Code does not write files.** All file writes flow through Cursor. Claude Code plans, authors prompts, audits Cursor's output, drafts commit messages and terminal commands for the user.
 * Git mutations (`add`, `commit`, `push`, `tag`) are run by the user in terminal, not by Claude Code or Cursor.
-* External canonical spec lives at `https://github.com/aummfi-bit/aumm-site` (default branch `main`). Claude Code reads it directly via WebFetch on raw URLs (e.g. `https://raw.githubusercontent.com/aummfi-bit/aumm-site/main/11_formulas.md`). When a plan or notes reference requires spec text, fetch directly; ask the user to paste only if WebFetch fails or the section is ambiguous. See §4 for the full layout.
+* External canonical spec lives at `https://github.com/aummfi-bit/aumm-site` (default branch `main`), cloned locally at `/Users/janus/code/aumm-site/`. Claude Code reads the clone directly (§8a file reads, e.g. `sed -n` on `/Users/janus/code/aumm-site/11_formulas.md`) — never via WebFetch on raw URLs, which has confabulated spec literals. Ask the user to paste only if the clone is missing or the section is ambiguous. See §4 for the full layout.
 * **§8e.1 template is two blocks.** Every filled §8e.1 has a `### CURSOR PROMPT — paste to Cursor verbatim; Cursor only` block and a separate `### USER VERIFY — run in the user's terminal after Cursor's save; not part of the Cursor prompt` block. Cursor never sees USER VERIFY. USER VERIFY and all terminal command blocks (including git sequences) begin with `clear` on their own line. **When Claude Code emits a filled §8e.1 in chat, the two blocks must be in two physically separate ` ```text ``` ` code fences — never a single combined fence — so the user's paste to Cursor cannot accidentally include the USER VERIFY shell commands.** When the same template is pasted into a stage-plan or notes file for editor-preview rendering (per the §8e.1 chat-safe-formatting paragraph hardened at `8197aaa`), each block is also wrapped in its own contiguous ` ```text ``` ` fence so the preview keeps each block as a single copyable unit. See §8e.1 + D31.
 * **`.cursorrules` USER VERIFY hard-stop (`5f3b4fc`).** Defense-in-depth on top of the §8e.1 two-block split: if any prompt passed to Cursor contains the literal text `### USER VERIFY`, Cursor must treat everything from that header to end-of-message as out of scope, report "USER VERIFY section detected — treating as out of scope per .cursorrules", and proceed only on the content above. Catches paste accidents where the user copies past the divider.
 * **§13 Sonnet dispatch is not session-scoped.** Every filled §8e.1 turn must close with the Sonnet dispatch line per §13's "Relay after a §8e.1 draft" — across sessions, resumes, and compactions. If Claude Code forgets, user says "mode?" and Claude Code emits the dispatch.
