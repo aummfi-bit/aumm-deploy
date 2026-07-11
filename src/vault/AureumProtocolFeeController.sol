@@ -20,6 +20,8 @@ import { SingletonAuthentication } from "@balancer-labs/v3-vault/contracts/Singl
 import { VaultGuard } from "@balancer-labs/v3-vault/contracts/VaultGuard.sol";
 
 import { IAureumProtocolFeeControllerHookExtension } from "../fee_router/IAureumProtocolFeeControllerHookExtension.sol";
+import { IAureumFeeRoutingHook } from "../fee_router/IAureumFeeRoutingHook.sol";
+import { AureumTime } from "../lib/AureumTime.sol";
 
 /**
  * @notice Helper contract to manage protocol and creator fees outside the Vault.
@@ -177,6 +179,15 @@ contract AureumProtocolFeeController is
     ///      and the per-pool override revert with this error.
     ///      See docs/STAGE_D_PLAN.md (D-D15) and docs/FINDINGS.md (OQ-1, OQ-1a).
     error SplitIsImmutable();
+
+    /// @notice Reverts when `routeYieldFeeToHook` is called before
+    ///         `BLOCKS_PER_EPOCH` blocks have elapsed since `pool`'s last
+    ///         successful route (OQ-21 per-pool cadence throttle).
+    error RouteThrottled();
+
+    /// @notice Block of `pool`'s last successful `routeYieldFeeToHook` route;
+    ///         anchors the OQ-21 `BLOCKS_PER_EPOCH` throttle. Zero until first route.
+    mapping(address pool => uint256 lastRouteBlock) private _lastRouteBlock;
 
     /// @notice The der Bodensee pool address — the D-D9 `collectAggregateFees`
     ///         pool-identity guard target.
@@ -730,6 +741,33 @@ contract AureumProtocolFeeController is
         // slither-disable-next-line unused-return
         _vault.getPoolTokenCountAndIndexOfToken(pool, token);
         _withdrawProtocolFees(pool, recipient, token);
+    }
+
+    /// @notice Route collected ERC-4626 yield fees for `pool` into the
+    ///         AureumFeeRoutingHook pipeline (OQ-20 Option A / D4.6).
+    /// @dev Governance-gated (`authenticate`). Approves the hook for `amount`,
+    ///      then calls `routeYieldFee`; the hook pulls via `safeTransferFrom`,
+    ///      preserving the leg asymmetry (B10 `safeTransfer` vs yield
+    ///      `safeTransferFrom`, OQ-20). Pool/amount validation stays hook-side
+    ///      (caller-pin, ZeroAddress, InvalidPool(DER_BODENSEE), ZeroAmount).
+    ///      The per-pool `BLOCKS_PER_EPOCH` throttle (OQ-21) stamps only after a
+    ///      successful route, so a reverting hook call does not burn the pool's
+    ///      epoch. Observability is the hook's `YieldFeeRouted` event.
+    /// @param pool The source pool whose collected yield fees are routed.
+    /// @param token The yield-fee token to route.
+    /// @param amount Amount of `token` to route.
+    /// @return bptMinted BPT minted to this controller by the hook.
+    function routeYieldFeeToHook(
+        address pool,
+        IERC20 token,
+        uint256 amount
+    ) external authenticate returns (uint256 bptMinted) {
+        if (block.number < _lastRouteBlock[pool] + AureumTime.BLOCKS_PER_EPOCH) {
+            revert RouteThrottled();
+        }
+        token.forceApprove(FEE_ROUTING_HOOK, amount);
+        bptMinted = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).routeYieldFee(pool, token, amount);
+        _lastRouteBlock[pool] = block.number;
     }
 
     // AUREUM NOTE: Identical to upstream ProtocolFeeController.sol L504-512.
