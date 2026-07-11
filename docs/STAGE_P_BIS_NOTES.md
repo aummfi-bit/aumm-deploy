@@ -1,7 +1,7 @@
 # STAGE_P_BIS_NOTES.md — Stage P-bis Design Freeze + Findings Log
 
 **Stage:** P-bis — Open-Issue Close-Out + Testnet Go-Live + Frontend.
-**Status:** Entry freeze. Locked 2026-07-11 (PB-D1—PB-D5; PB-D1/PB-D2 user-adjudicated). Branch `stage-p-bis` (cut from `main` @ `b5f4b8b` = the restructure commit) per PB-D3. Execution truth until superseded by explicit amend. No code lands until this freeze locks (§12 ambiguity-gate).
+**Status:** Entry freeze. Locked 2026-07-11 (PB-D1—PB-D5; PB-D1/PB-D2 user-adjudicated). Branch `stage-p-bis` (cut from `main` @ `f72b309` = the CM-series tip) per PB-D3 (base amended same-day from `b5f4b8b`). Execution truth until superseded by explicit amend. No code lands until this freeze locks (§12 ambiguity-gate).
 **Canonical spec:** stage scope + workstream roster + gate in `STAGES_OVERVIEW.md` § "Stage P-bis" (the 2026-07-11 restructure record); testnet strategy `FINDINGS.md` OQ-15 / OQ-16; frontend OQ-18 (separate repo `aumm-app`); audit firm OQ-17 (deferred to Stage Q); constitution §xxix (`10_constitution.md` L203).
 **Related:** `STAGE_P_NOTES.md` P-D1 (network-agnostic deploy scripts), P-D9 (hevm/Act), P-D12 (F-14 rails), P-D23 / P-D26 (the original P-bis bundle), P-D40 (F-20 `swapFeeManager`), P-D42 (coverage); `CLAUDE.md` §11 (the live carry-forward list); `docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md` (the F-13 / F-15 Accepted-risk rows).
 
@@ -19,7 +19,7 @@ The K-D9 retained slice splits into two classes. (i) Re-settable: emission-layer
 
 ## PB-D3 — Branch + close mechanics mirror P-D4
 
-Fresh branch `stage-p-bis` cut from `main` @ `b5f4b8b` (the restructure commit). Close mechanics mirror P-D4: two-commit PENDING close (`PENDING_PBIS` placeholder in the `STAGES_OVERVIEW.md` master row + the Completion Log; `CLAUDE.md` §11 stays hash-free) → the `*-backfill` commit substitutes the real hash → tag `stage-p-bis-complete` at the backfill commit → ff-merge to `main`. `stage-p-bis-complete` is the frozen audit candidate handed to Stage Q.
+Fresh branch `stage-p-bis` cut from `main` @ `f72b309` — base amended same-day (user-adjudicated 2026-07-11) from `b5f4b8b` (the restructure commit): the CM-* CLAUDE.md revision series (nine docs commits, `2d91a9f`…`f72b309`) landed on `main` after the freeze locked, and cutting at the stale base would run the stage on a pre-revision CLAUDE.md and break the P-D4-style close-time ff-merge. Close mechanics mirror P-D4: two-commit PENDING close (`PENDING_PBIS` placeholder in the `STAGES_OVERVIEW.md` master row + the Completion Log; `CLAUDE.md` §11 stays hash-free) → the `*-backfill` commit substitutes the real hash → tag `stage-p-bis-complete` at the backfill commit → ff-merge to `main`. `stage-p-bis-complete` is the frozen audit candidate handed to Stage Q.
 
 ## PB-D4 — Stage shape: three sequenced workstreams A → B → C
 
