@@ -65,12 +65,13 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 | N | Miliarium pools, Sector 3 (Equity + thematic) + 2 resolvable ex-M Majors (18 pools per N-D0; 04/07 deferred) | configs | 1-2 weeks | Deployment |
 | O | Composition challenge / replacement-launch | ~350 | 1 week | Small |
 | P | Full-system deployment + stubs + integration validation | stubs + scripts | 2-3 weeks | Integration |
+| P-bis | Open-issue close-out + testnet go-live + frontend | fixes + stubs + scripts | 3-6 weeks | Integration |
 | Q | External audit + patch cycle | patches only | 6-10 weeks | Calendar |
 | R | Mainnet deployment | scripts | 1 week | Launch |
 
 **Total wall-clock estimate:** ~20-28 weeks of focused implementation work (C through P), plus 6-10 weeks of audit calendar (Q), plus launch (R). End-to-end from `stage-b-complete` to `mainnet-genesis`: roughly 8-10 months if work runs continuously and no major surprises surface.
 
-**Dependency graph is clean** — no stage's prerequisites are blocked by a later stage. Per-stage testnet works at every stage: C-D test on mainnet fork directly, E adds live pilot pools, F-L test against the pilot-pool substrate from E, M-O test the full 28-pool constellation, P validates as one system, Q audits, R launches.
+**Dependency graph is clean** — no stage's prerequisites are blocked by a later stage. Per-stage testnet works at every stage: C-D test on mainnet fork directly, E adds live pilot pools, F-L test against the pilot-pool substrate from E, M-O test the full 28-pool constellation, P validates as one system, P-bis closes the open ledger and goes live on a public testnet with the frontend, Q audits, R launches.
 
 ---
 
@@ -366,9 +367,40 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 
 ---
 
+## Stage P-bis — Open-issue close-out + testnet go-live + frontend
+
+> **Restructure decision (2026-07-11, user-directed):** inserted between P and Q so the external audit receives a self-audited, testnet-proven, frontend-connected, frozen candidate — Stage Q narrows to the audit engagement itself. Pulled forward from the former Stage-Q remit: the P-D9 hevm/Act formal-methods bundle and the F-13 / F-15 Accepted-risk dispositions. The letters keep their semantics (Q = audit, R = mainnet); "P-bis" was already the documented name for the deferred deployment bundle (P-D23 / P-D26), widened here to a full tagged stage.
+
+**Goal:** zero open items, the full stack live on a public testnet, and the `aumm-app` frontend running against it. `stage-p-bis-complete` is the frozen audit candidate Stage Q hands to the firm.
+
+**Workstream A — open-issue close-out.** Exit rule per item: **Fixed, Built, or Explicitly-descoped-with-rationale** — nothing silently carried past the tag. Roster as of the P11 close:
+
+- **F-13** (S5 Low, unbounded internal-leg slippage): implement the rate-derived `limitRaw` / `minBptAmountOut` bound, or accept via the quantifying sandwich sim. Pulled forward from Q.
+- **F-15** (S9 Low, `VaultClassRegistry` veto live-denominator): propagate the F-06-style snapshot fix, or accept. Pulled forward from Q.
+- **hevm + Act formal-methods bundle (P-D9):** run pre-audit against the Aureum-owned contracts (fee-routing hook, CCB engine, emission accrual, authorizer window); specs and results ship in the audit hand-off package. Pulled forward from Q.
+- **Multisig-dissolution remainder** (§xxix ↔ K-D9, post-F-20): adjudicate the final wiring step vs an §xxix amendment; if wiring, fire the `setGovernanceContract` rotations (emission-layer governance, `VaultClassRegistry`, `SwapAndDepositToBodensee` donate authority, Miliarium `pauseManager` accounts).
+- **D36 permanent fix / F-D11:** env-key namespacing in `test/fork/DeployAureumVault.t.sol`.
+- **Direct `ReentrancyGuard.selector` test** via `vm.transientStore` (robustness backport).
+- **OQ-20 / OQ-21** (controller-initiated `routeYieldFee` + `BLOCKS_PER_EPOCH` cadence throttle, E-D10) and **OQ-22** (2-hop fallback through ZCHF / sUSDS): build-vs-descope adjudications.
+- **Pool restoration:** 04 ixViatica / 07 ixCambio (E-D17 literals bar) + the ixCasper waEthwstETH 16% leg via an Aureum `CompositeRateProvider` + the OQ-I10 recorder-binding remainder — restore, or explicitly descope to the post-launch composition-challenge path (which now exists, Stage O).
+- **WK.18** thin-venue populated-roster fork sim; **P-D42** coverage-tooling re-eval.
+- **aumm-site spec edits** (user-side, runs in parallel): §viii/§ix per OQ-20/21 + the I-reframe, §xxi sandbox row, F-2 Incendiary amendments, FINDINGS corrections — so the auditors read a spec that matches the code.
+
+**Workstream B — testnet deployment** (the original P-bis bundle, P-D23 / P-D26): the `test-stubs/` testnet ERC-20s (P8; token roster per the Stage-P Builds list above), the canonical Balancer V3 Router redeployed against the Aureum Vault + the `setTrustedRouter` binds (the D33 / O-D5 close-out; the F-09 allowlist seat is waiting), the live testnet broadcast of the full `DeployStageP` orchestration (network choice per P-D1 is the first stage-entry decision), and the F-14 ixAetheron off-chain-conversion ops process + fee-custody item.
+
+**Workstream C — frontend:** the `aumm-app` MVP (separate repo per OQ-18) wired against the live testnet. This repo tracks the milestone plus the deployed-addresses artifact the frontend consumes.
+
+**Ordering:** A → B → C. A before B so the one broadcast carries the fixed code; B before C so the frontend integrates against live addresses.
+
+**Dependencies:** `stage-p-complete`. The `aumm-app` MVP (OQ-18) becomes load-bearing at workstream C.
+
+**Tag:** `stage-p-bis-complete` — the audit-candidate freeze.
+
+---
+
 ## Stage Q — External audit + patch cycle
 
-**Goal:** audit sign-off on `stage-p-complete`.
+**Goal:** audit sign-off on `stage-p-bis-complete` — the audit engagement only. All pre-audit work (open-issue close-out, the P-D9 formal-methods self-run, testnet go-live, the frontend) completes at Stage P-bis per the 2026-07-11 restructure; the firm receives a frozen, self-audited candidate running live on a public testnet with the `aumm-app` frontend connected.
 
 **Process:**
 - Engage audit firm (selection deferred per OQ-17 — candidate list: Trail of Bits, OpenZeppelin, Spearbit, Sigma Prime, Zellic for tier-1; Cantina/Code4rena/Sherlock for contests; Firepan for continuous monitoring).
@@ -376,7 +408,7 @@ Existing Stage B contracts move from `src/` to `src/vault/` as the first step of
 - **Code freeze in effect throughout.** No new features. Only fixes for audit findings.
 - Patches land as numbered sub-steps Q1, Q2, ... — each with its own commit, test updates, and completion-log row. Regression-test against mainnet fork after each patch.
 - The OQ-1 hook is explicitly on the audit hot path — dedicated review pass recommended.
-- Evaluate Act (Argot Collective formal-specification language) for load-bearing tokenomics invariants where exhaustive coverage matters: 21M AuMM cap never exceeded, halving-era boundaries produce the documented emission curve, no admin-key redirect path exists for emissions. Scope decided at audit-firm kickoff — not every invariant warrants a formal spec, only the ones whose property space the tier-1 audit can't sweep exhaustively.
+- The P-D9 hevm + Act formal-methods bundle runs at Stage P-bis (pulled forward per the 2026-07-11 restructure); its specs and results ship in the audit hand-off package. The audit-firm kickoff can still commission additional Act properties where the firm identifies invariants worth exhaustive sweep (the original candidates: 21M AuMM cap never exceeded, halving-era boundaries produce the documented emission curve, no admin-key redirect path exists for emissions).
 
 **Duration:** 6-10 weeks calendar time per FINDINGS OQ-17. Your work during this stage is patch turnaround, not new implementation.
 
@@ -424,6 +456,7 @@ Updated at the close of each stage. Full per-stage completion logs live in the c
 | N | `stage-n-complete` | 2026-06-26 | `a760421` | 18 pools (N-D0: 16 Sector-3 Standard slots + 02 ixAetheron + 06 ixLibertas); N-D8 native-4626 redesign for ixAetheron (sfrxETH/wOETH, dropping N-D1 stata composites); N-D9 sfrxUSD→ysyBOLD swap (sfrxUSD mainnet `previewRedeem` == 0 post-Fraxtal) across 06/20/27 via new `CompositeRateProvider`. First Aureum-owned `src/rate_provider/` surface: `ERC4626RateProvider` + `CompositeRateProvider` (N-D2/N-D9, re-authored under `src/`, §8c). Bind-only `script/DeployStageN.s.sol` (M-D9 shape; `MILIARIUM_POOL_NN` env scheme, D36-collision-safe). Whitehat WN: F-11 Fixed (fail-closed 18/18-decimal constructor guard on both RP contracts). 864 unit + 119 fork green. Detail: `STAGE_N_PLAN.md`. |
 | O | `stage-o-complete` | 2026-06-30 | `e69252f` | OQ-7 composition-fitness gate. K shipped the atomic deprecate-and-replace skeleton (K-D6a—K-D6e); Stage O adds the programmatic §xxvii check K-D6e omitted — `GaugeEligibility.meetsCompositionQualityGate` (≥52% admitted-4626 + canonical hook (O-D2a) + Aureum-factory provenance; supersedes K-D6e per O-D2 / O-D7, I13-class fix-forward), delegated via `IGaugeRegistry` and gating `AureumGovernance.proposeCompositionChallenge` (pre-deposit) + `_executeProposal` (pre-mutation) through `CompositionQualityGateFailed`. Stale 90-day-boost docs struck (O-D3); `CCBMultiplier.activateBoost` orphan flagged for Stage P (O-D4); no Router (O-D5, D33 closed); no pool restoration (O-D6). Whitehat WO: F-12 Fixed. 872 unit + 124 fork green. Detail: `STAGE_O_PLAN.md`. |
 | P | `stage-p-complete` | 2026-07-11 | `e25a5dc` | Full-system deployment + the deferred per-stage white-hat back-fill sweep (P-D0). **(A)** WH-D/G/H/I/J/L + P6 cross-seam + the INV-1/2/6 harness — findings F-13…F-20 all Fixed except F-13/F-15 Accepted-risk → Stage Q; ledger ZERO open. **(B)** the P9 deploy scripts + the `DeployStageP` orchestrator, validated by `test/fork/StagePIntegration.t.sol` (`StagePWiringTest` + the P-D36 7-leg e2e roster) against REAL mainnet literals (P-D0b); the e2e surfaced + Fixed F-19 (uninitialized-venue liveness) + F-20 (FeeChange EXCLUSIVE-role foreclosure). Testnet stubs + live broadcast + `aumm-app` → P-bis (P-D23); hevm → Stage Q (P-D9). `forge coverage` structurally unavailable (P-D42); 877 unit / 136 fork green; `slither .` ZERO high/critical in `src/`. Detail: `STAGE_P_PLAN.md`. |
+| P-bis | `stage-p-bis-complete` |  |  |  |
 | Q | `stage-q-complete` |  |  |  |
 | R | `stage-r-complete` / `mainnet-genesis` |  |  |  |
 
