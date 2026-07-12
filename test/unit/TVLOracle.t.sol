@@ -222,6 +222,11 @@ contract TVLOracleTest is Test {
         oracle.setTokenUnderlying(token, underlying);
     }
 
+    function _addHop(address underlying) internal {
+        vm.prank(GOVERNANCE);
+        oracle.addHopUnderlying(underlying);
+    }
+
     function _setComposition(address target, address[] memory tokenAddrs, uint256[] memory balances) internal {
         IERC20[] memory ierc20Tokens = new IERC20[](tokenAddrs.length);
         for (uint256 i = 0; i < tokenAddrs.length; i++) {
@@ -602,5 +607,352 @@ contract TVLOracleTest is Test {
         // dedup: Leg 1 skips venueB (isMiliarium), Leg 2 owns it; avg = (1e18 + 3e18)/2 = 2e18 -> 50e18 * 2 = 100e18.
         // a double-count would be (1 + 3 + 3)/3 ~= 2.33e18 -> ~116.67e18.
         assertEq(oracle.tvl(pool), 100e18);
+    }
+
+    /* ---------- addHopUnderlying + 2-hop valuation fallback (PB-D7, OQ-22 Phase 2) ---------- */
+
+    function test_addHopUnderlying_revert_notGovernance() public {
+        address attacker = _addr(0x9999);
+        vm.prank(attacker);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, attacker));
+        oracle.addHopUnderlying(_addr(0xB2));
+    }
+
+    function test_addHopUnderlying_revert_zeroAddress() public {
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        oracle.addHopUnderlying(address(0));
+    }
+
+    function test_addHopUnderlying_revert_alreadyAdded() public {
+        address I = _addr(0xB2);
+        _addHop(I);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.AlreadyAdded.selector, I));
+        oracle.addHopUnderlying(I);
+    }
+
+    function test_addHopUnderlying_happyPath_setsFlagAndEmits() public {
+        address I = _addr(0xB2);
+        vm.expectEmit(true, false, false, false);
+        emit TVLOracle.HopUnderlyingAdded(I);
+        vm.prank(GOVERNANCE);
+        oracle.addHopUnderlying(I);
+        assertTrue(oracle.isHopUnderlying(I));
+    }
+
+    function test_tvl_twoHopFallback_pricesViaIntermediate() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIZ = _addr(0x6004);
+        address[] memory izTokens = new address[](2);
+        izTokens[0] = tokenI;
+        izTokens[1] = SVZCHF;
+        uint256[] memory izBals = new uint256[](2);
+        izBals[0] = 100e18;
+        izBals[1] = 300e18;
+        _addVenue(venueIZ, izTokens, izBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 300e18);
+    }
+
+    function test_tvl_directVenueWins_overHopPath() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIZ = _addr(0x6004);
+        address[] memory izTokens = new address[](2);
+        izTokens[0] = tokenI;
+        izTokens[1] = SVZCHF;
+        uint256[] memory izBals = new uint256[](2);
+        izBals[0] = 100e18;
+        izBals[1] = 300e18;
+        _addVenue(venueIZ, izTokens, izBals);
+        address venueUZ = _addr(0x6005);
+        address[] memory uzTokens = new address[](2);
+        uzTokens[0] = tokenU;
+        uzTokens[1] = SVZCHF;
+        uint256[] memory uzBals = new uint256[](2);
+        uzBals[0] = 100e18;
+        uzBals[1] = 500e18;
+        _addVenue(venueUZ, uzTokens, uzBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 250e18);
+    }
+
+    function test_tvl_twoHopFallback_meanAcrossTwoIntermediates() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI1 = _addr(0xA2);
+        address I1 = _addr(0xB2);
+        address tokenI2 = _addr(0xA3);
+        address I2 = _addr(0xB3);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI1, I1);
+        _mapToken(tokenI2, I2);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I1);
+        _addHop(I2);
+        address venueU_I1 = _addr(0x6003);
+        address[] memory uI1Tokens = new address[](2);
+        uI1Tokens[0] = tokenU;
+        uI1Tokens[1] = tokenI1;
+        uint256[] memory uI1Bals = new uint256[](2);
+        uI1Bals[0] = 100e18;
+        uI1Bals[1] = 100e18;
+        _addVenue(venueU_I1, uI1Tokens, uI1Bals);
+        address venueI1_Z = _addr(0x6004);
+        address[] memory i1ZTokens = new address[](2);
+        i1ZTokens[0] = tokenI1;
+        i1ZTokens[1] = SVZCHF;
+        uint256[] memory i1ZBals = new uint256[](2);
+        i1ZBals[0] = 100e18;
+        i1ZBals[1] = 200e18;
+        _addVenue(venueI1_Z, i1ZTokens, i1ZBals);
+        address venueU_I2 = _addr(0x6005);
+        address[] memory uI2Tokens = new address[](2);
+        uI2Tokens[0] = tokenU;
+        uI2Tokens[1] = tokenI2;
+        uint256[] memory uI2Bals = new uint256[](2);
+        uI2Bals[0] = 100e18;
+        uI2Bals[1] = 100e18;
+        _addVenue(venueU_I2, uI2Tokens, uI2Bals);
+        address venueI2_Z = _addr(0x6006);
+        address[] memory i2ZTokens = new address[](2);
+        i2ZTokens[0] = tokenI2;
+        i2ZTokens[1] = SVZCHF;
+        uint256[] memory i2ZBals = new uint256[](2);
+        i2ZBals[0] = 100e18;
+        i2ZBals[1] = 400e18;
+        _addVenue(venueI2_Z, i2ZTokens, i2ZBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 150e18);
+    }
+
+    function test_tvl_twoHop_skipsSelfHopUnderlying() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(U);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIZ = _addr(0x6004);
+        address[] memory izTokens = new address[](2);
+        izTokens[0] = tokenI;
+        izTokens[1] = SVZCHF;
+        uint256[] memory izBals = new uint256[](2);
+        izBals[0] = 100e18;
+        izBals[1] = 300e18;
+        _addVenue(venueIZ, izTokens, izBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 300e18);
+    }
+
+    function test_tvl_twoHop_skipsSvzchfHop() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(SVZCHF);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIZ = _addr(0x6004);
+        address[] memory izTokens = new address[](2);
+        izTokens[0] = tokenI;
+        izTokens[1] = SVZCHF;
+        uint256[] memory izBals = new uint256[](2);
+        izBals[0] = 100e18;
+        izBals[1] = 300e18;
+        _addVenue(venueIZ, izTokens, izBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 300e18);
+    }
+
+    function test_tvl_twoHop_h2MissIntermediateInert() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 0);
+    }
+
+    function test_tvl_twoHop_noTransitiveHop_returnsZero() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        address tokenJ = _addr(0xA4);
+        address J = _addr(0xB4);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(tokenJ, J);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I);
+        _addHop(J);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 100e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIJ = _addr(0x6004);
+        address[] memory ijTokens = new address[](2);
+        ijTokens[0] = tokenI;
+        ijTokens[1] = tokenJ;
+        uint256[] memory ijBals = new uint256[](2);
+        ijBals[0] = 100e18;
+        ijBals[1] = 100e18;
+        _addVenue(venueIJ, ijTokens, ijBals);
+        address venueJZ = _addr(0x6005);
+        address[] memory jzTokens = new address[](2);
+        jzTokens[0] = tokenJ;
+        jzTokens[1] = SVZCHF;
+        uint256[] memory jzBals = new uint256[](2);
+        jzBals[0] = 100e18;
+        jzBals[1] = 200e18;
+        _addVenue(venueJZ, jzTokens, jzBals);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 0);
+    }
+
+    function test_quoteSvZCHF_twoHopFallback_pricesViaIntermediate() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        address tokenI = _addr(0xA2);
+        address I = _addr(0xB2);
+        _mapToken(tokenU, U);
+        _mapToken(tokenI, I);
+        _mapToken(SVZCHF, SVZCHF);
+        _addHop(I);
+        address venueUI = _addr(0x6003);
+        address[] memory uiTokens = new address[](2);
+        uiTokens[0] = tokenU;
+        uiTokens[1] = tokenI;
+        uint256[] memory uiBals = new uint256[](2);
+        uiBals[0] = 100e18;
+        uiBals[1] = 200e18;
+        _addVenue(venueUI, uiTokens, uiBals);
+        address venueIZ = _addr(0x6004);
+        address[] memory izTokens = new address[](2);
+        izTokens[0] = tokenI;
+        izTokens[1] = SVZCHF;
+        uint256[] memory izBals = new uint256[](2);
+        izBals[0] = 100e18;
+        izBals[1] = 300e18;
+        _addVenue(venueIZ, izTokens, izBals);
+        assertEq(oracle.quoteSvZCHF(tokenU, 50e18), 300e18);
+    }
+
+    function test_tvl_twoHop_emptyRosterDirectMiss_returnsZero() public {
+        address tokenU = _addr(0xA1);
+        address U = _addr(0xB1);
+        _mapToken(tokenU, U);
+        _mapToken(SVZCHF, SVZCHF);
+        address pool = _addr(0x5003);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 0);
+        assertEq(oracle.quoteSvZCHF(tokenU, 50e18), 0);
     }
 }
