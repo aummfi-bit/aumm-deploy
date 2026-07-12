@@ -21,6 +21,12 @@ import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapCh
 import { IBodenseeBootstrapChannel } from "../../src/emission/IBodenseeBootstrapChannel.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { IEmissionDistributor } from "../../src/emission/IEmissionDistributor.sol";
+import {
+    TokenConfig,
+    TokenType,
+    PoolRoleAccounts
+} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 
 /**
  * @title StageHIntegrationFixture
@@ -430,5 +436,95 @@ contract StageHCrossStackTest is StageHIntegrationFixture {
         emissionDistributor.claim(pilotPools[0], user);
 
         assertGt(aumm.balanceOf(user), 0, "cross-stack mint > 0");
+    }
+}
+
+/**
+ * @title StageHTwoHopFallbackTest
+ * @notice PB-D7 / OQ-22 Phase 2 fork witness — real-stack USDC pricing via USDS hop with Bodensee as hop-2 venue.
+ * @dev H-D38(4) binary-assertion posture: arithmetic exactness lives in test/unit/TVLOracle.t.sol; this witness
+ *      proves real-stack wiring — mainnet-fork Vault, real USDC, real sUSDS with `susds.asset()` as the USDS hop key,
+ *      Bodensee as the hop-2 venue, EMASampler propagation.
+ */
+contract StageHTwoHopFallbackTest is StageHIntegrationFixture {
+    address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    bytes32 internal constant HOP_VENUE_SALT = bytes32(uint256(0x2207));
+
+    address internal hopVenue;
+    address internal usds;
+
+    function setUp() public override {
+        super.setUp();
+
+        usds = susds.asset();
+
+        tvlOracle.setTokenUnderlying(address(svZchf), address(svZchf));
+        tvlOracle.setTokenUnderlying(address(susds), usds);
+        tvlOracle.setTokenUnderlying(USDC, USDC);
+
+        address[2] memory addrs;
+        addrs[0] = USDC;
+        addrs[1] = address(susds);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
+
+        TokenConfig[] memory configs = new TokenConfig[](2);
+        configs[0] = TokenConfig({
+            token: IERC20(addrs[0]),
+            tokenType: TokenType.STANDARD,
+            rateProvider: IRateProvider(address(0)),
+            paysYieldFees: false
+        });
+        configs[1] = TokenConfig({
+            token: IERC20(addrs[1]),
+            tokenType: TokenType.STANDARD,
+            rateProvider: IRateProvider(address(0)),
+            paysYieldFees: false
+        });
+
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 5e17;
+        weights[1] = 5e17;
+
+        hopVenue = wpf.create(
+            "usdc-susds-hop-venue",
+            "HOPV",
+            configs,
+            weights,
+            PoolRoleAccounts({pauseManager: GOVERNANCE_MULTISIG, swapFeeManager: address(0), poolCreator: address(0)}),
+            0.003e18,
+            address(0),
+            true,
+            false,
+            HOP_VENUE_SALT
+        );
+
+        IERC20[] memory vTokens = vault.getPoolTokens(hopVenue);
+        uint256[] memory amts = new uint256[](2);
+        for (uint256 i = 0; i < vTokens.length; i++) {
+            amts[i] = address(vTokens[i]) == USDC ? 1_000e6 : 1_000e18;
+        }
+        _initializePool(hopVenue, vTokens, amts);
+
+        tvlOracle.addConstellationPool(hopVenue);
+        tvlOracle.addConstellationPool(bodenseePool);
+    }
+
+    function test_Fork_TwoHop_UsdcPricesViaUsdsHop_PropagatesToEMA() public {
+        assertEq(tvlOracle.quoteSvZCHF(USDC, 1_000e18), 0, "Phase-1 direct-miss: USDC unpriced pre-seed");
+        uint256 tvlBefore = tvlOracle.tvl(hopVenue);
+        assertGt(tvlBefore, 0, "sUSDS leg prices direct via Bodensee pre-seed");
+        tvlOracle.addHopUnderlying(usds);
+        assertGt(tvlOracle.quoteSvZCHF(USDC, 1_000e18), 0, "USDC priced via USDS hop post-seed");
+        uint256 tvlAfter = tvlOracle.tvl(hopVenue);
+        assertGt(tvlAfter, tvlBefore, "venue TVL gains the hopped USDC leg");
+        emaSampler.updateEMA(hopVenue);
+        assertGt(emaSampler.tvlEMA(hopVenue), tvlBefore, "F-D15 cold-start EMA carries the hop-inclusive spot");
+    }
+
+    function test_Fork_TwoHop_AddHopUnderlyingAuthGate() public {
+        address stranger = makeAddr("hop_stranger");
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, stranger));
+        tvlOracle.addHopUnderlying(usds);
     }
 }
