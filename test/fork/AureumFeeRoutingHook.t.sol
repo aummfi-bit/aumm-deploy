@@ -10,6 +10,7 @@ import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { TokenConfig, TokenType, PoolRoleAccounts, AfterSwapParams, SwapKind, VaultSwapParams } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
+import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
 
@@ -522,6 +523,45 @@ contract AureumFeeRoutingHookForkTest is Test {
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSelector(IAureumFeeRoutingHook.UnauthorizedCaller.selector, attacker));
         hook.routeYieldFee(tradingPool, svZchf, 1e18);
+    }
+
+    function test_Fork_RouteYieldFeeToHookEntryPoint() public {
+        _initializeBodensee();
+        uint256 amount = 100e18;
+
+        // Step 1 — the permissionless Balancer-shaped collect (zero accrual on
+        // a static fork block; exercises the real path without a rate-evolution
+        // scenario — live yield accrual is the Sepolia run's job, PB3).
+        controller.collectAggregateFees(tradingPool);
+
+        // Step 2 — seed the controller with the yield-fee token (the D7
+        // primitive-test pattern, L509) and route through the OQ-20 governance
+        // entry point: no prank-as-controller, the real authenticate chain.
+        deal(address(svZchf), address(controller), amount, true);
+        uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+
+        vm.expectEmit(true, true, false, false, address(hook));
+        emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
+        vm.prank(GOVERNANCE_MULTISIG);
+        uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
+
+        assertGt(bptMinted, 0);
+        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
+        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore + bptMinted);
+        assertEq(svZchf.balanceOf(address(hook)), 0);
+        assertEq(svZchf.allowance(address(controller), address(hook)), 0);
+
+        // Step 3 — OQ-21: an immediate second route is epoch-throttled.
+        deal(address(svZchf), address(controller), amount, true);
+        vm.prank(GOVERNANCE_MULTISIG);
+        vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
+
+        // Step 4 — the deployed-authorizer gate: non-governance reverts.
+        address attacker = address(uint160(uint256(keccak256("attacker"))));
+        vm.prank(attacker);
+        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
     }
 
     function test_Fork_RecursionGuard() public {
