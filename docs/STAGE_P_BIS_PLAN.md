@@ -105,4 +105,9 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | --- | --- | --- |
 | PB1.1 | `f84fa36` | ✅ docs/STAGE_P_BIS_NOTES.md — entry freeze (PB-D1—PB-D5) |
 | PB1.1a | `986a223` | ✅ PB-D3 base amendment b5f4b8b → f72b309 (user-adjudicated); CLAUDE.md §11 repointed at `db84611` |
-| PB1.2 | — | this file — pending |
+| PB1.2 | `9446cbd` | ✅ docs/STAGE_P_BIS_PLAN.md — plan + PB1—PB5 roadmap + Completion Log |
+| PB2.1 | `88c453d` | ✅ PB-D6 lock — OQ-20/OQ-21 BUILD adjudication (user-adjudicated) |
+| PB2.1b | `7e250fc` | ✅ src — routeYieldFeeToHook entry point + per-pool BLOCKS_PER_EPOCH throttle |
+| PB2.1c | `232b346` | ✅ unit tests — authenticate gate, throttle boundary, stamp-on-revert, bptMinted propagation (42/42) |
+| PB2.1d | `28d4193` | ✅ fork witness — collect→route→throttle+auth end-to-end (8/8; closes OQ-20 D4.6 deferral) |
+| PB2.1e | — | FINDINGS OQ-20/21 closure + Completion Log — this commit |

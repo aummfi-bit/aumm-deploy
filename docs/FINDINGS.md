@@ -1051,7 +1051,7 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 
 ### OQ-20 — Yield-fee leg entry point: controller-initiated `routeYieldFee` call
 
-**Status.** Resolved via D29 (structural) + D30 (harness gaps) as of 2026-04-22. Implementation deferred to **D4.6** (post-D7 controller entry-point sub-step).
+**Status.** Resolved via D29 (structural) + D30 (harness gaps) as of 2026-04-22; **BUILT at Stage P-bis PB2.1 (PB-D6, 2026-07-11)**. The controller entry point `routeYieldFeeToHook(address pool, IERC20 token, uint256 amount) external authenticate returns (uint256 bptMinted)` landed at PB2.1b (`7e250fc`); unit tests PB2.1c (`232b346`); the collect→route→throttle end-to-end fork witness PB2.1d (`28d4193`). The D4.6 deferral is closed — the Option-A signature sketched below matches the built form. Only the aumm-site §ix spec amendment remains (user-side, PB2.10).
 
 **Context.** The ERC-4626 yield-fee leg is structurally distinct from the swap-fee leg:
 
@@ -1073,7 +1073,7 @@ FEE_CHANGE_COOLDOWN_BLOCKS   = 100_800     // = BLOCKS_PER_EPOCH
 
 ### OQ-21 — Yield-leg routing cadence: `BLOCKS_PER_EPOCH` throttle on D4.6 entry point
 
-**Status.** Proposed, pending D4.6. Stub here so cadence intent is on record before implementation chatter evaporates.
+**Status.** Proposed, pending D4.6; **BUILT at Stage P-bis PB2.1b (PB-D6, 2026-07-11)** as the per-pool `_lastRouteBlock` + `BLOCKS_PER_EPOCH` throttle on `routeYieldFeeToHook` — granularity (a) per-pool per the sketch below, stamp-on-success so a reverting route does not burn the pool's epoch (`7e250fc`; boundary + stamp-on-revert unit tests `232b346`). Cadence intent realized; only the aumm-site §ix amendment remains (user-side, PB2.10).
 
 **Context.** OQ-20 and D29 frame the yield leg as two steps: permissionless `collectAggregateFees(pool)` — the Balancer-shaped step 1 — pulls aggregate fees to the controller; the Aureum D4.6 entry point `routeYieldFeeToHook(pool, token, amount)` — step 2 — is where governance-authorized routing into the hook pipeline happens. This stub pins cadence policy on that second step only.
 
