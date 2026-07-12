@@ -67,7 +67,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 
 ### PB2 — Workstream A: open-issue close-out
 - **PB2.1** — adjudicate OQ-20 / OQ-21 (controller-initiated `routeYieldFee` + `BLOCKS_PER_EPOCH` cadence throttle, E-D10): build vs descope; locks as its own PB-D entry, build inserts as PB2.1b+.
-- **PB2.2** — adjudicate OQ-22 (2-hop fee-routing fallback through ZCHF / sUSDS): build vs descope; own PB-D lock.
+- **PB2.2** — adjudicate OQ-22 (2-hop TVLOracle valuation fallback through ZCHF / sUSDS; the pre-freeze "fee-routing" label was wording drift, corrected at PB-D7): build vs descope; own PB-D lock.
 - **PB2.3** — adjudicate pool restoration: 04 ixViatica / 07 ixCambio (E-D17 literals bar) + the ixCasper waEthwstETH 16% leg (Aureum `CompositeRateProvider`) + the OQ-I10 recorder-binding remainder — restore vs descope-to-the-composition-challenge-path (exists since Stage O); own PB-D lock.
 - **PB2.4** — adjudicate F-13 (S5 Low, unbounded internal-leg slippage): rate-derived `limitRaw` / `minBptAmountOut` bound vs accept-with-quantifying-sandwich-sim; own PB-D lock.
 - **PB2.5** — adjudicate F-15 (S9 Low, `VaultClassRegistry` veto live-denominator): F-06-style snapshot propagation vs accept; own PB-D lock.
@@ -110,4 +110,9 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.1b | `7e250fc` | ✅ src — routeYieldFeeToHook entry point + per-pool BLOCKS_PER_EPOCH throttle |
 | PB2.1c | `232b346` | ✅ unit tests — authenticate gate, throttle boundary, stamp-on-revert, bptMinted propagation (42/42) |
 | PB2.1d | `28d4193` | ✅ fork witness — collect→route→throttle+auth end-to-end (8/8; closes OQ-20 D4.6 deferral) |
-| PB2.1e | — | FINDINGS OQ-20/21 closure + Completion Log — this commit |
+| PB2.1e | `516fa68` | FINDINGS OQ-20/21 closure + Completion Log — this commit |
+| PB2.2 | `28c653b` | ✅ PB-D7 lock — OQ-22 BUILD adjudication (2-hop TVLOracle valuation fallback, user-adjudicated) |
+| PB2.2b | `61cab54` | ✅ src — _directRatio extraction + _twoHopRatio + hop-underlying roster (ITVLOracle/consumers/constructor unchanged) |
+| PB2.2c | `eacb600` | ✅ unit tests — hop gates, direct-wins precedence, mean-across-intermediates, h2-first cheap gate, no-transitive-hop (55/55) |
+| PB2.2d | `78c4931` | ✅ fork witness — real USDC via USDS hop, Bodensee hop-2, EMASampler propagation, auth gate (12/12) |
+| PB2.2e | — | FINDINGS OQ-22 Phase-2 addendum + L70 label reconciliation + Completion Log — this commit |
