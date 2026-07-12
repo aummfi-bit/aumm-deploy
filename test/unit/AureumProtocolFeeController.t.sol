@@ -16,6 +16,8 @@ import { IAureumProtocolFeeControllerHookExtension } from "../../src/fee_router/
 
 import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
 import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
+import { IAureumFeeRoutingHook } from "../../src/fee_router/IAureumFeeRoutingHook.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 // ─── Invariant handler ─────────────────────────────────────────────────────
 // Exposes a constrained set of controller entry points to the Foundry invariant
@@ -984,5 +986,125 @@ contract AureumProtocolFeeControllerTest is Test {
             }
         }
         assertEq(swapLegCount, 2, "exactly 2 SwapLegFeeForwarded events expected");
+    }
+
+    // ─── Group — routeYieldFeeToHook (OQ-20 entry point + OQ-21 throttle) ──
+
+    function _mockHookRouteReturns(uint256 bptMinted) internal {
+        vm.mockCall(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeWithSelector(IAureumFeeRoutingHook.routeYieldFee.selector),
+            abi.encode(bptMinted)
+        );
+    }
+
+    function _mockTokenApprove(IERC20 token) internal {
+        // forceApprove calls approve(spender, value); OZ 5.x _callOptionalReturnBool
+        // gates on returndata (32 bytes == true) before any code-length check, so a
+        // codeless mocked token approves cleanly. See the withdraw-path precedent.
+        vm.mockCall(
+            address(token),
+            abi.encodeWithSelector(IERC20.approve.selector),
+            abi.encode(true)
+        );
+    }
+
+    function test_routeYieldFeeToHook_revertsForNonGovernance(address notGovernance) public {
+        vm.assume(notGovernance != multisig);
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        // authenticate resolves before the body, so no roll/mocks are needed.
+        vm.prank(notGovernance);
+        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+        controller.routeYieldFeeToHook(pool, token, 1e18);
+    }
+
+    function test_routeYieldFeeToHook_throttleRevertsWithinEpoch() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(1e18);
+
+        // The throttle has no zero-special-case: block.number must be >= BLOCKS_PER_EPOCH
+        // for the first-ever route to clear `block.number < 0 + BLOCKS_PER_EPOCH`.
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        vm.prank(multisig);
+        controller.routeYieldFeeToHook(pool, token, 5e18);
+
+        // One block short of a full epoch later: throttled.
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH - 1);
+        vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
+        controller.routeYieldFeeToHook(pool, token, 5e18);
+    }
+
+    function test_routeYieldFeeToHook_succeedsAtEpochBoundary() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(1e18);
+
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        vm.prank(multisig);
+        controller.routeYieldFeeToHook(pool, token, 5e18);
+
+        // Exactly one epoch later: gate is `block.number < last + EPOCH`, so == passes.
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18);
+        assertEq(bpt, 1e18, "boundary route should succeed and propagate bptMinted");
+    }
+
+    function test_routeYieldFeeToHook_stampNotAdvancedOnHookRevert() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(1e18);
+
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        vm.prank(multisig);
+        controller.routeYieldFeeToHook(pool, token, 5e18);
+        uint256 stampBlock = block.number;
+
+        // One epoch later the throttle passes, but the hook reverts.
+        vm.roll(stampBlock + AureumTime.BLOCKS_PER_EPOCH);
+        vm.mockCallRevert(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeWithSelector(IAureumFeeRoutingHook.routeYieldFee.selector),
+            bytes("hook reverted")
+        );
+        vm.prank(multisig);
+        vm.expectRevert(bytes("hook reverted"));
+        controller.routeYieldFeeToHook(pool, token, 5e18);
+
+        // Same block, hook restored: succeeds — proving the failed attempt did not
+        // advance the stamp (else this same-block retry would revert RouteThrottled).
+        _mockHookRouteReturns(2e18);
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18);
+        assertEq(bpt, 2e18, "same-block retry after hook revert should succeed");
+    }
+
+    function test_routeYieldFeeToHook_approvesHookAndPropagatesBptMinted() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        uint256 amount = 7e18;
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(42e18);
+
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+
+        // Controller approves the hook for exactly `amount`, then routes (pool, token, amount).
+        vm.expectCall(
+            address(token),
+            abi.encodeCall(IERC20.approve, (FEE_ROUTING_HOOK_PLACEHOLDER, amount))
+        );
+        vm.expectCall(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeCall(IAureumFeeRoutingHook.routeYieldFee, (pool, token, amount))
+        );
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, amount);
+        assertEq(bpt, 42e18, "bptMinted from the hook should be propagated");
     }
 }
