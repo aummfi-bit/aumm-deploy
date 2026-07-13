@@ -6,6 +6,8 @@ import {Test, stdStorage, StdStorage} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {
+    AddLiquidityKind,
+    AddLiquidityParams,
     AfterSwapParams,
     HookFlags,
     LiquidityManagement,
@@ -831,6 +833,135 @@ contract AureumFeeRoutingHookTest is Test {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
         vm.prank(inc);
         hook.routeIncendiaryDeposit(IERC20(address(zchf)), 0, 0, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // PB-D9 bound-threading (PB2.4c2) (4)
+    // -------------------------------------------------------------------------
+
+    function test_onAfterSwap_passesZeroBoundsToAddLiquidity() public {
+        uint256 amount = 100e18;
+        zchf.mint(address(this), amount);
+        zchf.approve(address(svZchf), amount);
+        svZchf.deposit(amount, address(feeController));
+        assertEq(svZchf.balanceOf(address(feeController)), amount);
+
+        _setForward(poolAb, address(svZchf), amount);
+        _mockAddLiquidity(amount, 123e18);
+
+        uint256[] memory maxAmountsIn = new uint256[](2);
+        maxAmountsIn[1] = amount;
+        AddLiquidityParams memory params = AddLiquidityParams({
+            pool: bodensee,
+            to: address(hook),
+            maxAmountsIn: maxAmountsIn,
+            minBptAmountOut: 0,
+            kind: AddLiquidityKind.UNBALANCED,
+            userData: bytes("")
+        });
+        vm.expectCall(
+            vault,
+            abi.encodeCall(IVaultMain.addLiquidity, (params))
+        );
+
+        vm.expectEmit(true, true, false, true, address(hook));
+        emit SwapFeeRouted(poolAb, address(svZchf), amount, 123e18);
+
+        vm.prank(vault);
+        (bool ok, uint256 ret) = hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
+        assertTrue(ok);
+        assertEq(ret, 7);
+
+        assertEq(svZchf.balanceOf(address(hook)), 0, "hook holds no svZchf");
+        assertEq(svZchf.balanceOf(address(feeController)), 0, "controller drained");
+        assertEq(svZchf.balanceOf(vault), amount, "vault received the sweep");
+    }
+
+    function test_routeYieldFee_forwardsBoundsIntoUnlockPayload() public {
+        zchf.mint(address(feeController), 10e18);
+        vm.prank(address(feeController));
+        zchf.approve(address(hook), 10e18);
+
+        vm.mockCall(
+            vault,
+            abi.encodeWithSelector(IVaultMain.unlock.selector),
+            abi.encode(abi.encode(uint256(77)))
+        );
+        vm.expectCall(
+            vault,
+            abi.encodeCall(
+                IVaultMain.unlock,
+                (abi.encodeCall(
+                    hook._routeYieldFeeUnlocked,
+                    (address(feeController), poolAb, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                ))
+            )
+        );
+
+        vm.prank(address(feeController));
+        uint256 bpt = hook.routeYieldFee(poolAb, IERC20(address(zchf)), 10e18, 5e17, 9e17);
+        assertEq(bpt, 77);
+        assertEq(zchf.balanceOf(address(hook)), 10e18);
+    }
+
+    function test_routeGovernanceDeposit_forwardsBoundsIntoUnlockPayload() public {
+        vm.prank(admin);
+        hook.setGovernanceModule(gov);
+
+        zchf.mint(gov, 10e18);
+        vm.prank(gov);
+        zchf.approve(address(hook), 10e18);
+
+        vm.mockCall(
+            vault,
+            abi.encodeWithSelector(IVaultMain.unlock.selector),
+            abi.encode(abi.encode(uint256(77)))
+        );
+        vm.expectCall(
+            vault,
+            abi.encodeCall(
+                IVaultMain.unlock,
+                (abi.encodeCall(
+                    hook._routeGovernanceDepositUnlocked,
+                    (gov, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                ))
+            )
+        );
+
+        vm.prank(gov);
+        uint256 bpt = hook.routeGovernanceDeposit(IERC20(address(zchf)), 10e18, 5e17, 9e17);
+        assertEq(bpt, 77);
+        assertEq(zchf.balanceOf(address(hook)), 10e18);
+    }
+
+    function test_routeIncendiaryDeposit_forwardsBoundsIntoUnlockPayload() public {
+        vm.prank(admin);
+        hook.setIncendiaryModule(inc);
+
+        zchf.mint(inc, 10e18);
+        vm.prank(inc);
+        zchf.approve(address(hook), 10e18);
+
+        vm.mockCall(
+            vault,
+            abi.encodeWithSelector(IVaultMain.unlock.selector),
+            abi.encode(abi.encode(uint256(77)))
+        );
+        vm.expectCall(
+            vault,
+            abi.encodeCall(
+                IVaultMain.unlock,
+                (abi.encodeCall(
+                    hook._routeIncendiaryDepositUnlocked,
+                    (inc, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                ))
+            )
+        );
+
+        vm.prank(inc);
+        uint256 bpt = hook.routeIncendiaryDeposit(IERC20(address(zchf)), 10e18, 5e17, 9e17);
+        assertEq(bpt, 77);
+        assertEq(zchf.balanceOf(address(hook)), 10e18);
     }
 
     // -------------------------------------------------------------------------

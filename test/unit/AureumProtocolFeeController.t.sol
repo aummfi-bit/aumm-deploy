@@ -1107,4 +1107,53 @@ contract AureumProtocolFeeControllerTest is Test {
         uint256 bpt = controller.routeYieldFeeToHook(pool, token, amount, 0, 0);
         assertEq(bpt, 42e18, "bptMinted from the hook should be propagated");
     }
+
+    function test_routeYieldFeeToHook_forwardsBoundsToHook() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(42e18);
+
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+
+        vm.expectCall(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeCall(IAureumFeeRoutingHook.routeYieldFee, (pool, token, 7e18, 5e17, 9e17))
+        );
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 7e18, 5e17, 9e17);
+        assertEq(bpt, 42e18);
+    }
+
+    function test_routeYieldFeeToHook_stampNotAdvancedOnBoundRevert() public {
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(1e18);
+
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        vm.prank(multisig);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 5e17, 9e17);
+        uint256 stampBlock = block.number;
+
+        vm.roll(stampBlock + AureumTime.BLOCKS_PER_EPOCH);
+        bytes memory revertData = abi.encodeWithSelector(
+            IVaultErrors.SwapLimit.selector,
+            uint256(1e18),
+            uint256(2e18)
+        );
+        vm.mockCallRevert(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeWithSelector(IAureumFeeRoutingHook.routeYieldFee.selector),
+            revertData
+        );
+        vm.prank(multisig);
+        vm.expectRevert(revertData);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 5e17, 9e17);
+
+        _mockHookRouteReturns(2e18);
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18, 5e17, 9e17);
+        assertEq(bpt, 2e18, "same-block retry after bound revert should succeed");
+    }
 }
