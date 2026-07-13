@@ -351,7 +351,7 @@ Hash backfills occur at next close-of-family sweep when committed sub-step hash 
 
 Synced with STAGE_I_NOTES.md Open questions — pending entries become I-D* LOCK rows in the Decisions table once resolved.
 
-- **OQ-I10** (deferred to Stage M/N) — Rollout of remaining 25 AuMT instances (slots 01/04/05/06/08—28). Out of Stage I scope per STAGES_OVERVIEW.md dependency graph.
+- **OQ-I10** (deferred to Stage M/N) — Rollout of remaining 25 AuMT instances (slots 01/04/05/06/08—28). Out of Stage I scope per STAGES_OVERVIEW.md dependency graph. **CLOSED 2026-07-12 (Stage P-bis, PB-D8):** M/N slots bound at their deploys per M-D9; the 04/07 remainder closed by the PB-D8 descope — every launched pool carries its AuMT + recorder bind; a future composition-challenge replacement takes its binds at its own launch. See `docs/STAGE_P_BIS_NOTES.md` PB-D8 (iii).
 
 ---
 

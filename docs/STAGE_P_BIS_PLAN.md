@@ -75,7 +75,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 - **PB2.7** — D36 permanent fix: env-key namespacing in `test/fork/DeployAureumVault.t.sol`; retire the F-D11 `--threads 1` workaround once regression proves parallel-safe.
 - **PB2.8** — direct `ReentrancyGuard.selector` test via `vm.transientStore` (robustness backport; H3.7e covers transitively today).
 - **PB2.9** — P-D42 coverage-tooling re-eval: re-probe `forge coverage` viability on the current tree or re-affirm the execution-evidence waiver; attestation either way.
-- **PB2.10** — aumm-site spec edits (user-side, runs in parallel): §viii/§ix per OQ-20/21 + the I-reframe, §xxi sandbox row, F-2 Incendiary amendments, FINDINGS corrections. Gate: the spec matches the code before PB5.
+- **PB2.10** — aumm-site spec edits (user-side, runs in parallel): §viii/§ix per OQ-20/21 + the I-reframe, §xxi sandbox row, F-2 Incendiary amendments, FINDINGS corrections, + the PB-D8 (iv) items — `03_ixCasper.md` Fluid-vs-"Flux Finance" mislabel (fWSTETH / fWETH are Fluid per the `07a` rows; the code always bound the Fluid addresses), `04_ixViatica.md` "Flux Finance BRZ vault" wording, `07a_tokens.md` slot-03 waEthwstETH row (M-D11 "RP unresolvable" → the PB-D8 Aureum-composite restoration). Gate: the spec matches the code before PB5.
 - **PB2.11** — WK.18 thin-venue populated-roster fork sim (LAST-in-A block, after all fix items land).
 - **PB2.12** — hevm + Act formal-methods bundle (P-D9): the §8b install approval happens at this sub-step; targets the Aureum-owned surfaces (fee-routing hook, CCB engine, emission accrual, authorizer window); specs + results archived for the audit hand-off (LAST in A).
 - Checkpoint: every roster item Fixed / Built / Descoped-with-PB-D-entry; split-form regression green; whitehat ledger + RB register rows updated.
@@ -115,4 +115,9 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.2b | `61cab54` | ✅ src — _directRatio extraction + _twoHopRatio + hop-underlying roster (ITVLOracle/consumers/constructor unchanged) |
 | PB2.2c | `eacb600` | ✅ unit tests — hop gates, direct-wins precedence, mean-across-intermediates, h2-first cheap gate, no-transitive-hop (55/55) |
 | PB2.2d | `78c4931` | ✅ fork witness — real USDC via USDS hop, Bodensee hop-2, EMASampler propagation, auth gate (12/12) |
-| PB2.2e | — | FINDINGS OQ-22 Phase-2 addendum + L70 label reconciliation + Completion Log — this commit |
+| PB2.2e | `76c6be2` | FINDINGS OQ-22 Phase-2 addendum + L70 label reconciliation + Completion Log — this commit |
+| PB2.3 | `1f07d4a` | ✅ PB-D8 lock — pool-restoration adjudication: ixCasper composite-RP BUILD; 04/07 DESCOPE to the challenge path; OQ-I10 closed (user-adjudicated) |
+| PB2.3b | `602e5d7` | ✅ script — 03_ixCasper.s.sol config(address) param form + DeployIxCasper view/env read; waEthwstETH restored at index [1], QG 68% → 84% |
+| PB2.3c | `fd3dfc2` | ✅ fork fixtures — StageM + StageP composite deploy + env-wire ahead of DeployIxCasper (StageM 7/7, StageP 13/13) |
+| PB2.3d | `62e6846` | ✅ CompositeRateProvider.sol NatSpec — PB-D8 second-consumer note (comment-only) |
+| PB2.3e | — | STAGE_I_PLAN + STAGE_I_NOTES OQ-I10 closure + PB2.10 (iv) items + Completion Log — this commit |

@@ -340,4 +340,4 @@ Anchors: `AureumFeeRoutingHook.sol` L279—286 (`setEmissionRecorder` two-flag l
 
 Documented ambiguity here disappears only after translation into FINDINGS.md rows whenever resolution carries protocol-wide implication; until then NOTES remain provisional scratch space.
 
-- OQ-I10 (deferred to Stage M/N) — Remaining 25 gauged pools: recorder binding (`setAuMTContractForPool` + `auMTContractByPool[pool] = hook`) deferred per STAGES_OVERVIEW.md dependency graph (Stage M/N). Out of Stage I scope.
+- OQ-I10 (deferred to Stage M/N) — Remaining 25 gauged pools: recorder binding (`setAuMTContractForPool` + `auMTContractByPool[pool] = hook`) deferred per STAGES_OVERVIEW.md dependency graph (Stage M/N). Out of Stage I scope. CLOSED 2026-07-12 (Stage P-bis, PB-D8): M/N slots bound per M-D9; the 04/07 remainder closed by the PB-D8 descope; see `docs/STAGE_P_BIS_NOTES.md` PB-D8 (iii).
