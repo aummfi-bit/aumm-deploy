@@ -11,6 +11,9 @@ import { DeployIxMediox } from "../../script/pools/DeployIxMediox.s.sol";
 import { DeployIxLongus } from "../../script/pools/DeployIxLongus.s.sol";
 import { TokenInfo } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { CompositeRateProvider } from "../../src/rate_provider/CompositeRateProvider.sol";
+import { IxCasperConfig } from "../../script/pools/configs/03_ixCasper.s.sol";
 
 /**
  * @title StageMIntegrationFixture
@@ -39,6 +42,8 @@ abstract contract StageMIntegrationFixture is StageIIntegrationFixture {
     DeployStageM internal deployStageMScript;
     uint256[5] internal majorSlots;
     address[5] internal majorPools;
+    /// @dev Canonical Balancer wstETH RP (`stEthPerToken`) — hop 2 of the PB-D8 waEthwstETH composite; fixture-local literal, RP-plumbing only, never a pool token.
+    address internal constant WSTETH_RATE_PROVIDER = 0x72D07D7DcA67b8A406aD1Ec34ce969c90bFEE768;
 
     function setUp() public virtual override {
         super.setUp();
@@ -63,14 +68,21 @@ abstract contract StageMIntegrationFixture is StageIIntegrationFixture {
         majorSlots[3] = 10;
         majorSlots[4] = 11;
 
-        // (3) Deploy the five Majors via M3 wrappers (default-sender .run() pattern).
+        // (3) PB-D8 waEthwstETH composite RP — must precede DeployIxCasper.run() (the config reads
+        //     the env key during .run()). Chains waEthwstETH `previewRedeem` over the canonical
+        //     Balancer wstETH RP — the N-D9 ysyBOLD stack pattern.
+        CompositeRateProvider waEthwstEthRp = new CompositeRateProvider(IERC4626(IxCasperConfig.WAETHWSTETH), IRateProvider(WSTETH_RATE_PROVIDER));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WAETHWSTETH_COMPOSITE_RATE_PROVIDER", vm.toString(address(waEthwstEthRp)));
+
+        // (4) Deploy the five Majors via M3 wrappers (default-sender .run() pattern).
         majorPools[0] = new DeployIxCasper().run();
         majorPools[1] = new DeployIxBrevis().run();
         majorPools[2] = new DeployIxAltrix().run();
         majorPools[3] = new DeployIxMediox().run();
         majorPools[4] = new DeployIxLongus().run();
 
-        // (4) Env vars — the nine bind-path vars DeployStageM._bind() reads.
+        // (5) Env vars — the nine bind-path vars DeployStageM._bind() reads.
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MILIARIUM_REGISTRY", vm.toString(address(realRegistry)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
@@ -90,7 +102,7 @@ abstract contract StageMIntegrationFixture is StageIIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MAJOR_POOL_11", vm.toString(majorPools[4]));
 
-        // (5) Bind the five Majors as founding pools; any revert reverts setUp.
+        // (6) Bind the five Majors as founding pools; any revert reverts setUp.
         deployStageMScript = new DeployStageM();
         deployStageMScript.deploy(address(this));
     }

@@ -39,6 +39,7 @@ import { ERC4626RateProvider } from "../../src/rate_provider/ERC4626RateProvider
 import { CompositeRateProvider } from "../../src/rate_provider/CompositeRateProvider.sol";
 import { IxAetheronConfig } from "../../script/pools/configs/02_ixAetheron.s.sol";
 import { IxLibertasConfig } from "../../script/pools/configs/06_ixLibertas.s.sol";
+import { IxCasperConfig } from "../../script/pools/configs/03_ixCasper.s.sol";
 import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
 import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
@@ -90,6 +91,8 @@ abstract contract StagePIntegrationFixture is Test {
     // N-D9 RP-plumbing literals (verified mainnet). yBOLD is the two-hop intermediary only — never a pool token.
     address internal constant YSYBOLD = 0x23346B04a7f55b8760E5860AA5A77383D63491cD;
     address internal constant YBOLD = 0x9F4330700a36B29952869fac9b33f45EEdd8A3d8;
+    /// @dev Canonical Balancer wstETH RP (`stEthPerToken`) — hop 2 of the PB-D8 waEthwstETH composite; fixture-local literal, RP-plumbing only, never a pool token.
+    address internal constant WSTETH_RATE_PROVIDER = 0x72D07D7DcA67b8A406aD1Ec34ce969c90bFEE768;
 
     DeployStageP internal orchestrator;
     DeployFeeRoutingHook internal hookScript;
@@ -226,6 +229,11 @@ abstract contract StagePIntegrationFixture is Test {
         amts2[3] = 1_000e18;
         amts2[4] = 1_000e18;
         _initializePool(pilotPools[2], tokens2, amts2);
+
+        // --- PB-D8 waEthwstETH composite RP — MUST precede DeployIxCasper.run() (the config reads the env key during .run()) ---
+        CompositeRateProvider waEthwstEthRp = new CompositeRateProvider(IERC4626(IxCasperConfig.WAETHWSTETH), IRateProvider(WSTETH_RATE_PROVIDER));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WAETHWSTETH_COMPOSITE_RATE_PROVIDER", vm.toString(address(waEthwstEthRp)));
 
         // --- Majors (bind-only, uninitialized — M parity) ---
         majorPools[0] = new DeployIxCasper().run();
