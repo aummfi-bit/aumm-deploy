@@ -11,6 +11,7 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
 import { TokenConfig, TokenType, PoolRoleAccounts, AfterSwapParams, SwapKind, VaultSwapParams } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
+import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
 
@@ -629,5 +630,59 @@ contract AureumFeeRoutingHookForkTest is Test {
         vault.unlock(abi.encodeCall(this._performSwapOnNoSvZchfPoolCallback, (10e18)));
         assertEq(hook.poolBodenseeDepositToken(noSvZchfPool), address(susds), "noSvZchfPool rail is sUSDS");
         assertGt(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "sUSDS routed to Bodensee");
+    }
+
+    // -------------------------------------------------------------------------
+    // PB-D9 bounded-route witness (PB2.4d1) (4)
+    // -------------------------------------------------------------------------
+
+    function test_Fork_RouteYieldFee_minBptAmountOut_revertsWhenTooTight() public {
+        _initializeBodensee();
+        deal(address(svZchf), address(controller), 100e18, true);
+        vm.startPrank(address(controller));
+        svZchf.approve(address(hook), 100e18);
+        vm.expectPartialRevert(IVaultErrors.BptAmountOutBelowMin.selector);
+        hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_Fork_RouteYieldFee_minDepositTokenOut_revertsWhenTooTight() public {
+        _initializeBodensee();
+        _initializeTradingPool();
+        deal(address(aumm), address(controller), 10e18, true);
+        vm.startPrank(address(controller));
+        IERC20(address(aumm)).approve(address(hook), 10e18);
+        vm.expectPartialRevert(IVaultErrors.SwapLimit.selector);
+        hook.routeYieldFee(tradingPool, IERC20(address(aumm)), 10e18, type(uint256).max, 0);
+        vm.stopPrank();
+    }
+
+    function test_Fork_RouteYieldFee_addLegSucceedsAtRealisticBound() public {
+        _initializeBodensee();
+        deal(address(svZchf), address(controller), 100e18, true);
+        vm.startPrank(address(controller));
+        svZchf.approve(address(hook), 100e18);
+        uint256 bptProbe = hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, 0);
+        vm.stopPrank();
+
+        deal(address(svZchf), address(controller), 100e18, true);
+        vm.startPrank(address(controller));
+        svZchf.approve(address(hook), 100e18);
+        uint256 bpt = hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, bptProbe / 2);
+        vm.stopPrank();
+
+        assertGt(bpt, 0);
+        assertGe(bpt, bptProbe / 2);
+    }
+
+    function test_Fork_RouteYieldFee_swapLegSucceedsAtRealisticBound() public {
+        _initializeBodensee();
+        _initializeTradingPool();
+        deal(address(aumm), address(controller), 10e18, true);
+        vm.startPrank(address(controller));
+        IERC20(address(aumm)).approve(address(hook), 10e18);
+        uint256 bpt = hook.routeYieldFee(tradingPool, IERC20(address(aumm)), 10e18, 5e18, 1);
+        vm.stopPrank();
+        assertGt(bpt, 0);
     }
 }
