@@ -28,8 +28,13 @@ import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/Fixe
  *      N-D1 (the M-D11 composite-RP restoration for ixAetheron slot 02 — waEthrETH / waEthweETH stataToken
  *      wrappers over LSTs, reconstructed as wrapper-shares → underlying-LST → ETH) was the original motivating
  *      design but was superseded before deployment: ixAetheron now resolves sfrxETH / wOETH via plain
- *      `ERC4626RateProvider` instances, so N-D9 is this contract's first real consumer. The fWSTETH composite
- *      precedent (`03_ixCasper.s.sol`, `0x8Be2` × `0x72D07D`) still stands as the pattern reference.
+ *      `ERC4626RateProvider` instances, so N-D9 was this contract's first real consumer. PB-D8 (Stage P-bis,
+ *      `docs/STAGE_P_BIS_NOTES.md`) is the second: ixCasper (slot 03) restores its 16% waEthwstETH theme leg
+ *      via `CompositeRateProvider(waEthwstETH, IRateProvider(wstETH RP))` — the fWSTETH composite precedent
+ *      (`03_ixCasper.s.sol`, `0x8Be2` × `0x72D07D`) cited above as a pattern reference is now itself a live
+ *      composite leg on the same pool. Deployed in the fork fixtures (`test/fork/StageMIntegration.t.sol`,
+ *      `test/fork/StagePIntegration.t.sol`), env-injected as `WAETHWSTETH_COMPOSITE_RATE_PROVIDER` per N-D7 —
+ *      not baked into `IxCasperConfig`, which stays `pure` with the composite address taken as a parameter.
  *      Re-authored under `src/`, never a submodule edit (CLAUDE.md §8c).
  *
  *      F-11 (`docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`, WN whitehat pass): the constructor enforces
