@@ -132,15 +132,27 @@ interface IAureumFeeRoutingHook {
     ///         hold `feeAmount` of `feeToken` and MUST have approved
     ///         this contract for at least that amount. `pool` MUST be
     ///         Vault-registered and MUST NOT be der-Bodensee itself.
-    ///         Emits YieldFeeRouted.
-    /// @param  pool       The source pool (used for event indexing).
-    /// @param  feeToken   The yield-fee token to route.
-    /// @param  feeAmount  Amount of `feeToken` to route.
+    ///         Emits YieldFeeRouted. Bounds are caller-supplied, computed
+    ///         off-chain at fire time, and enforced Vault-natively
+    ///         (SwapLimit / BptAmountOutBelowMin — no new hook-side errors).
+    /// @param  pool                 The source pool (used for event indexing).
+    /// @param  feeToken             The yield-fee token to route.
+    /// @param  feeAmount            Amount of `feeToken` to route.
+    /// @param  minDepositTokenOut   Minimum deposit-token output of the
+    ///                              internal conversion swap, EXACT_IN
+    ///                              semantics, enforced only when the swap
+    ///                              leg runs and inert on the rate-exact
+    ///                              ZCHF-to-svZCHF ERC-4626 fast path and
+    ///                              the same-token no-op.
+    /// @param  minBptAmountOut      Minimum BPT minted by the one-sided
+    ///                              der-Bodensee add, enforced on every route.
     /// @return bptMinted  BPT minted to the caller.
     function routeYieldFee(
         address pool,
         IERC20 feeToken,
-        uint256 feeAmount
+        uint256 feeAmount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external returns (uint256 bptMinted);
 
     /// @notice Route a governance deposit into der-Bodensee. Pulls
@@ -148,13 +160,27 @@ interface IAureumFeeRoutingHook {
     ///         then one-sided-adds into der-Bodensee.
     /// @dev    Gated to the Aureum governance contract. Caller MUST
     ///         hold and have approved `amount` of `token`. Emits
-    ///         GovernanceDepositRouted.
-    /// @param  token      Input token.
-    /// @param  amount     Amount of `token` to route.
+    ///         GovernanceDepositRouted. Bounds are caller-supplied,
+    ///         computed off-chain at fire time, and enforced Vault-natively
+    ///         (SwapLimit / BptAmountOutBelowMin — no new hook-side errors).
+    ///         Under the D17 fast path `minDepositTokenOut` is inert
+    ///         (callers pass 0).
+    /// @param  token                Input token.
+    /// @param  amount               Amount of `token` to route.
+    /// @param  minDepositTokenOut   Minimum deposit-token output of the
+    ///                              internal conversion swap, EXACT_IN
+    ///                              semantics, enforced only when the swap
+    ///                              leg runs and inert on the rate-exact
+    ///                              ZCHF-to-svZCHF ERC-4626 fast path and
+    ///                              the same-token no-op.
+    /// @param  minBptAmountOut      Minimum BPT minted by the one-sided
+    ///                              der-Bodensee add, enforced on every route.
     /// @return bptMinted  BPT minted to the caller.
     function routeGovernanceDeposit(
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external returns (uint256 bptMinted);
 
     /// @notice Route an Incendiary deposit into der-Bodensee. Pulls
@@ -162,13 +188,27 @@ interface IAureumFeeRoutingHook {
     ///         then one-sided-adds into der-Bodensee.
     /// @dev    Gated to the Aureum Incendiary contract. Caller MUST
     ///         hold and have approved `amount` of `token`. Emits
-    ///         IncendiaryDepositRouted.
-    /// @param  token      Input token.
-    /// @param  amount     Amount of `token` to route.
+    ///         IncendiaryDepositRouted. Bounds are caller-supplied,
+    ///         computed off-chain at fire time, and enforced Vault-natively
+    ///         (SwapLimit / BptAmountOutBelowMin — no new hook-side errors).
+    ///         Under the D17 fast path `minDepositTokenOut` is inert
+    ///         (callers pass 0).
+    /// @param  token                Input token.
+    /// @param  amount               Amount of `token` to route.
+    /// @param  minDepositTokenOut   Minimum deposit-token output of the
+    ///                              internal conversion swap, EXACT_IN
+    ///                              semantics, enforced only when the swap
+    ///                              leg runs and inert on the rate-exact
+    ///                              ZCHF-to-svZCHF ERC-4626 fast path and
+    ///                              the same-token no-op.
+    /// @param  minBptAmountOut      Minimum BPT minted by the one-sided
+    ///                              der-Bodensee add, enforced on every route.
     /// @return bptMinted  BPT minted to the caller.
     function routeIncendiaryDeposit(
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external returns (uint256 bptMinted);
 
     // -----------------------------------------------------------------

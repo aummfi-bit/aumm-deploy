@@ -374,7 +374,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 forwardedAmounts[i],
                 params.pool,
                 address(this),
-                IERC20(depositToken)
+                IERC20(depositToken),
+                0,
+                0
             );
             // onAfterSwap is onlyVault under the Vault's open unlock; external calls are into the Vault itself (the protocol's reentrancy guard); CEI ordering preserved. See D8 NOTES F1.
             // slither-disable-next-line reentrancy-events
@@ -465,12 +467,19 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      Balance-sweep is intentional: any deposit token held by this hook
     ///      is protocol-owned and Bodensee-bound, including dust from
     ///      prior partial fills or donations (per D3.3.4 Q1 / Option X).
+    ///      `minDepositTokenOut` bounds the phase-1 swap leg (EXACT_IN
+    ///      minimum-out, enforced only when the swap leg runs; inert on the
+    ///      ZCHF-to-svZCHF ERC-4626 fast path and the same-token no-op per
+    ///      PB-D9 (iii)). `minBptAmountOut` bounds the phase-2 one-sided add
+    ///      (enforced on every route).
     function _swapFeeAndDeposit(
         IERC20 feeToken,
         uint256 amount,
         address swapPool,
         address bptRecipient,
-        IERC20 depositToken
+        IERC20 depositToken,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) private returns (uint256 bptMinted) {
         if (amount == 0) return 0;
 
@@ -483,7 +492,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
         } else {
             if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
-            _swapExactInFeeTokenToDepositTokenViaVault(feeToken, amount, swapPool, depositToken);
+            _swapExactInFeeTokenToDepositTokenViaVault(feeToken, amount, swapPool, depositToken, minDepositTokenOut);
         }
 
         // Traced external call inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F4.
@@ -491,7 +500,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
             depositToken,
             depositToken.balanceOf(address(this)),
-            bptRecipient
+            bptRecipient,
+            minBptAmountOut
         );
     }
 
@@ -500,17 +510,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      and must clear them before the outer `unlock` closes. Order:
     ///      `swap`, then transfer `tokenIn` to the Vault and `settle`, then
     ///      `sendTo` the deposit token to this hook—mirroring `RouterCommon._takeTokenIn`
-    ///      and `_sendTokenOut` around `_vault.swap`. `limitRaw == 0` accepts
-    ///      any `amountOut` for this protocol-internal leg (same trade-off
-    ///      class as `minBptAmountOut == 0` on the phase-2 one-sided add
-    ///      into der-Bodensee per the Stage D plan). Recursion: the
-    ///      nested `swap` invokes `onAfterSwap` again with
+    ///      and `_sendTokenOut` around `_vault.swap`. `limitRaw` is caller-
+    ///      parameterized (`minDepositTokenOut`); `onAfterSwap` passes 0 per
+    ///      the PB-D9 accepted per-swap dust path; the batched entries carry
+    ///      caller-supplied bounds; the Vault reverts `SwapLimit` on violation.
+    ///      Recursion: the nested `swap` invokes `onAfterSwap` again with
     ///      `params.router == address(this)`; D10 early-return applies.
     function _swapExactInFeeTokenToDepositTokenViaVault(
         IERC20 feeToken,
         uint256 amount,
         address swapPool,
-        IERC20 depositToken
+        IERC20 depositToken,
+        uint256 minDepositTokenOut
     ) private {
         // Tuple discard: amountCalculated == amountOut for EXACT_IN, redundant; bounded fee-token loop. See D8 NOTES F5/F7.
         // slither-disable-next-line unused-return,calls-loop
@@ -521,7 +532,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 tokenIn: feeToken,
                 tokenOut: depositToken,
                 amountGivenRaw: amount,
-                limitRaw: 0,
+                limitRaw: minDepositTokenOut,
                 userData: bytes("")
             })
         );
@@ -541,11 +552,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      `settle`. BPT is minted to `to` via the `AddLiquidityParams.to`
     ///      field, so no `sendTo` is needed to realise the credit leg.
     ///      Returns `bptAmountOut` from the Vault.
-    ///      `minBptAmountOut == 0` accepts any `bptAmountOut` for this
-    ///      protocol-internal leg (same trade-off class as `limitRaw == 0`
-    ///      in `_swapExactInFeeTokenToDepositTokenViaVault`; MEV/sandwich risk
-    ///      internalised, tracked as a Stage Q audit surface per
-    ///      `STAGE_D_PLAN.md:L703`). `getPoolTokenCountAndIndexOfToken`
+    ///      `minBptAmountOut` is caller-parameterized; the Vault reverts
+    ///      `BptAmountOutBelowMin` on violation (same trade-off class as
+    ///      `limitRaw` in `_swapExactInFeeTokenToDepositTokenViaVault`;
+    ///      MEV/sandwich risk internalised, tracked as a Stage Q audit
+    ///      surface per `STAGE_D_PLAN.md:L703` and PB-D9). `getPoolTokenCountAndIndexOfToken`
     ///      reverts natively if `DER_BODENSEE` does not contain the deposit token
     ///      — no custom error path. Debits are settled using the returned
     ///      `amountsIn[depositIndex]` (actual consumed), not the caller-
@@ -560,7 +571,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     function _addLiquidityOneSidedToBodenseeViaVault(
         IERC20 depositToken,
         uint256 depositAmount,
-        address to
+        address to,
+        uint256 minBptAmountOut
     ) private returns (uint256 bptAmountOut) {
         // depositAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
         // slither-disable-next-line incorrect-equality
@@ -580,7 +592,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 pool: DER_BODENSEE,
                 to: to,
                 maxAmountsIn: maxAmountsIn,
-                minBptAmountOut: 0,
+                minBptAmountOut: minBptAmountOut,
                 kind: AddLiquidityKind.UNBALANCED,
                 userData: bytes("")
             })
@@ -601,7 +613,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     function routeYieldFee(
         address pool,
         IERC20 feeToken,
-        uint256 feeAmount
+        uint256 feeAmount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external override returns (uint256 bptMinted) {
         if (msg.sender != FEE_CONTROLLER) revert UnauthorizedCaller(msg.sender);
         if (pool == address(0)) revert ZeroAddress();
@@ -612,7 +626,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeYieldFeeUnlocked,
-                (msg.sender, pool, feeToken, feeAmount)
+                (msg.sender, pool, feeToken, feeAmount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -627,21 +641,27 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         address caller,
         address pool,
         IERC20 feeToken,
-        uint256 feeAmount
+        uint256 feeAmount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
         bptMinted = _swapFeeAndDeposit(
             feeToken,
             feeAmount,
             pool,
             caller,
-            IERC20(poolBodenseeDepositToken[pool])
+            IERC20(poolBodenseeDepositToken[pool]),
+            minDepositTokenOut,
+            minBptAmountOut
         );
     }
 
     /// @inheritdoc IAureumFeeRoutingHook
     function routeGovernanceDeposit(
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external override returns (uint256 bptMinted) {
         if (governanceModule == address(0)) revert ModuleNotSet();
         if (msg.sender != governanceModule) revert UnauthorizedCaller(msg.sender);
@@ -651,7 +671,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeGovernanceDepositUnlocked,
-                (msg.sender, token, amount)
+                (msg.sender, token, amount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -669,21 +689,27 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     function _routeGovernanceDepositUnlocked(
         address caller,
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
         bptMinted = _swapFeeAndDeposit(
             token,
             amount,
             address(0),
             caller,
-            SV_ZCHF
+            SV_ZCHF,
+            minDepositTokenOut,
+            minBptAmountOut
         );
     }
 
     /// @inheritdoc IAureumFeeRoutingHook
     function routeIncendiaryDeposit(
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external override returns (uint256 bptMinted) {
         if (incendiaryModule == address(0)) revert ModuleNotSet();
         if (msg.sender != incendiaryModule) revert UnauthorizedCaller(msg.sender);
@@ -693,7 +719,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeIncendiaryDepositUnlocked,
-                (msg.sender, token, amount)
+                (msg.sender, token, amount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -711,14 +737,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     function _routeIncendiaryDepositUnlocked(
         address caller,
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
         bptMinted = _swapFeeAndDeposit(
             token,
             amount,
             address(0),
             caller,
-            SV_ZCHF
+            SV_ZCHF,
+            minDepositTokenOut,
+            minBptAmountOut
         );
     }
 }

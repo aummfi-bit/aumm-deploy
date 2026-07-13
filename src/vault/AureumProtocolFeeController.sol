@@ -752,21 +752,36 @@ contract AureumProtocolFeeController is
     ///      (caller-pin, ZeroAddress, InvalidPool(DER_BODENSEE), ZeroAmount).
     ///      The per-pool `BLOCKS_PER_EPOCH` throttle (OQ-21) stamps only after a
     ///      successful route, so a reverting hook call does not burn the pool's
-    ///      epoch. Observability is the hook's `YieldFeeRouted` event.
+    ///      epoch — including bound-tripped reverts per PB-D9. Observability is
+    ///      the hook's `YieldFeeRouted` event.
     /// @param pool The source pool whose collected yield fees are routed.
     /// @param token The yield-fee token to route.
     /// @param amount Amount of `token` to route.
+    /// @param minDepositTokenOut Minimum deposit-token output of the internal
+    ///        conversion swap, EXACT_IN semantics, enforced only when the swap
+    ///        leg runs and inert on the rate-exact ZCHF-to-svZCHF ERC-4626 fast
+    ///        path and the same-token no-op.
+    /// @param minBptAmountOut Minimum BPT minted by the one-sided der-Bodensee
+    ///        add, enforced on every route.
     /// @return bptMinted BPT minted to this controller by the hook.
     function routeYieldFeeToHook(
         address pool,
         IERC20 token,
-        uint256 amount
+        uint256 amount,
+        uint256 minDepositTokenOut,
+        uint256 minBptAmountOut
     ) external authenticate returns (uint256 bptMinted) {
         if (block.number < _lastRouteBlock[pool] + AureumTime.BLOCKS_PER_EPOCH) {
             revert RouteThrottled();
         }
         token.forceApprove(FEE_ROUTING_HOOK, amount);
-        bptMinted = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).routeYieldFee(pool, token, amount);
+        bptMinted = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).routeYieldFee(
+            pool,
+            token,
+            amount,
+            minDepositTokenOut,
+            minBptAmountOut
+        );
         _lastRouteBlock[pool] = block.number;
     }
 
