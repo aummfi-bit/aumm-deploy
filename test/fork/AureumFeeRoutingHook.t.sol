@@ -512,7 +512,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         svZchf.approve(address(hook), amount);
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
-        uint256 bptMinted = hook.routeYieldFee(tradingPool, svZchf, amount);
+        uint256 bptMinted = hook.routeYieldFee(tradingPool, svZchf, amount, 0, 0);
         vm.stopPrank();
         assertGt(bptMinted, 0);
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
@@ -522,7 +522,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         address attacker = address(uint160(uint256(keccak256("attacker"))));
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSelector(IAureumFeeRoutingHook.UnauthorizedCaller.selector, attacker));
-        hook.routeYieldFee(tradingPool, svZchf, 1e18);
+        hook.routeYieldFee(tradingPool, svZchf, 1e18, 0, 0);
     }
 
     function test_Fork_RouteYieldFeeToHookEntryPoint() public {
@@ -543,7 +543,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
         vm.prank(GOVERNANCE_MULTISIG);
-        uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
+        uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
 
         assertGt(bptMinted, 0);
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
@@ -555,13 +555,13 @@ contract AureumFeeRoutingHookForkTest is Test {
         deal(address(svZchf), address(controller), amount, true);
         vm.prank(GOVERNANCE_MULTISIG);
         vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
-        controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
 
         // Step 4 — the deployed-authorizer gate: non-governance reverts.
         address attacker = address(uint160(uint256(keccak256("attacker"))));
         vm.prank(attacker);
         vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-        controller.routeYieldFeeToHook(tradingPool, svZchf, amount);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
     }
 
     function test_Fork_RecursionGuard() public {

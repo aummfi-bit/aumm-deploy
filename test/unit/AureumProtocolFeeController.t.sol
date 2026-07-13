@@ -1016,7 +1016,7 @@ contract AureumProtocolFeeControllerTest is Test {
         // authenticate resolves before the body, so no roll/mocks are needed.
         vm.prank(notGovernance);
         vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-        controller.routeYieldFeeToHook(pool, token, 1e18);
+        controller.routeYieldFeeToHook(pool, token, 1e18, 0, 0);
     }
 
     function test_routeYieldFeeToHook_throttleRevertsWithinEpoch() public {
@@ -1029,13 +1029,13 @@ contract AureumProtocolFeeControllerTest is Test {
         // for the first-ever route to clear `block.number < 0 + BLOCKS_PER_EPOCH`.
         vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
         vm.prank(multisig);
-        controller.routeYieldFeeToHook(pool, token, 5e18);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
 
         // One block short of a full epoch later: throttled.
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH - 1);
         vm.prank(multisig);
         vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
-        controller.routeYieldFeeToHook(pool, token, 5e18);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
     }
 
     function test_routeYieldFeeToHook_succeedsAtEpochBoundary() public {
@@ -1046,12 +1046,12 @@ contract AureumProtocolFeeControllerTest is Test {
 
         vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
         vm.prank(multisig);
-        controller.routeYieldFeeToHook(pool, token, 5e18);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
 
         // Exactly one epoch later: gate is `block.number < last + EPOCH`, so == passes.
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
         vm.prank(multisig);
-        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
         assertEq(bpt, 1e18, "boundary route should succeed and propagate bptMinted");
     }
 
@@ -1063,7 +1063,7 @@ contract AureumProtocolFeeControllerTest is Test {
 
         vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
         vm.prank(multisig);
-        controller.routeYieldFeeToHook(pool, token, 5e18);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
         uint256 stampBlock = block.number;
 
         // One epoch later the throttle passes, but the hook reverts.
@@ -1075,13 +1075,13 @@ contract AureumProtocolFeeControllerTest is Test {
         );
         vm.prank(multisig);
         vm.expectRevert(bytes("hook reverted"));
-        controller.routeYieldFeeToHook(pool, token, 5e18);
+        controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
 
         // Same block, hook restored: succeeds — proving the failed attempt did not
         // advance the stamp (else this same-block retry would revert RouteThrottled).
         _mockHookRouteReturns(2e18);
         vm.prank(multisig);
-        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e18, 0, 0);
         assertEq(bpt, 2e18, "same-block retry after hook revert should succeed");
     }
 
@@ -1101,10 +1101,10 @@ contract AureumProtocolFeeControllerTest is Test {
         );
         vm.expectCall(
             FEE_ROUTING_HOOK_PLACEHOLDER,
-            abi.encodeCall(IAureumFeeRoutingHook.routeYieldFee, (pool, token, amount))
+            abi.encodeCall(IAureumFeeRoutingHook.routeYieldFee, (pool, token, amount, 0, 0))
         );
         vm.prank(multisig);
-        uint256 bpt = controller.routeYieldFeeToHook(pool, token, amount);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, amount, 0, 0);
         assertEq(bpt, 42e18, "bptMinted from the hook should be propagated");
     }
 }

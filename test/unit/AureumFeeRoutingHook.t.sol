@@ -750,13 +750,13 @@ contract AureumFeeRoutingHookTest is Test {
             IAureumFeeRoutingHook.UnauthorizedCaller.selector, stranger
         ));
         vm.prank(stranger);
-        hook.routeYieldFee(poolAb, IERC20(address(zchf)), 1e18);
+        hook.routeYieldFee(poolAb, IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeYieldFee_revertsOnZeroPool() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAddress.selector);
         vm.prank(address(feeController));
-        hook.routeYieldFee(address(0), IERC20(address(zchf)), 1e18);
+        hook.routeYieldFee(address(0), IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeYieldFee_revertsOnBodenseePool() public {
@@ -764,13 +764,13 @@ contract AureumFeeRoutingHookTest is Test {
             IAureumFeeRoutingHook.InvalidPool.selector, bodensee
         ));
         vm.prank(address(feeController));
-        hook.routeYieldFee(bodensee, IERC20(address(zchf)), 1e18);
+        hook.routeYieldFee(bodensee, IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeYieldFee_revertsOnZeroAmount() public {
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
         vm.prank(address(feeController));
-        hook.routeYieldFee(poolAb, IERC20(address(zchf)), 0);
+        hook.routeYieldFee(poolAb, IERC20(address(zchf)), 0, 0, 0);
     }
 
     // -------------------------------------------------------------------------
@@ -780,7 +780,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_routeGovernanceDeposit_revertsOnModuleNotSet() public {
         vm.expectRevert(IAureumFeeRoutingHook.ModuleNotSet.selector);
         vm.prank(gov);
-        hook.routeGovernanceDeposit(IERC20(address(zchf)), 1e18);
+        hook.routeGovernanceDeposit(IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeGovernanceDeposit_revertsOnUnauthorizedCaller() public {
@@ -791,7 +791,7 @@ contract AureumFeeRoutingHookTest is Test {
             IAureumFeeRoutingHook.UnauthorizedCaller.selector, stranger
         ));
         vm.prank(stranger);
-        hook.routeGovernanceDeposit(IERC20(address(zchf)), 1e18);
+        hook.routeGovernanceDeposit(IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeGovernanceDeposit_revertsOnZeroAmount() public {
@@ -800,7 +800,7 @@ contract AureumFeeRoutingHookTest is Test {
 
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
         vm.prank(gov);
-        hook.routeGovernanceDeposit(IERC20(address(zchf)), 0);
+        hook.routeGovernanceDeposit(IERC20(address(zchf)), 0, 0, 0);
     }
 
     // -------------------------------------------------------------------------
@@ -810,7 +810,7 @@ contract AureumFeeRoutingHookTest is Test {
     function test_routeIncendiaryDeposit_revertsOnModuleNotSet() public {
         vm.expectRevert(IAureumFeeRoutingHook.ModuleNotSet.selector);
         vm.prank(inc);
-        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 1e18);
+        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeIncendiaryDeposit_revertsOnUnauthorizedCaller() public {
@@ -821,7 +821,7 @@ contract AureumFeeRoutingHookTest is Test {
             IAureumFeeRoutingHook.UnauthorizedCaller.selector, stranger
         ));
         vm.prank(stranger);
-        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 1e18);
+        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 1e18, 0, 0);
     }
 
     function test_routeIncendiaryDeposit_revertsOnZeroAmount() public {
@@ -830,7 +830,7 @@ contract AureumFeeRoutingHookTest is Test {
 
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
         vm.prank(inc);
-        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 0);
+        hook.routeIncendiaryDeposit(IERC20(address(zchf)), 0, 0, 0);
     }
 
     // -------------------------------------------------------------------------
