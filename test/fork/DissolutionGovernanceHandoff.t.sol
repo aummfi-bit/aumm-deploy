@@ -8,6 +8,7 @@ import { TVLOracle } from "../../src/emission/TVLOracle.sol";
 import { EfficiencyOracle } from "../../src/emission/EfficiencyOracle.sol";
 import { BodenseeBootstrapChannel } from "../../src/emission/BodenseeBootstrapChannel.sol";
 import { SwapAndDepositToBodensee } from "../../src/gauge/SwapAndDepositToBodensee.sol";
+import { PoolRoleAccounts } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 
 /**
  * @title DissolutionGovernanceHandoffWitness
@@ -132,5 +133,15 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
             abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(orchestrator))
         );
         swp.removeAuthorizedDonator(address(0xF77));
+    }
+
+    /**
+     * @notice PB-D2(ii) pauseManager inert-pointer attestation — the Miliarium roster pool pauseManager is the write-once GOVERNANCE_MULTISIG (script/pools/deploy-miliarium-pool.s.sol L75), an inert pointer at the to-be-dissolved Safe post-dissolution; NOT rotated (PB-D2), unlike the five re-settable slots.
+     * @dev Harmless because the pause role is NON-exclusive — VaultAdmin `_ensureAuthenticatedByRole` (L787-793) falls through to the authorizer, so AureumGovernance holds pause via AureumGovernanceAuthorizer regardless (F-20 / P-D40); the non-exclusivity is the documented structural fact, not re-proven here.
+     */
+    function test_pauseManager_inertNonExclusivePointer() public view {
+        assertEq(vault.getPoolRoleAccounts(pilotPools[0]).pauseManager, address(orchestrator));
+        assertEq(vault.getPoolRoleAccounts(majorPools[0]).pauseManager, address(orchestrator));
+        assertEq(vault.getPoolRoleAccounts(stageNPools[0]).pauseManager, address(orchestrator));
     }
 }
