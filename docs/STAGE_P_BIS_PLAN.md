@@ -131,3 +131,11 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.5 | `34e4c27` | ✅ PB-D10 lock — F-15 ACCEPT adjudication (poke-invariant truth ceiling; both snapshot fixes rejected as regression-bearing, user-adjudicated) |
 | PB2.5b | `f36155b` | ✅ unit — F-15 ACCEPT evidence (real-VotingWeight poke sim: baseline trip, suppression face, truth-ceiling kill, recruit-flip, zero-denominator panic + self-heal edges; 6/6, 907 unit green) |
 | PB2.5c | — | AUREUM_WHITEHAT_OUTPUT F-15 Accepted-risk-standalone row + Completion Log — this commit |
+| PB2.6-pre | `f444d32` | ✅ PB-D11 lock — VaultClassRegistry one-shot-sealed (not re-settable), reroutes to the PB3.4 production bind; PB2.6 narrows to the five-rotation script (user-adjudicated) |
+| PB2.6-pre2 | `ef7ea12` | ✅ PB-D12 lock — emission-layer rotation strands the operational-wiring family under AureumGovernance v1; rotations pinned to dissolution-time, the freeze witnessed as v1 truth (user-adjudicated) |
+| PB2.6b | `84a859d` | ✅ script/DissolutionGovernanceHandoff.s.sol — the five dissolution-time rotations (4× emission `setGovernanceContract` + `SwapAndDepositToBodensee.setDonateAuthorizer`); VaultClassRegistry not rotated |
+| PB2.6c | `ad42757` | ✅ test/fork/DissolutionGovernanceHandoff.t.sol — PB-D12 rotation witness on the orchestrator-deployed stack (rotations land + multisig lockout + PB-D12(ii) freeze) |
+| PB2.6c-fix2 | `b850e8c` | ✅ fork-witness fix — cache handles before `vm.prank`/`vm.expectRevert` (a chained `orchestrator.X()` getter was the "next call" the cheatcodes latched onto); 4/4 fork-green |
+| PB2.6d | `7ee86ca` | ✅ pauseManager inert-pointer attestation (Miliarium pauseManager == the write-once GOVERNANCE_MULTISIG, non-exclusive via the authorizer per F-20); 5/5 fork-green |
+| PB2.6e | `5cfbd2f` | ✅ docs/STAGES_OVERVIEW.md — multisig-dissolution remainder bullet CLOSED (VaultClassRegistry sealed + pauseManager inert both dropped from the rotation enumeration) |
+| PB2.6f | — | STAGE_P_BIS_PLAN.md Completion Log — PB2.6 close — this commit |
