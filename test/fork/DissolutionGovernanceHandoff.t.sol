@@ -53,73 +53,84 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
     function test_rotation_multisigLockedOutOfRotatedSetters() public {
         _executeDissolutionRotation();
 
+        IEmissionDistributor ed = orchestrator.emissionDistributor();
+        BodenseeBootstrapChannel bod = orchestrator.bodenseeBootstrapChannel();
+        TVLOracle tvl = orchestrator.tvlOracle();
+        EfficiencyOracle eff = orchestrator.efficiencyOracle();
+        SwapAndDepositToBodensee swp = orchestrator.swapAndDeposit();
+
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(orchestrator))
         );
-        orchestrator.emissionDistributor().setGovernanceContract(address(orchestrator));
+        ed.setGovernanceContract(address(orchestrator));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(BodenseeBootstrapChannel.NotGovernance.selector, address(orchestrator))
         );
-        orchestrator.bodenseeBootstrapChannel().setGovernanceContract(address(orchestrator));
+        bod.setGovernanceContract(address(orchestrator));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, address(orchestrator)));
-        orchestrator.tvlOracle().setGovernanceContract(address(orchestrator));
+        tvl.setGovernanceContract(address(orchestrator));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, address(orchestrator))
         );
-        orchestrator.efficiencyOracle().setGovernanceContract(address(orchestrator));
+        eff.setGovernanceContract(address(orchestrator));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(orchestrator))
         );
-        orchestrator.swapAndDeposit().setDonateAuthorizer(address(orchestrator));
+        swp.setDonateAuthorizer(address(orchestrator));
     }
 
     /// @notice PB-D12(ii) freeze — the load-bearing operational-wiring family reverts for the multisig.
     function test_freeze_loadBearingFamilyRevertsForMultisig() public {
         _executeDissolutionRotation();
 
+        IEmissionDistributor ed = orchestrator.emissionDistributor();
+        TVLOracle tvl = orchestrator.tvlOracle();
+        EfficiencyOracle eff = orchestrator.efficiencyOracle();
+        SwapAndDepositToBodensee swp = orchestrator.swapAndDeposit();
+
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(orchestrator))
         );
-        orchestrator.emissionDistributor().setAuMTContractForPool(pilotPools[0], address(0xBEEF));
+        ed.setAuMTContractForPool(pilotPools[0], address(0xBEEF));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, address(orchestrator)));
-        orchestrator.tvlOracle().setTokenUnderlying(address(0xA11), address(0xB22));
+        tvl.setTokenUnderlying(address(0xA11), address(0xB22));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, address(orchestrator)));
-        orchestrator.tvlOracle().addConstellationPool(address(0xC33));
+        tvl.addConstellationPool(address(0xC33));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(abi.encodeWithSelector(TVLOracle.NotGovernance.selector, address(orchestrator)));
-        orchestrator.tvlOracle().addHopUnderlying(address(0xD44));
+        tvl.addHopUnderlying(address(0xD44));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(EfficiencyOracle.NotGovernance.selector, address(orchestrator))
         );
-        orchestrator.efficiencyOracle().setFeeRecorder(address(0xE55));
+        eff.setFeeRecorder(address(0xE55));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(orchestrator))
         );
-        orchestrator.swapAndDeposit().addAuthorizedDonator(address(0xF66));
+        swp.addAuthorizedDonator(address(0xF66));
 
         vm.prank(address(orchestrator));
         vm.expectRevert(
             abi.encodeWithSelector(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector, address(orchestrator))
         );
-        orchestrator.swapAndDeposit().removeAuthorizedDonator(address(0xF77));
+        swp.removeAuthorizedDonator(address(0xF77));
     }
 }
