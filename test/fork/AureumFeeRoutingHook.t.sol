@@ -477,6 +477,30 @@ contract AureumFeeRoutingHookForkTest is Test {
         vault.sendTo(IERC20(address(aumm)), address(this), amountOut);
     }
 
+    function _forkSwapExactIn(address tIn, address tOut, uint256 amt) internal returns (uint256 out) {
+        bytes memory result = vault.unlock(abi.encodeCall(this._forkSwapCallback, (tIn, tOut, amt)));
+        out = abi.decode(result, (uint256));
+    }
+
+    function _forkSwapCallback(address tIn, address tOut, uint256 amt) external returns (uint256 amountOut) {
+        require(msg.sender == address(vault), "onlyVault");
+        (, uint256 amountIn, uint256 amountOut_) = vault.swap(
+            VaultSwapParams({
+                kind: SwapKind.EXACT_IN,
+                pool: tradingPool,
+                tokenIn: IERC20(tIn),
+                tokenOut: IERC20(tOut),
+                amountGivenRaw: amt,
+                limitRaw: 0,
+                userData: ""
+            })
+        );
+        IERC20(tIn).safeTransfer(address(vault), amountIn);
+        vault.settle(IERC20(tIn), amountIn);
+        vault.sendTo(IERC20(tOut), address(this), amountOut_);
+        amountOut = amountOut_;
+    }
+
     // -------------------------------------------------------------------------
     // D7.1b–D7.1g — test bodies (empty in D7.1a)
     // -------------------------------------------------------------------------
@@ -684,5 +708,80 @@ contract AureumFeeRoutingHookForkTest is Test {
         uint256 bpt = hook.routeYieldFee(tradingPool, IERC20(address(aumm)), 10e18, 5e18, 1);
         vm.stopPrank();
         assertGt(bpt, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // PB-D9 onAfterSwap ACCEPT evidence — fee-rider sandwich sim (PB2.4d2) (2)
+    // -------------------------------------------------------------------------
+
+    /// @notice PB-D9 (ii) — the onAfterSwap fee-rider is ≈ 50% × one trade's pool
+    ///         swap fee (dust); measured against real fork economics; supports
+    ///         onAfterSwap ACCEPT (0/0 bounds retained). The batched yield path is
+    ///         the built half (PB2.4b); this residual is per-swap dust only.
+    function test_Fork_F13_feeRiderPerSwapIsDust() public {
+        _initializeBodensee();
+        _initializeTradingPool();
+        deal(address(aumm), address(this), 10_000e18, true);
+        deal(address(svZchf), address(this), 10_000e18, true);
+
+        uint256 V = 50e18;
+        vm.recordLogs();
+        _forkSwapExactIn(address(aumm), address(svZchf), V);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 swapFeeRoutedTopic = IAureumFeeRoutingHook.SwapFeeRouted.selector;
+        uint256 feeRider;
+        uint256 bptMinted;
+        bool found;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length > 0 && logs[i].topics[0] == swapFeeRoutedTopic) {
+                (feeRider, bptMinted) = abi.decode(logs[i].data, (uint256, uint256));
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "SwapFeeRouted not emitted");
+
+        emit log_named_uint("V", V);
+        emit log_named_uint("feeRider", feeRider);
+        assertGt(feeRider, 0);
+        assertLt(feeRider, V / 20);
+    }
+
+    /// @notice PB-D9 (ii) — skew-envelope cost on the conversion venue exceeds the
+    ///         entire fee-rider prize; conservative fork sim supporting onAfterSwap
+    ///         ACCEPT (0/0 bounds retained). Batched yield routing is PB2.4b; this
+    ///         residual is per-swap dust only.
+    function test_Fork_F13_skewCostExceedsFeeRiderPrize() public {
+        _initializeBodensee();
+        _initializeTradingPool();
+        deal(address(aumm), address(this), 10_000e18, true);
+        deal(address(svZchf), address(this), 10_000e18, true);
+
+        uint256 SKEW = 200e18;
+        uint256 got = _forkSwapExactIn(address(aumm), address(svZchf), SKEW);
+        uint256 back = _forkSwapExactIn(address(svZchf), address(aumm), got);
+        uint256 skewCost = SKEW - back;
+
+        vm.recordLogs();
+        _forkSwapExactIn(address(aumm), address(svZchf), 50e18);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        bytes32 swapFeeRoutedTopic = IAureumFeeRoutingHook.SwapFeeRouted.selector;
+        uint256 feeRider;
+        bool found;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].topics.length > 0 && logs[i].topics[0] == swapFeeRoutedTopic) {
+                (feeRider,) = abi.decode(logs[i].data, (uint256, uint256));
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "SwapFeeRouted not emitted");
+
+        emit log_named_uint("skewCost", skewCost);
+        emit log_named_uint("feeRider", feeRider);
+        emit log_named_uint("skewCost / feeRider", skewCost / feeRider);
+        assertGt(skewCost, feeRider);
     }
 }
