@@ -120,4 +120,11 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.3b | `602e5d7` | ✅ script — 03_ixCasper.s.sol config(address) param form + DeployIxCasper view/env read; waEthwstETH restored at index [1], QG 68% → 84% |
 | PB2.3c | `fd3dfc2` | ✅ fork fixtures — StageM + StageP composite deploy + env-wire ahead of DeployIxCasper (StageM 7/7, StageP 13/13) |
 | PB2.3d | `62e6846` | ✅ CompositeRateProvider.sol NatSpec — PB-D8 second-consumer note (comment-only) |
-| PB2.3e | — | STAGE_I_PLAN + STAGE_I_NOTES OQ-I10 closure + PB2.10 (iv) items + Completion Log — this commit |
+| PB2.3e | `50aa0e3` | STAGE_I_PLAN + STAGE_I_NOTES OQ-I10 closure + PB2.10 (iv) items + Completion Log — this commit |
+| PB2.4 | `6fc8416` | ✅ PB-D9 lock — F-13 SPLIT adjudication (onAfterSwap ACCEPT + sim; routeYieldFee BUILD caller bounds; dormant entries threaded, user-adjudicated) |
+| PB2.4b | `ebf5aaa` | ✅ src — caller-supplied minDepositTokenOut + minBptAmountOut threaded (IAureumFeeRoutingHook + AureumFeeRoutingHook + AureumProtocolFeeController pass-through; onAfterSwap 0/0) |
+| PB2.4c1 | `69e77c9` | ✅ tests — arity ripple for the bound params across unit + fork call sites (zero bounds, no new coverage; 895 unit green) |
+| PB2.4c2 | `1e91e2f` | ✅ unit — bound-threading coverage (order-pinned exact-calldata proofs, all three unlock payloads, controller pass-through, bound-revert stamp-not-advanced; 901 unit green) |
+| PB2.4d1 | `6fc1625` | ✅ fork — bounded-route witness (real-Vault BptAmountOutBelowMin + SwapLimit on too-tight bounds, both legs green at realistic bounds; 12/12 fork) |
+| PB2.4d2 | `137f1bd` | ✅ fork — onAfterSwap ACCEPT evidence (fee-rider sandwich sim; feeRider 0.375% of swap, skewCost 12× the prize; 14/14 fork) |
+| PB2.4e | — | AUREUM_WHITEHAT_OUTPUT F-13 SPLIT row + Completion Log — this commit |
