@@ -127,4 +127,7 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.4c2 | `1e91e2f` | ✅ unit — bound-threading coverage (order-pinned exact-calldata proofs, all three unlock payloads, controller pass-through, bound-revert stamp-not-advanced; 901 unit green) |
 | PB2.4d1 | `6fc1625` | ✅ fork — bounded-route witness (real-Vault BptAmountOutBelowMin + SwapLimit on too-tight bounds, both legs green at realistic bounds; 12/12 fork) |
 | PB2.4d2 | `137f1bd` | ✅ fork — onAfterSwap ACCEPT evidence (fee-rider sandwich sim; feeRider 0.375% of swap, skewCost 12× the prize; 14/14 fork) |
-| PB2.4e | — | AUREUM_WHITEHAT_OUTPUT F-13 SPLIT row + Completion Log — this commit |
+| PB2.4e | `5fa40db` | AUREUM_WHITEHAT_OUTPUT F-13 SPLIT row + Completion Log — this commit |
+| PB2.5 | `34e4c27` | ✅ PB-D10 lock — F-15 ACCEPT adjudication (poke-invariant truth ceiling; both snapshot fixes rejected as regression-bearing, user-adjudicated) |
+| PB2.5b | `f36155b` | ✅ unit — F-15 ACCEPT evidence (real-VotingWeight poke sim: baseline trip, suppression face, truth-ceiling kill, recruit-flip, zero-denominator panic + self-heal edges; 6/6, 907 unit green) |
+| PB2.5c | — | AUREUM_WHITEHAT_OUTPUT F-15 Accepted-risk-standalone row + Completion Log — this commit |
