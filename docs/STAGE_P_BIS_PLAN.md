@@ -172,5 +172,8 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.11b-vi | `b610ca2` | ✅ face 3 sustained-pump economics — +99.6% spot tvl but only +10.69% governanceWeight over 21 daily EMA samples, bounded fee-negative (weightGainBps×2 = 2138 vs spotInflationBps = 9959); on-ramp timeFactor confound caught + fixed; 6/6 fork-green |
 | PB2.11c-a | `58ddc0e` | ✅ docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md — WK.18 could-not-assess CLOSED (populated-roster fork-sim evidence; F-04 stays Fixed at c283371+3d80ac8, no findings-table change) |
 | PB2.11c-b | `d76ee57` | ✅ docs/STAGES_OVERVIEW.md — WK.18 clause CLOSED at PB2.11 (the P-D42 clause stays byte-identical at PB2.9; the combined bullet now carries a distinct closure tag per clause) |
-| PB2.11c-c | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.11 family rows (a through c-d) — this commit |
-| PB2.11c-d | `—` | CLAUDE.md §11 rewrite — PB2.11 CLOSED (WK.18 carry-forward → Dropped-as-CLOSED; resume anchor → PB2.12; the three PB2.11b/c engineering lessons folded into the §11 index) |
+| PB2.11c-c | `b442248` | ✅ docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.11 family rows (a through c-d planned; the family fanned out further at c-d/c-e/c-f, reconciled at c-g) |
+| PB2.11c-d | `0a60321` | ✅ docs/STAGE_P_BIS_NOTES.md — PB11/PB12/PB13 engineering-lesson recipes (em-dash-in-string-literal / solc 8936; timeFactor/ON_RAMP pre-roll confound; insert-fence placement), the NOTES-backed precursor to the §11 index bullets (PB10 precedent) |
+| PB2.11c-e | `1ced206` | ✅ CLAUDE.md §11 — two additive edits (WK.18 → Dropped-as-CLOSED; PB11/PB12/PB13 added to the Engineering-lesson index), anchor untouched |
+| PB2.11c-f | `e2452a9` | ✅ CLAUDE.md §11 — Last-update resume-anchor advance (PB2.11 close sentence + roster-complete bump + Next sub-step → PB2.12, corrected plan line-refs); date → 2026-07-15 |
+| PB2.11c-g | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — reconciles the c-c/c-d placeholder rows + adds c-e/c-f/c-g rows; PB2.11 CLOSED — this commit |
