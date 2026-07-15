@@ -6,6 +6,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { StageNIntegrationFixture } from "./StageNIntegration.t.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { VotingWeight } from "../../src/governance/VotingWeight.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 import {
     TokenConfig,
     TokenType,
@@ -15,8 +16,8 @@ import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-u
 
 /**
  * @title WK18ThinVenuePumpSimFixture
- * @notice WK.18 thin-venue populated-roster fork sim — StageN roster base + VotingWeight + two USDC/svZChf constellation venues (PB-D16).
- * @dev Venue pricing layer: both venues registered via `addConstellationPool` so `_directRatio(USDC)` is their mean. EMA maturation and the three assertion faces land in later sub-steps.
+ * @notice WK.18 thin-venue populated-roster fork sim — StageN roster base + VotingWeight + two USDC/svZChf constellation venues + real matured-EMA scored pilot (PB-D16).
+ * @dev Venue pricing layer: both venues registered via `addConstellationPool` so `_directRatio(USDC)` is their mean. Scored pilot maps its first non-stable token to USDC, seeds gauge, takes a recorder position, and matures a real EMA (seed / roll 60d / refresh) — no `_mockPoolEma`. The three assertion faces land in later sub-steps.
  */
 abstract contract WK18ThinVenuePumpSimFixture is StageNIntegrationFixture {
     address internal constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -26,6 +27,9 @@ abstract contract WK18ThinVenuePumpSimFixture is StageNIntegrationFixture {
     VotingWeight internal votingWeight;
     address internal venueA;
     address internal venueB;
+    address internal scoredPool;
+    address internal scoredLp;
+    address internal scoredMappedToken;
 
     function setUp() public virtual override {
         super.setUp();
@@ -36,6 +40,23 @@ abstract contract WK18ThinVenuePumpSimFixture is StageNIntegrationFixture {
         venueB = _buildUsdcSvzchfVenue(VENUE_B_SALT);
         tvlOracle.addConstellationPool(venueA);
         tvlOracle.addConstellationPool(venueB);
+
+        scoredPool = pilotPools[0];
+        scoredLp = makeAddr("wk18ScoredLp");
+        IERC20[] memory sTokens = vault.getPoolTokens(scoredPool);
+        for (uint256 i = 0; i < sTokens.length; i++) {
+            if (address(sTokens[i]) != address(svZchf) && address(sTokens[i]) != USDC) {
+                tvlOracle.setTokenUnderlying(address(sTokens[i]), USDC);
+                scoredMappedToken = address(sTokens[i]);
+                break;
+            }
+        }
+        require(scoredMappedToken != address(0), "wk18: no mappable scored token");
+        gaugeRegistry.seedFoundingPool(scoredPool);
+        _depositOneSided(scoredPool, scoredLp, 100);
+        emaSampler.updateEMA(scoredPool);
+        vm.roll(block.number + 60 * AureumTime.BLOCKS_PER_DAY + 1);
+        emaSampler.updateEMA(scoredPool);
     }
 
     /// @dev Hookless USDC/svZChf weighted venue — StageHIntegration.t.sol L465-506 shape, distinct salt per call.
@@ -103,5 +124,13 @@ contract WK18VenueLayerTest is WK18ThinVenuePumpSimFixture {
         _depositOneSided(venueA, makeAddr("wk18Pumper"), 5_000);
         uint256 post = tvlOracle.quoteSvZCHF(USDC, 1e18);
         assertTrue(post != pre, "venue pump moves the USDC constellation price");
+    }
+}
+
+contract WK18ScoredPoolTest is WK18ThinVenuePumpSimFixture {
+    function test_scoredPool_realMaturedEmaConfersWeight() public {
+        assertGt(emaSampler.tvlEMA(scoredPool), 0, "real EMA seeded from live TVLOracle pricing");
+        votingWeight.poke(scoredLp);
+        assertGt(votingWeight.governanceWeight(scoredLp), 0, "real matured+fresh EMA + qualified position confers weight (no _mockPoolEma)");
     }
 }
