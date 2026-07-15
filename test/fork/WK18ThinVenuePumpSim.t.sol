@@ -157,3 +157,28 @@ contract WK18Face1PositiveControlTest is WK18ThinVenuePumpSimFixture {
         emit log_named_uint("governanceWeight after", weightAfter);
     }
 }
+
+/**
+ * @notice PB-D16 face (2) — a single-venue pump dilutes to ~1/N of the cross-venue mean move.
+ * @dev Populated roster strictly weakens the pump vector. Also carries the WH-P6 `addConstellationPool` double-append attestation — the venue roster is governance-controlled and mean-damped, not a code change. Spot-pricing only; no `updateEMA`.
+ */
+contract WK18Face2CrossVenueDilutionTest is WK18ThinVenuePumpSimFixture {
+    function test_face2_singleVenuePumpDilutesToOneOverN() public {
+        uint256 baseline = tvlOracle.quoteSvZCHF(USDC, 1e18);
+        uint256 snap = vm.snapshotState();
+        _depositOneSided(venueA, makeAddr("wk18Face2PumpA"), 5_000);
+        uint256 qA = tvlOracle.quoteSvZCHF(USDC, 1e18);
+        uint256 singleDelta = qA > baseline ? qA - baseline : baseline - qA;
+        vm.revertToState(snap);
+        _depositOneSided(venueA, makeAddr("wk18Face2PumpA"), 5_000);
+        _depositOneSided(venueB, makeAddr("wk18Face2PumpB"), 5_000);
+        uint256 qAB = tvlOracle.quoteSvZCHF(USDC, 1e18);
+        uint256 bothDelta = qAB > baseline ? qAB - baseline : baseline - qAB;
+        assertGt(singleDelta, 0, "single-venue pump moves the mean");
+        assertGt(bothDelta, singleDelta, "both-venue pump moves the mean strictly more");
+        assertApproxEqRel(singleDelta * 2, bothDelta, 0.02e18, "single-venue pump dilutes to ~1/N (N=2) of the cross-venue mean move");
+        emit log_named_uint("baseline quoteSvZCHF(USDC,1e18)", baseline);
+        emit log_named_uint("single-venue pump delta", singleDelta);
+        emit log_named_uint("both-venue pump delta", bothDelta);
+    }
+}
