@@ -159,3 +159,6 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.8b | `612ce0a` | ✅ test/unit/BodenseeBootstrapChannel.t.sol — direct ReentrancyGuard.selector witness on distribute() via roll-plus-accrue mock reentry; arm in MockVault.settle (the getPoolTokenInfo placement was a STATICCALL where the inner state write exceptionally halted — two fix rounds); 35/35 file-scoped, 908/908 Part A |
 | PB2.8c | `d11f542` | ✅ ROBUSTNESS_BACKPORT_REGISTER.md — RB-007 row (Invariant-tests class, created Closed at 612ce0a) |
 | PB2.8d | — | CLAUDE.md §11 rewrite (PB2.8 closed; ReentrancyGuard.selector carry-forward → Dropped-as-CLOSED; resume anchor → PB2.9) + Completion Log — this commit |
+| PB2.9a | `c04b00e` | ✅ PB-D15 lock — P-D42 coverage re-eval: re-probe reproduces the Yul stack-too-deep on the byte-identical toolchain (forge f83bad91 / solc 0.8.26); execution-evidence waiver re-affirmed + plan L24/L86 re-word + Decisions row |
+| PB2.9b | `38a68f9` | ✅ docs/STAGES_OVERVIEW.md — workstream-A WK.18/P-D42 bullet: P-D42 clause CLOSED at PB2.9 (WK.18 clause stays open → PB2.11) |
+| PB2.9c | — | CLAUDE.md §11 rewrite (PB2.9 closed; resume anchor → PB2.11; no carry-forward drop) + Completion Log — this commit |
