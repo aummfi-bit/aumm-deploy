@@ -53,6 +53,14 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 | PB-D3 | Branch + close mechanics mirror P-D4; base f72b309 (PB1.1a amendment); PENDING_PBIS close | PB5 |
 | PB-D4 | Three sequenced workstreams A → B → C; per-item exit Fixed/Built/Descoped; hevm/Act + WK.18 LAST in A | roadmap |
 | PB-D5 | Workstream-A adjudication queue runs FIRST, before any build | PB2.1—PB2.5 |
+| PB-D6 | OQ-20/OQ-21 BUILD: `routeYieldFeeToHook(pool, token, amount)` + per-pool `BLOCKS_PER_EPOCH` throttle on the controller | PB2.1 |
+| PB-D7 | OQ-22 BUILD: 2-hop TVLOracle valuation fallback (governance-append-only hop roster, ZCHF + USDS seeded; direct venues win, no transitive hops) | PB2.2 |
+| PB-D8 | Pool restoration SPLIT: ixCasper waEthwstETH restored via Aureum `CompositeRateProvider` (QG 68% → 84%); 04/07 descoped to the Stage-O challenge path; OQ-I10 closed | PB2.3 |
+| PB-D9 | F-13 SPLIT: routeYieldFee path Fixed via caller-supplied bounds; onAfterSwap Accepted-risk S5 Low (sandwich-sim evidence); dormant entries threaded + attested | PB2.4 |
+| PB-D10 | F-15 ACCEPT: poke-invariant truth ceiling bounds the live veto denominator; both snapshot fixes rejected as regression-bearing | PB2.5 |
+| PB-D11 | PB-D2 amendment: `VaultClassRegistry` one-shot-sealed, reroutes to the PB3.4 production bind; PB2.6 narrows to the five-rotation script | PB2.6 |
+| PB-D12 | PB-D2 second amendment: rotations pinned to dissolution-time; the v1 freeze witnessed as truth; ossify-vs-extend one consolidated Stage-Q / pre-R input | PB2.6 |
+| PB-D13 | PB2.7 DESCOPED: `--threads 1` permanent canonical fork-invocation posture; the D36 branch-(b) parameterization records as RB-006 | PB2.7 |
 
 ---
 ## Sub-step roadmap (PB1—PB5)
@@ -130,7 +138,7 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.4e | `5fa40db` | AUREUM_WHITEHAT_OUTPUT F-13 SPLIT row + Completion Log — this commit |
 | PB2.5 | `34e4c27` | ✅ PB-D10 lock — F-15 ACCEPT adjudication (poke-invariant truth ceiling; both snapshot fixes rejected as regression-bearing, user-adjudicated) |
 | PB2.5b | `f36155b` | ✅ unit — F-15 ACCEPT evidence (real-VotingWeight poke sim: baseline trip, suppression face, truth-ceiling kill, recruit-flip, zero-denominator panic + self-heal edges; 6/6, 907 unit green) |
-| PB2.5c | — | AUREUM_WHITEHAT_OUTPUT F-15 Accepted-risk-standalone row + Completion Log — this commit |
+| PB2.5c | `4e438ed` | AUREUM_WHITEHAT_OUTPUT F-15 Accepted-risk-standalone row + Completion Log — this commit |
 | PB2.6-pre | `f444d32` | ✅ PB-D11 lock — VaultClassRegistry one-shot-sealed (not re-settable), reroutes to the PB3.4 production bind; PB2.6 narrows to the five-rotation script (user-adjudicated) |
 | PB2.6-pre2 | `ef7ea12` | ✅ PB-D12 lock — emission-layer rotation strands the operational-wiring family under AureumGovernance v1; rotations pinned to dissolution-time, the freeze witnessed as v1 truth (user-adjudicated) |
 | PB2.6b | `84a859d` | ✅ script/DissolutionGovernanceHandoff.s.sol — the five dissolution-time rotations (4× emission `setGovernanceContract` + `SwapAndDepositToBodensee.setDonateAuthorizer`); VaultClassRegistry not rotated |
@@ -138,4 +146,10 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.6c-fix2 | `b850e8c` | ✅ fork-witness fix — cache handles before `vm.prank`/`vm.expectRevert` (a chained `orchestrator.X()` getter was the "next call" the cheatcodes latched onto); 4/4 fork-green |
 | PB2.6d | `7ee86ca` | ✅ pauseManager inert-pointer attestation (Miliarium pauseManager == the write-once GOVERNANCE_MULTISIG, non-exclusive via the authorizer per F-20); 5/5 fork-green |
 | PB2.6e | `5cfbd2f` | ✅ docs/STAGES_OVERVIEW.md — multisig-dissolution remainder bullet CLOSED (VaultClassRegistry sealed + pauseManager inert both dropped from the rotation enumeration) |
-| PB2.6f | — | STAGE_P_BIS_PLAN.md Completion Log — PB2.6 close — this commit |
+| PB2.6f | `76e99cd` | STAGE_P_BIS_PLAN.md Completion Log — PB2.6 close — this commit |
+| PB2.6g | `a0357ff` | ✅ docs/STAGE_P_BIS_NOTES.md — PB10 lesson (vm.prank AND vm.expectRevert latch a chained getter; P-D38 recurrence, promoted to the §11 index) |
+| PB2.6h | `7e9d71f` | ✅ CLAUDE.md — PB10 index bullet + §11 resume anchor (PB2.6 closed; next PB2.7) |
+| PB2.7a | `fc09269` | ✅ PB-D13 lock — PB2.7 DESCOPED (stale one-file scope vs the 224-site/16-file measured surface; `--threads 1` permanent posture; user-adjudicated) + plan L22/L75 re-scope |
+| PB2.7b | `c6fd6fa` | ✅ ROBUSTNESS_BACKPORT_REGISTER.md — RB-006 row + Test-fixture isolation hardening class |
+| PB2.7c | `04db2e4` | ✅ docs/STAGES_OVERVIEW.md — workstream-A D36/F-D11 bullet CLOSED at PB2.7 |
+| PB2.7d | — | Decisions-table back-fill (PB-D6—PB-D13) + PB2.6g/h rows + PB2.5c/PB2.6f hash back-fill + Completion Log — this commit |
