@@ -182,3 +182,57 @@ contract WK18Face2CrossVenueDilutionTest is WK18ThinVenuePumpSimFixture {
         emit log_named_uint("both-venue pump delta", bothDelta);
     }
 }
+
+/**
+ * @notice PB-D16 face (3) — sustained skew capital across daily EMA samples buys a quartic-root-compressed, EMA-lagged, 1/N-mean-diluted weight gain; bounded fee-negative (the PB2.4d sandwich-sim shape).
+ * @dev Final face: a large venue skew held across ~21 daily `updateEMA` samples is fee-negative vs the deliverable weight gain.
+ */
+contract WK18Face3SustainedPumpEconomicsTest is WK18ThinVenuePumpSimFixture {
+    /// @dev Single-sided add of `fractionBps`/10_000 of the venue's current svZChf balance — raises the USDC price (`_venueRatio` is svZChf-per-USDC).
+    function _pumpVenueSvzchf(address venue, uint256 fractionBps) internal {
+        IERC20[] memory tokens = vault.getPoolTokens(venue);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(venue);
+        uint256[] memory amountsIn = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (address(tokens[i]) == address(svZchf)) {
+                amountsIn[i] = balancesRaw[i] * fractionBps / 10_000;
+                deal(address(svZchf), address(this), amountsIn[i]);
+            }
+        }
+        vault.unlock(abi.encodeCall(this._depositCallback, (venue, amountsIn)));
+    }
+
+    function test_face3_sustainedPumpEconomicsAreFeeNegative() public {
+        /// @dev Pre-roll past the 180-day AureumTime.ON_RAMP_PERIOD_BLOCKS cap (scoredLp opened ~60 days ago in setUp) so timeFactor is already pinned at its maximum before the sustain loop below — isolating the measured weight delta to the EMA/poolPower term, not on-ramp aging.
+        vm.roll(block.number + 130 * AureumTime.BLOCKS_PER_DAY);
+        emaSampler.updateEMA(scoredPool);
+        votingWeight.poke(scoredLp);
+        uint256 weightBaseline = votingWeight.governanceWeight(scoredLp);
+        assertGt(weightBaseline, 0, "baseline weight from the real matured EMA");
+        uint256 spotBaseline = tvlOracle.tvl(scoredPool);
+        _pumpVenueSvzchf(venueA, 20_000);
+        uint256 spotPumped = tvlOracle.tvl(scoredPool);
+        assertGt(spotPumped, spotBaseline, "sustained pump inflates spot tvl(scoredPool)");
+        votingWeight.poke(scoredLp);
+        assertEq(votingWeight.governanceWeight(scoredLp), weightBaseline, "pre-sustain: the pump alone leaves weight unmoved (EMA not resampled)");
+        uint256 K = 21;
+        uint256 b = block.number;
+        for (uint256 d = 0; d < K; d++) {
+            b += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(b);
+            emaSampler.updateEMA(scoredPool);
+        }
+        votingWeight.poke(scoredLp);
+        uint256 weightAfter = votingWeight.governanceWeight(scoredLp);
+        assertGt(weightAfter, weightBaseline, "sustaining the pump eventually moves weight (partial EMA absorption)");
+        uint256 spotInflationBps = (spotPumped - spotBaseline) * 10_000 / spotBaseline;
+        uint256 weightGainBps = (weightAfter - weightBaseline) * 10_000 / weightBaseline;
+        assertLt(weightGainBps * 2, spotInflationBps, "weight gain is far under half the spot inflation fractionally (EMA lag + quartic root + 1/N dilution); sustained-pump attack fee-negative");
+        emit log_named_uint("skew svZChf add fraction (bps)", 20_000);
+        emit log_named_uint("days sustained", K);
+        emit log_named_uint("spot inflation bps", spotInflationBps);
+        emit log_named_uint("weight gain bps after sustain", weightGainBps);
+        emit log_named_uint("weight baseline", weightBaseline);
+        emit log_named_uint("weight after sustain", weightAfter);
+    }
+}
