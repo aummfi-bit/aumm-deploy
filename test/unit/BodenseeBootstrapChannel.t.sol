@@ -75,6 +75,7 @@ contract MockVault {
     bool public corruptCallbackAmount;
     bool public mintBptOnDonation;
     bool public bumpReserveOnDonation;
+    bool public reentrancyAttackWithAccrual;
 
     function setTokens(IERC20[] calldata tokens_) external {
         delete mockTokens;
@@ -98,6 +99,10 @@ contract MockVault {
 
     function enableReentrancyAttack() external {
         reentrancyAttack = true;
+    }
+
+    function enableReentrancyAttackWithAccrual() external {
+        reentrancyAttackWithAccrual = true;
     }
 
     function enableCorruptCallback() external {
@@ -136,7 +141,11 @@ contract MockVault {
         return ret;
     }
 
-    function settle(IERC20, uint256 amount_) external pure returns (uint256) {
+    function settle(IERC20, uint256 amount_) external returns (uint256) {
+        if (reentrancyAttackWithAccrual) {
+            BodenseeBootstrapChannel(helperRef).accrue();
+            BodenseeBootstrapChannel(helperRef).distribute();
+        }
         return amount_;
     }
 
@@ -491,6 +500,29 @@ contract BodenseeBootstrapChannelTest is Test {
         ch2.accrue();
         vault.enableReentrancyAttack();
         vm.expectRevert(BodenseeBootstrapChannel.NoPendingAccrual.selector);
+        vm.prank(address(vault));
+        ch2.distribute();
+    }
+
+    /// @notice PB-D14 direct guard witness — the mock re-enters from settle(), a non-static vault call made while _EXECUTING_SLOT is true: the arm's accrue() refuels pendingAccrual from the 5 un-accrued blocks, so the inner distribute() passes NoPendingAccrual and dies at the tload guard with ReentrancyGuard() data. The getPoolTokenInfo vector (H3.7e's bubble-up pin above) is a STATICCALL — any inner path that writes state exceptionally halts there (all gas, empty data), so only read-only-prefix reverts can be witnessed from it.
+    function test_Distribute_RevertWhen_Reentrant_DirectGuard() public {
+        BodenseeBootstrapChannel ch2 = new BodenseeBootstrapChannel(
+            IVault(address(vault)),
+            BODENSEE_POOL_,
+            IAuMM(address(aumm)),
+            GENESIS_BLOCK_,
+            address(vault)
+        );
+        vault.setHelper(address(ch2));
+        AuMMMinterRouter router2 = new AuMMMinterRouter(IAuMM(address(aumm)), address(ch2), DUMMY_DISTRIBUTOR);
+        aumm.setMinter(address(router2));
+        vm.prank(address(vault));
+        ch2.setMintRouter(address(router2));
+        _rollTo(GENESIS_BLOCK_ + 1_000);
+        ch2.accrue();
+        _rollTo(GENESIS_BLOCK_ + 1_005);
+        vault.enableReentrancyAttackWithAccrual();
+        vm.expectRevert(BodenseeBootstrapChannel.ReentrancyGuard.selector);
         vm.prank(address(vault));
         ch2.distribute();
     }
