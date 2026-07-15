@@ -154,3 +154,7 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.7b | `c6fd6fa` | ✅ ROBUSTNESS_BACKPORT_REGISTER.md — RB-006 row + Test-fixture isolation hardening class |
 | PB2.7c | `04db2e4` | ✅ docs/STAGES_OVERVIEW.md — workstream-A D36/F-D11 bullet CLOSED at PB2.7 |
 | PB2.7d | — | Decisions-table back-fill (PB-D6—PB-D13) + PB2.6g/h rows + PB2.5c/PB2.6f hash back-fill + Completion Log — this commit |
+| PB2.8a | `02536d5` | ✅ PB-D14 lock — `vm.transientStore` absent at pinned forge-std v1.15.0; direct guard witness re-mechanized as roll-plus-accrue mock reentry, channel-only scope + plan L23/L84 re-scope |
+| PB2.8b | `612ce0a` | ✅ test/unit/BodenseeBootstrapChannel.t.sol — direct ReentrancyGuard.selector witness on distribute() via roll-plus-accrue mock reentry; arm in MockVault.settle (the getPoolTokenInfo placement was a STATICCALL where the inner state write exceptionally halted — two fix rounds); 35/35 file-scoped, 908/908 Part A |
+| PB2.8c | `d11f542` | ✅ ROBUSTNESS_BACKPORT_REGISTER.md — RB-007 row (Invariant-tests class, created Closed at 612ce0a) |
+| PB2.8d | — | CLAUDE.md §11 rewrite (PB2.8 closed; ReentrancyGuard.selector carry-forward → Dropped-as-CLOSED; resume anchor → PB2.9) + Completion Log — this commit |
