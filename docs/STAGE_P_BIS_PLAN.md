@@ -163,3 +163,14 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.9a | `c04b00e` | ✅ PB-D15 lock — P-D42 coverage re-eval: re-probe reproduces the Yul stack-too-deep on the byte-identical toolchain (forge f83bad91 / solc 0.8.26); execution-evidence waiver re-affirmed + plan L24/L86 re-word + Decisions row |
 | PB2.9b | `38a68f9` | ✅ docs/STAGES_OVERVIEW.md — workstream-A WK.18/P-D42 bullet: P-D42 clause CLOSED at PB2.9 (WK.18 clause stays open → PB2.11) |
 | PB2.9c | — | CLAUDE.md §11 rewrite (PB2.9 closed; resume anchor → PB2.11; no carry-forward drop) + Completion Log — this commit |
+| PB2.11a | `505e538` | ✅ PB-D16 lock (NOTES + plan) — WK.18 sim BUILT disposition: F-04's atomic surface already Fixed via the 60-day EMA gate, so the sim is a populated-roster positive-control + economics quantifier, not a bug hunt; plan L25/L90 + L66 Decisions row |
+| PB2.11b-i | `b2848ec` | ✅ test/fork/WK18ThinVenuePumpSim.t.sol — sim scaffold (StageN 21-pool populated-roster base + ported VotingWeight wiring; wiring self-test, 1/1 fork-green) |
+| PB2.11b-ii | `aec5d67` | ✅ venue pricing layer — two hookless USDC/svZChf constellation venues (_directRatio(USDC) = their cross-venue mean; a one-sided venue pump moves the mean live; 2/2 fork-green) |
+| PB2.11b-iii | `0d49203` | ✅ real matured-EMA scored pilot — gauge-seed + recorder position + updateEMA seed / +60d roll / refresh, no _mockPoolEma; 3/3 fork-green |
+| PB2.11b-iv | `74ba708` | ✅ face 1 positive control — an atomic venue pump moves spot tvl but leaves governanceWeight byte-identical (the EMA-not-spot proof); 4/4 fork-green |
+| PB2.11b-v | `8395d9c` | ✅ face 2 cross-venue dilution — a single-venue pump = 1/N of the both-venue delta (wei-exact, N=2); WH-P6 addConstellationPool double-append attestation; 5/5 fork-green |
+| PB2.11b-vi | `b610ca2` | ✅ face 3 sustained-pump economics — +99.6% spot tvl but only +10.69% governanceWeight over 21 daily EMA samples, bounded fee-negative (weightGainBps×2 = 2138 vs spotInflationBps = 9959); on-ramp timeFactor confound caught + fixed; 6/6 fork-green |
+| PB2.11c-a | `58ddc0e` | ✅ docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md — WK.18 could-not-assess CLOSED (populated-roster fork-sim evidence; F-04 stays Fixed at c283371+3d80ac8, no findings-table change) |
+| PB2.11c-b | `d76ee57` | ✅ docs/STAGES_OVERVIEW.md — WK.18 clause CLOSED at PB2.11 (the P-D42 clause stays byte-identical at PB2.9; the combined bullet now carries a distinct closure tag per clause) |
+| PB2.11c-c | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.11 family rows (a through c-d) — this commit |
+| PB2.11c-d | `—` | CLAUDE.md §11 rewrite — PB2.11 CLOSED (WK.18 carry-forward → Dropped-as-CLOSED; resume anchor → PB2.12; the three PB2.11b/c engineering lessons folded into the §11 index) |
