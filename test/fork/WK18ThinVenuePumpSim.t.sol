@@ -134,3 +134,26 @@ contract WK18ScoredPoolTest is WK18ThinVenuePumpSimFixture {
         assertGt(votingWeight.governanceWeight(scoredLp), 0, "real matured+fresh EMA + qualified position confers weight (no _mockPoolEma)");
     }
 }
+
+/**
+ * @notice PB-D16 face (1) — atomic venue pump moves spot `tvl(scoredPool)` but leaves `governanceWeight` byte-identical.
+ * @dev Fork-grade proof that `_positionPower` reads the gated EMA, not spot. No `updateEMA` in this test.
+ */
+contract WK18Face1PositiveControlTest is WK18ThinVenuePumpSimFixture {
+    function test_face1_atomicVenuePump_governanceWeightUnmovedWhileSpotMoves() public {
+        votingWeight.poke(scoredLp);
+        uint256 weightBefore = votingWeight.governanceWeight(scoredLp);
+        assertGt(weightBefore, 0, "baseline weight from the real matured EMA");
+        uint256 spotBefore = tvlOracle.tvl(scoredPool);
+        _depositOneSided(venueA, makeAddr("wk18Face1Pumper"), 5_000);
+        uint256 spotAfter = tvlOracle.tvl(scoredPool);
+        assertTrue(spotAfter != spotBefore, "atomic venue pump moves spot tvl(scoredPool)");
+        votingWeight.poke(scoredLp);
+        uint256 weightAfter = votingWeight.governanceWeight(scoredLp);
+        assertEq(weightAfter, weightBefore, "governanceWeight unmoved: _positionPower reads the gated EMA, not spot");
+        emit log_named_uint("spot tvl before venue pump", spotBefore);
+        emit log_named_uint("spot tvl after venue pump", spotAfter);
+        emit log_named_uint("governanceWeight before", weightBefore);
+        emit log_named_uint("governanceWeight after", weightAfter);
+    }
+}
