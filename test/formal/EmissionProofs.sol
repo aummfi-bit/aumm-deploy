@@ -3,16 +3,40 @@ pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+
 import {AuMM} from "src/token/AuMM.sol";
 import {AuMMMinterRouter} from "src/token/AuMMMinterRouter.sol";
 import {IAuMM} from "src/token/IAuMM.sol";
 import {EmissionDistributor} from "src/emission/EmissionDistributor.sol";
+import {BodenseeBootstrapChannel} from "src/emission/BodenseeBootstrapChannel.sol";
 import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "src/ccb/ICCBMultiplier.sol";
 import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+
+/// @notice Minimal Vault stub with a settable getPoolTokens return, so the
+///         BodenseeBootstrapChannel constructor can resolve the AuMM index.
+///         Not declared `is IVault` -- the IVault cast at construction
+///         dispatches getPoolTokens by selector, so the rest of IVault is
+///         unused (the MockTVLOracleProof rationale).
+contract MockVaultForChannel {
+    IERC20 private immutable _aumm;
+
+    constructor(IERC20 aumm_) {
+        _aumm = aumm_;
+    }
+
+    function getPoolTokens(address) external view returns (IERC20[] memory tokens) {
+        tokens = new IERC20[](3);
+        tokens[0] = _aumm;
+        tokens[1] = IERC20(address(0x1));
+        tokens[2] = IERC20(address(0x2));
+    }
+}
 
 /// @title  EmissionProofs
 /// @notice hevm symbolic proofs for the emission-accrual surface (PB2.12e /
@@ -22,10 +46,11 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 ///         calls; the raised bound widens exploration only (cannot mask a
 ///         counterexample), per the e1 lesson.
 /// @dev    Tier-1 of the emission-accrual surface (PB2.12e / PB-D17). The P-A*
-///         namespace landed at e1 (AuMM only); P-R*/P-ED* land HERE (e2); P-BC*
-///         still at e3. P-D* is deliberately unused (collides with Stage-P
-///         planning codes). The three STAGES_OVERVIEW L411 candidates map
-///         P-A1 = 21M cap, P-A4 = halving curve; the no-admin-redirect
+///         namespace landed at e1 (AuMM only); P-R*/P-ED* landed at e2; P-BC*
+///         lands HERE (e3), closing emission-accrual Tier-1; the .act spec (e4)
+///         closes the surface. P-D* is deliberately unused (collides with
+///         Stage-P planning codes). The three STAGES_OVERVIEW L411 candidates
+///         map P-A1 = 21M cap, P-A4 = halving curve; the no-admin-redirect
 ///         candidate is covered by P-ED1 (setMintRouter one-shot) + P-R1
 ///         (allowlist gate). Solver note: address-logic proofs green under
 ///         z3; curve/cap arithmetic is canonical under bitwuzla 0.9.1
@@ -39,12 +64,15 @@ contract EmissionProofs is Test {
     AuMM internal aumm;
     AuMMMinterRouter internal router;
     EmissionDistributor internal dist;
+    MockVaultForChannel internal mockVault;
+    BodenseeBootstrapChannel internal channel;
 
     uint256 internal constant GENESIS = 1_000_000;
     address internal constant RECIPIENT = address(0xAAAA);
     uint256 internal constant MAX = 21_000_000e18;
     address internal constant BOOTSTRAP = address(0xB007);
     address internal constant DISTRIB = address(0xD157);
+    address internal constant BODENSEE = address(0xB0DE);
 
     function setUp() public {
         // Minter UNBOUND; this contract is the C-D11 minter admin.
@@ -60,6 +88,17 @@ contract EmissionProofs is Test {
             ICCBMultiplier(address(0xA444)),
             IEfficiencyOracle(address(0xA555)),
             IMiliariumRegistry(address(0xA666)),
+            GENESIS,
+            address(this)
+        );
+        // Mock supplies only getPoolTokens for the constructor aumm-index
+        // lookup; aumm's minter stays UNBOUND (accrue reads blockEmissionRate,
+        // never mints).
+        mockVault = new MockVaultForChannel(aumm);
+        channel = new BodenseeBootstrapChannel(
+            IVault(address(mockVault)),
+            BODENSEE,
+            aumm,
             GENESIS,
             address(this)
         );
@@ -398,5 +437,131 @@ contract EmissionProofs is Test {
 
         dist.setIncendiaryRegistry(address(0));
         assert(dist.incendiaryRegistry() == address(0));
+    }
+
+    // -------------------------------------------------------------------------
+    // P-BC* -- BodenseeBootstrapChannel governance locks + accrue structural
+    // guards. The channel setters mirror the distributor locks (same class,
+    // DISTINCT bytecode -- per-contract audit coverage). Accrue is proven here
+    // for its structural guards only; distribute() (the H-D12 Vault-unlock
+    // DONATION seam + 3 transient slots) and the H-D26 cross-contract
+    // AP-conservation identity are the Tier-2 residual per PB-D17(ii), stated
+    // in the e4 formal/act footer and pinned by the existing channel unit
+    // tests + the P6.5 invariant harness (mirroring the S7
+    // updateEMA/updateMultiplier residual handling).
+    // -------------------------------------------------------------------------
+
+    /// P-BC1 auth gate: setMintRouter reverts for every caller other than
+    /// the constructor-set governance (this contract).
+    function prove_channel_setMintRouter_onlyGovernance(
+        address caller,
+        address r
+    ) public {
+        vm.assume(caller != address(this));
+
+        vm.prank(caller);
+        (bool ok, ) = address(channel).call(
+            abi.encodeCall(BodenseeBootstrapChannel.setMintRouter, (r))
+        );
+        assert(!ok);
+    }
+
+    /// P-BC1 one-shot: once bound, every later setMintRouter reverts.
+    /// Caller-universal (non-gov reverts onlyGovernance; gov reverts
+    /// MintRouterAlreadySet), no EVM-sender axiom.
+    function prove_channel_setMintRouter_setOnce(
+        address first,
+        address second,
+        address caller
+    ) public {
+        vm.assume(first != address(0));
+
+        channel.setMintRouter(first);
+        assert(address(channel.mintRouter()) == first);
+
+        vm.prank(caller);
+        (bool ok, ) = address(channel).call(
+            abi.encodeCall(BodenseeBootstrapChannel.setMintRouter, (second))
+        );
+        assert(!ok);
+    }
+
+    /// P-BC1 zero-rejection: even governance cannot bind the zero address.
+    function prove_channel_setMintRouter_rejectZero() public {
+        (bool ok, ) = address(channel).call(
+            abi.encodeCall(BodenseeBootstrapChannel.setMintRouter, (address(0)))
+        );
+        assert(!ok);
+    }
+
+    /// P-BC2 governance rotation: two-phase self-probe on
+    /// setGovernanceContract itself (old locked out, new live), the P-H6
+    /// shape.
+    function prove_channel_governanceRotation(address newGov) public {
+        vm.assume(newGov != address(0) && newGov != address(this));
+
+        channel.setGovernanceContract(newGov);
+        assert(channel.governance() == newGov);
+
+        (bool ok, ) = address(channel).call(
+            abi.encodeCall(
+                BodenseeBootstrapChannel.setGovernanceContract,
+                (address(0xBEEF))
+            )
+        );
+        assert(!ok);
+
+        vm.prank(newGov);
+        channel.setGovernanceContract(address(0xBEEF));
+        assert(channel.governance() == address(0xBEEF));
+    }
+
+    /// P-BC2 zero-rejection: even governance cannot hand off to address(0).
+    function prove_channel_setGovernanceContract_rejectZero() public {
+        (bool ok, ) = address(channel).call(
+            abi.encodeCall(
+                BodenseeBootstrapChannel.setGovernanceContract,
+                (address(0))
+            )
+        );
+        assert(!ok);
+    }
+
+    /// P-BC3 empty-interval idempotent: concrete Month-1 block (Bootstrap A);
+    /// the second accrue hits from = b+1 > to = b and returns; also validates
+    /// the mock-vault + real-AuMM channel rig runs under hevm.
+    function prove_channel_accrue_emptyIntervalIdempotent() public {
+        uint256 b = GENESIS + AureumTime.BLOCKS_PER_MONTH;
+        vm.roll(b);
+        channel.accrue();
+        uint256 p1 = channel.pendingAccrual();
+        assert(p1 > 0);
+        assert(channel.lastAccrualBlock() == b);
+        channel.accrue();
+        assert(channel.pendingAccrual() == p1);
+        assert(channel.lastAccrualBlock() == b);
+    }
+
+    /// P-BC3 pre-genesis no-op: at or before genesis from = GENESIS + 1 > to,
+    /// the empty-interval guard returns before any AP arithmetic (symbolic b,
+    /// early-return tractable).
+    function prove_channel_accrue_preGenesisNoOp(uint256 b) public {
+        vm.assume(b <= GENESIS);
+        vm.roll(b);
+        channel.accrue();
+        assert(channel.pendingAccrual() == 0);
+        assert(channel.lastAccrualBlock() == GENESIS);
+    }
+
+    /// P-BC3 post-window clamp: for every post-window block the clamp to =
+    /// min(block.number, month10End) resolves to the constant month10End, so
+    /// the AP sum runs over the concrete [genesis+1, m10] interval --
+    /// symbolic extra, tractable.
+    function prove_channel_accrue_postWindowClamp(uint256 extra) public {
+        uint256 m10 = AureumTime.month10EndBlock(GENESIS);
+        vm.assume(extra >= 1 && extra <= 1_000_000);
+        vm.roll(m10 + extra);
+        channel.accrue();
+        assert(channel.lastAccrualBlock() == m10);
     }
 }
