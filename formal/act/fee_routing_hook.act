@@ -1,0 +1,103 @@
+// AUREUM S5 FEE-ROUTING HOOK -- Act behavioural specification
+// PB2.12c / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act) -- the current contract / constructor /
+// creates / transition / iff / updates grammar (per tests/hevm/pass/*.act).
+//
+// Status: audit-handoff artifact. Per PB-D17(ii) machine-checking is attested
+// FIRM-SIDE -- Act builds only under Nix + a Haskell toolchain, absent on the
+// build host; this file is authored as the declarative specification, to be
+// proved equivalent to the deployed bytecode by the audit firm via Act's hevm
+// backend. The governance state machine below (the three one-shot module locks
+// plus the trustedRouter gate) is the same surface proved LOCALLY by hevm in
+// test/formal/FeeRoutingHookProofs.sol (P-H1..P-H6, 9/9 PASS, hevm 0.58.0 / z3):
+// this is the human-readable model of that already-verified behaviour.
+//
+// Scope: the configuration / governance state machine, modelled precisely.
+// The onAfterSwap fee-conservation property (P-H7) is the Tier-2 residual,
+// stated at the foot of this file and routed firm-side -- its full
+// multi-contract Vault-settlement model is the exhaustive-sweep remit per
+// PB-D17 / the P-D42 grain note. Immutables (AUREUM_VAULT, DER_BODENSEE,
+// SV_ZCHF, SUSDS, AUMM, FEE_CONTROLLER) are constructor-frozen and elided --
+// they do not participate in the governance transitions specified here.
+//
+// Operators: == and the multi-line iff (conjunction) are confirmed in v0.2.0
+// pass-tests; =/= (not-equal) and or are Act-standard but taken from the
+// legacy examples/ dialect -- flagged for firm-side confirmation against the
+// shipped v0.2.0 grammar.
+
+contract AureumFeeRoutingHook
+
+constructor(address moduleAdmin_)
+
+iff
+  moduleAdmin_ =/= 0
+
+creates
+  address governanceModule := 0
+  address incendiaryModule := 0
+  address emissionRecorder := 0
+  address governanceAdmin := moduleAdmin_
+  address incendiaryAdmin := moduleAdmin_
+  address emissionRecorderAdmin := moduleAdmin_
+  mapping(address => bool) trustedRouter := []
+
+// The C-D11 / I-D16 two-flag locks: a module and its admin are never both
+// live at once, so each module is settable at most once.
+invariants
+  governanceModule == 0 or governanceAdmin == 0
+  incendiaryModule == 0 or incendiaryAdmin == 0
+  emissionRecorder == 0 or emissionRecorderAdmin == 0
+
+// P-H2 auth (CALLER == governanceAdmin) + P-H1 one-shot (governanceModule == 0)
+// + P-H3 non-zero (module =/= 0); the admin is burned on success.
+transition setGovernanceModule(address module)
+iff
+  CALLER == governanceAdmin
+  governanceModule == 0
+  module =/= 0
+updates
+  governanceModule := module
+  governanceAdmin := 0
+
+transition setIncendiaryModule(address module)
+iff
+  CALLER == incendiaryAdmin
+  incendiaryModule == 0
+  module =/= 0
+updates
+  incendiaryModule := module
+  incendiaryAdmin := 0
+
+transition setEmissionRecorder(address recorder)
+iff
+  CALLER == emissionRecorderAdmin
+  emissionRecorder == 0
+  recorder =/= 0
+updates
+  emissionRecorder := recorder
+  emissionRecorderAdmin := 0
+
+// P-H6 the persistent governance gate: only the bound governanceModule may
+// toggle the router allowlist (before binding, governanceModule == 0, so the
+// gate is closed to every real caller).
+transition setTrustedRouter(address router, bool trusted)
+iff
+  CALLER == governanceModule
+updates
+  trustedRouter := trustedRouter[router => trusted]
+
+// ----------------------------------------------------------------------------
+// P-H7 (Tier-2 residual, firm-side) -- onAfterSwap fee conservation.
+//
+// Not modelled as an Act transition here: onAfterSwap routes the protocol fee
+// through Vault settlement (a multi-contract interaction with the Balancer V3
+// Vault and the AureumProtocolFeeController), whose exhaustive model is the
+// audit firm's remit. The property to prove:
+//
+//   For every swap that triggers onAfterSwap, protocol-fee value is conserved:
+//   the amount routed to der-Bodensee plus the LP residual equals the total
+//   protocol fee taken, and onAfterSwap creates and destroys no token value
+//   (the OQ-1 50/50 saturation seam). No path lets onAfterSwap divert fee
+//   value to any address outside {der-Bodensee deposit rail, LP residual}.
+// ----------------------------------------------------------------------------
