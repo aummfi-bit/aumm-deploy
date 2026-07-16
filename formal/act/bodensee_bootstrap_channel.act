@@ -1,0 +1,108 @@
+// AUREUM EMISSION-ACCRUAL / BodenseeBootstrapChannel -- Act behavioural
+// specification. PB2.12e / PB-D17 (Stage P-bis workstream A, formal-methods
+// bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/EmissionProofs.sol proves the P-BC
+// cohort (both governance locks plus the accrue structural guards) against the
+// compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// Immutables elided from creates (code, not storage): _vault, BODENSEE_POOL,
+// AuMM, _aummIndex, GENESIS_BLOCK, and the three EIP-1153 transient-slot keys
+// (_EXECUTING_SLOT, _PENDING_AMOUNT_SLOT, _ORIGINAL_CALLER_SLOT -- transient
+// state is not persistent storage and clears between transactions).
+//
+// CONSTRUCTOR FLAG (firm-side conjunction required): the real constructor
+// additionally resolves the AuMM roster index by calling
+// vault_.getPoolTokens(bodensee_) and reverts IndexLookupFailed when AuMM is
+// absent -- an external call outside the single-contract fragment. The iff
+// below states the storage-fragment guards only; the firm's model must
+// conjoin the roster-membership condition.
+
+contract BodenseeBootstrapChannel
+
+constructor(address vault_, address bodensee_, address aumm_, uint256 genesisBlock_, address initialGovernance_)
+
+iff
+  vault_ != 0
+  bodensee_ != 0
+  aumm_ != 0
+  initialGovernance_ != 0
+
+creates
+  address governance := initialGovernance_
+  address mintRouter := 0
+  uint256 pendingAccrual := 0
+  uint256 totalDistributed := 0
+  uint256 lastAccrualBlock := genesisBlock_
+
+// Nonzero governance for the whole lifetime (constructor guard + rotation
+// guard), making both locks below caller-universal.
+invariants
+  governance != 0
+
+// H-D14 rotation: governance-only, non-zero recipient.
+transition setGovernanceContract(address newGovernance)
+iff
+  CALLER == governance
+  newGovernance != 0
+updates
+  governance := newGovernance
+
+// K-D7 one-shot mint-sink bind: governance-only, non-zero, slot-flag sealed.
+transition setMintRouter(address router_)
+iff
+  CALLER == governance
+  router_ != 0
+  mintRouter == 0
+updates
+  mintRouter := router_
+
+// ---------------------------------------------------------------------------
+// accrue() -- RESIDUAL (firm-side per PB-D17(ii)).
+//
+// Not modelled as a transition: the body reads block.number (environment) and
+// calls AuMM.blockEmissionRate (external). The behavioural contract, with
+// B := block.number, G := GENESIS_BLOCK, m6 := G + 6 x BLOCKS_PER_MONTH,
+// m10 := G + 10 x BLOCKS_PER_MONTH (OQ-3):
+//
+//   clamp  : to := min(B, m10); from := lastAccrualBlock + 1; from > to
+//            returns with no state change (pre-genesis calls and post-window
+//            dormancy are no-ops -- proven locally as P-BC3).
+//   rate   : one blockEmissionRate(to) snapshot keyed to the CLAMPED bound,
+//            never to B (P-D19 / F-18): the window lies wholly in Era 0, so
+//            the rate resolves to GENESIS_RATE even when the call block sits
+//            in a later era, matching the distributor's per-integrand basis.
+//   AP sum : F-0 piecewise shares, closed form (first + last) x n x rate
+//            divided by 2e18 (floor) per leg -- the A-leg decays 8e17 to 5e17
+//            anchored on [G, m6], the B-leg decays 5e17 to 0 anchored on
+//            (m6, m10]; a boundary-spanning interval splits at m6.
+//   post   : pendingAccrual grows by the contribution; lastAccrualBlock := to;
+//            no mint here (the H-D11 mint-at-distribute lock).
+//
+// distribute() -- RESIDUAL (firm-side per PB-D17(ii)).
+//
+// Governance-gated flush: reverts NoPendingAccrual on zero; zeroes
+// pendingAccrual and grows totalDistributed by the flushed amount BEFORE the
+// interactions; reverts MintRouterNotSet until the one-shot bind; mints via
+// mintRouter.mintFor(this, amount); then the H-D12 Vault-unlock DONATION seam
+// -- three transient slots (re-entrancy flag, payload sentinel, original
+// caller), the _distributeCallback OnlyVault + CallbackPayloadMismatch gates,
+// settle + AddLiquidityKind.DONATION with BptMintedOnDonation and
+// ReserveDeltaMismatch checks, and the terminal HelperBalanceNonZero residual
+// assert. Deep multi-contract (Vault, pool, token) -- the firm's
+// exhaustive-sweep remit, the same class as the S5 hook's P-H7 footer.
+//
+// H-D26 / H-D27 cross-pair identity: this contract's minted bootstrap tranche
+// must equal the distributor's Era-0 F-0 subtraction -- _apSum here and
+// _bootstrapApSum there are bit-for-bit mirrors, and the conservation sweep
+// spans both contracts.
+//
+// Local pins: the P-BC proofs (locks plus accrue structural guards, against
+// bytecode); the channel unit suite (including the PB2.8 direct
+// ReentrancyGuard witness and the H3.7e stale-accrual pin); the P6.5
+// invariant harness.
+// ---------------------------------------------------------------------------

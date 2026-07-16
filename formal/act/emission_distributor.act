@@ -1,0 +1,144 @@
+// AUREUM EMISSION-ACCRUAL / EmissionDistributor -- Act behavioural
+// specification. PB2.12e / PB-D17 (Stage P-bis workstream A, formal-methods
+// bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used. The mapping-update form
+// m := m[key => value] is witnessed at the S5 hook spec (trustedRouter).
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/EmissionProofs.sol proves the P-ED
+// cohort (the four governance locks below) against the compiled bytecode --
+// hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// Immutables elided from creates (code, not storage): AuMM, the five read-only
+// engine bindings (gauge registry, EMA sampler, CCB multiplier, efficiency
+// oracle, Miliarium registry), GENESIS_BLOCK. Contract-typed references
+// abstract as address.
+//
+// Storage fragment note: the four per-user tiers (userLP, userRewardDebt,
+// pendingBalance, effectiveQualBlock) are nested two-key mappings, a shape not
+// witnessed in the v0.2.0 pass-tests; they sit between poolTotalLP and
+// governance in the real declaration order and belong to the residual engine
+// below, where they are enumerated descriptively (doubly residual: dialect
+// shape plus cross-contract bodies). Every other storage slot is declared, in
+// declaration order.
+
+contract EmissionDistributor
+
+constructor(address aumm_, address gaugeRegistry_, address emaSampler_, address ccbMultiplier_, address efficiencyOracle_, address miliariumRegistry_, uint256 genesisBlock_, address initialGovernance_)
+
+iff
+  aumm_ != 0
+  gaugeRegistry_ != 0
+  emaSampler_ != 0
+  ccbMultiplier_ != 0
+  efficiencyOracle_ != 0
+  miliariumRegistry_ != 0
+  initialGovernance_ != 0
+
+creates
+  uint256 accRewardPerScoreUnit := 0
+  uint256 totalScore := 0
+  uint256 lastAccrualBlock := genesisBlock_
+  uint256 f5Total := 0
+  mapping(address => uint256) poolScore := []
+  mapping(address => uint256) f5Score := []
+  mapping(address => uint256) poolAccDebt := []
+  mapping(address => uint256) poolAccRewardPerLP := []
+  mapping(address => uint256) poolTotalLP := []
+  address governance := initialGovernance_
+  mapping(address => address) auMTContractByPool := []
+  address incendiaryRegistry := 0
+  mapping(address => uint256) poolBoostCursor := []
+  address mintRouter := 0
+
+// The governance principal is nonzero for the contract's whole lifetime: the
+// constructor guards it and setGovernanceContract rejects zero. This is what
+// makes every lock below caller-universal (no EVM-sender axiom needed).
+invariants
+  governance != 0
+
+// H-D14 rotation: governance-only, non-zero recipient.
+transition setGovernanceContract(address newGovernance)
+iff
+  CALLER == governance
+  newGovernance != 0
+updates
+  governance := newGovernance
+
+// I-D9 per-pool recorder bind: governance-only, non-zero, one-shot per pool.
+transition setAuMTContractForPool(address pool, address newAuMTContract)
+iff
+  CALLER == governance
+  newAuMTContract != 0
+  auMTContractByPool[pool] == 0
+updates
+  auMTContractByPool := auMTContractByPool[pool => newAuMTContract]
+
+// H-D29 re-settable valve: governance-only; zero is permitted (deprecation
+// valve -- the deliberate asymmetry against the guarded setters above).
+transition setIncendiaryRegistry(address newRegistry)
+iff
+  CALLER == governance
+updates
+  incendiaryRegistry := newRegistry
+
+// K-D7 one-shot mint-sink bind (the L411 no-admin-redirect core): governance-
+// only, non-zero, slot-flag sealed -- once bound, no caller re-points it.
+transition setMintRouter(address router_)
+iff
+  CALLER == governance
+  router_ != 0
+  mintRouter == 0
+updates
+  mintRouter := router_
+
+// ---------------------------------------------------------------------------
+// The accrual / settle / score / claim engine -- RESIDUAL (firm-side per
+// PB-D17(ii)): recordScore, recordDeposit, recordWithdrawal, syncPosition,
+// claim, pendingClaim, plus the internal _accrueGlobal, _settlePool,
+// _lpTrancheIntegral, _phaseAwareBody, _bootstrapApSum, _alphaF3, _gatedTvlEMA.
+// Every body reads block.number and calls into the engine's external bindings
+// (gauge registry, EMA sampler, CCB multiplier, Miliarium registry, efficiency
+// oracle, incendiary registry, the pool's ERC20, the mint router into AuMM) --
+// outside the single-contract fragment; the per-user tiers are nested mappings
+// outside the witnessed dialect shapes. The behavioural contract for the
+// firm's model, with B := block.number:
+//
+//   accrue : H-D15 two-tier MasterChef topology. _accrueGlobal advances
+//            accRewardPerScoreUnit by lpTrancheIntegral(last + 1, B) divided
+//            (floor, 1e18 scale) by totalScore, after two short-circuits --
+//            B == lastAccrualBlock returns; totalScore == 0 re-anchors
+//            lastAccrualBlock and returns. Successive calls tile the block
+//            timeline exactly once each (no gaps, no double-count).
+//   H-D26  : the conservation identity, the firm's headline sweep target:
+//            LP_integral(from, to) + the Bodensee AP sum + the Incendiary skim
+//            equals the sum of blockEmissionRate(sub_from) x n over the
+//            era-split sub-intervals -- a cross-contract identity spanning
+//            this contract, the bootstrap channel (bit-for-bit _apSum mirror
+//            per H-D27) and the incendiary registry.
+//   settle : _settlePool pushes deltaAcc x poolScore to the efficiency oracle,
+//            advances poolAccRewardPerLP when poolTotalLP > 0 (the H-D24
+//            stranded-allocation semantic), rebases poolAccDebt. Monotone
+//            accumulators give the no-underflow invariants
+//            poolAccDebt[p] <= accRewardPerScoreUnit and
+//            userRewardDebt[p][u] <= poolAccRewardPerLP[p].
+//   score  : recordScore is the permissionless H-D17 producer, gated on gauge
+//            approval, reading the F-10 maturity/staleness-gated EMA
+//            (unseasoned pools collapse to score 0), applying the H-D33
+//            alpha-reshape and the F16f post-tournament cap clamp, then the
+//            F12 signed-delta middleware on f5Total and totalScore.
+//   claim  : the sole mint site (H-D20), routed through mintRouter.mintFor
+//            (K-D7); zero-amount short-circuits; CEI order with pendingBalance
+//            zeroed and userRewardDebt rebased before the mint interaction.
+//   sync   : F-17 syncPosition ratchets a recorded stake DOWN to the live BPT
+//            balance, forfeiting the delta's pending (P-D18, "you move you
+//            lose"); the upward leg stays delta-based, so transferred BPT
+//            confers nothing.
+//
+// Local pins: the P-ED lock proofs (this file's transitions, against
+// bytecode); the P6.5 invariant harness (INV-1/2/6, emission conservation,
+// 640k calls); the H5.4 arithmetic-identity unit tests; the
+// EmissionDistributor unit suite.
+// ---------------------------------------------------------------------------
