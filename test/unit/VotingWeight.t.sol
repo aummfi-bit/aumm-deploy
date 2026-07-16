@@ -43,6 +43,19 @@ contract MockGaugeRegistry is IGaugeRegistry {
     function setGovernanceContract(address) external override {}
     function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
     function poolEmissionCapBps(address) external view override returns (uint256 capBps) {}
+    address[] private _gauges;
+    function setGaugeList(address[] memory gauges) external {
+        delete _gauges;
+        for (uint256 i = 0; i < gauges.length; ++i) {
+            _gauges.push(gauges[i]);
+        }
+    }
+    function gaugeCount() external view override returns (uint256) {
+        return _gauges.length;
+    }
+    function gaugeAt(uint256 index) external view override returns (address) {
+        return _gauges[index];
+    }
 }
 /// @notice Test-only mock for `IMiliariumRegistry` — settable dense pool list.
 contract MockMiliariumRegistry is IMiliariumRegistry {

@@ -10,7 +10,7 @@ pragma solidity ^0.8.26;
 ///      boost path on the CCB multiplier) was removed at P6.6 per **P-D22** (**O-D4**); current
 ///      consumers are `EmissionDistributor.recordScore` (**H-D5** / **H-D17**), `AureumGovernance`
 ///      fee-target validation, `VotingWeight` gauge-weight zeroing, and `IncendiaryRegistry`'s
-///      **L-D10** purchase gate. Additive symbols below do not alter the selector or ABI.
+///      **L-D10** purchase gate. PB-D18 (2026-07-16) restores `CCBMultiplier` as a consumer — its all-Active-gauge `delta_global` aggregate reads the `gaugeCount()` / `gaugeAt(uint256)` enumeration (**P-D13** part (1)), added below as additive symbols. Additive symbols below do not alter the selector or ABI.
 interface IGaugeRegistry {
     /// @notice Gauge state machine — `None` (never gauged), `Active` (currently approved), `Revoked` (terminally revoked per **G-D17**).
     /// @dev Revoked is terminal at Stage G — no entrypoint writes Revoked → Active. Cross-references: **G-D17**.
@@ -131,4 +131,15 @@ interface IGaugeRegistry {
     /// @param pool The pool whose F-10 emission cap is queried.
     /// @return capBps The emission cap in basis points — 0 when uncapped (top 85%), otherwise 100, 50, or 10 per the efficiency tournament tier.
     function poolEmissionCapBps(address pool) external view returns (uint256 capBps);
+
+    /// @notice Returns the number of currently Active gauges — the **P-D13** part (1) enumeration bound, mirrored from the concrete `GaugeRegistry`.
+    /// @dev Additive symbol (**PB-D18**): consumed by `CCBMultiplier.updateMultiplier`'s all-Active-gauge `delta_global` aggregate, alongside the F-10 tournament's concrete-side use. Backed by the `_activeGauges` EnumerableSet — Revoked gauges leave the set.
+    /// @return The Active-gauge set size.
+    function gaugeCount() external view returns (uint256);
+
+    /// @notice Returns the Active-gauge address at `index` — the **P-D13** part (1) enumeration accessor, mirrored from the concrete `GaugeRegistry`.
+    /// @dev Additive symbol (**PB-D18**): reverts when `index >= gaugeCount()` (EnumerableSet `.at` semantics). Enumeration order is set-internal and MUST NOT be treated as stable across revocations.
+    /// @param index Zero-based index into the Active-gauge enumeration set.
+    /// @return The gauge (pool) address at `index`.
+    function gaugeAt(uint256 index) external view returns (address);
 }
