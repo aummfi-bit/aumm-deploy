@@ -178,3 +178,24 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.11c-e | `1ced206` | ✅ CLAUDE.md §11 — two additive edits (WK.18 → Dropped-as-CLOSED; PB11/PB12/PB13 added to the Engineering-lesson index), anchor untouched |
 | PB2.11c-f | `e2452a9` | ✅ CLAUDE.md §11 — Last-update resume-anchor advance (PB2.11 close sentence + roster-complete bump + Next sub-step → PB2.12, corrected plan line-refs); date → 2026-07-15 |
 | PB2.11c-g | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — reconciles the c-c/c-d placeholder rows + adds c-e/c-f/c-g rows; PB2.11 CLOSED — this commit |
+| PB2.12a | `56a46dd` | ✅ PB-D17 lock — hevm/Act BUILD disposition (PB2.12 hevm/Act bundle; user-adjudicated) |
+| PB2.12b | `—` | ✅ §8b hevm 0.58.0 install (user-run; provenance recorded in `formal/RESULTS.md` §1) |
+| PB2.12c1 | `47880cc` | ✅ test/formal/FeeRoutingHookProofs.sol — S5 hook harness, P-H1/P-H2 (pipeline validation) |
+| PB2.12c3 | `c134fec` | ✅ test/formal/FeeRoutingHookProofs.sol — P-H3..P-H6, closing the S5 Tier-1 roster (9/9) |
+| PB2.12c4 | `303445f` | ✅ formal/act/fee_routing_hook.act — S5 hook Act spec |
+| PB2.12d1-d2 | `063a03f` | ✅ test/formal/CCBEngineProofs.sol — S7 CCB/EMA harness, P-E1 + rig validation |
+| PB2.12d3 | `2e4f35e` | ✅ test/formal/CCBEngineProofs.sol — P-E2/P-E3/P-M1, closing S7 Tier-1 |
+| PB2.12d4 | `629e16e` | ✅ formal/act/ema_sampler.act + ccb_multiplier.act — S7 Act spec pair |
+| PB2.12d4b | `b51c48d` | ✅ formal/act/fee_routing_hook.act — operator reconciliation, closing the S5 spec's legacy-dialect residue |
+| PB2.12e1 | `0aa7c15` | ✅ test/formal/EmissionProofs.sol — emission-accrual Tier-1 harness, AuMM cap/halving |
+| PB2.12e2 | `33ae38d` | ✅ test/formal/EmissionProofs.sol — P-R*/P-ED* router + distributor cohorts (22 proofs) |
+| PB2.12e3 | `3c41725` | ✅ test/formal/EmissionProofs.sol — P-BC* channel cohort, closing emission-accrual Tier-1 (30/30) |
+| PB2.12e4a | `e87711c` | ✅ formal/act/aumm.act + aumm_minter_router.act — token-layer Act spec pair |
+| PB2.12e4b | `7c3f65c` | ✅ formal/act/emission_distributor.act + bodensee_bootstrap_channel.act — engine-pair Act specs, closing PB2.12e |
+| PB2.12f1 | `6eec86d` | ✅ test/formal/AuthorizerProofs.sol — authorizer-window Tier-1 harness, P-W1..P-W5 (7/7); suite at 52/52 |
+| PB2.12f2 | `1e6e6d4` | ✅ formal/act/aureum_governance_authorizer.act + aureum_authorizer.act — authorizer-window Act pair, closing PB2.12f |
+| PB2.12g1 | `a3b493e` | ✅ formal/RESULTS.md — property → status index over all four surfaces |
+| PB2.12g2 | `408569e` | ✅ docs/STAGE_P_BIS_NOTES.md — PB14 lesson + PB-D17 as-built (vi) |
+| PB2.12g3a | `8a4e15b` | ✅ CLAUDE.md — section-3 formal/ tree entries + PB14 index bullet |
+| PB2.12g3b | `dd6d922` | ✅ CLAUDE.md — section-11 resume-anchor: PB2.12 CLOSED; OQ-23 reopened → PB2.13 threaded forward |
+| PB2.12g4 | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.12 family rows (a through g4); PB2.12 CLOSED — this commit |
