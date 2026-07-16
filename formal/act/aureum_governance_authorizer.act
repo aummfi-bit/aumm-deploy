@@ -1,0 +1,68 @@
+// AUREUM AUTHORIZER-WINDOW / AureumGovernanceAuthorizer -- Act behavioural
+// specification. PB2.12f / PB-D17 (Stage P-bis workstream A, formal-methods
+// bundle; the S8-relabeled fourth surface).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/AuthorizerProofs.sol proves the
+// P-W1..P-W4 cohort against the compiled bytecode -- hevm 0.58.0, bitwuzla
+// 0.9.1, all PASS.
+//
+// This contract carries ZERO mutable storage: GOVERNANCE_CONTRACT,
+// EMERGENCY_MULTISIG, EMERGENCY_WINDOW_END_BLOCK (block.number at construction
+// plus EMERGENCY_WINDOW_BLOCKS = 2628000, one year OQ-5), and the two emergency
+// action-ID hashes are all immutables (code, not storage), computed once in the
+// H13-safe constructor with no external call. There is no state machine to
+// model -- the sole behaviour canPerform is a pure view, stated in the residual
+// footer below.
+
+contract AureumGovernanceAuthorizer
+
+constructor(address governanceContract_, address emergencyMultisig_, address vault_)
+
+iff
+  governanceContract_ != 0
+  emergencyMultisig_ != 0
+  vault_ != 0
+
+// ---------------------------------------------------------------------------
+// canPerform(bytes32 actionId, address account, address where) : bool --
+// RESIDUAL (environment read, firm-side per PB-D17(ii)).
+//
+// Not modelled as a transition returns: the emergency clause reads
+// block.number, placed outside the witnessed single-contract fragment per the
+// ema_sampler.act precedent. Note there is NO external call -- this is a pure
+// view whose only non-witnessed element is the block-number environment read,
+// so the firm's model may express it directly if its v0.2.0 grammar witnesses
+// the block-number reference. The complete behavioural contract, with
+// B := block.number and W := EMERGENCY_WINDOW_END_BLOCK:
+//
+//   governance : account == GOVERNANCE_CONTRACT ==> true, unconditional and
+//                window-independent (no block, no action-ID constraint).
+//   emergency  : account == EMERGENCY_MULTISIG, actionId in
+//                { EMERGENCY_ACTION_PAUSE_VAULT,
+//                  EMERGENCY_ACTION_ENABLE_RECOVERY_MODE }, and B < W ==> true.
+//   time-bomb  : the strict inequality B < W makes the emergency role die at
+//                EXACTLY B == W (the deploy block plus 2628000) and permanently
+//                after -- every input is immutable, so no revival path exists.
+//   default    : every other (account, actionId, block) triple ==> false.
+//
+// The two action-ID immutables follow the Balancer Authentication encoding:
+// keccak256 of the vault-address disambiguator concatenated with the target
+// selector (pauseVault, enableRecoveryMode).
+//
+// K7 MIGRATION NOTE: Vault.setAuthorizer(this) installs this authorizer on the
+// byte-identical Balancer Vault. That call and the Vault-side canPerform
+// dispatch are audited Balancer substrate (CLAUDE.md section-1 inheritance
+// posture), outside the Aureum-artifact scope.
+//
+// Properties already proven locally against bytecode (hevm, bitwuzla):
+//   P-W1 : governance authority is unconditional and window-independent.
+//   P-W2 : both emergency actions live strictly inside the window; dead at the
+//          boundary and forever after; scope limited to the two action IDs.
+//   P-W3 : every non-principal account is denied every action at every block.
+//   P-W4 : the two action-ID immutables match the Authentication encoding and
+//          are distinct.
+// ---------------------------------------------------------------------------

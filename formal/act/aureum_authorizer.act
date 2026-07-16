@@ -1,0 +1,43 @@
+// AUREUM AUTHORIZER-WINDOW / AureumAuthorizer (legacy) -- Act behavioural
+// specification. PB2.12f / PB-D17 (Stage P-bis workstream A, formal-methods
+// bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/AuthorizerProofs.sol proves P-W5
+// against the compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// The Stage A-K from-state of the OQ-10 authorizer migration: a single-
+// principal equality gate with ZERO mutable storage. GOVERNANCE_MULTISIG is
+// immutable in the deployed bytecode; it is modelled here as a construction-
+// initialized slot (the ccb_multiplier.act pattern) so the canPerform returns
+// can reference it. canPerform is a pure view of account alone -- fully
+// witnessed, modelled below (no block-number read, no external call, unlike
+// the governance authorizer it is swapped for).
+
+contract AureumAuthorizer
+
+constructor(address governanceMultisig_)
+
+iff
+  governanceMultisig_ != 0
+
+creates
+  address GOVERNANCE_MULTISIG := governanceMultisig_
+
+// canPerform ignores actionId and where: the multisig may perform every
+// action, every other account none.
+transition canPerform(bytes32 actionId, address account, address where) : bool
+updates
+returns (if account == GOVERNANCE_MULTISIG then true else false)
+
+// ---------------------------------------------------------------------------
+// K7 MIGRATION NOTE: this authorizer holds the Vault from deploy through the
+// Stage K handoff; Vault.setAuthorizer swaps it for AureumGovernanceAuthorizer
+// (aureum_governance_authorizer.act). The setAuthorizer call is audited
+// Balancer substrate (CLAUDE.md section-1), outside the Aureum-artifact scope.
+//
+// Local pin: P-W5 (the equality gate, both directions, against bytecode).
+// ---------------------------------------------------------------------------
