@@ -6,6 +6,9 @@ import {Test} from "forge-std/Test.sol";
 import {EMASampler} from "src/ccb/EMASampler.sol";
 import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
 import {CCBScore} from "src/ccb/CCBScore.sol";
+import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
+import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 
 /// @notice Minimal TVL-oracle stub with a settable tvl() return, so a proof can
@@ -33,8 +36,13 @@ contract MockTVLOracleProof {
 ///         unknown on the division steps; the S5 hook's address-logic proofs
 ///         stay as-run under z3). P-S1 (the CCBScore identity) exits as a
 ///         NAMED RESIDUAL per PB-D17(iv) -- see residual_score_identity.
-///         P-E2/P-E3/P-S2 + the CCBMultiplier registry lock (P-M1) land at
-///         PB2.12d3.
+///         P-E2 (seed bookkeeping), P-E3 (cadence guard, two-phase) and the
+///         P-M1 trio (the F-D20 registry one-shot lock) landed at PB2.12d3.
+///         P-S2 (score monotonicity / zero-absorption) FOLDS INTO the P-S1
+///         residual: with both operands symbolic the mulDown overflow-guard
+///         query is strictly harder than the single-operand form that already
+///         exhausted z3 and bitwuzla, so it shares P-S1's disposition (audited
+///         FixedPoint substrate; pinned concretely in the CCBScore unit tests).
 contract CCBEngineProofs is Test {
     EMASampler internal ema;
     MockTVLOracleProof internal oracle;
@@ -90,5 +98,116 @@ contract CCBEngineProofs is Test {
     function residual_score_identity(uint256 t) public {
         vm.assume(t <= 1e30);
         assert(CCBScore.score(t, 1e18) == t);
+    }
+
+    // -------------------------------------------------------------------------
+    // P-E2 / P-E3 -- EMASampler seed bookkeeping + cadence guard (PB2.12d3).
+    // -------------------------------------------------------------------------
+
+    /// P-E2 seed bookkeeping: the first updateEMA (cold start, last == 0) sets
+    /// the EMA to spot EXACTLY (no smoothing) and stamps both the F-D15 seed
+    /// block and the cadence anchor at the call block.
+    function prove_ema_seedPath(uint256 spot) public {
+        vm.assume(spot <= 1e30);
+
+        vm.roll(AureumTime.BLOCKS_PER_DAY);
+        oracle.setTvl(spot);
+        uint256 ret = ema.updateEMA(POOL);
+
+        assert(ret == spot);
+        assert(ema.tvlEMA(POOL) == spot);
+        assert(ema.emaSeedBlock(POOL) == AureumTime.BLOCKS_PER_DAY);
+        assert(ema.lastEMAUpdateBlock(POOL) == AureumTime.BLOCKS_PER_DAY);
+    }
+
+    /// P-E3 cadence guard, two-phase: after a seed at block B, updateEMA
+    /// reverts at EVERY block strictly before B + BLOCKS_PER_DAY (symbolic
+    /// delta), then succeeds at exactly B + BLOCKS_PER_DAY and re-stamps the
+    /// anchor. Constant oracle signal, so the smoothed step is the fixpoint
+    /// (2x + 59x) / 61 == x and the EMA is unchanged by the boundary update.
+    function prove_ema_cadenceGuard(uint256 delta) public {
+        vm.assume(delta < AureumTime.BLOCKS_PER_DAY);
+
+        vm.roll(AureumTime.BLOCKS_PER_DAY);
+        oracle.setTvl(1e18);
+        ema.updateEMA(POOL);
+
+        vm.roll(AureumTime.BLOCKS_PER_DAY + delta);
+        (bool ok, ) = address(ema).call(
+            abi.encodeCall(EMASampler.updateEMA, (POOL))
+        );
+        assert(!ok);
+
+        vm.roll(2 * AureumTime.BLOCKS_PER_DAY);
+        ema.updateEMA(POOL);
+        assert(ema.lastEMAUpdateBlock(POOL) == 2 * AureumTime.BLOCKS_PER_DAY);
+        assert(ema.tvlEMA(POOL) == 1e18);
+    }
+
+    // -------------------------------------------------------------------------
+    // P-M1 -- the CCBMultiplier F-D20 registry one-shot lock (PB2.12d3).
+    // The multiplier is deployed inside each proof (constructor makes no
+    // external call), so registrySetter is this test contract and the
+    // first-party call needs no prank. MODELING NOTE: F-D20 is a SINGLE-FLAG
+    // seal (registrySetter zeroed; no already-set check on the registry slot),
+    // unlike the hook's C-D11 two-flag lock -- so the post-seal universality
+    // holds only under the explicit EVM-sender assumption caller != address(0)
+    /// (no key exists for the zero address; F-D20's own NatSpec relies on it).
+    // hevm otherwise finds the caller == 0 rebind path, which is
+    // EVM-unreachable but real in the unconstrained model.
+    // -------------------------------------------------------------------------
+
+    /// P-M1 one-shot: the deployer's first set binds the registry and seals
+    /// the setter (registrySetter == 0); afterwards every caller reverts,
+    /// under the documented caller != address(0) EVM-sender assumption.
+    function prove_registry_setOnce(address first, address second, address caller) public {
+        vm.assume(first != address(0));
+        vm.assume(caller != address(0));
+
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A))
+        );
+
+        mult.setMiliariumRegistry(IMiliariumRegistry(first));
+        assert(address(mult.miliariumRegistry()) == first);
+        assert(mult.registrySetter() == address(0));
+
+        vm.prank(caller);
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setMiliariumRegistry, (IMiliariumRegistry(second)))
+        );
+        assert(!ok);
+    }
+
+    /// P-M1 auth gate: before the seal, setMiliariumRegistry reverts for every
+    /// caller other than the deployer (this contract).
+    function prove_setMiliariumRegistry_onlyDeployer(address caller, address reg) public {
+        vm.assume(caller != address(this));
+
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A))
+        );
+
+        vm.prank(caller);
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setMiliariumRegistry, (IMiliariumRegistry(reg)))
+        );
+        assert(!ok);
+    }
+
+    /// P-M1 zero-rejection: even the authorized deployer cannot bind the zero
+    /// address (InvalidRegistry fires after the authority check per F-D20).
+    function prove_registry_rejectZero() public {
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A))
+        );
+
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setMiliariumRegistry, (IMiliariumRegistry(address(0))))
+        );
+        assert(!ok);
     }
 }
