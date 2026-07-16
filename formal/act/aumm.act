@@ -1,0 +1,79 @@
+// AUREUM EMISSION-ACCRUAL / AuMM -- Act behavioural specification
+// PB2.12e / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests
+// (transfer.act, maps.act, ite_iff.act, state_machine.act, uint256_add.act);
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/EmissionProofs.sol proves the P-A
+// cohort against the compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// Immutables / constants elided from creates (they are code, not storage):
+// GENESIS_BLOCK, MAX_SUPPLY (21_000_000e18), GENESIS_RATE (1e18). ERC20 base
+// state is modelled behaviourally: totalSupply is a storage scalar; the
+// per-recipient balanceOf credit and the OZ zero-recipient revert are inherited
+// base behaviour, elided here (the P-A1 proof covers them against bytecode).
+// This model's headline is the 21M supply-cap invariant.
+
+contract AuMM
+
+constructor(uint256 genesisBlock_, address minterAdmin_)
+
+iff
+  minterAdmin_ != 0
+
+creates
+  uint256 totalSupply := 0
+  address minter := 0
+  address minterAdmin := minterAdmin_
+
+// L411 candidate: the 21M supply cap is an inductive invariant -- mint is the
+// only transition that raises totalSupply and its iff guards the bound.
+// The C-D11 two-flag minter lock: minter and its admin are never both live, so
+// the minter is settable at most once (witnessed implication form, per d4b).
+invariants
+  totalSupply <= 21000000000000000000000000
+  minter != 0 ==> minterAdmin == 0
+
+// C-D11 one-shot minter handoff: admin-only, non-zero, binds then self-seals.
+transition setMinter(address newMinter)
+iff
+  CALLER == minterAdmin
+  minter == 0
+  newMinter != 0
+updates
+  minter := newMinter
+  minterAdmin := 0
+
+// The cap-guarded mint: minter-only, totalSupply + amount never exceeds
+// MAX_SUPPLY (21_000_000e18). balanceOf[to] credit elided (see header).
+transition mint(address to, uint256 amount)
+iff
+  CALLER == minter
+  totalSupply + amount <= 21000000000000000000000000
+updates
+  totalSupply := totalSupply + amount
+
+// ---------------------------------------------------------------------------
+// blockEmissionRate(uint256 blockNumber) -- RESIDUAL (dialect boundary).
+//
+// Not modelled as a transition: the geometric halving is a right-shift of
+// GENESIS_RATE by the era index, and the shift / exponentiation operator is
+// outside the arithmetic witnessed in the v0.2.0 pass-tests. This is a
+// single-contract pure view (no environment read, no external call) -- the
+// residual reason is the dialect, not a multi-contract fragment. The
+// behavioural contract, with G := GENESIS_BLOCK, E := BLOCKS_PER_ERA
+// (10512000, OQ-5), R := GENESIS_RATE (1e18):
+//
+//   pre-genesis : blockNumber < G ==> rate = 0.
+//   in-era n    : n = (blockNumber - G) / E, and rate = R / (2 ^ n) (floor),
+//                 that is R >> n; piecewise-constant across each era.
+//   exhaustion  : n >= 60 ==> rate = 0 (R = 1e18 < 2 ^ 60); the defensive
+//                 n >= 256 guard returns 0 ahead of the shift.
+//
+// Properties already proven locally against bytecode (hevm, bitwuzla):
+//   P-A4 : pre-genesis zero, per-era exact R >> n, floor-halving at every era
+//          boundary (including the terminal 1 -> 0 at era 60), and exhaustion
+//          for every era n in [60, 1000) (witnessing the n >= 256 branch).
+// ---------------------------------------------------------------------------

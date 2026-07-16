@@ -1,0 +1,51 @@
+// AUREUM EMISSION-ACCRUAL / AuMMMinterRouter -- Act behavioural specification
+// PB2.12e / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/EmissionProofs.sol proves the P-R
+// cohort against the compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// This contract is a stateless immutable-only forwarder: it holds AuMM's C-D11
+// minter slot and forwards mintFor calls from exactly two allowlisted consumers
+// (the der Bodensee bootstrap channel and the emission distributor). The
+// immutables AUMM, BOOTSTRAP_CHANNEL, EMISSION_DISTRIBUTOR are code, not storage
+// -- there is no storage fragment to model, so this file is the constructor
+// guard plus the residual for the sole behaviour. The two-principal allowlist
+// is a disjunctive gate (set membership over two principals), and the forward
+// is a cross-contract call into AuMM, so mintFor lives wholly in the residual.
+
+contract AuMMMinterRouter
+
+constructor(address aumm_, address bootstrapChannel_, address emissionDistributor_)
+
+iff
+  aumm_ != 0
+  bootstrapChannel_ != 0
+  emissionDistributor_ != 0
+
+// ---------------------------------------------------------------------------
+// mintFor(address recipient, uint256 amount) -- RESIDUAL (firm-side per
+// PB-D17(ii)).
+//
+// Not modelled as a transition: the allowlist gate is a disjunction over two
+// immutable principals (set membership, CALLER in { BOOTSTRAP_CHANNEL,
+// EMISSION_DISTRIBUTOR }) and the body forwards into AUMM.mint(recipient,
+// amount) -- a cross-contract call outside the single-contract fragment. The
+// behavioural contract for the firm's model:
+//
+//   gate    : CALLER in { BOOTSTRAP_CHANNEL, EMISSION_DISTRIBUTOR }, else
+//             revert NotAllowlisted(CALLER). No storage, no amount policy.
+//   forward : emit MintRouted(CALLER, recipient, amount) then
+//             AUMM.mint(recipient, amount). The 21M cap is inherited from AuMM
+//             (enforced in AUMM.mint, specified in aumm.act) -- the router adds
+//             nothing.
+//
+// Properties already proven locally against bytecode (hevm, bitwuzla):
+//   P-R1 : the gate reverts every non-consumer caller before any AuMM
+//          interaction; both allowlisted consumers forward the exact amount.
+//   P-R2 : the 21M cap survives composition through the router -- no bypass on
+//          the forwarded path.
+// ---------------------------------------------------------------------------
