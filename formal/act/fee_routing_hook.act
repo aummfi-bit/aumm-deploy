@@ -21,17 +21,21 @@
 // SV_ZCHF, SUSDS, AUMM, FEE_CONTROLLER) are constructor-frozen and elided --
 // they do not participate in the governance transitions specified here.
 //
-// Operators: == and the multi-line iff (conjunction) are confirmed in v0.2.0
-// pass-tests; =/= (not-equal) and or are Act-standard but taken from the
-// legacy examples/ dialect -- flagged for firm-side confirmation against the
-// shipped v0.2.0 grammar.
+// Operators: every operator in this file (==, !=, ==>, the multi-line iff
+// conjunction) is witnessed in the shipped v0.2.0 pass-tests (tests/hevm/pass:
+// transfer.act, maps.act, state_machine.act, ite_iff.act). Reconciled at
+// PB2.12d4b: the initial draft carried the legacy not-equal operator and
+// disjunctive invariants from the legacy examples/ dialect; the legacy
+// not-equal is rewritten as the witnessed !=, and each disjunctive lock
+// invariant as its equivalent witnessed implication form
+// (module != 0 ==> admin == 0). No unwitnessed grammar remains.
 
 contract AureumFeeRoutingHook
 
 constructor(address moduleAdmin_)
 
 iff
-  moduleAdmin_ =/= 0
+  moduleAdmin_ != 0
 
 creates
   address governanceModule := 0
@@ -45,17 +49,17 @@ creates
 // The C-D11 / I-D16 two-flag locks: a module and its admin are never both
 // live at once, so each module is settable at most once.
 invariants
-  governanceModule == 0 or governanceAdmin == 0
-  incendiaryModule == 0 or incendiaryAdmin == 0
-  emissionRecorder == 0 or emissionRecorderAdmin == 0
+  governanceModule != 0 ==> governanceAdmin == 0
+  incendiaryModule != 0 ==> incendiaryAdmin == 0
+  emissionRecorder != 0 ==> emissionRecorderAdmin == 0
 
 // P-H2 auth (CALLER == governanceAdmin) + P-H1 one-shot (governanceModule == 0)
-// + P-H3 non-zero (module =/= 0); the admin is burned on success.
+// + P-H3 non-zero (module != 0); the admin is burned on success.
 transition setGovernanceModule(address module)
 iff
   CALLER == governanceAdmin
   governanceModule == 0
-  module =/= 0
+  module != 0
 updates
   governanceModule := module
   governanceAdmin := 0
@@ -64,7 +68,7 @@ transition setIncendiaryModule(address module)
 iff
   CALLER == incendiaryAdmin
   incendiaryModule == 0
-  module =/= 0
+  module != 0
 updates
   incendiaryModule := module
   incendiaryAdmin := 0
@@ -73,7 +77,7 @@ transition setEmissionRecorder(address recorder)
 iff
   CALLER == emissionRecorderAdmin
   emissionRecorder == 0
-  recorder =/= 0
+  recorder != 0
 updates
   emissionRecorder := recorder
   emissionRecorderAdmin := 0
