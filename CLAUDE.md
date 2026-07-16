@@ -84,7 +84,9 @@ aumm-deploy/
 │   ├── fork/                     — mainnet-fork integration tests (split-form invocation per D35)
 │   ├── whitehat/                 — F-nn PoC suites from the white-hat passes
 │   ├── invariant/                — P6.5 invariant harness (emission conservation)
+│   ├── formal/                   — PB2.12 hevm symbolic-proof harnesses (test/formal/*Proofs.sol)
 │   └── mocks/                    — shared mocks
+├── formal/                       — PB2.12 formal-methods bundle: act/ (.act specs) + RESULTS.md (property → status index)
 ├── script/                       — deployment scripts (granular per-contract + DeployStageX orchestrators)
 ├── lib/                          — foundry-managed submodules (balancer-v3-monorepo, openzeppelin-contracts, forge-std)
 └── .venv/                        — Python virtualenv for Slither
@@ -479,6 +481,7 @@ Loop grep-and-confirm per §6 / §8e; all git mutations in user's terminal; Curs
   - **PB11** — an em-dash (U+2014) inside a Solidity string literal is a solc parse error (invalid-character-in-string-literal, seen as Error 8936); §10's em-dash house style is comments / NatSpec only — `require` / `assert` / `revert` reasons and forge assertion messages must be ASCII.
   - **PB12** — a fork sim that rolls `block.number` to mature an EMA also ramps `timeFactor` (`min(timeInPool, ON_RAMP_PERIOD_BLOCKS)/ON_RAMP_PERIOD_BLOCKS`, 180-day cap); pre-roll past the cap to pin it at 1.0 before measuring, or the observed delta conflates the on-ramp with the term under test.
   - **PB13** — net-new prose for Cursor to insert goes INSIDE the CURSOR PROMPT between explicit begin-insert / end-insert banners, never a separate review fence (else Cursor gets the instruction with an empty payload and stops).
+  - **PB14** — a file's zero-hit grep sentinel runs against the drafted §8e.1 payload before handoff, not only the saved file after; a payload that names the banned token (even to say it was removed) defeats the file's invariant on faithful transcription — name it, don't quote it. Full recipe: `docs/STAGE_P_BIS_NOTES.md` PB14.
 
 ---
 
