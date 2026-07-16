@@ -1,0 +1,68 @@
+// AUREUM S7 EMA SAMPLER -- Act behavioural specification
+// PB2.12d / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests
+// (transfer.act, maps.act, ite_iff.act, state_machine.act, uint256_add.act);
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/CCBEngineProofs.sol proves P-E1
+// (convex hull), P-E2 (exact seed + stamps), P-E3 (cadence two-phase) against
+// the compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// Immutables are elided from creates (they are code, not storage): TVL_ORACLE,
+// bound at construction behind the ZeroOracle guard modelled in the
+// constructor iff. Contract-typed references abstract as address.
+
+contract EMASampler
+
+constructor(address tvlOracle_)
+
+iff
+  tvlOracle_ != 0
+
+creates
+  mapping(address => uint256) tvlEMA := []
+  mapping(address => uint256) lastEMAUpdateBlock := []
+  mapping(address => uint256) emaSeedBlock := []
+
+transition tvlEMA(address pool) : uint256
+updates
+returns tvlEMA[pool]
+
+transition lastEMAUpdateBlock(address pool) : uint256
+updates
+returns lastEMAUpdateBlock[pool]
+
+transition emaSeedBlock(address pool) : uint256
+updates
+returns emaSeedBlock[pool]
+
+// ---------------------------------------------------------------------------
+// updateEMA(address pool) -- RESIDUAL (firm-side per PB-D17(ii)).
+//
+// Not modelled as a transition: the body reads block.number (environment) and
+// TVL_ORACLE.tvl(pool) (an external call into the multi-venue oracle), both
+// outside the single-contract fragment witnessed in the v0.2.0 pass-tests.
+// The behavioural contract, stated for the firm's multi-contract model, with
+// spot := TVL_ORACLE.tvl(pool) and B := block.number:
+//
+//   guard   : B >= lastEMAUpdateBlock[pool] + 7200 (BLOCKS_PER_DAY, OQ-3),
+//             else revert TooEarly; the cold start (last == 0) needs only
+//             B >= 7200.
+//   seed    : lastEMAUpdateBlock[pool] == 0 ==>
+//             tvlEMA[pool] := spot (exact, no smoothing) and
+//             emaSeedBlock[pool] := B (written exactly once, F-D15).
+//   smoothed: lastEMAUpdateBlock[pool] != 0 ==>
+//             tvlEMA[pool] := (2 * spot + 59 * tvlEMA[pool]) / 61
+//             (floor division; alpha = 2/61, F-4 / OQ-5a).
+//   stamp   : both paths set lastEMAUpdateBlock[pool] := B.
+//
+// Properties already proven locally against bytecode (hevm, bitwuzla):
+//   P-E1 hull    : the smoothed step lands inside
+//                  [min(old, spot), max(old, spot)] -- one sample cannot push
+//                  the EMA past spot (the F-04 anti-manipulation bound).
+//   P-E2 seed    : the cold-start assignment and both stamps are exact.
+//   P-E3 cadence : reverts strictly inside the window, succeeds exactly at
+//                  the boundary; a constant signal is a fixpoint.
+// ---------------------------------------------------------------------------

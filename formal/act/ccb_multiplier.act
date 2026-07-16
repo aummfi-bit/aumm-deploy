@@ -1,0 +1,71 @@
+// AUREUM S7 CCB MULTIPLIER -- Act behavioural specification
+// PB2.12d / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+//
+// Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
+// only operators witnessed there are used.
+//
+// Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
+// Local verification cross-ref: test/formal/CCBEngineProofs.sol proves the
+// P-M1 trio (one-shot, deployer-only auth, zero-rejection) against the
+// compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+//
+// MODELING NOTE (F-D20 vs C-D11): this lock is a SINGLE-FLAG seal -- the
+// setter authority self-zeroes, but no already-set check guards the registry
+// slot itself. The seal is sound only under the EVM-sender axiom that no
+// caller holds address(0); the local hevm proof documents the same assumption
+// (vm.assume(caller != address(0)) at prove_registry_setOnce). The fee-routing
+// hook's C-D11 two-flag locks need no such axiom. Not a defect (the zero
+// sender is EVM-unreachable); recorded so the firm sees the design boundary.
+//
+// Immutables elided from creates: emaSampler (F-D22 read-only binding, guarded
+// non-zero in the constructor iff). Contract-typed references abstract as
+// address. Trivial auto-getters are not spec'd; unspecced functions are simply
+// not proved by Act (per-behaviour equivalence).
+
+contract CCBMultiplier
+
+constructor(address _miliariumRegistry, address _emaSampler)
+
+iff
+  _miliariumRegistry != 0
+  _emaSampler != 0
+
+creates
+  address miliariumRegistry := _miliariumRegistry
+  address registrySetter := CALLER
+  mapping(address => uint256) M_i := []
+  mapping(address => uint256) lastMultiplierUpdateBlock := []
+  uint256 lastProtocolAggregateEMA := 0
+
+// The F-D20 one-shot: deployer-only, non-zero, binds then seals. After the
+// seal registrySetter == 0, and no EVM caller holds address(0), so the
+// transition is enabled at most once.
+transition setMiliariumRegistry(address newRegistry)
+iff
+  CALLER == registrySetter
+  newRegistry != 0
+updates
+  miliariumRegistry := newRegistry
+  registrySetter := 0
+
+// F-D19 prior-value sentinel: an unwritten pool reads the INITIAL_MULTIPLIER
+// (1e18) rather than zero.
+transition getMultiplier(address pool) : uint256
+updates
+returns (if (M_i[pool] == 0) then 1000000000000000000 else M_i[pool])
+
+// ---------------------------------------------------------------------------
+// updateMultiplier(address pool) -- RESIDUAL (firm-side per PB-D17(ii)).
+//
+// Not modelled as a transition: the F-8 evolution reads block.number, calls
+// miliariumRegistry.isMiliarium(pool), and enumerates the 28-pool Miliarium
+// roster against emaSampler.tvlEMA(*) -- environment plus two external
+// contracts, outside the single-contract fragment. The behavioural contract
+// for the firm's model: (1) gate order Miliarium-membership then cadence
+// (BLOCKS_PER_EPOCH = 100800, OQ-3); (2) anti-cyclical dead-zone steps per
+// F-D6 / F-D18 / F-D19 / F-D25 with DEAD_ZONE = 1e15, aggregate cold-start
+// sentinel lastProtocolAggregateEMA == 0 yielding delta_global = 0, and the
+// M_i[pool] == 0 sentinel reading INITIAL_MULTIPLIER ahead of the summed
+// steps and clamps; (3) boundary equality stays neutral in both channels
+// (strict inequalities, F-D19).
+// ---------------------------------------------------------------------------
