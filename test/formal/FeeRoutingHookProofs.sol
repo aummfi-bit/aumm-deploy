@@ -69,4 +69,125 @@ contract FeeRoutingHookProofs is Test {
         );
         assert(!ok);
     }
+
+    // -------------------------------------------------------------------------
+    // P-H3..P-H6 — the incendiary + emissionRecorder locks, zero-rejection,
+    // lock independence, and the trustedRouter governance gate (PB2.12c3).
+    // -------------------------------------------------------------------------
+
+    /// P-H1 (incendiary): once incendiaryModule is set, every later
+    /// setIncendiaryModule reverts, for all callers and all args.
+    function prove_incendiaryModule_setOnce(address first, address second, address caller) public {
+        vm.assume(first != address(0));
+
+        vm.prank(ADMIN);
+        hook.setIncendiaryModule(first);
+        assert(hook.incendiaryModule() == first);
+
+        vm.prank(caller);
+        (bool ok, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setIncendiaryModule, (second))
+        );
+        assert(!ok);
+    }
+
+    /// P-H2 (incendiary): before any set, setIncendiaryModule reverts for
+    /// every caller other than the constructor-set module admin.
+    function prove_setIncendiaryModule_onlyAdmin(address caller, address module) public {
+        vm.assume(caller != ADMIN);
+
+        vm.prank(caller);
+        (bool ok, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setIncendiaryModule, (module))
+        );
+        assert(!ok);
+    }
+
+    /// P-H1 (emissionRecorder): once emissionRecorder is set, every later
+    /// setEmissionRecorder reverts, for all callers and all args.
+    function prove_emissionRecorder_setOnce(address first, address second, address caller) public {
+        vm.assume(first != address(0));
+
+        vm.prank(ADMIN);
+        hook.setEmissionRecorder(first);
+        assert(hook.emissionRecorder() == first);
+
+        vm.prank(caller);
+        (bool ok, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setEmissionRecorder, (second))
+        );
+        assert(!ok);
+    }
+
+    /// P-H2 (emissionRecorder): before any set, setEmissionRecorder reverts
+    /// for every caller other than the constructor-set module admin.
+    function prove_setEmissionRecorder_onlyAdmin(address caller, address recorder) public {
+        vm.assume(caller != ADMIN);
+
+        vm.prank(caller);
+        (bool ok, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setEmissionRecorder, (recorder))
+        );
+        assert(!ok);
+    }
+
+    /// P-H3 zero-rejection: none of the three module setters may write the
+    /// zero address, even from the admin.
+    function prove_modules_rejectZero() public {
+        vm.prank(ADMIN);
+        (bool g, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setGovernanceModule, (address(0)))
+        );
+        assert(!g);
+
+        vm.prank(ADMIN);
+        (bool i, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setIncendiaryModule, (address(0)))
+        );
+        assert(!i);
+
+        vm.prank(ADMIN);
+        (bool e, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setEmissionRecorder, (address(0)))
+        );
+        assert(!e);
+    }
+
+    /// P-H5 independence: setting governanceModule leaves the incendiary and
+    /// emissionRecorder slots untouched (the three locks are disjoint).
+    function prove_locks_independent(address g) public {
+        vm.assume(g != address(0));
+
+        vm.prank(ADMIN);
+        hook.setGovernanceModule(g);
+
+        assert(hook.governanceModule() == g);
+        assert(hook.incendiaryModule() == address(0));
+        assert(hook.emissionRecorder() == address(0));
+    }
+
+    /// P-H6 router gate: once governanceModule is bound to g, only g may
+    /// setTrustedRouter; g's call lands and every other caller's reverts
+    /// without corrupting the allowlist.
+    function prove_setTrustedRouter_gate(address g, address caller, address router, bool trusted) public {
+        vm.assume(g != address(0));
+        vm.assume(caller != g);
+
+        vm.prank(ADMIN);
+        hook.setGovernanceModule(g);
+
+        vm.prank(g);
+        (bool okG, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setTrustedRouter, (router, trusted))
+        );
+        assert(okG);
+        assert(hook.trustedRouter(router) == trusted);
+
+        vm.prank(caller);
+        (bool okC, ) = address(hook).call(
+            abi.encodeCall(AureumFeeRoutingHook.setTrustedRouter, (router, !trusted))
+        );
+        assert(!okC);
+        assert(hook.trustedRouter(router) == trusted);
+    }
 }
