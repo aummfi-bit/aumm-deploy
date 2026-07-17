@@ -39,6 +39,7 @@ contract MockTVLOracleProof {
 ///         NAMED RESIDUAL per PB-D17(iv) -- see residual_score_identity.
 ///         P-E2 (seed bookkeeping), P-E3 (cadence guard, two-phase) and the
 ///         P-M1 trio (the F-D20 registry one-shot lock) landed at PB2.12d3.
+///         The P-M2 mirror trio (the PB-D18 (v) gauge-registry seal) lands at PB2.13g1.
 ///         P-S2 (score monotonicity / zero-absorption) FOLDS INTO the P-S1
 ///         residual: with both operands symbolic the mulDown overflow-guard
 ///         query is strictly harder than the single-operand form that already
@@ -211,6 +212,74 @@ contract CCBEngineProofs is Test {
 
         (bool ok, ) = address(mult).call(
             abi.encodeCall(CCBMultiplier.setMiliariumRegistry, (IMiliariumRegistry(address(0))))
+        );
+        assert(!ok);
+    }
+
+    // -------------------------------------------------------------------------
+    // P-M2 -- the CCBMultiplier PB-D18 (v) gauge-registry one-shot mirror
+    // (PB2.13g1). Same F-D20 single-flag seal shape as P-M1 -- the modeling
+    // note above (post-seal universality under the caller != address(0)
+    // EVM-sender assumption) carries over verbatim to gaugeRegistrySetter.
+    // -------------------------------------------------------------------------
+
+    /// P-M2 one-shot: the deployer's first setGaugeRegistry binds the gauge
+    /// registry and seals the setter (gaugeRegistrySetter == 0); afterwards
+    /// every caller reverts, under the documented caller != address(0)
+    /// EVM-sender assumption. The trailing registrySetter assert witnesses
+    /// seal independence: sealing the gauge slot leaves the Miliarium setter
+    /// authority live (distinct F-D20 flags per PB-D18 (v)).
+    function prove_gaugeRegistry_setOnce(address first, address second, address caller) public {
+        vm.assume(first != address(0));
+        vm.assume(caller != address(0));
+
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
+        );
+
+        mult.setGaugeRegistry(IGaugeRegistry(first));
+        assert(address(mult.gaugeRegistry()) == first);
+        assert(mult.gaugeRegistrySetter() == address(0));
+        assert(mult.registrySetter() == address(this));
+
+        vm.prank(caller);
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setGaugeRegistry, (IGaugeRegistry(second)))
+        );
+        assert(!ok);
+    }
+
+    /// P-M2 auth gate: before the seal, setGaugeRegistry reverts for every
+    /// caller other than the deployer (this contract).
+    function prove_setGaugeRegistry_onlyDeployer(address caller, address reg) public {
+        vm.assume(caller != address(this));
+
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
+        );
+
+        vm.prank(caller);
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setGaugeRegistry, (IGaugeRegistry(reg)))
+        );
+        assert(!ok);
+    }
+
+    /// P-M2 zero-rejection: even the authorized deployer cannot bind the zero
+    /// address (InvalidRegistry fires after the authority check, F-D20 mirror).
+    function prove_gaugeRegistry_rejectZero() public {
+        CCBMultiplier mult = new CCBMultiplier(
+            IMiliariumRegistry(address(0xBEEF)),
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
+        );
+
+        (bool ok, ) = address(mult).call(
+            abi.encodeCall(CCBMultiplier.setGaugeRegistry, (IGaugeRegistry(address(0))))
         );
         assert(!ok);
     }
