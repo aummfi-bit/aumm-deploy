@@ -12,8 +12,9 @@ import {ICCBMultiplier} from "src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+import {AuMMMinterRouter} from "src/token/AuMMMinterRouter.sol";
 import {MockEMASampler} from "test/unit/VotingWeight.t.sol";
-import {MockAuMM, MockGaugeRegistry, MockCCBMultiplier, MockEfficiencyOracle, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
+import {MockAuMM, MockBpt, MockGaugeRegistry, MockCCBMultiplier, MockEfficiencyOracle, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 
 /// @notice Minimal settable TVL oracle for the drain-decay leg. Not declared `is ITVLOracle` —
 ///         EMASampler only calls tvl(), and the ITVLOracle cast at construction dispatches by
@@ -200,5 +201,119 @@ contract ZeroTvlDrainDecayTest is Test {
             sampler.updateEMA(POOL);
         }
         assertLt(sampler.tvlEMA(POOL), SEED_TVL / 20, "under 5% of seed by 90 daily samples");
+    }
+}
+
+/// @title ZeroTvlDustCaptureTest
+/// @notice PB2.13h — window (c) quantifier: a live dust LP unit (1 wei, so H-D24 stranding never
+///         fires) captures the pool's ENTIRE tranche allocation while the score lives — wei-exact,
+///         since divDown(1)/mulDown(1) round-trips the per-LP accumulator losslessly — and the
+///         capture STOPS at the permissionless self-clear. In production the captured magnitude
+///         is bounded by windows (a) + (b): what earns here is the drained pool's decaying or
+///         stale score tail, not fresh TVL.
+contract ZeroTvlDustCaptureTest is Test {
+    MockEMASampler internal sampler;
+    MockGaugeRegistry internal gauges;
+    MockCCBMultiplier internal mult;
+    MockEfficiencyOracle internal effOracle;
+    MockMiliariumRegistry internal miliReg;
+    MockAuMM internal aumm;
+    EmissionDistributorHarness internal distributor;
+    AuMMMinterRouter internal router;
+
+    uint256 internal constant GENESIS_BLOCK = 1_000_000;
+    uint256 internal constant EMA_MATURITY = 60 * AureumTime.BLOCKS_PER_DAY;
+    uint256 internal constant EMA_STALENESS = AureumTime.BLOCKS_PER_EPOCH;
+    uint256 internal constant EMA_VALUE = 16_000e18;
+
+    address internal POOL;
+    address internal constant GOV = address(0x9011);
+    address internal constant AUMT_REC = address(0xAEC);
+    address internal constant DUST_USER = address(0xD05);
+    address internal constant STRANGER = address(0xBAD);
+    address internal constant DUMMY_CHANNEL = address(0xC4A9);
+
+    uint256 internal startBlock;
+
+    function setUp() public {
+        aumm = new MockAuMM();
+        sampler = new MockEMASampler();
+        gauges = new MockGaugeRegistry();
+        mult = new MockCCBMultiplier();
+        effOracle = new MockEfficiencyOracle();
+        miliReg = new MockMiliariumRegistry();
+
+        distributor = new EmissionDistributorHarness(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(sampler)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK,
+            GOV
+        );
+
+        router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
+        aumm.setMinter(address(router));
+        vm.prank(GOV);
+        distributor.setMintRouter(address(router));
+        effOracle.setEmissionsRecorder(address(distributor));
+
+        // F-17 / P-D18 idiom: a real BPT contract with a large live balance keeps _syncDown a no-op.
+        POOL = address(new MockBpt());
+        MockBpt(POOL).mint(DUST_USER, 1e30);
+        vm.prank(GOV);
+        distributor.setAuMTContractForPool(POOL, AUMT_REC);
+
+        gauges.setApproved(POOL, true);
+        mult.setMultiplier(POOL, 1e18);
+        sampler.setTvlEMA(POOL, EMA_VALUE);
+
+        // Continuous regime, sole scored pool: the dust holder's share of the pool is 100%.
+        startBlock = AureumTime.year1EndBlock(GENESIS_BLOCK) + 1;
+        vm.roll(startBlock);
+    }
+
+    /// @notice The dust unit captures the full LP tranche wei-exactly while the stale score
+    ///         lives, keeps capturing until the self-clear settle, and captures nothing after.
+    function test_ZeroTvl_windowC_dustCapturesUntilSelfClear() public {
+        sampler.setSeedBlock(POOL, startBlock - EMA_MATURITY);
+        sampler.setLastUpdateBlock(POOL, startBlock);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), EMA_VALUE, "sole pool scored while fresh");
+
+        vm.prank(AUMT_REC);
+        distributor.recordDeposit(POOL, DUST_USER, 1);
+
+        // Leg 1 — capture while the (now stale) score persists: one epoch of accrual.
+        uint256 t1 = startBlock + EMA_STALENESS + 1;
+        vm.roll(t1);
+        vm.prank(DUST_USER);
+        distributor.claim(POOL, DUST_USER);
+        uint256 leg1 = aumm.balanceOf(DUST_USER);
+        // Accrual covers the half-open (startBlock, t1] (lastAccrualBlock sits at startBlock
+        // after the deposit); extLpTrancheIntegral is inclusive-inclusive, so anchor at +1.
+        uint256 integral1 = distributor.extLpTrancheIntegral(startBlock + 1, t1);
+        assertGt(integral1, 0, "rig liveness: nonzero tranche over the interval");
+        assertEq(leg1, integral1, "1 wei of dust captures the FULL tranche while the score lives");
+
+        // Leg 2 — the stranger's self-clear settles the pool through t2, then kills the score.
+        uint256 t2 = t1 + EMA_STALENESS;
+        vm.roll(t2);
+        vm.prank(STRANGER);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 0, "self-cleared");
+
+        // Leg 3 — after the self-clear, a further epoch accrues NOTHING to the pool.
+        uint256 t3 = t2 + EMA_STALENESS;
+        vm.roll(t3);
+        vm.prank(DUST_USER);
+        distributor.claim(POOL, DUST_USER);
+        assertEq(
+            aumm.balanceOf(DUST_USER),
+            distributor.extLpTrancheIntegral(startBlock + 1, t2),
+            "capture ends at the self-clear: the post-clear epoch pays zero"
+        );
     }
 }
