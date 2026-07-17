@@ -202,3 +202,22 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.12g3a | `8a4e15b` | ✅ CLAUDE.md — section-3 formal/ tree entries + PB14 index bullet |
 | PB2.12g3b | `dd6d922` | ✅ CLAUDE.md — section-11 resume-anchor: PB2.12 CLOSED; OQ-23 reopened → PB2.13 threaded forward |
 | PB2.12g4 | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.12 family rows (a through g4); PB2.12 CLOSED — this commit |
+| PB2.13a | `f614f0e` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D18 lock (OQ-23 reopened; two same-day 2026-07-16 directives: delta_global → all-Active-gauge aggregate, delta_basket withdrawn; zero-TVL disposition attached; build roster a–i) |
+| PB2.13b | `e24b746` | ✅ docs/STAGE_P_BIS_PLAN.md — PB2.13 plan section (Surfaces row + PB-D18 Decisions row + roadmap bullet), restoring plan-line citability for the family |
+| PB2.13c | `005fbf5` | ✅ docs/FINDINGS.md — OQ-23 reopen: (iii.b) universe superseded to all-Active-gauges, (iv.a) decoupled-unchanged, delta_basket recorded-and-withdrawn (F-6 rationale); zero spec-side edits |
+| PB2.13d1 | `c6a7c79` | ✅ src/ccb/IGaugeRegistry.sol — additive gaugeCount()/gaugeAt(uint256) enumeration members (P-D13 part (1); G16 inheritor sweep first) |
+| PB2.13d2 | `3bac2ef` | ✅ src/ccb/CCBMultiplier.sol — the PB-D18 rebuild, full-file: ctor 2→3-arg (gauge-registry placeholder), F-D20-mirror one-shot setGaugeRegistry seal, delta_global re-keyed to the all-gauged aggregate |
+| PB2.13e1 | `8529390` | ✅ test/unit/CCBMultiplier.t.sol — MockGaugeRegistry (settable dense gauge list) wired into the 3-arg ctor; 8 gauge tests; unit 916/916 |
+| PB2.13e2 | `bb39704` | ✅ test/unit/CCBMultiplier.t.sol — five decoupling tests (gauge vs Miliarium universes genuinely independent; disjoint-roster 777e18-vs-1000e18 discriminator); file 44/44, Part-A 921/921 |
+| PB2.13f1 | `72785ea` | ✅ CCBMultiplier 3-arg ctor ripple across the 9 remaining sites (1 script, 5 fork, 3 formal); GAUGE_REGISTRY_PLACEHOLDER env; empty MockGaugeRegistry keeps delta_global neutral; build green tree-wide, unit 916/916 |
+| PB2.13f2 | `2b619ce` | ✅ script/DeployStageF.s.sol + DeployStageP.s.sol — post-G-stack orchestrator seal (sealAuthority + NotSealAuthority-guarded sealGaugeRegistry forwarder; DeployStageP post-condition (4) CCBGaugeRegistryNotSealed) |
+| PB2.13f3 | `b4132a1` | ✅ test/fork/StageJIntegration.t.sol — retargets the two CCB aggregate assertions to the all-gauged universe; genuine decoupled witnesses at the integration level; file-scoped 5/5 fork-green |
+| PB2.13g1 | `413aee7` | ✅ test/formal/CCBEngineProofs.sol — P-M2 gauge-registry one-shot mirror trio (mirrors P-M1 onto setGaugeRegistry); CCB proofs 6→9 |
+| PB2.13g2 | `9c109b1` | ✅ formal/act/ccb_multiplier.act — 3-arg ctor rewrite (setGaugeRegistry transition mirroring setMiliariumRegistry; residual footer → the two-aggregate contract) |
+| PB2.13g3 | `—` | ✅ §8b user-run hevm re-attest at the g2 tree (9c109b1); 55/55 prove_ PASS (forge clean && forge build --ast prerequisite recorded) |
+| PB2.13g4 | `6ba6455` | ✅ formal/RESULTS.md — re-anchors the attested index to the g3 55/55 re-attest (superseding the PB2.12f1 52/52 baseline); 9 CCB proofs, P-M2 row, --ast solver-flag note |
+| PB2.13h1 | `6a749c0` | ✅ test/unit/ZeroTvlDisposition.t.sol — F-8 clamp-ceiling resurrect-proof + windows (a)/(b): (59/61)^n drain half-life on the real EMASampler, poolScore persistence + permissionless self-clear both edges; 6/6 |
+| PB2.13h2 | `59c7298` | ✅ test/unit/ZeroTvlDisposition.t.sol — ZeroTvlDustCaptureTest, window (c): 1-wei dust captures the full tranche wei-exactly while the score lives, zero after self-clear; 7/7 |
+| PB2.13h3 | `6df0999` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D18 (viii) zero-TVL disposition outcome: all four (vi) windows quantified/closed (a–c as-designed-with-evidence, d note-only); no-fork-escalation rationale |
+| PB2.13i1 | `691b8f5` | ✅ CLAUDE.md — section-11 resume-anchor: workstream A CLOSED at PB2.13; delta_basket withdrawn, clamp/step clause evaporated, PB2.10 F-8/§vii carry dropped; close-gate 928/928; Next → PB3.1 |
+| PB2.13i2 | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.13 family rows (a through i2); workstream A CLOSED → PB3.1 — this commit |
