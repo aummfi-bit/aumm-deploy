@@ -91,6 +91,9 @@ contract DeployTestnetStubs is Script {
         _processConfig(IxMetallumConfig.config());
 
         console2.log("STUB_ pairs recorded (unique tokens + hardcoded RPs):", envKeys.length);
+        _emitNamedKeys();
+        _assertCoverage();
+        _emitMap();
     }
 
     /// @dev Deploy stubs for every token slot in `cfg`, deduped by mainnet address (first-seen wins).
@@ -134,5 +137,44 @@ contract DeployTestnetStubs is Script {
     function _record(string memory key, address val) internal {
         envKeys.push(key);
         envVals.push(val);
+    }
+
+    /// @dev PB-D21 (iii)/(iv): the 5 N-D7 named-key RPs + the Tier-A SV_ZCHF / SUSDS keys. Each references
+    ///      the config-library constant (zero-drift), mapping the named key to the stub RP / stub 4626 of
+    ///      its token — these enter the pool configs via _config() params or protocol scripts, not STUB_.
+    function _emitNamedKeys() internal {
+        _record("WAETHWSTETH_COMPOSITE_RATE_PROVIDER", rpOfToken[IxCasperConfig.WAETHWSTETH]);
+        _record("SFRXETH_RATE_PROVIDER", rpOfToken[IxAetheronConfig.SFRXETH]);
+        _record("WOETH_RATE_PROVIDER", rpOfToken[IxAetheronConfig.WOETH]);
+        _record("YSYBOLD_RATE_PROVIDER", rpOfToken[IxLibertasConfig.YSYBOLD]);
+        _record("SCRVUSD_RATE_PROVIDER", rpOfToken[IxLibertasConfig.SCRVUSD]);
+        _record("SV_ZCHF", stubOf[IxCasperConfig.SVZCHF]);
+        _record("SUSDS", stubOf[IxHelvetiaConfig.SUSDS]);
+    }
+
+    /// @dev PB-D21 (vi): coverage gate. Each named-key token must have resolved to a stub, and every
+    ///      emitted pair must carry a real value — no unresolved literal leaks through to a mainnet
+    ///      address on testnet. Reverts the run on any gap.
+    function _assertCoverage() internal view {
+        require(rpOfToken[IxCasperConfig.WAETHWSTETH] != address(0), "STUB: waEthwstETH RP unresolved");
+        require(rpOfToken[IxAetheronConfig.SFRXETH] != address(0), "STUB: sfrxETH RP unresolved");
+        require(rpOfToken[IxAetheronConfig.WOETH] != address(0), "STUB: wOETH RP unresolved");
+        require(rpOfToken[IxLibertasConfig.YSYBOLD] != address(0), "STUB: ysyBOLD RP unresolved");
+        require(rpOfToken[IxLibertasConfig.SCRVUSD] != address(0), "STUB: scrvUSD RP unresolved");
+        require(stubOf[IxCasperConfig.SVZCHF] != address(0), "STUB: svZCHF stub unresolved");
+        require(stubOf[IxHelvetiaConfig.SUSDS] != address(0), "STUB: sUSDS stub unresolved");
+        for (uint256 i = 0; i < envVals.length; ++i) {
+            require(envVals[i] != address(0), "STUB: emitted pair has zero value");
+        }
+    }
+
+    /// @dev Console-log the fork-sample env-map (PB-D21 (v)): STUB_-literal pairs then the named keys.
+    ///      Captured into test-stubs/sepolia-stubs.env at e3; PB3.5 regenerates it with live Sepolia
+    ///      addresses. Keys are canonical (mainnet literals); values are fork-throwaway.
+    function _emitMap() internal view {
+        console2.log("# PB3.2 testnet stub env-map (fork-sample; regenerated with live addresses at PB3.5)");
+        for (uint256 i = 0; i < envKeys.length; ++i) {
+            console2.log(string.concat(envKeys[i], "=", vm.toString(envVals[i])));
+        }
     }
 }
