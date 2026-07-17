@@ -30,7 +30,7 @@ import { EMASampler } from "../../src/ccb/EMASampler.sol";
 import { CCBScore } from "../../src/ccb/CCBScore.sol";
 import { CCBShare } from "../../src/ccb/CCBShare.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
-import { MockTVLOracle, MockMiliariumRegistry } from "./mocks/CCBMocks.sol";
+import { MockTVLOracle, MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
 import { IMiliariumRegistry } from "../../src/ccb/IMiliariumRegistry.sol";
 import { IEMASampler } from "../../src/ccb/IEMASampler.sol";
 import { ITVLOracle } from "../../src/ccb/ITVLOracle.sol";
@@ -78,6 +78,7 @@ abstract contract CCBEngineFixture is Test {
     // State — CCB engine
     MockTVLOracle internal mockOracle;
     MockMiliariumRegistry internal mockMiliarium;
+    MockGaugeRegistry internal mockGauge;
     EMASampler internal sampler;
     CCBMultiplier internal multiplier;
 
@@ -188,8 +189,9 @@ abstract contract CCBEngineFixture is Test {
 
         mockOracle = new MockTVLOracle();
         mockMiliarium = new MockMiliariumRegistry(pilotPools);
+        mockGauge = new MockGaugeRegistry();
         sampler = new EMASampler(mockOracle);
-        multiplier = new CCBMultiplier(mockMiliarium, IEMASampler(address(sampler)));
+        multiplier = new CCBMultiplier(mockMiliarium, IEMASampler(address(sampler)), mockGauge);
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol

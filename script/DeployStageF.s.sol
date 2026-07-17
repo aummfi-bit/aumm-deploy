@@ -13,6 +13,7 @@ import { EMASampler } from "../src/ccb/EMASampler.sol";
 import { IEMASampler } from "../src/ccb/IEMASampler.sol";
 import { CCBMultiplier } from "../src/ccb/CCBMultiplier.sol";
 import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
+import { IGaugeRegistry } from "../src/ccb/IGaugeRegistry.sol";
 
 /**
  * @title DeployStageF
@@ -51,6 +52,7 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
  *        BODENSEE_POOL        address  — der Bodensee pool (TVLOracle input)
  *        SVZCHF               address  — svZCHF (TVLOracle input)
  *        MILIARIUM_REGISTRY   address  — MiliariumRegistry (CCBMultiplier input)
+ *        GAUGE_REGISTRY_PLACEHOLDER  address  — pre-seal gauge-registry placeholder (CCBMultiplier ctor input per PB-D18 (v); the orchestrator seals to the concrete GaugeRegistry via setGaugeRegistry after the G-stack deploys)
  */
 contract DeployStageF is Script {
     TVLOracle public tvlOracle;
@@ -84,6 +86,7 @@ contract DeployStageF is Script {
         address bodenseePool                 = vm.envAddress("BODENSEE_POOL");
         address svzchf                       = vm.envAddress("SVZCHF");
         IMiliariumRegistry miliariumRegistry = IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY"));
+        IGaugeRegistry gaugeRegistryPlaceholder = IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY_PLACEHOLDER"));
         uint256 genesisBlock                 = aumm.GENESIS_BLOCK();
 
         // -- 1. TVLOracle — empty tokenToUnderlying seed; governance populates post-deploy --
@@ -111,7 +114,8 @@ contract DeployStageF is Script {
         // -- 4. CCBMultiplier ---------------------------------------------------
         ccbMultiplier = new CCBMultiplier(
             miliariumRegistry,
-            IEMASampler(address(emaSampler))
+            IEMASampler(address(emaSampler)),
+            gaugeRegistryPlaceholder
         );
 
         // -- 5. Governance handoff — EfficiencyOracle to GOVERNANCE_MULTISIG (P-D28). TVLOracle

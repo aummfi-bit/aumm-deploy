@@ -7,7 +7,7 @@ import { IVaultExplorer } from "@balancer-labs/v3-interfaces/contracts/vault/IVa
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { StageGIntegrationFixture } from "./StageGIntegration.t.sol";
-import { MockMiliariumRegistry } from "./mocks/CCBMocks.sol";
+import { MockMiliariumRegistry, MockGaugeRegistry } from "./mocks/CCBMocks.sol";
 import { IAuMM } from "../../src/token/IAuMM.sol";
 import { AuMMMinterRouter } from "../../src/token/AuMMMinterRouter.sol";
 import { EMASampler } from "../../src/ccb/EMASampler.sol";
@@ -57,6 +57,7 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
     EmissionDistributor internal emissionDistributor;
     AuMMMinterRouter internal minterRouter;
     MockMiliariumRegistry internal miliariumRegistry;
+    MockGaugeRegistry internal mockGaugeRegistry;
 
     function setUp() public virtual override {
         super.setUp();
@@ -66,6 +67,7 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
         miliariumPools[1] = pilotPools[1];
         miliariumPools[2] = pilotPools[2];
         miliariumRegistry = new MockMiliariumRegistry(miliariumPools);
+        mockGaugeRegistry = new MockGaugeRegistry();
 
         tvlOracle = new TVLOracle(
             IVaultExplorer(address(vault)),
@@ -78,7 +80,7 @@ abstract contract StageHIntegrationFixture is StageGIntegrationFixture {
 
         emaSampler = new EMASampler(tvlOracle);
 
-        ccbMultiplier = new CCBMultiplier(miliariumRegistry, IEMASampler(address(emaSampler)));
+        ccbMultiplier = new CCBMultiplier(miliariumRegistry, IEMASampler(address(emaSampler)), mockGaugeRegistry);
 
         efficiencyOracle = new EfficiencyOracle(
             tvlOracle,

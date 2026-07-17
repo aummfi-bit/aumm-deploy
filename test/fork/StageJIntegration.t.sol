@@ -42,7 +42,7 @@ abstract contract StageJIntegrationFixture is Test {
         mockMiliarium = new MockMiliariumRegistry(pilotPools);
         mockGauge = new MockGaugeRegistry();
         sampler = new EMASampler(mockOracle);
-        multiplier = new CCBMultiplier(mockMiliarium, IEMASampler(address(sampler)));
+        multiplier = new CCBMultiplier(mockMiliarium, IEMASampler(address(sampler)), mockGauge);
         // F-D20 Stage J handoff
         multiplier.setMiliariumRegistry(registry);
     }

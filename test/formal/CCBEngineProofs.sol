@@ -8,6 +8,7 @@ import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
 import {CCBScore} from "src/ccb/CCBScore.sol";
 import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 
@@ -166,7 +167,8 @@ contract CCBEngineProofs is Test {
 
         CCBMultiplier mult = new CCBMultiplier(
             IMiliariumRegistry(address(0xBEEF)),
-            IEMASampler(address(0xE0A))
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
         );
 
         mult.setMiliariumRegistry(IMiliariumRegistry(first));
@@ -187,7 +189,8 @@ contract CCBEngineProofs is Test {
 
         CCBMultiplier mult = new CCBMultiplier(
             IMiliariumRegistry(address(0xBEEF)),
-            IEMASampler(address(0xE0A))
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
         );
 
         vm.prank(caller);
@@ -202,7 +205,8 @@ contract CCBEngineProofs is Test {
     function prove_registry_rejectZero() public {
         CCBMultiplier mult = new CCBMultiplier(
             IMiliariumRegistry(address(0xBEEF)),
-            IEMASampler(address(0xE0A))
+            IEMASampler(address(0xE0A)),
+            IGaugeRegistry(address(0x6A06E))
         );
 
         (bool ok, ) = address(mult).call(
