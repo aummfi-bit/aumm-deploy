@@ -38,15 +38,19 @@ Date: 2026-07-16.
 
 ## 2. Canonical invocation and suite attestation
 
-Run from the repo root after a forge build:
+Run from the repo root after a full-AST build. hevm reads the AST field from
+the Foundry JSON artifacts; a plain incremental forge build can serve cached
+artifacts stripped of it (the error is "missing field ast"), so rebuild with
+forge clean && forge build --ast first, then:
 
     hevm test --match prove_ --solver bitwuzla --smt-timeout 300 --max-iterations 10 --root .
 
-Result: 52/52 PASS, zero FAIL, zero partial-exploration warnings -- 9 hook +
-6 CCB + 30 emission + 7 authorizer. Attested at PB2.12f1 (commit 6eec86d).
-Commits after that run (PB2.12f2 and this index) touch only formal/ -- zero
-Solidity deltas -- so the attestation binds this tree's harness set
-bit-for-bit.
+Result: 55/55 PASS, zero FAIL, zero partial-exploration warnings -- 9 hook +
+9 CCB + 30 emission + 7 authorizer. Re-attested at PB2.13g3 (commit 9c109b1),
+superseding the PB2.12f1 52/52 run (commit 6eec86d) after PB2.13 added the
+P-M2 gauge-registry mirror trio. The g4 index commit touches only
+formal/RESULTS.md -- zero harness or Solidity deltas -- so the attestation
+binds this tree's harness set bit-for-bit.
 
 Solver and flag notes:
 
@@ -61,6 +65,10 @@ Solver and flag notes:
 - residual_score_identity (CCBEngineProofs.sol) deliberately carries no
   prove_ prefix: it is the P-S1 named-residual witness body, kept outside the
   suite match.
+- --ast is load-bearing: hevm consumes the Foundry artifact AST, and a plain
+  incremental forge build between attestations strips it (the "missing field
+  ast" abort surfaced at PB2.13g3). Feed hevm a forge clean && forge build
+  --ast tree.
 
 ## 3. Layout (as-built)
 
@@ -107,9 +115,10 @@ carries it.
 
 ### 5.2 S7 CCB / EMA engine -- EMASampler + CCBMultiplier
 
-Harness: test/formal/CCBEngineProofs.sol (PB2.12d1-d3, 6 proofs plus the
-named-residual witness). Specs: formal/act/ema_sampler.act and
-formal/act/ccb_multiplier.act (PB2.12d4).
+Harness: test/formal/CCBEngineProofs.sol (PB2.12d1-d3 + PB2.13g1, 9 proofs plus
+the named-residual witness). Specs: formal/act/ema_sampler.act (PB2.12d4) and
+formal/act/ccb_multiplier.act (PB2.12d4, rewritten PB2.13g2 for the 3-arg
+gauge-registry constructor and the setGaugeRegistry mirror).
 
 | Property | Statement | hevm proofs | Status |
 |---|---|---|---|
@@ -117,6 +126,7 @@ formal/act/ccb_multiplier.act (PB2.12d4).
 | P-E2 | seed bookkeeping: the cold-start update (last == 0) seeds the EMA from spot and stamps the cadence | prove_ema_seedPath | PROVED |
 | P-E3 | cadence guard, two-phase: the guard holds inside the sampling cadence and releases past the boundary | prove_ema_cadenceGuard | PROVED |
 | P-M1 | the F-D20 registry one-shot: the deployer's first set binds and seals; pre-seal auth gate; zero-rejection | prove_registry_setOnce, prove_setMiliariumRegistry_onlyDeployer, prove_registry_rejectZero | PROVED |
+| P-M2 | the PB-D18 (v) gauge-registry one-shot mirror: first set binds and seals gaugeRegistrySetter (independent of the Miliarium flag); pre-seal auth gate; zero-rejection | prove_gaugeRegistry_setOnce, prove_setGaugeRegistry_onlyDeployer, prove_gaugeRegistry_rejectZero | PROVED |
 | P-S1 | the F-5 CCBScore identity | residual_score_identity (witness body outside the prove_ match) | BOUNDED-WITH-NAMED-RESIDUAL |
 | P-S2 | score monotonicity / zero-absorption | folds into P-S1: the both-operands-symbolic form is strictly harder | BOUNDED-WITH-NAMED-RESIDUAL |
 
