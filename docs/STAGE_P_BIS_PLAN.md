@@ -229,3 +229,17 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB3.1b | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB3.1a row + this row; PB3.1 CLOSED → PB3.2 — this commit |
 | PB3.2a1 | `414eddc` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D20 lock: base-level envOr resolver (STUB_-literal keys via vm.toString, passthrough default, non-zero-RP fail-fast), Tier D = env-map, real RPs over 18/18 stub 4626s (F-11 deviation recorded), two templates + named Tier-A instances, permissionless mint; build ladder a–f |
 | PB3.2a2 | `—` | docs/STAGE_P_BIS_PLAN.md — PB-D20 Decisions row + PB3.2 roster annotation + these Completion Log rows — this commit |
+| PB3.2b1 | `860bd2f` | ✅ test-stubs/StubERC20.sol — first template: ctor-set name/symbol/decimals over OZ ERC20 + permissionless uncapped mint(address,uint256); backs ixEDEL |
+| PB3.2b2 | `5ac8799` | ✅ test-stubs/StubERC4626.sol — fixed-1:1-NAV 4626 stub (convertToAssets/previewRedeem identity, deposit/withdraw, seeding mint), deliberately not is-IERC4626 (mint-collision dodge), 18/18 inherited (F-11); backs svZCHF/sUSDS. Rung b complete |
+| PB3.2c1 | `1ca2c9e` | ✅ test/unit/StubERC20.t.sol — 5 tests (metadata, decimals-respects-ctor at 6/8/18, permissionless mint, uncapped, accumulate); 5/5 |
+| PB3.2c2 | `49fe65d` | ✅ test/unit/StubERC4626.t.sol — 11 tests: fuzzed 1:1 conversions, previewRedeem(1e18)==1e18, deposit/withdraw/allowance paths, unbacked seed-mint, both F-11 RP cases (accept 18/18, revert InvalidAssetDecimals(6)); 11/11. Rung c complete, 16/16 |
+| PB3.2d1 | `b7bc0f7` | ✅ script/pools/deploy-miliarium-pool.s.sol — base-level STUB_ override resolver (_resolveStub vm.envOr passthrough + _resolveRateProvider WITH_RATE-zero fail-fast); QG loop reads pre-override cfg.* untouched; 26 config libs + 28 wrappers frozen; full-project build green |
+| PB3.2d2 | `—` | ✅ no-STUB_-env byte-identity proof: the P10 fork suite (StagePIntegration.t.sol, --fork-url mainnet --threads 1) 13/13 green, passthrough byte-identical; verification-only, no commit |
+| PB3.2e1 | `94a469c` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D21 lock: iterate-the-real-configs stub-deploy architecture (drift-free STUB_ derivation, two RP override paths, fork-derive-now / broadcast-at-PB3.5) |
+| PB3.2e2a | `ad32d7b` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D21 (v) correction, address model user-adjudicated: plain CREATE, real map at PB3.5, rehearsal self-deploys via vm.setEnv |
+| PB3.2e2b1 | `dd0f179` | ✅ test-stubs/DeployTestnetStubs.s.sol — iterate-and-deploy core: 26 config libs (21 zero-arg + 5 placeholder-arg), WITH_RATE/STANDARD classification, dedup by mainnet address |
+| PB3.2e2b2 | `db7c23f` | ✅ test-stubs/DeployTestnetStubs.s.sol — named-key emission (5 N-D7 RPs + SV_ZCHF/SUSDS via config constants), coverage require gate, console2.log map |
+| PB3.2e2c | `—` | ✅ mainnet-fork validation run (forge script --fork-url mainnet, no broadcast): script succeeded, coverage passed, 67 STUB_ pairs + 7 named keys with zero passthrough; verification-only, no commit |
+| PB3.2e3 | `a867254` | ✅ test-stubs/sepolia-stubs.env — committed fork-sample map (67 STUB_ + 7 named), byte-verified via an independent determinism re-run; live addresses regenerated at PB3.5. Rung e complete |
+| PB3.2f1 | `772292e` | ✅ CLAUDE.md — section-11 resume-anchor advance: PB3.2 COMPLETE, Next → PB3.3 |
+| PB3.2f2 | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — the PB3.2 b1–f1 rows + this row; PB3.2 CLOSED → PB3.3 — this commit |
