@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {IEMASampler} from "src/ccb/IEMASampler.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
@@ -58,6 +59,53 @@ contract MockEMASampler is IEMASampler {
     }
 }
 
+/// @notice Test-only mock for `IGaugeRegistry` — settable dense gauge list feeding the
+///         PB-D18 all-Active-gauge `delta_global` enumeration; other members are inert stubs.
+contract MockGaugeRegistry is IGaugeRegistry {
+    mapping(address => bool) private _approved;
+    address[] private _gauges;
+
+    function setApproved(address gauge, bool flag) external {
+        _approved[gauge] = flag;
+    }
+
+    function setGaugeList(address[] memory gauges) external {
+        delete _gauges;
+        for (uint256 i = 0; i < gauges.length; ++i) {
+            _gauges.push(gauges[i]);
+        }
+    }
+
+    function isGaugeApproved(address gauge) external view override returns (bool) {
+        return _approved[gauge];
+    }
+
+    function gaugeCount() external view override returns (uint256) {
+        return _gauges.length;
+    }
+
+    function gaugeAt(uint256 index) external view override returns (address) {
+        return _gauges[index];
+    }
+
+    function gaugeStatus(address) external view override returns (GaugeStatus status) {}
+
+    function activateGauge(address) external override {}
+
+    function registerGaugeFromComposition(address) external override {}
+
+    function seedFoundingPool(address) external override {}
+
+    function seedFoundingPools(address[] calldata) external override {}
+
+    function revokeGauge(address) external override {}
+
+    function setGovernanceContract(address) external override {}
+
+    function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
+    function poolEmissionCapBps(address) external view override returns (uint256 capBps) {}
+}
+
 contract CCBMultiplierTest is Test {
     using SafeCast for uint256;
     using SafeCast for int256;
@@ -65,6 +113,7 @@ contract CCBMultiplierTest is Test {
     CCBMultiplier internal multiplier;
     MockMiliariumRegistry internal registry;
     MockEMASampler internal ema;
+    MockGaugeRegistry internal gauge;
 
     uint256 internal constant START_BLOCK = 200_000;
     address internal constant POOL_A = address(0xA1);
@@ -82,7 +131,8 @@ contract CCBMultiplierTest is Test {
     function setUp() public {
         registry = new MockMiliariumRegistry();
         ema = new MockEMASampler();
-        multiplier = new CCBMultiplier(registry, ema);
+        gauge = new MockGaugeRegistry();
+        multiplier = new CCBMultiplier(registry, ema, gauge);
         vm.roll(START_BLOCK);
     }
 
@@ -102,18 +152,31 @@ contract CCBMultiplierTest is Test {
         assertEq(address(multiplier.miliariumRegistry()), address(registry));
     }
 
+    function test_constructor_wiresGaugeRegistry() public view {
+        assertEq(address(multiplier.gaugeRegistry()), address(gauge));
+    }
+
     function test_constructor_setsRegistrySetter() public view {
         assertEq(multiplier.registrySetter(), address(this));
     }
 
+    function test_constructor_setsGaugeRegistrySetter() public view {
+        assertEq(multiplier.gaugeRegistrySetter(), address(this));
+    }
+
     function test_constructor_revertsZeroMiliariumRegistry() public {
         vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        new CCBMultiplier(IMiliariumRegistry(address(0)), IEMASampler(address(ema)));
+        new CCBMultiplier(IMiliariumRegistry(address(0)), IEMASampler(address(ema)), IGaugeRegistry(address(gauge)));
     }
 
     function test_constructor_revertsZeroEmaSampler() public {
         vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
-        new CCBMultiplier(IMiliariumRegistry(address(registry)), IEMASampler(address(0)));
+        new CCBMultiplier(IMiliariumRegistry(address(registry)), IEMASampler(address(0)), IGaugeRegistry(address(gauge)));
+    }
+
+    function test_constructor_revertsZeroGaugeRegistry() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        new CCBMultiplier(IMiliariumRegistry(address(registry)), IEMASampler(address(ema)), IGaugeRegistry(address(0)));
     }
 
     // -------------------------------------------------------------------------
@@ -153,6 +216,42 @@ contract CCBMultiplierTest is Test {
     }
 
     // -------------------------------------------------------------------------
+    // setGaugeRegistry (F-D20 mirror per PB-D18 (v))
+    // -------------------------------------------------------------------------
+
+    function test_setGaugeRegistry_success() public {
+        MockGaugeRegistry nextGauge = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextGauge)));
+        assertEq(address(multiplier.gaugeRegistry()), address(nextGauge));
+    }
+
+    function test_setGaugeRegistry_zerosGaugeRegistrySetter() public {
+        MockGaugeRegistry nextGauge = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextGauge)));
+        assertEq(multiplier.gaugeRegistrySetter(), address(0));
+    }
+
+    function test_setGaugeRegistry_revertsNonSetter() public {
+        MockGaugeRegistry nextGauge = new MockGaugeRegistry();
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextGauge)));
+    }
+
+    function test_setGaugeRegistry_revertsZeroAddress() public {
+        vm.expectRevert(CCBMultiplier.InvalidRegistry.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(0)));
+    }
+
+    function test_setGaugeRegistry_revertsAfterSeal() public {
+        MockGaugeRegistry nextGauge = new MockGaugeRegistry();
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(nextGauge)));
+        MockGaugeRegistry third = new MockGaugeRegistry();
+        vm.expectRevert(CCBMultiplier.OnlyGaugeRegistrySetter.selector);
+        multiplier.setGaugeRegistry(IGaugeRegistry(address(third)));
+    }
+
+    // -------------------------------------------------------------------------
     // updateMultiplier
     // -------------------------------------------------------------------------
 
@@ -165,6 +264,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
@@ -179,6 +279,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
@@ -192,6 +293,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -220,6 +322,7 @@ contract CCBMultiplierTest is Test {
             pl[i] = makeAddr(string.concat("pool", vm.toString(i)));
         }
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         uint256 unit = 28_000e18;
         for (uint256 i = 0; i < 28; ++i) {
             registry.setMiliarium(pl[i], true);
@@ -245,6 +348,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -277,6 +381,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -307,6 +412,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -339,6 +445,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -368,6 +475,7 @@ contract CCBMultiplierTest is Test {
         pl[0] = POOL_A;
         pl[1] = POOL_B;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         ema.setTVLEMA(POOL_A, 1000e18);
@@ -392,6 +500,7 @@ contract CCBMultiplierTest is Test {
             pl[i] = makeAddr(string.concat("pool", vm.toString(i)));
         }
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         for (uint256 i = 0; i < 28; ++i) {
             registry.setMiliarium(pl[i], true);
             ema.setTVLEMA(pl[i], 1000e18);
@@ -414,6 +523,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -440,6 +550,7 @@ contract CCBMultiplierTest is Test {
         pl[0] = POOL_A;
         pl[1] = POOL_B;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         ema.setTVLEMA(POOL_A, 1000e18);
@@ -464,6 +575,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -492,6 +604,7 @@ contract CCBMultiplierTest is Test {
         pl[1] = POOL_B;
         pl[2] = POOL_C;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
@@ -521,6 +634,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
@@ -534,6 +648,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         uint256 currentBlock = block.number;
@@ -545,6 +660,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 777e18);
         multiplier.updateMultiplier(POOL_A);
@@ -569,6 +685,7 @@ contract CCBMultiplierTest is Test {
         address[] memory pl = new address[](1);
         pl[0] = POOL_A;
         registry.setPoolList(pl);
+        gauge.setGaugeList(pl);
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
