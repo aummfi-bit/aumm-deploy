@@ -691,4 +691,139 @@ contract CCBMultiplierTest is Test {
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.getMultiplier(POOL_A), multiplier.M_i(POOL_A));
     }
+
+    // -------------------------------------------------------------------------
+    // Decoupling — PB-D18 (ii)/(iii): the gauge roster (delta_global) and the
+    // Miliarium roster (delta_intra) are independent universes
+    // -------------------------------------------------------------------------
+
+    function _rig28EqualMiliarium(uint256 unit) internal returns (address[] memory pl) {
+        pl = new address[](28);
+        pl[0] = POOL_A;
+        for (uint256 i = 1; i < 28; ++i) {
+            pl[i] = makeAddr(string.concat("pool", vm.toString(i)));
+        }
+        registry.setPoolList(pl);
+        for (uint256 i = 0; i < 28; ++i) {
+            registry.setMiliarium(pl[i], true);
+            ema.setTVLEMA(pl[i], unit);
+        }
+    }
+
+    function test_updateMultiplier_decoupling_lastAggIsGaugeSum_disjointRosters() public {
+        address poolX = makeAddr("gaugeOnlyX");
+        address[] memory mil = new address[](1);
+        mil[0] = POOL_A;
+        registry.setPoolList(mil);
+        registry.setMiliarium(POOL_A, true);
+        address[] memory gl = new address[](1);
+        gl[0] = poolX;
+        gauge.setGaugeList(gl);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        ema.setTVLEMA(poolX, 777e18);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 777e18);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+    }
+
+    function test_updateMultiplier_decoupling_nonMiliariumGaugeDrivesGlobal() public {
+        uint256 unit = 1000e18;
+        address[] memory pl = _rig28EqualMiliarium(unit);
+        address poolX = makeAddr("gaugeOnlyX");
+        address[] memory gl = new address[](29);
+        for (uint256 i = 0; i < 28; ++i) {
+            gl[i] = pl[i];
+        }
+        gl[28] = poolX;
+        gauge.setGaugeList(gl);
+        ema.setTVLEMA(poolX, unit);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+        ema.setTVLEMA(poolX, (unit * 110) / 100);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+    }
+
+    function test_updateMultiplier_decoupling_miliariumMoveStaticGauges_globalNeutral() public {
+        uint256 unit = 1000e18;
+        address[] memory pl = _rig28EqualMiliarium(unit);
+        address gaugeX = makeAddr("gaugeOnlyX");
+        address gaugeY = makeAddr("gaugeOnlyY");
+        address[] memory gl = new address[](2);
+        gl[0] = gaugeX;
+        gl[1] = gaugeY;
+        gauge.setGaugeList(gl);
+        ema.setTVLEMA(gaugeX, 5000e18);
+        ema.setTVLEMA(gaugeY, 5000e18);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 10_000e18);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+        uint256 bumped = (unit * 110) / 100;
+        for (uint256 i = 0; i < 28; ++i) {
+            ema.setTVLEMA(pl[i], bumped);
+        }
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 10_000e18);
+    }
+
+    function test_updateMultiplier_decoupling_emptyGaugeRoster_globalNeutral() public {
+        address[] memory mil = new address[](2);
+        mil[0] = POOL_A;
+        mil[1] = POOL_B;
+        registry.setPoolList(mil);
+        registry.setMiliarium(POOL_A, true);
+        registry.setMiliarium(POOL_B, true);
+        ema.setTVLEMA(POOL_A, 1000e18);
+        ema.setTVLEMA(POOL_B, 1000e18);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 0);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+        ema.setTVLEMA(POOL_A, 10_000e18);
+        ema.setTVLEMA(POOL_B, 10_000e18);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 0);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - 2 * STEP_SIZE);
+    }
+
+    function test_updateMultiplier_decoupling_gaugeLeavesSet_globalFalls() public {
+        uint256 unit = 1000e18;
+        address[] memory pl = _rig28EqualMiliarium(unit);
+        address poolX = makeAddr("gaugeOnlyX");
+        address[] memory gl = new address[](29);
+        for (uint256 i = 0; i < 28; ++i) {
+            gl[i] = pl[i];
+        }
+        gl[28] = poolX;
+        gauge.setGaugeList(gl);
+        ema.setTVLEMA(poolX, unit);
+        uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch1);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 29_000e18);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
+        address[] memory shrunk = new address[](28);
+        for (uint256 i = 0; i < 28; ++i) {
+            shrunk[i] = pl[i];
+        }
+        gauge.setGaugeList(shrunk);
+        uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
+        vm.roll(epoch2);
+        multiplier.updateMultiplier(POOL_A);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER + STEP_SIZE);
+        assertEq(multiplier.lastProtocolAggregateEMA(), 28_000e18);
+    }
+
 }
