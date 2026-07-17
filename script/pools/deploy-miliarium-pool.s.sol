@@ -29,11 +29,35 @@ abstract contract MiliariumPoolDeployer is Script {
     /// @notice Sum of normalized weights for ERC-4626 (WITH_RATE + non-zero rate provider) is below 52% of one.
     error QualityGateUnsatisfied(uint256 erc4626WeightSum, uint256 minRequired);
 
+    /// @notice A WITH_RATE slot's non-zero rate provider resolved to address(0) via a STUB_ override; a zeroed
+    ///         RP would flip both QG legs and Vault registration semantics (PB-D20 (i)).
+    error StubRateProviderZeroed(address original);
+
     /// @dev Returns the per-pool config. `view` (not `pure`) per N-D7 so the RP-dependent wrappers
     ///      (ixMagnix 20, ixAurix 27, ixLibertas 06, ixAetheron 02) can resolve their Aureum-deployed
     ///      Rate-Provider address(es) from env vars; the clean pure-literal wrappers keep `pure override`
     ///      (`pure ⊆ view`), unchanged. Stage-N I13 fix-forward, no Stage-E re-tag.
     function _config() internal view virtual returns (PoolConfig memory);
+
+    /// @dev PB-D20 (i)/(ii): testnet token-stub override resolver. Resolves `original` through
+    ///      `vm.envOr(string.concat("STUB_", vm.toString(original)), original)` — with no matching
+    ///      `STUB_*` env set the resolved address IS `original`, so mainnet/fork deploys stay
+    ///      byte-identical (P10 untouched). Overrides swap ADDRESSES only; tokenTypes,
+    ///      normalizedWeights, paysYieldFees and the QG re-assertion keep reading pre-override cfg.*.
+    function _resolveStub(address original) internal view returns (address) {
+        return vm.envOr(string.concat("STUB_", vm.toString(original)), original);
+    }
+
+    /// @dev PB-D20 (i): rate-provider override with fail-fast. Applies `_resolveStub`; a WITH_RATE
+    ///      slot whose non-zero RP resolves to address(0) reverts (a zeroed RP flips both QG legs and
+    ///      Vault registration semantics).
+    function _resolveRateProvider(IRateProvider original, TokenType tokenType) internal view returns (IRateProvider) {
+        address resolved = _resolveStub(address(original));
+        if (tokenType == TokenType.WITH_RATE && address(original) != address(0) && resolved == address(0)) {
+            revert StubRateProviderZeroed(address(original));
+        }
+        return IRateProvider(resolved);
+    }
 
     function run() external returns (address pool) {
         PoolConfig memory cfg = _config();
@@ -45,9 +69,9 @@ abstract contract MiliariumPoolDeployer is Script {
         TokenConfig[] memory tokens = new TokenConfig[](cfg.tokens.length);
         for (uint256 i = 0; i < cfg.tokens.length; ++i) {
             tokens[i] = TokenConfig({
-                token: IERC20(cfg.tokens[i]),
+                token: IERC20(_resolveStub(cfg.tokens[i])),
                 tokenType: cfg.tokenTypes[i],
-                rateProvider: cfg.rateProviders[i],
+                rateProvider: _resolveRateProvider(cfg.rateProviders[i], cfg.tokenTypes[i]),
                 paysYieldFees: cfg.paysYieldFees[i]
             });
         }
