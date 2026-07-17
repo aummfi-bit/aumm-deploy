@@ -47,6 +47,7 @@ contract DeployStageP is Script {
     error RosterPoolNotGauged(address pool);
     error RosterPoolRecorderUnbound(address pool);
     error AuthorizerNotMigrated(address expected, address actual);
+    error CCBGaugeRegistryNotSealed(address expected, address actual);
 
     MiliariumRegistry public miliariumRegistry;
     TVLOracle public tvlOracle;
@@ -91,6 +92,10 @@ contract DeployStageP is Script {
     function _orchestrate() internal {
         miliariumRegistry = (new DeployStageJ()).deploy(address(this));
         vm.setEnv("MILIARIUM_REGISTRY", vm.toString(address(miliariumRegistry)));
+        // GAUGE_REGISTRY_PLACEHOLDER — CCBMultiplier ctor input per PB-D18 (v); the real GaugeRegistry
+        // deploys later (G after F), so a non-zero throwaway (this orchestrator) is passed and replaced by
+        // f.sealGaugeRegistry() once the G-stack lands. Never read pre-seal (no updateMultiplier during orchestration).
+        vm.setEnv("GAUGE_REGISTRY_PLACEHOLDER", vm.toString(address(this)));
 
         DeployStageF f = new DeployStageF();
         (tvlOracle, efficiencyOracle, emaSampler, ccbMultiplier) = f.deploy(address(f));
@@ -104,6 +109,10 @@ contract DeployStageP is Script {
         vm.setEnv("SWAP_AND_DEPOSIT", vm.toString(address(swapAndDeposit)));
         vm.setEnv("VAULT_CLASS_REGISTRY", vm.toString(address(vaultClassRegistry)));
         vm.setEnv("GAUGE_REGISTRY", vm.toString(address(gaugeRegistry)));
+
+        // PB-D18 (v) — seal the CCBMultiplier delta_global enumeration to the concrete GaugeRegistry now that
+        // the G-stack exists; forwarded through `f` because f (not this orchestrator) is the pinned setter.
+        f.sealGaugeRegistry(gaugeRegistry);
 
         DeployStageH h = new DeployStageH();
         emissionDistributor = h.deploy(address(h));
@@ -155,6 +164,12 @@ contract DeployStageP is Script {
 
         if (address(IVault(vm.envAddress("VAULT")).getAuthorizer()) != address(authorizer)) {
             revert AuthorizerNotMigrated(address(authorizer), address(IVault(vm.envAddress("VAULT")).getAuthorizer()));
+        }
+
+        // Post-condition (4) — the CCBMultiplier gauge-registry seal landed on the concrete GaugeRegistry (PB-D18 (v)).
+        address sealedGauge = address(ccbMultiplier.gaugeRegistry());
+        if (sealedGauge != address(gaugeRegistry)) {
+            revert CCBGaugeRegistryNotSealed(address(gaugeRegistry), sealedGauge);
         }
     }
 

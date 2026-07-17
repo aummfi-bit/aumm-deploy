@@ -60,6 +60,14 @@ contract DeployStageF is Script {
     EMASampler public emaSampler;
     CCBMultiplier public ccbMultiplier;
 
+    /// @notice The address authorized to trigger the post-G-stack `sealGaugeRegistry` — captured as the
+    ///         caller of `deploy()` (the DeployStageP orchestrator per PB-D18 (v)); zero until `deploy()` runs.
+    address public sealAuthority;
+
+    /// @notice `sealGaugeRegistry` reverts when the caller is not the `deploy()`-captured `sealAuthority` —
+    ///         blocks a live-broadcast front-run from driving this script's one-shot setter authority.
+    error NotSealAuthority(address caller, address expected);
+
     /// @notice `forge script` entry — deploys the four F-engine contracts as msg.sender under broadcast.
     function run() external returns (TVLOracle, EfficiencyOracle, EMASampler, CCBMultiplier) {
         vm.startBroadcast();
@@ -74,8 +82,20 @@ contract DeployStageF is Script {
         external
         returns (TVLOracle, EfficiencyOracle, EMASampler, CCBMultiplier)
     {
+        sealAuthority = msg.sender;
         _deploy(deployer);
         return (tvlOracle, efficiencyOracle, emaSampler, ccbMultiplier);
+    }
+
+    /// @notice Post-G-stack seal per PB-D18 (v). The CCBMultiplier was constructed inside `_deploy`, so its
+    ///         `gaugeRegistrySetter` is THIS script (`address(this)`); only this script can seal it. The
+    ///         orchestrator calls this once DeployStageG has landed, passing the concrete GaugeRegistry —
+    ///         binding it and self-sealing the one-shot setter. Guarded to the `deploy()`-captured
+    ///         `sealAuthority` so no other caller can forward this script's authority to an adversarial registry.
+    /// @param gaugeRegistry The concrete Stage G GaugeRegistry to bind as the `delta_global` enumeration source.
+    function sealGaugeRegistry(IGaugeRegistry gaugeRegistry) external {
+        if (msg.sender != sealAuthority) revert NotSealAuthority(msg.sender, sealAuthority);
+        ccbMultiplier.setGaugeRegistry(gaugeRegistry);
     }
 
     function _deploy(address deployer) internal {
