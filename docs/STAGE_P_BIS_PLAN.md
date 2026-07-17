@@ -68,6 +68,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 | PB-D17 | PB2.12 BUILD: hevm 0.58.0 (argotorg, native arm64 + resident z3 4.15.4) runs locally; Act v0.2.0 source-only → .act specs as audit-handoff artifacts, proving attested firm-side; top-level formal/; exit BUILT | PB2.12 |
 | PB-D18 | OQ-23 reopened: delta_global re-keys to the all-Active-gauge aggregate (P-D22 shape restored — ctor 2→3-arg + one-shot `setGaugeRegistry` seal); delta_basket withdrawn (damping inherent in F-5/F-6 proportionality, zero spec edits); zero-TVL disposition attached | PB2.13 |
 | PB-D19 | GENESIS_BLOCK = broadcast block + 100_800 (one epoch) decouples the emission clock from deploy time; zero code change (one env value — no clamp, cross-contract genesis assertion, no deploy-time accrual); PB3.4 rehearsal runs the future-offset; two optional pre-genesis pins | PB3.4-pre |
+| PB-D20 | PB3.2 stub architecture: base-level envOr override resolver in the miliarium base (STUB_ + vm.toString(literal) keys, passthrough default, non-zero-RP fail-fast); Tier D = emitted env-map, no on-chain registry; real ERC4626RateProviders over 18/18 stub 4626s (F-11-inclusive deviation recorded); two templates + named Tier-A instances; permissionless mint | PB3.2 |
 
 ---
 ## Sub-step roadmap (PB1—PB5)
@@ -98,7 +99,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 
 ### PB3 — Workstream B: Sepolia deployment
 - **PB3.1** — the PB-D1 environment verify pass (user-run, §8b network reads): faucet availability, Permit2 presence at the canonical address, explorer contract-verification flow. Red result blocks PB3 → fallback discussion, own PB-D entry.
-- **PB3.2** — P8 testnet token stubs: `test-stubs/` ERC-20 tier set + registry, roster per the Stage-P Builds list.
+- **PB3.2** — P8 testnet token stubs per PB-D20: `test-stubs/` two-template tier set (`StubERC4626` fixed 1:1 NAV, `StubERC20` ctor-set decimals; Tier-A anchors = named instances) + the base-level envOr override resolver in `deploy-miliarium-pool.s.sol` (STUB_-literal keys, passthrough default, non-zero-RP fail-fast) + the emitted Sepolia env-map (Tier D resolved to the env-map arm — no on-chain registry); roster = the Stage-P Builds list + the Tier-A underlyings (stub ZCHF/USDS); build ladder a–f per PB-D20 (vi).
 - **PB3.3** — the canonical Balancer V3 Router redeployed against the Aureum Vault (P-D26; the Permit2 dependency) + `setTrustedRouter` binds + the F-09 allowlist seat (the F-17 fix's symmetric-accounting dependency goes live here).
 - **PB3.4** — production orchestration path: un-defer `DeployStageP.run()` (`ProductionOrchestrationDeferredToPbis` → the env-keyed production flow), fork-rehearsed before any broadcast — the rehearsal runs with the PB-D19 future-genesis env (`GENESIS_BLOCK = broadcast + 100_800`, one epoch) and re-confirms the four post-conditions; the two optional pre-genesis evidence pins are PB3.4-scoped.
 - **PB3.5** — Sepolia broadcast + explorer verification (user-run; per-command §8b approval; testnet only — §8c keeps mainnet banned).
@@ -226,3 +227,5 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB3.4-pre-b | `—` | docs/STAGE_P_BIS_PLAN.md — PB-D19 Decisions-table row + PB3.4 roster annotation + these Completion Log rows — this commit |
 | PB3.1a | `51744cf` | ✅ CLAUDE.md — section-11 resume-anchor advance closing the PB3.1 Sepolia verify pass: RPC live (chain 11155111), Permit2 present, deployer 0xA851478dbee97375E784e9b98c0D7D599662bF85 funded 0.05 SepETH; Etherscan key + full gas budget carried non-blocking to PB3.5/PB3.4; PB-D19 backfilled into the anchor narrative; Next → PB3.2 |
 | PB3.1b | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB3.1a row + this row; PB3.1 CLOSED → PB3.2 — this commit |
+| PB3.2a1 | `414eddc` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D20 lock: base-level envOr resolver (STUB_-literal keys via vm.toString, passthrough default, non-zero-RP fail-fast), Tier D = env-map, real RPs over 18/18 stub 4626s (F-11 deviation recorded), two templates + named Tier-A instances, permissionless mint; build ladder a–f |
+| PB3.2a2 | `—` | docs/STAGE_P_BIS_PLAN.md — PB-D20 Decisions row + PB3.2 roster annotation + these Completion Log rows — this commit |
