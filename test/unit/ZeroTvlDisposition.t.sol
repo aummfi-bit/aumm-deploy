@@ -1,0 +1,204 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+pragma solidity ^0.8.26;
+
+import {Test} from "forge-std/Test.sol";
+import {EmissionDistributorHarness} from "test/unit/harness/EmissionDistributorHarness.sol";
+import {EMASampler} from "src/ccb/EMASampler.sol";
+import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
+import {IAuMM} from "src/token/IAuMM.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {IEMASampler} from "src/ccb/IEMASampler.sol";
+import {ICCBMultiplier} from "src/ccb/ICCBMultiplier.sol";
+import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
+import {AureumTime} from "src/lib/AureumTime.sol";
+import {MockEMASampler} from "test/unit/VotingWeight.t.sol";
+import {MockAuMM, MockGaugeRegistry, MockCCBMultiplier, MockEfficiencyOracle, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
+
+/// @notice Minimal settable TVL oracle for the drain-decay leg. Not declared `is ITVLOracle` —
+///         EMASampler only calls tvl(), and the ITVLOracle cast at construction dispatches by
+///         selector (the CCBEngineProofs MockTVLOracleProof idiom).
+contract MockTVLOracleDrain {
+    uint256 private _ret;
+
+    function set(uint256 v) external {
+        _ret = v;
+    }
+
+    function tvl(address) external view returns (uint256) {
+        return _ret;
+    }
+}
+
+/// @title ZeroTvlDispositionTest
+/// @notice PB2.13h — PB-D18 (vi) zero-TVL disposition evidence, distributor side. A pool at zero
+///         (or gated-to-zero) TVL EMA must not earn forward emissions, deltas notwithstanding:
+///         F-5 is multiplicative (CCBScore.score = tvlEMA.mulDown(multiplier)), so a gated-zero
+///         EMA collapses the score regardless of the F-8 multiplier — pinned here at the clamp
+///         ceiling (1.25e18), the sharpest "deltas cannot resurrect a dead score" witness.
+///         Window (b) stale-score evidence: poolScore persists between recordScore calls (no
+///         auto-decay — the exposure), and any stranger's permissionless recordScore self-clears
+///         it to zero (the bound). Gate boundaries (unseeded / immature / stale) are already
+///         pinned by test/whitehat/F10_emaScoreGate.t.sol; the library-level kill by
+///         test/unit/CCBScore.t.sol; window (a) decay mechanics by EMASampler.t.sol plus the
+///         drain half-life quantifier below. Window (d) — the Months 0-12 F-1/F-3 equal-split
+///         leg paying a zero-TVL Miliarium pool — is spec-mandated §xxviii / H-D6 semantics,
+///         note-only per PB-D18 (vi), no pin.
+contract ZeroTvlDispositionTest is Test {
+    MockEMASampler internal sampler;
+    MockGaugeRegistry internal gauges;
+    MockCCBMultiplier internal mult;
+    MockEfficiencyOracle internal effOracle;
+    MockMiliariumRegistry internal miliReg;
+    MockAuMM internal aumm;
+    EmissionDistributorHarness internal distributor;
+
+    uint256 internal constant GENESIS_BLOCK = 1_000_000;
+    uint256 internal constant EMA_MATURITY = 60 * AureumTime.BLOCKS_PER_DAY;
+    uint256 internal constant EMA_STALENESS = AureumTime.BLOCKS_PER_EPOCH;
+    uint256 internal constant CLAMP_CEILING = 125e16;
+    uint256 internal constant EMA_VALUE = 16_000e18;
+
+    address internal constant POOL = address(0xA1);
+    address internal constant GOV = address(0x9011);
+    address internal constant STRANGER = address(0xBAD);
+
+    uint256 internal startBlock;
+
+    function setUp() public {
+        aumm = new MockAuMM();
+        sampler = new MockEMASampler();
+        gauges = new MockGaugeRegistry();
+        mult = new MockCCBMultiplier();
+        effOracle = new MockEfficiencyOracle();
+        miliReg = new MockMiliariumRegistry();
+
+        distributor = new EmissionDistributorHarness(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(sampler)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK,
+            GOV
+        );
+
+        effOracle.setEmissionsRecorder(address(distributor));
+        gauges.setApproved(POOL, true);
+        mult.setMultiplier(POOL, CLAMP_CEILING);
+        sampler.setTvlEMA(POOL, EMA_VALUE);
+
+        // Continuous regime (alpha = 1e18): a non-Miliarium pool's effective score equals its
+        // F-5 score, so every assert below is a sharp equality on the gated EMA x multiplier.
+        startBlock = AureumTime.year1EndBlock(GENESIS_BLOCK) + 1;
+        vm.roll(startBlock);
+    }
+
+    /// @notice Resurrect-proof (unseeded): a never-seeded EMA scores zero even at the F-8 clamp
+    ///         ceiling — the multiplier has nothing to multiply.
+    function test_ZeroTvl_unseededAtClampCeiling_scoresZero() public {
+        sampler.setSeedBlock(POOL, 0);
+        sampler.setLastUpdateBlock(POOL, startBlock);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 0, "unseeded EMA at 1.25e18 multiplier must score zero");
+        assertEq(distributor.totalScore(), 0, "zero pool contributes nothing to totalScore");
+    }
+
+    /// @notice Resurrect-proof (stale): a mature-but-abandoned EMA scores zero even at the clamp
+    ///         ceiling — F-8 deltas cannot resurrect a gated-dead score.
+    function test_ZeroTvl_staleAtClampCeiling_scoresZero() public {
+        sampler.setSeedBlock(POOL, startBlock - EMA_MATURITY);
+        sampler.setLastUpdateBlock(POOL, startBlock - EMA_STALENESS - 1);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 0, "stale EMA at 1.25e18 multiplier must score zero");
+        assertEq(distributor.totalScore(), 0, "stale pool contributes nothing to totalScore");
+    }
+
+    /// @notice Positive control: fresh + mature at the clamp ceiling scores EMA x 1.25 exactly —
+    ///         proving the multiplier is live when the EMA is, so the zero results above are the
+    ///         gate's kill, not a dead rig.
+    function test_ZeroTvl_control_freshMatureAtClampCeiling_scoresWithMultiplier() public {
+        sampler.setSeedBlock(POOL, startBlock - EMA_MATURITY);
+        sampler.setLastUpdateBlock(POOL, startBlock);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 20_000e18, "16_000e18 EMA x 1.25e18 multiplier");
+    }
+
+    /// @notice Window (b) left edge: a recorded score PERSISTS across epochs with no auto-decay —
+    ///         the stale pool keeps its totalScore share until someone re-records. This is the
+    ///         exposure the permissionless self-clear bounds.
+    function test_ZeroTvl_windowB_staleScorePersistsUntilRerecord() public {
+        sampler.setSeedBlock(POOL, startBlock - EMA_MATURITY);
+        sampler.setLastUpdateBlock(POOL, startBlock);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 20_000e18, "scored while fresh");
+
+        vm.roll(startBlock + 5 * EMA_STALENESS);
+        assertEq(distributor.poolScore(POOL), 20_000e18, "no auto-decay: score persists while unrecorded");
+        assertEq(distributor.totalScore(), 20_000e18, "stale pool still holds its denominator share");
+    }
+
+    /// @notice Window (b) right edge: any stranger's permissionless recordScore self-clears the
+    ///         stale pool's score — poolScore and totalScore both drop to zero, killing the
+    ///         forward share (the EmissionDistributor L454 NatSpec claim, witnessed).
+    function test_ZeroTvl_windowB_strangerRecordScoreSelfClears() public {
+        sampler.setSeedBlock(POOL, startBlock - EMA_MATURITY);
+        sampler.setLastUpdateBlock(POOL, startBlock);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 20_000e18, "scored while fresh");
+
+        vm.roll(startBlock + EMA_STALENESS + 1);
+        vm.prank(STRANGER);
+        distributor.recordScore(POOL);
+        assertEq(distributor.poolScore(POOL), 0, "stranger re-record self-clears the stale score");
+        assertEq(distributor.totalScore(), 0, "forward share dies with the self-clear");
+    }
+}
+
+/// @title ZeroTvlDrainDecayTest
+/// @notice PB2.13h — window (a) quantifier on the REAL EMASampler: a drained-but-still-sampled
+///         pool's EMA decays by 59/61 per daily sample (the WK18 anti-pump smoothing running in
+///         reverse), halving in ~21 daily samples and reaching under 5% by 90 — bounding how long
+///         a drained pool's genuine decay tail can earn before decay, staleness (14d unsampled,
+///         F-10), or a re-record zeroes it.
+contract ZeroTvlDrainDecayTest is Test {
+    EMASampler internal sampler;
+    MockTVLOracleDrain internal oracle;
+
+    address internal constant POOL = address(0xD1);
+    uint256 internal constant START_BLOCK = 720_000;
+    uint256 internal constant SEED_TVL = 16_000e18;
+
+    function setUp() public {
+        oracle = new MockTVLOracleDrain();
+        sampler = new EMASampler(ITVLOracle(address(oracle)));
+        vm.roll(START_BLOCK);
+    }
+
+    /// @notice 21 daily zero-spot samples halve the EMA (within 49-51% of seed); 90 leave < 5%.
+    ///         Explicit local block counter per the F10 optimizer-hoist lesson.
+    function test_ZeroTvl_windowA_drainDecayHalfLife() public {
+        oracle.set(SEED_TVL);
+        sampler.updateEMA(POOL);
+        assertEq(sampler.tvlEMA(POOL), SEED_TVL, "seeded at spot");
+
+        oracle.set(0);
+        uint256 blk = START_BLOCK;
+        for (uint256 i = 0; i < 21; ++i) {
+            blk += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blk);
+            sampler.updateEMA(POOL);
+        }
+        uint256 emaAt21 = sampler.tvlEMA(POOL);
+        assertGt(emaAt21, (SEED_TVL * 49) / 100, "half-life lower bound at 21 daily samples");
+        assertLt(emaAt21, (SEED_TVL * 51) / 100, "half-life upper bound at 21 daily samples");
+
+        for (uint256 i = 21; i < 90; ++i) {
+            blk += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blk);
+            sampler.updateEMA(POOL);
+        }
+        assertLt(sampler.tvlEMA(POOL), SEED_TVL / 20, "under 5% of seed by 90 daily samples");
+    }
+}
