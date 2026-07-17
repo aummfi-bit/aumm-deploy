@@ -1,19 +1,25 @@
 // AUREUM S7 CCB MULTIPLIER -- Act behavioural specification
-// PB2.12d / PB-D17 (Stage P-bis workstream A, formal-methods bundle).
+// PB2.12d / PB-D17 (Stage P-bis workstream A, formal-methods bundle);
+// rewritten at PB2.13g2 for the PB-D18 gauge-registry restoration.
 //
 // Dialect: Act v0.2.0 (argotorg/act), grounded against the shipped pass-tests;
 // only operators witnessed there are used.
 //
 // Status: audit-handoff artifact; machine-checking firm-side per PB-D17(ii).
 // Local verification cross-ref: test/formal/CCBEngineProofs.sol proves the
-// P-M1 trio (one-shot, deployer-only auth, zero-rejection) against the
-// compiled bytecode -- hevm 0.58.0, bitwuzla 0.9.1, all PASS.
+// P-M1 trio and the PB2.13g1 P-M2 mirror trio (one-shot, deployer-only auth,
+// zero-rejection -- per registry slot) against the compiled bytecode under
+// hevm 0.58.0 / bitwuzla 0.9.1; P-M1 attested at the PB2.12f1 52/52 run,
+// the 55-proof re-attest is PB2.13g3.
 //
-// MODELING NOTE (F-D20 vs C-D11): this lock is a SINGLE-FLAG seal -- the
+// MODELING NOTE (F-D20 vs C-D11): both locks are SINGLE-FLAG seals -- each
 // setter authority self-zeroes, but no already-set check guards the registry
-// slot itself. The seal is sound only under the EVM-sender axiom that no
-// caller holds address(0); the local hevm proof documents the same assumption
-// (vm.assume(caller != address(0)) at prove_registry_setOnce). The fee-routing
+// slot itself. Each seal is sound only under the EVM-sender axiom that no
+// caller holds address(0); the local hevm proofs document the same assumption
+// (vm.assume(caller != address(0)) at prove_registry_setOnce and
+// prove_gaugeRegistry_setOnce). The two flags are independent -- sealing one
+// slot leaves the other authority live (witnessed by the trailing
+// registrySetter assert in prove_gaugeRegistry_setOnce). The fee-routing
 // hook's C-D11 two-flag locks need no such axiom. Not a defect (the zero
 // sender is EVM-unreachable); recorded so the firm sees the design boundary.
 //
@@ -24,15 +30,18 @@
 
 contract CCBMultiplier
 
-constructor(address _miliariumRegistry, address _emaSampler)
+constructor(address _miliariumRegistry, address _emaSampler, address _gaugeRegistry)
 
 iff
   _miliariumRegistry != 0
   _emaSampler != 0
+  _gaugeRegistry != 0
 
 creates
   address miliariumRegistry := _miliariumRegistry
   address registrySetter := CALLER
+  address gaugeRegistry := _gaugeRegistry
+  address gaugeRegistrySetter := CALLER
   mapping(address => uint256) M_i := []
   mapping(address => uint256) lastMultiplierUpdateBlock := []
   uint256 lastProtocolAggregateEMA := 0
@@ -48,6 +57,20 @@ updates
   miliariumRegistry := newRegistry
   registrySetter := 0
 
+// The PB-D18 (v) mirror for the delta_global enumeration universe:
+// deployer-only, non-zero, binds then seals. gaugeRegistrySetter self-zeroes
+// independently of registrySetter -- the two seals share the axiom, not the
+// flag. The deploy path binds a pre-G-stack placeholder at construction and
+// replaces it exactly once via this transition (the DeployStageP orchestrator
+// seal, forwarded through DeployStageF's sealAuthority guard).
+transition setGaugeRegistry(address newRegistry)
+iff
+  CALLER == gaugeRegistrySetter
+  newRegistry != 0
+updates
+  gaugeRegistry := newRegistry
+  gaugeRegistrySetter := 0
+
 // F-D19 prior-value sentinel: an unwritten pool reads the INITIAL_MULTIPLIER
 // (1e18) rather than zero.
 transition getMultiplier(address pool) : uint256
@@ -58,14 +81,23 @@ returns (if (M_i[pool] == 0) then 1000000000000000000 else M_i[pool])
 // updateMultiplier(address pool) -- RESIDUAL (firm-side per PB-D17(ii)).
 //
 // Not modelled as a transition: the F-8 evolution reads block.number, calls
-// miliariumRegistry.isMiliarium(pool), and enumerates the 28-pool Miliarium
-// roster against emaSampler.tvlEMA(*) -- environment plus two external
-// contracts, outside the single-contract fragment. The behavioural contract
-// for the firm's model: (1) gate order Miliarium-membership then cadence
-// (BLOCKS_PER_EPOCH = 100800, OQ-3); (2) anti-cyclical dead-zone steps per
-// F-D6 / F-D18 / F-D19 / F-D25 with DEAD_ZONE = 1e15, aggregate cold-start
-// sentinel lastProtocolAggregateEMA == 0 yielding delta_global = 0, and the
-// M_i[pool] == 0 sentinel reading INITIAL_MULTIPLIER ahead of the summed
-// steps and clamps; (3) boundary equality stays neutral in both channels
-// (strict inequalities, F-D19).
+// miliariumRegistry.isMiliarium(pool), and walks TWO rosters --
+// gaugeRegistry.gaugeCount()/gaugeAt(i) and
+// miliariumRegistry.miliariumPoolsCount()/miliariumPoolAt(i) -- against
+// emaSampler.tvlEMA(*): environment plus three external contracts, outside
+// the single-contract fragment. The behavioural contract for the firm's
+// model, per PB-D18 (ii)/(iii) superseding the pre-reopening Miliarium-only
+// aggregate: (1) gate order Miliarium-membership then cadence
+// (BLOCKS_PER_EPOCH = 100800, OQ-3); (2) delta_global compares the enumerated
+// sum of tvlEMA over ALL currently-Active gauges (raw, ungated -- the P-D13
+// set; Revoked pools leave the enumeration) to the stored
+// lastProtocolAggregateEMA baseline, with the F-D18 cold-start sentinel
+// (baseline == 0 yields delta_global = 0) and the baseline re-keyed to the
+// current gauge sum on every update; (3) delta_intra compares the pool's
+// tvlEMA to the simple mean miliariumAgg / 28 over the Miliarium-only sum
+// (OQ-23 (iv.a), decoupled from the global aggregate); (4) anti-cyclical
+// dead-zone steps per F-D6 / F-D18 / F-D19 / F-D25 with DEAD_ZONE = 1e15,
+// STEP_SIZE = 5e16, the M_i[pool] == 0 sentinel reading INITIAL_MULTIPLIER
+// ahead of the summed steps and the [75e16, 125e16] clamps; boundary
+// equality stays neutral in both channels (strict inequalities, F-D19).
 // ---------------------------------------------------------------------------
