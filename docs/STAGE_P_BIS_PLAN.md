@@ -67,6 +67,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 | PB-D16 | PB2.11 WK.18 BUILD: F-04's atomic surface Fixed (60-day EMA gate), so the thin-venue sim is a populated-roster positive-control + sustained-pump economics quantifier, not a bug hunt | PB2.11 |
 | PB-D17 | PB2.12 BUILD: hevm 0.58.0 (argotorg, native arm64 + resident z3 4.15.4) runs locally; Act v0.2.0 source-only → .act specs as audit-handoff artifacts, proving attested firm-side; top-level formal/; exit BUILT | PB2.12 |
 | PB-D18 | OQ-23 reopened: delta_global re-keys to the all-Active-gauge aggregate (P-D22 shape restored — ctor 2→3-arg + one-shot `setGaugeRegistry` seal); delta_basket withdrawn (damping inherent in F-5/F-6 proportionality, zero spec edits); zero-TVL disposition attached | PB2.13 |
+| PB-D19 | GENESIS_BLOCK = broadcast block + 100_800 (one epoch) decouples the emission clock from deploy time; zero code change (one env value — no clamp, cross-contract genesis assertion, no deploy-time accrual); PB3.4 rehearsal runs the future-offset; two optional pre-genesis pins | PB3.4-pre |
 
 ---
 ## Sub-step roadmap (PB1—PB5)
@@ -99,7 +100,7 @@ Mirror of `STAGE_P_BIS_NOTES.md` (PB-D1—PB-D5 LOCKED at the entry freeze; this
 - **PB3.1** — the PB-D1 environment verify pass (user-run, §8b network reads): faucet availability, Permit2 presence at the canonical address, explorer contract-verification flow. Red result blocks PB3 → fallback discussion, own PB-D entry.
 - **PB3.2** — P8 testnet token stubs: `test-stubs/` ERC-20 tier set + registry, roster per the Stage-P Builds list.
 - **PB3.3** — the canonical Balancer V3 Router redeployed against the Aureum Vault (P-D26; the Permit2 dependency) + `setTrustedRouter` binds + the F-09 allowlist seat (the F-17 fix's symmetric-accounting dependency goes live here).
-- **PB3.4** — production orchestration path: un-defer `DeployStageP.run()` (`ProductionOrchestrationDeferredToPbis` → the env-keyed production flow), fork-rehearsed before any broadcast.
+- **PB3.4** — production orchestration path: un-defer `DeployStageP.run()` (`ProductionOrchestrationDeferredToPbis` → the env-keyed production flow), fork-rehearsed before any broadcast — the rehearsal runs with the PB-D19 future-genesis env (`GENESIS_BLOCK = broadcast + 100_800`, one epoch) and re-confirms the four post-conditions; the two optional pre-genesis evidence pins are PB3.4-scoped.
 - **PB3.5** — Sepolia broadcast + explorer verification (user-run; per-command §8b approval; testnet only — §8c keeps mainnet banned).
 - **PB3.6** — F-14 ops + fee-custody rails (ixAetheron off-chain conversion, P-D12).
 - **PB3.7** — deployed-addresses artifact committed (the frontend-consumption contract).
@@ -221,3 +222,5 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB2.13h3 | `6df0999` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D18 (viii) zero-TVL disposition outcome: all four (vi) windows quantified/closed (a–c as-designed-with-evidence, d note-only); no-fork-escalation rationale |
 | PB2.13i1 | `691b8f5` | ✅ CLAUDE.md — section-11 resume-anchor: workstream A CLOSED at PB2.13; delta_basket withdrawn, clamp/step clause evaporated, PB2.10 F-8/§vii carry dropped; close-gate 928/928; Next → PB3.1 |
 | PB2.13i2 | `—` | docs/STAGE_P_BIS_PLAN.md Completion Log — PB2.13 family rows (a through i2); workstream A CLOSED → PB3.1 — this commit |
+| PB3.4-pre | `cded9c7` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D19 lock: GENESIS_BLOCK = broadcast + 100_800 (one epoch) decouples the emission clock from deploy; zero code change verified (env-only — DeployAuMM L33 no clamp, the P-D14 four-way assertion is cross-contract, no deploy-time schedule action); PB3.4 future-genesis rehearsal required; two optional pre-genesis pins |
+| PB3.4-pre-b | `—` | docs/STAGE_P_BIS_PLAN.md — PB-D19 Decisions-table row + PB3.4 roster annotation + these Completion Log rows — this commit |
