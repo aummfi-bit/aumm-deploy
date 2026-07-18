@@ -559,7 +559,7 @@ contract StagePWiringTest is StagePIntegrationFixture {
         assertEq(orchestrator.miliariumRegistry().governanceContract(), address(orchestrator.governance())); // K wire (7)
         assertEq(address(orchestrator.tvlOracle().miliariumRegistry()), address(orchestrator.miliariumRegistry())); // K wire (8), F-03/K-D8
         assertEq(address(vault.getAuthorizer()), address(orchestrator.authorizer())); // K wire (9) / post-condition (4)
-        assertEq(orchestrator.vaultClassRegistry().governanceContract(), address(orchestrator)); // DeployStageP L126, the fork-model unified governor (K never rebinds the VaultClassRegistry governance seat)
+        assertEq(orchestrator.vaultClassRegistry().governanceContract(), address(orchestrator.governance())); // PB-D11 (iii) / PB-D23 (iii): the VaultClassRegistry governance one-shot now binds post-K to AureumGovernance
     }
 
     function test_atRest_moduleUnsetNoTrustedRouter() public view {

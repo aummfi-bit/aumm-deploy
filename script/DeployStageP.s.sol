@@ -132,12 +132,14 @@ contract DeployStageP is Script {
         gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_05"));
         gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_14"));
 
-        vaultClassRegistry.setGovernanceContract(address(this));
-
         incendiaryRegistry = (new DeployStageL()).deploy(address(this));
 
         DeployStageK k = new DeployStageK();
         (votingWeight, governance, authorizer, minterRouter) = k.deploy(address(this));
+
+        // PB-D11 (iii) / PB-D23 (iii) — the VaultClassRegistry governance one-shot binds POST-K to the
+        // AureumGovernance instance (never the multisig), so revokeVaultClass lives at on-chain governance.
+        vaultClassRegistry.setGovernanceContract(address(governance));
     }
 
     function _assertPostConditions() internal view {
