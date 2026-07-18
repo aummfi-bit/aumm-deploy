@@ -72,6 +72,10 @@ contract DeployStageL is Script {
     ///         authorizer is still GOVERNANCE_MULTISIG post-Stage-K.
     error DonateAuthorizerNotMultisig(address actual);
 
+    /// @notice The deployed IncendiaryRegistry — public so the composed `DeployStageP.run()` reads it
+    ///         after `run()` (PB-D24 (ii)); populated inside `_deployAndWire`, so both entry points set it.
+    IncendiaryRegistry public incendiaryRegistry;
+
     /// @notice `forge script` entry — broadcasts deploy + wire as the GOVERNANCE_MULTISIG
     ///         read from env (simulation / Safe-batch reference).
     function run() external {
@@ -112,6 +116,7 @@ contract DeployStageL is Script {
         );
         channel.addAuthorizedDonator(address(registry));
         distributor.setIncendiaryRegistry(address(registry));
+        incendiaryRegistry = registry;
         return registry;
     }
 }

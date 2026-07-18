@@ -27,6 +27,10 @@ import { MiliariumRegistry } from "../src/registry/MiliariumRegistry.sol";
  *        PILOT_POOL_14         address  — ixAurebit pilot (Stage E slot 14)
  */
 contract DeployStageJ is Script {
+    /// @notice The deployed MiliariumRegistry — public so the composed `DeployStageP.run()` reads it
+    ///         after `run()` (PB-D24 (ii)); populated inside `_deploy`, so both entry points set it.
+    MiliariumRegistry public miliariumRegistry;
+
     /// @notice `forge script` entry — broadcasts registry deployment as GOVERNANCE_MULTISIG.
     function run() external {
         address governor = vm.envAddress("GOVERNANCE_MULTISIG");
@@ -53,6 +57,7 @@ contract DeployStageJ is Script {
         pools[0] = vm.envAddress("PILOT_POOL_01");
         pools[1] = vm.envAddress("PILOT_POOL_05");
         pools[2] = vm.envAddress("PILOT_POOL_14");
-        return new MiliariumRegistry(governor, slotNumbers, pools);
+        miliariumRegistry = new MiliariumRegistry(governor, slotNumbers, pools);
+        return miliariumRegistry;
     }
 }

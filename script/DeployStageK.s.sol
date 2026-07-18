@@ -72,17 +72,19 @@ import { TVLOracle } from "../src/emission/TVLOracle.sol";
  *        VAULT_CLASS_REGISTRY   address  — VaultClassRegistry (setVotingWeight self-seal)
  */
 contract DeployStageK is Script {
+    /// @notice The four deployed governance-stack handles — public so the composed `DeployStageP.run()`
+    ///         reads them after `run()` (PB-D24 (ii)); populated inside `_deploy`, so both entry points set them.
+    VotingWeight public votingWeight;
+    AureumGovernance public governance;
+    AureumGovernanceAuthorizer public authorizer;
+    AuMMMinterRouter public minterRouter;
+
     /// @notice `forge script` entry — broadcasts the full governance-stack deploy + wire as GOVERNANCE_MULTISIG.
     function run() external {
         address governor = vm.envAddress("GOVERNANCE_MULTISIG");
         vm.startBroadcast(governor);
-        (
-            VotingWeight votingWeight,
-            AureumGovernance governance,
-            AureumGovernanceAuthorizer authorizer,
-            AuMMMinterRouter router
-        ) = _deploy();
-        _wire(votingWeight, governance, authorizer, router);
+        _deploy();
+        _wire(votingWeight, governance, authorizer, minterRouter);
         vm.stopBroadcast();
     }
     /// @notice Testable entry — deploys and wires via vm.startPrank(governor) for fork tests without a live
@@ -92,31 +94,23 @@ contract DeployStageK is Script {
         returns (VotingWeight, AureumGovernance, AureumGovernanceAuthorizer, AuMMMinterRouter)
     {
         vm.startPrank(governor);
-        (
-            VotingWeight votingWeight,
-            AureumGovernance governance,
-            AureumGovernanceAuthorizer authorizer,
-            AuMMMinterRouter router
-        ) = _deploy();
-        _wire(votingWeight, governance, authorizer, router);
+        _deploy();
+        _wire(votingWeight, governance, authorizer, minterRouter);
         vm.stopPrank();
-        return (votingWeight, governance, authorizer, router);
+        return (votingWeight, governance, authorizer, minterRouter);
     }
-    /// @dev Deploys the four governance-stack contracts in constructor-dependency order and returns the
-    ///      handles. No wiring (that is _wire). genesisBlock_ for VotingWeight is read from the deployed AuMM.
-    function _deploy()
-        internal
-        returns (VotingWeight, AureumGovernance, AureumGovernanceAuthorizer, AuMMMinterRouter)
-    {
+    /// @dev Deploys the four governance-stack contracts in constructor-dependency order into the public
+    ///      handle slots (PB-D24 (ii)). No wiring (that is _wire). genesisBlock_ for VotingWeight is read from the deployed AuMM.
+    function _deploy() internal {
         IAuMM aumm = IAuMM(vm.envAddress("AUMM"));
-        VotingWeight votingWeight = new VotingWeight(
+        votingWeight = new VotingWeight(
             IEMASampler(vm.envAddress("EMA_SAMPLER")),
             IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")),
             IEmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR")),
             IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY")),
             aumm.GENESIS_BLOCK()
         );
-        AureumGovernance governance = new AureumGovernance(
+        governance = new AureumGovernance(
             votingWeight,
             IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")),
             IMiliariumSlotRegistry(vm.envAddress("MILIARIUM_REGISTRY")),
@@ -126,17 +120,16 @@ contract DeployStageK is Script {
             IERC20(vm.envAddress("SUSDS")),
             vm.envAddress("BODENSEE_POOL")
         );
-        AureumGovernanceAuthorizer authorizer = new AureumGovernanceAuthorizer(
+        authorizer = new AureumGovernanceAuthorizer(
             address(governance),
             vm.envAddress("EMERGENCY_MULTISIG"),
             vm.envAddress("VAULT")
         );
-        AuMMMinterRouter router = new AuMMMinterRouter(
+        minterRouter = new AuMMMinterRouter(
             aumm,
             vm.envAddress("BODENSEE_CHANNEL"),
             vm.envAddress("EMISSION_DISTRIBUTOR")
         );
-        return (votingWeight, governance, authorizer, router);
     }
     /// @dev Wires the deployed stack into the live protocol as `governor` (single-governor caller model, K14):
     ///      nine calls in load-bearing order. (1) VaultClassRegistry.setVotingWeight self-seal; (2)
