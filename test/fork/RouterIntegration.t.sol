@@ -97,4 +97,66 @@ contract RouterIntegrationTest is StagePIntegrationFixture {
         hook.setTrustedRouter(router, true);
         assertTrue(hook.trustedRouter(router));
     }
+
+    /* ---------- PB3.3d2 (PB-D22 (v)) — post-seat true-LP credit + the F-17 remove leg ---------- */
+
+    /// @dev Seat the Router on the F-09 allowlist: the governor's one-shot module-aim at itself, then
+    ///      the persistent setTrustedRouter — the PB-D22 (iii) sequence, factored for the d2 witnesses.
+    function _seatRouter() internal {
+        vm.prank(gov);
+        hook.setGovernanceModule(gov);
+        vm.prank(gov);
+        hook.setTrustedRouter(router, true);
+    }
+
+    /// @dev `lp` adds 100e18 of each pilot-0 token through the Router via the permit2 two-step; returns
+    ///      the BPT minted. Mirrors the inline add in test_PreSeat_RouterAddRecordsNothing.
+    function _routerAdd(address lp) internal returns (uint256 bptOut) {
+        IERC20[] memory tokens = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory amts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < amts.length; ++i) {
+            amts[i] = 100e18;
+        }
+        _fundAndPermit(lp, tokens, amts);
+        vm.prank(lp);
+        bptOut = Router(payable(router)).addLiquidityUnbalanced(pilotPools[0], amts, 1, false, "");
+    }
+
+    /// @notice Post-seat true-LP credit (F-09): once the governor seats the Router, a REAL Router add
+    ///         drives the recorder — the hook resolves the LP via getSender() and recordDeposit credits
+    ///         userLP to the true LP, exactly the BPT minted. The positive to the pre-seat negative.
+    function test_PostSeat_RouterAddCreditsTrueLp() public {
+        _seatRouter();
+        address lp = makeAddr("postSeatLp");
+        uint256 bptOut = _routerAdd(lp);
+
+        assertGt(bptOut, 0);
+        assertEq(IERC20(pilotPools[0]).balanceOf(lp), bptOut);
+        assertEq(distributor.userLP(pilotPools[0], lp), bptOut);
+    }
+
+    /// @notice The remove leg (F-17 symmetric accounting): from a seated-router credited position, a REAL
+    ///         Router removeLiquidityProportional burns BPT and drives recordWithdrawal — userLP decrements
+    ///         by exactly the burned amount and stays equal to live BPT, the withdrawal symmetry F-09 must
+    ///         preserve or the F-17 phantom-position desync reopens.
+    function test_PostSeat_RouterRemoveDecrementsRecorder() public {
+        _seatRouter();
+        address lp = makeAddr("postSeatRemoveLp");
+        uint256 bptOut = _routerAdd(lp);
+        assertEq(distributor.userLP(pilotPools[0], lp), bptOut);
+
+        uint256 exactBptIn = bptOut / 2;
+        IERC20[] memory tokens = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory minOut = new uint256[](tokens.length);
+
+        // BAL V3 Vault.removeLiquidity spends the LP's BPT allowance granted to the Router (Vault.sol L1009).
+        vm.prank(lp);
+        IERC20(pilotPools[0]).approve(router, exactBptIn);
+        vm.prank(lp);
+        Router(payable(router)).removeLiquidityProportional(pilotPools[0], exactBptIn, minOut, false, "");
+
+        // Symmetric: userLP decrements by exactly the burned BPT and still tracks live BPT in lockstep.
+        assertEq(IERC20(pilotPools[0]).balanceOf(lp), bptOut - exactBptIn);
+        assertEq(distributor.userLP(pilotPools[0], lp), bptOut - exactBptIn);
+    }
 }
