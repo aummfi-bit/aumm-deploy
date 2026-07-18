@@ -38,11 +38,10 @@ import { AuMMMinterRouter } from "../src/token/AuMMMinterRouter.sol";
  * @dev The base layer (tokens/vault/factory/hook/der Bodensee/26 pools) is a fixture/env input per P-D31
  *      Tier A and MUST be deployed with GOVERNANCE_MULTISIG == address(this) — fixture ordering:
  *      new DeployStageP → setEnv GOVERNANCE_MULTISIG=address(orchestrator) → deploy base layer → deploy().
- * @dev run() reverts — production is per-granular-script Safe batches (P-bis, P-D23/P-D26).
+ * @dev run() composes the sub-scripts' own run() entries under the env GOVERNANCE_MULTISIG (PB-D23); the base layer stays per-granular user-run (PB3.5). deploy() is the fork/prank spine (GOVERNANCE_MULTISIG == address(this)).
  */
 contract DeployStageP is Script {
     error BaseLayerGovernorMismatch(address expected, address actual);
-    error ProductionOrchestrationDeferredToPbis();
     error GenesisBlockMismatch(address contractAddr, uint256 expected, uint256 actual);
     error RosterPoolNotGauged(address pool);
     error RosterPoolRecorderUnbound(address pool);
@@ -65,9 +64,14 @@ contract DeployStageP is Script {
     AureumGovernanceAuthorizer public authorizer;
     AuMMMinterRouter public minterRouter;
 
-    /// @notice Hard footgun-guard — production orchestration is deferred to P-bis per-granular Safe batches.
+    /// @notice Production orchestration entry (PB-D23) — composes the sub-scripts' `run()` entries under the
+    ///         env governor; the un-defer of the former `ProductionOrchestrationDeferredToPbis` footgun-guard.
+    ///         Fork-rehearsed at PB3.4d before any broadcast; the live Sepolia broadcast is PB3.5 (§8b).
     function run() external {
-        revert ProductionOrchestrationDeferredToPbis();
+        _setupEnvProduction();
+        _assertBaseLayerGovernorProduction();
+        _orchestrateProduction();
+        _assertPostConditions();
     }
 
     /// @notice Testable entry — env setup, base-layer governor sentinel, chain-order delegation, post-conditions.
@@ -140,6 +144,92 @@ contract DeployStageP is Script {
         // PB-D11 (iii) / PB-D23 (iii) — the VaultClassRegistry governance one-shot binds POST-K to the
         // AureumGovernance instance (never the multisig), so revokeVaultClass lives at on-chain governance.
         vaultClassRegistry.setGovernanceContract(address(governance));
+    }
+
+    /// @notice Production env setup — mirrors `_setupEnv` but NEVER overrides `GOVERNANCE_MULTISIG` (PB-D23 (i);
+    ///         production reads the real governor from env). Only the intra-run passthrough aliases are set.
+    function _setupEnvProduction() internal {
+        vm.setEnv("VAULT_EXPLORER", vm.toString(vm.envAddress("VAULT")));
+        vm.setEnv("SVZCHF", vm.toString(vm.envAddress("SV_ZCHF")));
+    }
+
+    /// @notice Production base-layer governor check — asserts the base-layer authorizer's GOVERNANCE_MULTISIG
+    ///         equals the ENV governor (PB-D23 (i); the fork `_assertBaseLayerGovernor` checks address(this)).
+    function _assertBaseLayerGovernorProduction() internal view {
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+        address actual = AureumAuthorizer(address(IVault(vm.envAddress("VAULT")).getAuthorizer())).GOVERNANCE_MULTISIG();
+        if (actual != governor) revert BaseLayerGovernorMismatch(governor, actual);
+    }
+
+    /// @notice Production orchestration per PB-D23 (i) — composes the sub-scripts' own `run()` entries (each
+    ///         self-broadcasting as the env GOVERNANCE_MULTISIG), captures their handles from the PB-D24 (ii)
+    ///         public storage / the F-G-H returns, and fires the orchestrator's own binds under its own
+    ///         `vm.startBroadcast(governor)` blocks (sequential, never nested inside a sub-`run()` broadcast).
+    ///         The CCB seal is the direct-governor path — the CCBMultiplier's CREATE sender is the governor
+    ///         under F's broadcast, so `setGaugeRegistry` is a direct call, not the `f.sealGaugeRegistry`
+    ///         forward the fork `deploy()` uses.
+    function _orchestrateProduction() internal {
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+
+        DeployStageJ j = new DeployStageJ();
+        j.run();
+        miliariumRegistry = j.miliariumRegistry();
+        vm.setEnv("MILIARIUM_REGISTRY", vm.toString(address(miliariumRegistry)));
+        vm.setEnv("GAUGE_REGISTRY_PLACEHOLDER", vm.toString(address(this)));
+
+        DeployStageF f = new DeployStageF();
+        (tvlOracle, efficiencyOracle, emaSampler, ccbMultiplier) = f.run();
+        vm.setEnv("TVL_ORACLE", vm.toString(address(tvlOracle)));
+        vm.setEnv("EFFICIENCY_ORACLE", vm.toString(address(efficiencyOracle)));
+        vm.setEnv("EMA_SAMPLER", vm.toString(address(emaSampler)));
+        vm.setEnv("CCB_MULTIPLIER", vm.toString(address(ccbMultiplier)));
+
+        DeployStageG g = new DeployStageG();
+        (swapAndDeposit, vaultClassRegistry, , gaugeRegistry) = g.run();
+        vm.setEnv("SWAP_AND_DEPOSIT", vm.toString(address(swapAndDeposit)));
+        vm.setEnv("VAULT_CLASS_REGISTRY", vm.toString(address(vaultClassRegistry)));
+        vm.setEnv("GAUGE_REGISTRY", vm.toString(address(gaugeRegistry)));
+
+        // CCB seal — direct governor call (PB-D23 (i) dual-path; broadcast rewrote the CREATE sender to governor).
+        vm.startBroadcast(governor);
+        ccbMultiplier.setGaugeRegistry(gaugeRegistry);
+        vm.stopBroadcast();
+
+        DeployStageH h = new DeployStageH();
+        emissionDistributor = h.run();
+        bodenseeBootstrapChannel = h.bodenseeBootstrapChannel();
+        vm.setEnv("EMISSION_DISTRIBUTOR", vm.toString(address(emissionDistributor)));
+        vm.setEnv("BODENSEE_CHANNEL", vm.toString(address(bodenseeBootstrapChannel)));
+
+        vm.startBroadcast(governor);
+        efficiencyOracle.setEmissionsRecorder(address(emissionDistributor));
+        vm.stopBroadcast();
+
+        (new DeployStageI()).run();
+        (new DeployStageM()).run();
+        (new DeployStageN()).run();
+
+        vm.startBroadcast(governor);
+        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_01"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_05"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_14"));
+        vm.stopBroadcast();
+
+        DeployStageL l = new DeployStageL();
+        l.run();
+        incendiaryRegistry = l.incendiaryRegistry();
+
+        DeployStageK k = new DeployStageK();
+        k.run();
+        votingWeight = k.votingWeight();
+        governance = k.governance();
+        authorizer = k.authorizer();
+        minterRouter = k.minterRouter();
+
+        // PB-D11 (iii) / PB-D23 (iii) — the VaultClassRegistry governance one-shot binds POST-K to AureumGovernance.
+        vm.startBroadcast(governor);
+        vaultClassRegistry.setGovernanceContract(address(governance));
+        vm.stopBroadcast();
     }
 
     function _assertPostConditions() internal view {
