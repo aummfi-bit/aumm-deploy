@@ -177,4 +177,17 @@ contract DeployTestnetStubs is Script {
             console2.log(string.concat(envKeys[i], "=", vm.toString(envVals[i])));
         }
     }
+
+    /// @notice PB-D25 (ii) — the rehearsal-harness replay surface: the count of accumulated
+    ///         (key, value) emission pairs (the STUB_ literals + the named keys), in emission order.
+    function envPairCount() external view returns (uint256) {
+        return envKeys.length;
+    }
+
+    /// @notice PB-D25 (ii) — the emission pair at index `i`; the rehearsal harness loops these into
+    ///         vm.setEnv so it consumes the same drift-free map the e2 capture and the PB3.5 Sepolia
+    ///         broadcast read.
+    function envPairAt(uint256 i) external view returns (string memory key, address val) {
+        return (envKeys[i], envVals[i]);
+    }
 }
