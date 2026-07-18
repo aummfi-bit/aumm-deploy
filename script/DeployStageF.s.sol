@@ -68,10 +68,14 @@ contract DeployStageF is Script {
     ///         blocks a live-broadcast front-run from driving this script's one-shot setter authority.
     error NotSealAuthority(address caller, address expected);
 
-    /// @notice `forge script` entry — deploys the four F-engine contracts as msg.sender under broadcast.
+    /// @notice `forge script` entry — deploys the four F-engine contracts as the env
+    ///         `GOVERNANCE_MULTISIG` governor under broadcast (PB-D23 (ii) — composable
+    ///         from the production `DeployStageP.run()`; a sim-local caller's msg.sender
+    ///         must never reach ctor authority slots).
     function run() external returns (TVLOracle, EfficiencyOracle, EMASampler, CCBMultiplier) {
-        vm.startBroadcast();
-        _deploy(msg.sender);
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+        vm.startBroadcast(governor);
+        _deploy(governor);
         vm.stopBroadcast();
         return (tvlOracle, efficiencyOracle, emaSampler, ccbMultiplier);
     }

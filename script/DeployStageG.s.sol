@@ -75,14 +75,16 @@ contract DeployStageG is Script {
 
     /**
      * @notice `forge script` entry point. Reads env vars, broadcasts all deployments as
-     *         `msg.sender`, returns the four deployed contracts.
+     *         the env `GOVERNANCE_MULTISIG` governor (PB-D23 (ii) — composable from the
+     *         production `DeployStageP.run()`), returns the four deployed contracts.
      */
     function run()
         external
         returns (SwapAndDepositToBodensee, VaultClassRegistry, GaugeEligibility, GaugeRegistry)
     {
-        vm.startBroadcast();
-        _deploy(msg.sender);
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+        vm.startBroadcast(governor);
+        _deploy(governor);
         vm.stopBroadcast();
         return (swapAndDeposit, vaultClassRegistry, gaugeEligibility, gaugeRegistry);
     }

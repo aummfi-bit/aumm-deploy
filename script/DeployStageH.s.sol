@@ -106,11 +106,14 @@ contract DeployStageH is Script {
 
     /**
      * @notice `forge script` entry point. Reads env vars, broadcasts all
-     *         deployments as `msg.sender`, returns the EmissionDistributor.
+     *         deployments as the env `GOVERNANCE_MULTISIG` governor (PB-D23 (ii) —
+     *         composable from the production `DeployStageP.run()`), returns the
+     *         EmissionDistributor.
      */
     function run() external returns (EmissionDistributor) {
-        vm.startBroadcast();
-        EmissionDistributor d = _deploy(msg.sender);
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+        vm.startBroadcast(governor);
+        EmissionDistributor d = _deploy(governor);
         vm.stopBroadcast();
         return d;
     }
