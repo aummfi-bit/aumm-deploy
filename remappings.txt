@@ -6,3 +6,4 @@
 @balancer-labs/v3-pool-weighted/=lib/balancer-v3-monorepo/pkg/pool-weighted/
 @balancer-labs/v3-pool-stable/=lib/balancer-v3-monorepo/pkg/pool-stable/
 forge-std/=lib/forge-std/src/
+permit2/=lib/permit2/
