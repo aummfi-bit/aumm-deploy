@@ -11,6 +11,8 @@ import { TokenConfig, TokenType, PoolRoleAccounts } from "@balancer-labs/v3-inte
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
+import { Router } from "@balancer-labs/v3-vault/contracts/Router.sol";
+import { IPermit2 } from "permit2/src/interfaces/IPermit2.sol";
 
 import { AuMM } from "../../src/token/AuMM.sol";
 import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
@@ -24,6 +26,7 @@ import { DeployStageP } from "../../script/DeployStageP.s.sol";
 import { DeployFeeRoutingHook } from "../../script/DeployFeeRoutingHook.s.sol";
 import { DeployAuMM } from "../../script/DeployAuMM.s.sol";
 import { DeployAureumWeightedPoolFactory } from "../../script/DeployAureumWeightedPoolFactory.s.sol";
+import { DeployRouter } from "../../script/DeployRouter.s.sol";
 import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
 import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
@@ -79,6 +82,9 @@ contract StagePRunRehearsalTest is Test {
     address internal constant GOVERNOR = address(uint160(uint256(keccak256("rehearsalGovernorEOA"))));
     // PB-D19 — one epoch (14 days) of block offset; the emission clock decouples from deploy time.
     uint256 internal constant GENESIS_OFFSET = 100_800;
+    // PB3.3/PB-D22 Router-leg literals — mainnet WETH and the canonical cross-chain permit2.
+    address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     DeployStageP internal orchestrator;
     DeployFeeRoutingHook internal hookScript;
@@ -91,6 +97,8 @@ contract StagePRunRehearsalTest is Test {
     IVault internal vault;
     // Captured pre-run(): Stage K migrates the Vault's authorizer, so the base-layer seat needs holding.
     AureumAuthorizer internal baseAuthorizer;
+    // The PB-D25 (iii) Router leg, deployed at the tail of setUp AFTER orchestrator.run().
+    address internal router;
     address internal bodenseePool;
     IERC20 internal svZchf;
     IERC4626 internal susds;
@@ -315,6 +323,14 @@ contract StagePRunRehearsalTest is Test {
         // entries under nested governor broadcasts (proven at PB3.4d1), and fires the four
         // post-conditions in-run at the future genesis. ---
         orchestrator.run();
+
+        // --- PB-D25 (iii) Router leg: DEPLOY ONLY. The hook's governanceModule stays unset here, so
+        // the post-condition (3) at-rest baseline survives; seating is per-test via _seatRouter. ---
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WETH_ADDRESS", vm.toString(MAINNET_WETH));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PERMIT2_ADDRESS", vm.toString(CANONICAL_PERMIT2));
+        router = new DeployRouter().run();
     }
 
     /// @dev 1_000 whole tokens per slot, scaled by each token's OWN decimals. The P10 fixture's
@@ -544,5 +560,40 @@ contract StagePRunRehearsalTest is Test {
         assertEq(live, address(orchestrator.authorizer()), "authorizer not migrated to the Stage-K instance");
         assertTrue(live != address(baseAuthorizer), "authorizer still the base-layer instance");
         assertEq(baseAuthorizer.GOVERNANCE_MULTISIG(), GOVERNOR, "base-layer seat was not the EOA governor");
+    }
+
+    /// @dev The PB-D22 (iii) seat sequence under the REAL EOA governor: the one-shot module-aim at
+    ///      self, then the persistent allowlist entry. Each prank is single-shot and immediately
+    ///      precedes its own call — never chained through an orchestrator getter, per PB10.
+    function _seatRouter() internal {
+        vm.prank(GOVERNOR);
+        hook.setGovernanceModule(GOVERNOR);
+        vm.prank(GOVERNOR);
+        hook.setTrustedRouter(router, true);
+    }
+
+    /// @notice The Router deployed from script/DeployRouter.s.sol against the run()-built stack, with
+    ///         version() reading the PB-D22 (iv) Aureum-branded string.
+    function test_routerLeg_deployedWithAureumVersion() public view {
+        assertTrue(router != address(0), "router not deployed");
+        assertGt(router.code.length, 0, "router has no code");
+        assertEq(
+            Router(payable(router)).version(),
+            "Aureum V3 Router v1 (Balancer V3 Router, pinned 68057fda)",
+            "router version is not the Aureum-branded string"
+        );
+    }
+
+    /// @notice The PB-D22 (iii) sequence driven by the REAL EOA governor rather than the orchestrator
+    ///         contract — the distinction PB-D25 (a) exists to exercise: the at-rest premise, then the
+    ///         one-shot aim at self, then the F-09 seat.
+    function test_routerLeg_governorAimsModuleAndSeatsRouter() public {
+        assertEq(hook.governanceModule(), address(0), "module seated before the aim");
+        assertFalse(hook.trustedRouter(router), "router trusted before the seat");
+
+        _seatRouter();
+
+        assertEq(hook.governanceModule(), GOVERNOR, "module not aimed at the EOA governor");
+        assertTrue(hook.trustedRouter(router), "router not seated on the F-09 allowlist");
     }
 }
