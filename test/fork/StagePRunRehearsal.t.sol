@@ -98,4 +98,129 @@ contract StagePRunRehearsalTest is Test {
     address[18] internal stageNPools;
 
     function setUp() public {}
+
+    /// @dev PB-D25 (ii) — deploy the stub roster in-process and replay its full emission into env.
+    ///      DeployTestnetStubs accumulates the STUB_ literal pairs plus the named keys (SV_ZCHF,
+    ///      SUSDS, the five N-D7 RP keys); looping them through vm.setEnv gives the pool configs
+    ///      and the base layer the same drift-free map the e2 capture and the PB3.5 broadcast
+    ///      consume. The script's own _assertCoverage gate reverts the run on any unresolved slot.
+    function _replayStubs() private {
+        DeployTestnetStubs stubs = new DeployTestnetStubs();
+        stubs.run();
+
+        uint256 n = stubs.envPairCount();
+        for (uint256 i = 0; i < n; ++i) {
+            (string memory key, address val) = stubs.envPairAt(i);
+            vm.setEnv(key, vm.toString(val));
+        }
+
+        // The bodensee legs are WITH_RATE: their stub RPs live under the STUB_ key of the REAL
+        // mainnet RP literal (the same derivation _resolveStub uses), never a named key.
+        bodenseeSusdsRp = IRateProvider(vm.envAddress(string.concat("STUB_", vm.toString(SUSDS_RATE_PROVIDER))));
+        bodenseeSvZchfRp = IRateProvider(vm.envAddress(string.concat("STUB_", vm.toString(SV_ZCHF_RATE_PROVIDER))));
+    }
+
+    /// @dev The der-Bodensee token configs — AuMM STANDARD (no RP, no yield fees), the two stub
+    ///      legs WITH_RATE against their replayed stub RPs. Slot order is the Vault's ascending
+    ///      address sort, so each leg's identity is resolved per slot rather than assumed.
+    function _bodenseeTokenConfigs() private view returns (TokenConfig[] memory) {
+        address[3] memory addrs = _bodenseeSorted();
+        TokenConfig[] memory tokens = new TokenConfig[](3);
+        for (uint256 i = 0; i < 3; ++i) {
+            tokens[i] = _bodenseeSlot(addrs[i]);
+        }
+        return tokens;
+    }
+
+    /// @dev One bodensee slot: AuMM is the STANDARD leg, susds / svZchf are WITH_RATE over stub RPs.
+    function _bodenseeSlot(address t) private view returns (TokenConfig memory) {
+        if (t == address(aumm)) {
+            return TokenConfig({
+                token: IERC20(t),
+                tokenType: TokenType.STANDARD,
+                rateProvider: IRateProvider(address(0)),
+                paysYieldFees: false
+            });
+        }
+        return TokenConfig({
+            token: IERC20(t),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: t == address(susds) ? bodenseeSusdsRp : bodenseeSvZchfRp,
+            paysYieldFees: true
+        });
+    }
+
+    /// @dev The three bodensee tokens in ascending address order (the Vault's registration order).
+    function _bodenseeSorted() private view returns (address[3] memory addrs) {
+        addrs[0] = address(aumm);
+        addrs[1] = address(susds);
+        addrs[2] = address(svZchf);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
+        if (addrs[1] > addrs[2]) (addrs[1], addrs[2]) = (addrs[2], addrs[1]);
+        if (addrs[0] > addrs[1]) (addrs[0], addrs[1]) = (addrs[1], addrs[0]);
+    }
+
+    /// @dev 40/30/30 — AuMM takes the 40 percent leg, the two stable legs 30 percent each.
+    function _bodenseeWeights() private view returns (uint256[] memory) {
+        address[3] memory addrs = _bodenseeSorted();
+        uint256[] memory weights = new uint256[](3);
+        for (uint256 i = 0; i < 3; ++i) {
+            weights[i] = addrs[i] == address(aumm) ? 4e17 : 3e17;
+        }
+        return weights;
+    }
+
+    /// @dev Bodensee init via the D32 beta-pattern: unlock, initialize, then per-token transfer plus
+    ///      settle. Stub rates are pure 1:1, so the deal supply adjustment cannot skew them.
+    function _initializeBodensee() private returns (uint256 bptOut) {
+        deal(address(aumm), address(this), INIT_SEED, true);
+        deal(address(susds), address(this), INIT_SEED, true);
+        deal(address(svZchf), address(this), INIT_SEED, true);
+
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializeBodenseeCallback, ()));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializeBodenseeCallback() external returns (uint256 bptOut) {
+        require(msg.sender == address(vault), "onlyVault");
+
+        address[3] memory addrs = _bodenseeSorted();
+        IERC20[] memory tokens = new IERC20[](3);
+        uint256[] memory amountsIn = new uint256[](3);
+        for (uint256 i = 0; i < 3; ++i) {
+            tokens[i] = IERC20(addrs[i]);
+            amountsIn[i] = INIT_SEED;
+        }
+
+        bptOut = vault.initialize(bodenseePool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i < 3; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    /// @dev Pool init, same beta-pattern, generalized over the token set. Pilots only; the Majors and
+    ///      the Sector-3 tranche stay bind-only per M / N parity.
+    function _initializePool(address pool, IERC20[] memory tokens, uint256[] memory amountsIn)
+        internal
+        returns (uint256 bptOut)
+    {
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            deal(address(tokens[i]), address(this), amountsIn[i]);
+        }
+        bytes memory result = vault.unlock(abi.encodeCall(this._initializePoolCallback, (pool, tokens, amountsIn)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _initializePoolCallback(address pool, IERC20[] memory tokens, uint256[] memory amountsIn)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        bptOut = vault.initialize(pool, address(this), tokens, amountsIn, 0, "");
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            tokens[i].transfer(address(vault), amountsIn[i]);
+            vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
 }
