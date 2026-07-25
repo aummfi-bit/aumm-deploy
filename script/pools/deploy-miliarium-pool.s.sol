@@ -43,7 +43,10 @@ abstract contract MiliariumPoolDeployer is Script {
     ///      `vm.envOr(string.concat("STUB_", vm.toString(original)), original)` — with no matching
     ///      `STUB_*` env set the resolved address IS `original`, so mainnet/fork deploys stay
     ///      byte-identical (P10 untouched). Overrides swap ADDRESSES only; tokenTypes,
-    ///      normalizedWeights, paysYieldFees and the QG re-assertion keep reading pre-override cfg.*.
+    ///      normalizedWeights, paysYieldFees and the QG re-assertion keep reading pre-override cfg.*
+    ///      VALUES — but per PB-D26 the resolved tokens and their weights are REORDERED in lockstep by
+    ///      `_sortByToken` before `create()`: resolution destroys the ascending mainnet-address order
+    ///      the configs are authored in and Vault registration requires.
     function _resolveStub(address original) internal view returns (address) {
         return vm.envOr(string.concat("STUB_", vm.toString(original)), original);
     }
@@ -67,6 +70,7 @@ abstract contract MiliariumPoolDeployer is Script {
         address governanceMultisig = vm.envAddress("GOVERNANCE_MULTISIG");
 
         TokenConfig[] memory tokens = new TokenConfig[](cfg.tokens.length);
+        uint256[] memory weights = new uint256[](cfg.tokens.length);
         for (uint256 i = 0; i < cfg.tokens.length; ++i) {
             tokens[i] = TokenConfig({
                 token: IERC20(_resolveStub(cfg.tokens[i])),
@@ -74,6 +78,7 @@ abstract contract MiliariumPoolDeployer is Script {
                 rateProvider: _resolveRateProvider(cfg.rateProviders[i], cfg.tokenTypes[i]),
                 paysYieldFees: cfg.paysYieldFees[i]
             });
+            weights[i] = cfg.normalizedWeights[i];
         }
 
         uint256 erc4626WeightSum;
@@ -85,6 +90,11 @@ abstract contract MiliariumPoolDeployer is Script {
         if (erc4626WeightSum < MIN_ERC4626_WEIGHT) {
             revert QualityGateUnsatisfied(erc4626WeightSum, MIN_ERC4626_WEIGHT);
         }
+
+        // PB-D26 — re-establish the ascending token order Vault registration requires. The QG loop
+        // above reads pre-override `cfg.*` by index and is order-independent, so it is unaffected;
+        // `cfg` itself is never permuted, only the local resolved arrays that feed `create()`.
+        _sortByToken(tokens, weights);
 
         // F-20 / P-D40: swapFeeManager is address(0), NOT governanceMultisig. A non-zero
         // swapFeeManager is an EXCLUSIVE role (VaultAdmin._ensureAuthenticatedByExclusiveRole)
@@ -106,7 +116,7 @@ abstract contract MiliariumPoolDeployer is Script {
             cfg.name,
             cfg.symbol,
             tokens,
-            cfg.normalizedWeights,
+            weights,
             roleAccounts,
             cfg.swapFeePercentage,
             feeRoutingHook,
@@ -117,5 +127,28 @@ abstract contract MiliariumPoolDeployer is Script {
         vm.stopBroadcast();
 
         console2.log("Miliarium pool deployed at:", pool);
+    }
+
+    /// @dev PB-D26: Vault registration requires ascending token order. The 26 configs are authored in
+    ///      ascending MAINNET order, but the PB-D20 resolver substitutes freshly-CREATEd stub addresses
+    ///      uncorrelated with the originals, so the invariant is re-established here after resolution.
+    ///      `weights` permutes in lockstep — it is a parallel array indexed by slot, and sorting tokens
+    ///      without carrying weights would seat one leg's weight on a different token (a mispriced pool
+    ///      that registers cleanly). Insertion sort: n is at most 8 per Balancer's max token count, and
+    ///      on the mainnet path (no `STUB_` set) the input is already sorted, so this is the identity
+    ///      and `create()` receives byte-identical arguments.
+    function _sortByToken(TokenConfig[] memory tokens, uint256[] memory weights) internal pure {
+        for (uint256 i = 1; i < tokens.length; ++i) {
+            TokenConfig memory t = tokens[i];
+            uint256 w = weights[i];
+            uint256 j = i;
+            while (j > 0 && address(tokens[j - 1].token) > address(t.token)) {
+                tokens[j] = tokens[j - 1];
+                weights[j] = weights[j - 1];
+                --j;
+            }
+            tokens[j] = t;
+            weights[j] = w;
+        }
     }
 }
