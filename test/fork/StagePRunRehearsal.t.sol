@@ -596,4 +596,52 @@ contract StagePRunRehearsalTest is Test {
         assertEq(hook.governanceModule(), GOVERNOR, "module not aimed at the EOA governor");
         assertTrue(hook.trustedRouter(router), "router not seated on the F-09 allowlist");
     }
+
+    /// @dev Fund `lp` and run the permit2 two-step toward the Router: ERC20 approve to canonical
+    ///      permit2, then permit2.approve(token, router, amount, expiry).
+    function _fundAndPermit(address lp, IERC20[] memory tokens, uint256[] memory amts) internal {
+        vm.startPrank(lp);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            deal(address(tokens[i]), lp, amts[i]);
+            tokens[i].approve(CANONICAL_PERMIT2, type(uint256).max);
+            IPermit2(CANONICAL_PERMIT2).approve(
+                address(tokens[i]), router, uint160(amts[i]), uint48(block.timestamp + 1 days)
+            );
+        }
+        vm.stopPrank();
+    }
+
+    /// @dev `lp` adds 100 whole tokens of each pilot-0 leg through the Router via the permit2 two-step,
+    ///      returning the BPT minted. Amounts scale by each token's OWN decimals for the same reason
+    ///      _seedAmounts does — the stub roster does not preserve the mainnet decimal layout, so a flat
+    ///      literal would be wrong the moment pilot 0 carries a non-18-decimal leg.
+    function _routerAdd(address lp) internal returns (uint256 bptOut) {
+        IERC20[] memory tokens = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory amts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            amts[i] = 100 * 10 ** IERC20Metadata(address(tokens[i])).decimals();
+        }
+        _fundAndPermit(lp, tokens, amts);
+        vm.prank(lp);
+        bptOut = Router(payable(router)).addLiquidityUnbalanced(pilotPools[0], amts, 1, false, "");
+    }
+
+    /// @notice The PB-D25 (v) seated-add smoke assertion, closing the Router leg: once the EOA governor
+    ///         has seated the Router, a REAL Router add drives the recorder — the hook resolves the LP
+    ///         through getSender() and credits userLP to the true LP for exactly the BPT minted. The
+    ///         positive counterpart to the post-condition (3) at-rest negative.
+    function test_routerLeg_postSeatAddCreditsTrueLp() public {
+        _seatRouter();
+
+        address lp = makeAddr("rehearsalPostSeatLp");
+        uint256 bptOut = _routerAdd(lp);
+
+        assertGt(bptOut, 0, "router add minted no BPT");
+        assertEq(IERC20(pilotPools[0]).balanceOf(lp), bptOut, "LP did not receive the minted BPT");
+        assertEq(
+            orchestrator.emissionDistributor().userLP(pilotPools[0], lp),
+            bptOut,
+            "recorder did not credit userLP to the true LP"
+        );
+    }
 }
