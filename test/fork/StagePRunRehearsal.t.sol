@@ -89,6 +89,8 @@ contract StagePRunRehearsalTest is Test {
     AureumFeeRoutingHook internal hook;
     AureumProtocolFeeController internal controller;
     IVault internal vault;
+    // Captured pre-run(): Stage K migrates the Vault's authorizer, so the base-layer seat needs holding.
+    AureumAuthorizer internal baseAuthorizer;
     address internal bodenseePool;
     IERC20 internal svZchf;
     IERC4626 internal susds;
@@ -146,6 +148,7 @@ contract StagePRunRehearsalTest is Test {
         vaultScript.deploy(address(vaultScript));
         vault = vaultScript.vault();
         controller = vaultScript.aureumFeeController();
+        baseAuthorizer = AureumAuthorizer(address(vault.getAuthorizer()));
 
         wpf = new WeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);
         assert(address(wpf) == wpfAddr);
@@ -213,6 +216,105 @@ contract StagePRunRehearsalTest is Test {
         pilotPools[2] = new DeployIxAurebit().run();
         IERC20[] memory tokens2 = vault.getPoolTokens(pilotPools[2]);
         _initializePool(pilotPools[2], tokens2, _seedAmounts(tokens2));
+
+        // --- Majors (bind-only, uninitialized — M parity). The PB-D8 waEthwstETH composite RP the P10
+        // fixture builds by hand here is already published by _replayStubs, so ixCasper's config
+        // resolves it straight out of the replayed roster. ---
+        majorPools[0] = new DeployIxCasper().run();
+        majorPools[1] = new DeployIxBrevis().run();
+        majorPools[2] = new DeployIxAltrix().run();
+        majorPools[3] = new DeployIxMediox().run();
+        majorPools[4] = new DeployIxLongus().run();
+
+        // --- Sector-3 (bind-only, uninitialized — N parity, N-D0 canonical slot order). The four N-D9
+        // rate providers likewise arrive from the replayed roster, not from fixture-local builds. ---
+        stageNPools[0] = new DeployIxAetheron().run();
+        stageNPools[1] = new DeployIxLibertas().run();
+        stageNPools[2] = new DeployIxStrata().run();
+        stageNPools[3] = new DeployIxForum().run();
+        stageNPools[4] = new DeployIxRegistrum().run();
+        stageNPools[5] = new DeployIxDebitum().run();
+        stageNPools[6] = new DeployIxEquitix().run();
+        stageNPools[7] = new DeployIxInnovix().run();
+        stageNPools[8] = new DeployIxGigantus().run();
+        stageNPools[9] = new DeployIxMagnix().run();
+        stageNPools[10] = new DeployIxNubix().run();
+        stageNPools[11] = new DeployIxMoneta().run();
+        stageNPools[12] = new DeployIxColossix().run();
+        stageNPools[13] = new DeployIxVitalix().run();
+        stageNPools[14] = new DeployIxMedicix().run();
+        stageNPools[15] = new DeployIxMercatura().run();
+        stageNPools[16] = new DeployIxAurix().run();
+        stageNPools[17] = new DeployIxMetallum().run();
+
+        // --- Env wire: base-layer scalars + the 26-pool roster (P-D34; WEIGHTED_POOL_FACTORY = awpf is the F-12 provenance binding) ---
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("VAULT", vm.toString(address(vault)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("BODENSEE_POOL", vm.toString(bodenseePool));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WEIGHTED_POOL_FACTORY", vm.toString(address(awpf)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("EMERGENCY_MULTISIG", vm.toString(EMERGENCY_MULTISIG));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_01", vm.toString(pilotPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_05", vm.toString(pilotPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PILOT_POOL_14", vm.toString(pilotPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_03", vm.toString(majorPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_08", vm.toString(majorPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_09", vm.toString(majorPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_10", vm.toString(majorPools[3]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MAJOR_POOL_11", vm.toString(majorPools[4]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_02", vm.toString(stageNPools[0]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_06", vm.toString(stageNPools[1]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_12", vm.toString(stageNPools[2]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_13", vm.toString(stageNPools[3]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_15", vm.toString(stageNPools[4]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_16", vm.toString(stageNPools[5]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_17", vm.toString(stageNPools[6]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_18", vm.toString(stageNPools[7]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_19", vm.toString(stageNPools[8]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_20", vm.toString(stageNPools[9]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_21", vm.toString(stageNPools[10]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_22", vm.toString(stageNPools[11]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_23", vm.toString(stageNPools[12]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_24", vm.toString(stageNPools[13]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_25", vm.toString(stageNPools[14]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_26", vm.toString(stageNPools[15]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_27", vm.toString(stageNPools[16]));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MILIARIUM_POOL_28", vm.toString(stageNPools[17]));
+
+        // --- Orchestrate: the PRODUCTION spine per PB-D25 — run(), never the deploy() entry the P10
+        // fixture drives. run() reads GOVERNANCE_MULTISIG back as the real EOA governor rather than
+        // overriding it, asserts the base-layer seat matches, composes the sub-scripts' own run()
+        // entries under nested governor broadcasts (proven at PB3.4d1), and fires the four
+        // post-conditions in-run at the future genesis. ---
+        orchestrator.run();
     }
 
     /// @dev 1_000 whole tokens per slot, scaled by each token's OWN decimals. The P10 fixture's
@@ -359,7 +461,7 @@ contract StagePRunRehearsalTest is Test {
     ///         pilots are initialized over stub liquidity.
     function test_baseLayer_seatedAtFutureGenesis() public view {
         assertEq(
-            AureumAuthorizer(address(vault.getAuthorizer())).GOVERNANCE_MULTISIG(),
+            baseAuthorizer.GOVERNANCE_MULTISIG(),
             GOVERNOR,
             "authorizer seat is not the EOA governor"
         );
