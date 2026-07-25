@@ -477,4 +477,72 @@ contract StagePRunRehearsalTest is Test {
             assertTrue(vault.isPoolInitialized(pilotPools[i]), "pilot pool not initialized");
         }
     }
+
+    /// @notice Post-condition (1) — genesis uniformity, re-asserted test-side, plus the PB-D19 delta
+    ///         run() cannot check: _assertPostConditions proves the four genesis slots AGREE, never
+    ///         that they carry the FUTURE value. Pinning the common value at block.number plus
+    ///         GENESIS_OFFSET is what catches a regression reverting genesis to deploy time.
+    function test_postCondition1_genesisUniformAtFutureOffset() public view {
+        uint256 gb = orchestrator.gaugeRegistry().GENESIS_BLOCK();
+        assertEq(gb, block.number + GENESIS_OFFSET, "genesis is not the PB-D19 future offset");
+        assertGt(gb, block.number, "genesis must still be in the future");
+        assertEq(orchestrator.efficiencyOracle().GENESIS_BLOCK(), gb, "efficiencyOracle genesis diverged");
+        assertEq(orchestrator.emissionDistributor().GENESIS_BLOCK(), gb, "emissionDistributor genesis diverged");
+        assertEq(aumm.GENESIS_BLOCK(), gb, "AuMM genesis diverged");
+    }
+
+    /// @notice Post-condition (2) — every one of the 26 roster pools gauge-approved and recorder-bound.
+    function test_postCondition2_roster26GaugedAndRecorderBound() public view {
+        for (uint256 i = 0; i < 3; ++i) {
+            _assertRosterPool(pilotPools[i]);
+        }
+        for (uint256 i = 0; i < 5; ++i) {
+            _assertRosterPool(majorPools[i]);
+        }
+        for (uint256 i = 0; i < 18; ++i) {
+            _assertRosterPool(stageNPools[i]);
+        }
+    }
+
+    /// @dev One roster slot: gauge-approved, and its emission recorder bound to the fee-routing hook.
+    function _assertRosterPool(address p) private view {
+        assertTrue(p != address(0), "roster pool unset");
+        assertTrue(orchestrator.gaugeRegistry().isGaugeApproved(p), "roster pool not gauged");
+        assertEq(orchestrator.emissionDistributor().auMTContractByPool(p), address(hook), "roster pool recorder unbound");
+    }
+
+    /// @notice Post-condition (3) — the structural negative: run() fires no setTrustedRouter, and the
+    ///         seat is governanceModule-gated, so an unset module proves the allowlist is necessarily
+    ///         empty. PB3.4d2d seats it deliberately from exactly this at-rest baseline.
+    function test_postCondition3_atRestNoTrustedRouter() public view {
+        assertEq(hook.governanceModule(), address(0), "governance module unexpectedly seated");
+        assertFalse(hook.trustedRouter(GOVERNOR), "governor unexpectedly trusted");
+        assertFalse(hook.trustedRouter(address(orchestrator)), "orchestrator unexpectedly trusted");
+        assertFalse(hook.trustedRouter(address(this)), "harness unexpectedly trusted");
+    }
+
+    /// @notice Post-condition (4) — the PB-D18 (v) CCB seal landed on the concrete GaugeRegistry. Under
+    ///         run() it lands through the direct-governor path (PB-D23 (i)), not the f.sealGaugeRegistry
+    ///         forward the prank spine uses, so this witnesses the production seal specifically.
+    function test_postCondition4_ccbGaugeRegistrySealed() public view {
+        assertEq(
+            address(orchestrator.ccbMultiplier().gaugeRegistry()),
+            address(orchestrator.gaugeRegistry()),
+            "CCB gauge-registry seal missing"
+        );
+        assertTrue(
+            address(orchestrator.ccbMultiplier().gaugeRegistry()) != address(orchestrator),
+            "CCB seal still points at the deploy-time placeholder"
+        );
+    }
+
+    /// @notice The authorizer migration — re-asserted against the pre-run baseline: run() checks only
+    ///         that the Vault points at the Stage-K authorizer, while this additionally proves it MOVED
+    ///         off the base-layer instance that carried the EOA-governor seat before orchestration.
+    function test_postCondition_authorizerMigratedOffBaseLayer() public view {
+        address live = address(vault.getAuthorizer());
+        assertEq(live, address(orchestrator.authorizer()), "authorizer not migrated to the Stage-K instance");
+        assertTrue(live != address(baseAuthorizer), "authorizer still the base-layer instance");
+        assertEq(baseAuthorizer.GOVERNANCE_MULTISIG(), GOVERNOR, "base-layer seat was not the EOA governor");
+    }
 }
