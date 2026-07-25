@@ -5,6 +5,7 @@ import { Test } from "forge-std/Test.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { TokenConfig, TokenType, PoolRoleAccounts } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
@@ -12,6 +13,7 @@ import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREA
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
 
 import { AuMM } from "../../src/token/AuMM.sol";
+import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
 import { AureumFeeRoutingHook } from "../../src/fee_router/AureumFeeRoutingHook.sol";
 import { AureumProtocolFeeController } from "../../src/vault/AureumProtocolFeeController.sol";
 import { AureumWeightedPoolFactory } from "../../src/factory/AureumWeightedPoolFactory.sol";
@@ -97,7 +99,133 @@ contract StagePRunRehearsalTest is Test {
     address[5] internal majorPools;
     address[18] internal stageNPools;
 
-    function setUp() public {}
+    function setUp() public {
+        // PB-D25 (ii) — the stub roster runs FIRST: it publishes SV_ZCHF, SUSDS and the five N-D7 RP
+        // keys that every downstream pool config reads during its own .run(), so nothing below may
+        // precede it. No rate providers are constructed here (the P10 fixture builds five by hand) —
+        // the replayed roster already carries them, stubbed 1:1 over StubERC4626.
+        _replayStubs();
+
+        svZchf = IERC20(vm.envAddress("SV_ZCHF"));
+        susds = IERC4626(vm.envAddress("SUSDS"));
+
+        orchestrator = new DeployStageP();
+
+        // PB-D25 (a) — the real-EOA governor, NOT address(orchestrator): run() reads this key back in
+        // _assertBaseLayerGovernorProduction and never overwrites it (only the deploy() path does).
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNOR));
+
+        hookScript = new DeployFeeRoutingHook();
+        address predictedHook = vm.computeCreateAddress(address(hookScript), 1);
+
+        vaultScript = new DeployAureumVault();
+        // The harness's NEXT own CREATE is the wpf; the Bodensee CREATE3 salt is creator-scoped (P-D34).
+        // Both predictions read the live nonce, so the _replayStubs CREATE above cannot skew them.
+        address wpfAddr = vm.computeCreateAddress(address(this), vm.getNonce(address(this)));
+        address predictedBodensee = CREATE3.getDeployed(
+            keccak256(abi.encode(address(this), block.chainid, BODENSEE_SALT)),
+            wpfAddr
+        );
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("FEE_ROUTING_HOOK", vm.toString(predictedHook));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("DER_BODENSEE_POOL", vm.toString(predictedBodensee));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("SALT", vm.toString(VAULT_SALT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("PAUSE_WINDOW_DURATION", vm.toString(uint256(PAUSE_WINDOW_DURATION)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("BUFFER_PERIOD_DURATION", vm.toString(BUFFER_PERIOD_DURATION));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MIN_TRADE_AMOUNT", vm.toString(MIN_TRADE_AMOUNT));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("MIN_WRAP_AMOUNT", vm.toString(MIN_WRAP_AMOUNT));
+
+        vaultScript.deploy(address(vaultScript));
+        vault = vaultScript.vault();
+        controller = vaultScript.aureumFeeController();
+
+        wpf = new WeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);
+        assert(address(wpf) == wpfAddr);
+
+        // PB-D19 — genesis one epoch (100_800 blocks) into the future; DeployAuMM reads the key with no
+        // block.number clamp, so the emission clock decouples from deploy time.
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("GENESIS_BLOCK", vm.toString(block.number + GENESIS_OFFSET));
+        // minterAdmin_ = GOVERNANCE_MULTISIG env = GOVERNOR (the PB-D25 (a) delta vs the P10 fixture).
+        aumm = AuMM(new DeployAuMM().run());
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("AUMM", vm.toString(address(aumm)));
+
+        bodenseePool = wpf.create(
+            "der-Bodensee",
+            "BODENSEE",
+            _bodenseeTokenConfigs(),
+            _bodenseeWeights(),
+            PoolRoleAccounts({
+                pauseManager: GOVERNOR,
+                swapFeeManager: address(0),
+                poolCreator: address(0)
+            }),
+            0.0075e18,
+            address(0),
+            true,
+            false,
+            BODENSEE_SALT
+        );
+        assert(bodenseePool == predictedBodensee);
+
+        // moduleAdmin_ = GOVERNOR — the hook's module seal fires under run()'s governor broadcast.
+        hook = hookScript.deploy(
+            address(vault),
+            bodenseePool,
+            svZchf,
+            IERC20(address(susds)),
+            IERC20(address(aumm)),
+            address(controller),
+            GOVERNOR
+        );
+        assert(address(hook) == predictedHook);
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("FEE_ROUTING_HOOK", vm.toString(address(hook)));
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("AUREUM_VAULT", vm.toString(address(vault)));
+        awpf = AureumWeightedPoolFactory(new DeployAureumWeightedPoolFactory().run());
+
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("AUREUM_WEIGHTED_POOL_FACTORY", vm.toString(address(awpf)));
+
+        _initializeBodensee();
+
+        // --- Pilots (initialized — G parity; seeds derived per slot, never the fixture's literals) ---
+        pilotPools[0] = new DeployIxHelvetia().run();
+        IERC20[] memory tokens0 = vault.getPoolTokens(pilotPools[0]);
+        _initializePool(pilotPools[0], tokens0, _seedAmounts(tokens0));
+
+        pilotPools[1] = new DeployIxEdelweiss().run();
+        IERC20[] memory tokens1 = vault.getPoolTokens(pilotPools[1]);
+        _initializePool(pilotPools[1], tokens1, _seedAmounts(tokens1));
+
+        pilotPools[2] = new DeployIxAurebit().run();
+        IERC20[] memory tokens2 = vault.getPoolTokens(pilotPools[2]);
+        _initializePool(pilotPools[2], tokens2, _seedAmounts(tokens2));
+    }
+
+    /// @dev 1_000 whole tokens per slot, scaled by each token's OWN decimals. The P10 fixture's
+    ///      per-index literals cannot be transcribed onto the stub roster: WITH_RATE stubs are
+    ///      uniformly 18-dec StubERC4626 while STANDARD stubs keep their mainnet decimals, and the
+    ///      Vault's ascending-address slot order over freshly-CREATEd stubs bears no relation to the
+    ///      mainnet order those literals were tuned against.
+    function _seedAmounts(IERC20[] memory tokens) private view returns (uint256[] memory amounts) {
+        amounts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            amounts[i] = 1_000 * 10 ** IERC20Metadata(address(tokens[i])).decimals();
+        }
+    }
 
     /// @dev PB-D25 (ii) — deploy the stub roster in-process and replay its full emission into env.
     ///      DeployTestnetStubs accumulates the STUB_ literal pairs plus the named keys (SV_ZCHF,
@@ -221,6 +349,30 @@ contract StagePRunRehearsalTest is Test {
         for (uint256 i = 0; i < tokens.length; ++i) {
             tokens[i].transfer(address(vault), amountsIn[i]);
             vault.settle(tokens[i], amountsIn[i]);
+        }
+    }
+
+    /// @notice PB3.4d2b2a gate — the base layer is seated with the PB-D25 / PB-D19 deltas live, before
+    ///         any orchestration runs: the EOA governor (not the orchestrator) holds the authorizer seat
+    ///         run() will check in _assertBaseLayerGovernorProduction, genesis sits one epoch out, both
+    ///         bodensee stub RPs resolved out of the replayed roster, and der-Bodensee plus the three
+    ///         pilots are initialized over stub liquidity.
+    function test_baseLayer_seatedAtFutureGenesis() public view {
+        assertEq(
+            AureumAuthorizer(address(vault.getAuthorizer())).GOVERNANCE_MULTISIG(),
+            GOVERNOR,
+            "authorizer seat is not the EOA governor"
+        );
+        assertTrue(GOVERNOR != address(orchestrator), "governor must not be the orchestrator");
+        assertTrue(GOVERNOR != address(this), "governor must not be the harness");
+        assertEq(aumm.GENESIS_BLOCK(), block.number + GENESIS_OFFSET, "genesis is not one epoch ahead");
+        assertTrue(aumm.GENESIS_BLOCK() > block.number, "genesis must be in the future");
+        assertTrue(address(bodenseeSusdsRp) != address(0), "susds stub RP unresolved");
+        assertTrue(address(bodenseeSvZchfRp) != address(0), "svZchf stub RP unresolved");
+        assertTrue(vault.isPoolInitialized(bodenseePool), "bodensee not initialized");
+        for (uint256 i = 0; i < 3; ++i) {
+            assertTrue(pilotPools[i] != address(0), "pilot pool unset");
+            assertTrue(vault.isPoolInitialized(pilotPools[i]), "pilot pool not initialized");
         }
     }
 }
