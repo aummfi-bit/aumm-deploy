@@ -68,6 +68,10 @@ contract DeployTestnetStubs is Script {
     string[] internal decKeys;
     uint8[] internal decVals;
 
+    /// @dev PB-D27 (ii) — chain 1 is the only environment where the STANDARD literals carry code, so
+    ///      it is the only one that can derive decimals. Same signal as the Sanity.t.sol L59-L62 guard.
+    uint256 internal constant MAINNET_CHAIN_ID = 1;
+
     function run() external {
         _processConfig(IxHelvetiaConfig.config());
         _processConfig(IxAetheronConfig.config(address(0), address(0)));
@@ -131,14 +135,29 @@ contract DeployTestnetStubs is Script {
         _record(string.concat("STUB_", vm.toString(token)), address(vault));
     }
 
-    /// @dev STANDARD: StubERC20 at the token's real mainnet decimals (read off the fork; PB-D21 (ii)).
+    /// @dev STANDARD: StubERC20 at the token's real mainnet decimals — read off the literal on chain 1,
+    ///      else out of the committed table via _standardDecimals (PB-D21 (ii), PB-D27 (ii)).
     function _ensureStandard(address token) internal {
         if (stubOf[token] != address(0)) return;
-        uint8 dec = IERC20Metadata(token).decimals();
+        uint8 dec = _standardDecimals(token);
         _recordDecimals(string.concat("DECIMALS_", vm.toString(token)), dec);
         StubERC20 stub = new StubERC20("Stub Standard", "STUBS", dec);
         stubOf[token] = address(stub);
         _record(string.concat("STUB_", vm.toString(token)), address(stub));
+    }
+
+    /// @dev PB-D27 (ii) — the decimals source, split by environment. On chain 1 the literal has code,
+    ///      so read it. Everywhere else read the committed table (script/config/mainnet-token-decimals.env,
+    ///      merged into .env per PB-D27 (iii)) with NO default — a missing key reverts the run before any
+    ///      stub is constructed rather than seating a wrong-decimals stub. The uint8 bound is cast safety,
+    ///      not policy: an out-of-range table value would truncate silently, the PB-D26 class of defect.
+    function _standardDecimals(address token) internal view returns (uint8) {
+        if (block.chainid == MAINNET_CHAIN_ID) {
+            return IERC20Metadata(token).decimals();
+        }
+        uint256 fromTable = vm.envUint(string.concat("DECIMALS_", vm.toString(token)));
+        require(fromTable <= type(uint8).max, "decimals table value exceeds uint8");
+        return uint8(fromTable);
     }
 
     /// @dev Append an emission pair.
