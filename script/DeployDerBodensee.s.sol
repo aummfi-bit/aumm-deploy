@@ -38,6 +38,10 @@ contract DeployDerBodensee is Script {
     ///         RP would flip both QG legs and Vault registration semantics (PB-D20 (i)).
     error StubRateProviderZeroed(address original);
 
+    /// @notice The created pool diverged from the `DER_BODENSEE_POOL` prediction that `DeployAureumVault`
+    ///         and `DeployFeeRoutingHook` have already consumed (PB-D27 (iv)(3)); abort immediately.
+    error BodenseeAddressMismatch(address predicted, address actual);
+
     /// @dev PB-D27 (v) — testnet stub override resolver, mirrored from `deploy-miliarium-pool.s.sol` L50-L52.
     ///      With no matching `STUB_` key set the resolved address IS `original`, so the mainnet path stays
     ///      byte-identical. The `envOr` passthrough is deliberate and must NOT be tightened to `envAddress`:
@@ -64,6 +68,7 @@ contract DeployDerBodensee is Script {
         address sUsds = vm.envAddress("SUSDS");
         address governanceMultisig = vm.envAddress("GOVERNANCE_MULTISIG");
         bytes32 bodenseeSalt = vm.envBytes32("BODENSEE_SALT");
+        address predictedPool = vm.envAddress("DER_BODENSEE_POOL");
 
         // Runtime sort: ascending by token address (Balancer V3 registration convention).
         address t0 = aumm;
@@ -107,6 +112,14 @@ contract DeployDerBodensee is Script {
             bodenseeSalt
         );
         vm.stopBroadcast();
+
+        // PB-D27 (iv)(3) — the base-layer address cycle is four-deep, and by the time this script runs
+        // both `DeployAureumVault` and `DeployFeeRoutingHook` have already sealed immutables against this
+        // key. A divergence is otherwise silent: the pool registers cleanly at an address nothing else
+        // points to, and the failure only surfaces much later as an unrelated-looking bind error.
+        if (pool != predictedPool) {
+            revert BodenseeAddressMismatch(predictedPool, pool);
+        }
 
         console2.log("der-Bodensee pool deployed at:", pool);
     }
