@@ -28,9 +28,13 @@ import { AureumFeeRoutingHook } from "../src/fee_router/AureumFeeRoutingHook.sol
  *      Stage R and says nothing about testnets, so it does not bar a Sepolia `--broadcast` — this
  *      script is exercised as a live Sepolia broadcast starting at PB3.5
  *      (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`). `run()` is the broadcast / simulation entry (reads the
- *      seven inputs from env); `deploy(...)` is the testable no-broadcast entry the P9.5 orchestrator
- *      calls with args threaded directly, bypassing the DER_BODENSEE_POOL / BODENSEE_POOL and
- *      SV_ZCHF / SVZCHF env-key divergence the orchestrator normalizes (P-D25).
+ *      seven inputs from env); `deploy(...)` is the testable no-broadcast entry the StagePIntegration
+ *      and StagePRunRehearsal fork fixtures call with resolved args threaded directly. DeployStageP
+ *      never constructs or calls this script; the base layer is a P-D31 fixture/env input to it.
+ *      Because `deploy(...)` takes explicit typed arguments rather than reading env, it sidesteps the
+ *      DER_BODENSEE_POOL / BODENSEE_POOL and SV_ZCHF / SVZCHF env-key divergence P-D25 documents --
+ *      a divergence DeployStageP separately normalizes for its OWN env reads (`DeployStageP.s.sol`
+ *      L152-L153), unrelated to this entry point.
  *
  * @dev Env vars required by run() (no defaults — a real deploy must never silently fall back to zero):
  *
@@ -77,8 +81,9 @@ contract DeployFeeRoutingHook is Script {
         return h;
     }
 
-    /// @notice Testable entry — deploys without broadcast so the P9.5 orchestrator or a fork fixture
-    ///         can call it with resolved args and read back the handle. Exactly one CREATE (the hook).
+    /// @notice Testable entry — deploys without broadcast so a fork fixture (StagePIntegration,
+    ///         StagePRunRehearsal) can call it with resolved args and read back the handle. Exactly
+    ///         one CREATE (the hook). DeployStageP never calls this.
     function deploy(
         address vault_,
         address derBodensee_,
