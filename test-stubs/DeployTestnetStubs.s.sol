@@ -62,6 +62,12 @@ contract DeployTestnetStubs is Script {
     string[] internal envKeys;
     address[] internal envVals;
 
+    /// @dev PB-D27 (ii) — the STANDARD-slot decimals table: mainnet literal to its real decimals, read
+    ///      off the fork here and captured into the committed artifact at PB3.5b2. The Sepolia entry
+    ///      consumes these instead of calling decimals() on a literal that carries no code there.
+    string[] internal decKeys;
+    uint8[] internal decVals;
+
     function run() external {
         _processConfig(IxHelvetiaConfig.config());
         _processConfig(IxAetheronConfig.config(address(0), address(0)));
@@ -94,6 +100,7 @@ contract DeployTestnetStubs is Script {
         _emitNamedKeys();
         _assertCoverage();
         _emitMap();
+        _emitDecimalsMap();
     }
 
     /// @dev Deploy stubs for every token slot in `cfg`, deduped by mainnet address (first-seen wins).
@@ -128,6 +135,7 @@ contract DeployTestnetStubs is Script {
     function _ensureStandard(address token) internal {
         if (stubOf[token] != address(0)) return;
         uint8 dec = IERC20Metadata(token).decimals();
+        _recordDecimals(string.concat("DECIMALS_", vm.toString(token)), dec);
         StubERC20 stub = new StubERC20("Stub Standard", "STUBS", dec);
         stubOf[token] = address(stub);
         _record(string.concat("STUB_", vm.toString(token)), address(stub));
@@ -137,6 +145,14 @@ contract DeployTestnetStubs is Script {
     function _record(string memory key, address val) internal {
         envKeys.push(key);
         envVals.push(val);
+    }
+
+    /// @dev Append a decimals-table pair. Held in its own arrays rather than the envKeys / envVals pair
+    ///      list so the PB-D25 (ii) replay surface the rehearsal harness consumes — envPairAt returning
+    ///      (string, address) — stays signature-identical.
+    function _recordDecimals(string memory key, uint8 dec) internal {
+        decKeys.push(key);
+        decVals.push(dec);
     }
 
     /// @dev PB-D21 (iii)/(iv): the 5 N-D7 named-key RPs + the Tier-A SV_ZCHF / SUSDS keys. Each references
@@ -175,6 +191,18 @@ contract DeployTestnetStubs is Script {
         console2.log("# PB3.2 testnet stub env-map (fork-sample; regenerated with live addresses at PB3.5)");
         for (uint256 i = 0; i < envKeys.length; ++i) {
             console2.log(string.concat(envKeys[i], "=", vm.toString(envVals[i])));
+        }
+    }
+
+    /// @dev PB-D27 (ii): console-log the STANDARD-slot decimals table as a second, separately captured
+    ///      block. Emitted apart from _emitMap so the address-map capture stays byte-clean — the two
+    ///      artifacts have different lifecycles: the addresses are environment-specific and regenerate
+    ///      at every broadcast, while these decimals are mainnet truth, committed once.
+    function _emitDecimalsMap() internal view {
+        console2.log("DECIMALS_ pairs recorded (unique STANDARD tokens):", decKeys.length);
+        console2.log("# PB3.5 STANDARD-slot decimals table (mainnet-derived; stable across environments)");
+        for (uint256 i = 0; i < decKeys.length; ++i) {
+            console2.log(string.concat(decKeys[i], "=", vm.toString(uint256(decVals[i]))));
         }
     }
 
