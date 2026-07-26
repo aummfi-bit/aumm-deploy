@@ -10,12 +10,13 @@ import { AureumFeeRoutingHook } from "../src/fee_router/AureumFeeRoutingHook.sol
  * @notice Fork-only deployment of the `AureumFeeRoutingHook` (the OQ-1 fee-routing hook). A thin
  *         single-`new` script: it deploys the hook from seven resolved constructor arguments and
  *         returns the handle. The hook and the `AureumProtocolFeeController` store each other's
- *         address as immutables, so the prediction interlock that lets the hook land at the
- *         FEE_ROUTING_HOOK address the controller already stored is NOT owned here — it belongs to
- *         the P9.5 `DeployStageP` orchestrator (the D-D21 / D36 pre-compute chain, deterministic
- *         only within one deployer's nonce trajectory). This script performs exactly one CREATE
- *         (the hook), so the orchestrator predicts it as computeCreateAddress(thisScript, 1) and
- *         asserts equality with FEE_ROUTING_HOOK.
+ *         address as immutables, so the hook must land at the FEE_ROUTING_HOOK address the
+ *         controller already stored. That prediction is NOT computed here: the base layer is a
+ *         fixture/env input per P-D31, so the caller supplies it — the fork fixtures via
+ *         computeCreateAddress(thisScript, 1) (a harness formula, structurally wrong under a real
+ *         --broadcast per PB-D27 (iv)), and the live broadcast via the runbook's EOA-scoped
+ *         projection. What IS owned here, per PB-D27 (iv)(3), is the check: `run()` asserts the
+ *         deployed hook equals FEE_ROUTING_HOOK before returning.
  *
  * @dev H13 — the hook constructor is NOT keccak-placeholder-safe: it external-calls
  *      `IERC4626(svZchf_).asset()` to resolve the ZCHF underlying, so svZChf_ must be real
@@ -39,12 +40,19 @@ import { AureumFeeRoutingHook } from "../src/fee_router/AureumFeeRoutingHook.sol
  *        FEE_CONTROLLER      address  — AureumProtocolFeeController (DeployAureumVault output; the
  *                                       controller that stored this hook as FEE_ROUTING_HOOK)
  *        GOVERNANCE_MULTISIG address  — the hook's moduleAdmin_ (seeds the three one-shot admin slots)
+ *        FEE_ROUTING_HOOK    address  — this script's own predicted address; run() asserts the
+ *                                       deployed hook equals it (PB-D27 (iv)(3)). Not a ctor input.
  */
 contract DeployFeeRoutingHook is Script {
     AureumFeeRoutingHook public feeRoutingHook;
 
+    /// @notice The deployed hook diverged from the `FEE_ROUTING_HOOK` prediction the fee controller
+    ///         has already stored as an immutable (PB-D27 (iv)(3)); abort immediately.
+    error HookAddressMismatch(address predicted, address actual);
+
     /// @notice `forge script` entry — deploys the hook from env under broadcast.
     function run() external returns (AureumFeeRoutingHook) {
+        address predictedHook = vm.envAddress("FEE_ROUTING_HOOK");
         vm.startBroadcast();
         AureumFeeRoutingHook h = _deploy(
             vm.envAddress("VAULT"),
@@ -56,6 +64,13 @@ contract DeployFeeRoutingHook is Script {
             vm.envAddress("GOVERNANCE_MULTISIG")
         );
         vm.stopBroadcast();
+
+        // PB-D27 (iv)(3) — the fee controller stored this address as an immutable before this script
+        // ran, so a divergence is unrecoverable: the controller would route fees to an address that
+        // holds no hook. Assert before the success log, never after.
+        if (address(h) != predictedHook) {
+            revert HookAddressMismatch(predictedHook, address(h));
+        }
         console2.log("AureumFeeRoutingHook deployed at:", address(h));
         return h;
     }
