@@ -5,6 +5,8 @@ import { Test } from "forge-std/Test.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import { TokenInfo, TokenType } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { IWeightedPool } from "@balancer-labs/v3-interfaces/contracts/pool-weighted/IWeightedPool.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { StubERC20 } from "../../test-stubs/StubERC20.sol";
 import { StubERC4626 } from "../../test-stubs/StubERC4626.sol";
@@ -111,10 +113,90 @@ contract DerBodenseeScriptWitnessTest is Test {
         pool = script.run();
     }
 
-    function test_Witness_PoolDeployedAndRegistered() public {
+    function test_Witness_PoolDeployedAndRegistered() public view {
         assertTrue(pool != address(0), "pool is zero address");
         assertEq(pool, predictedPool, "pool diverged from CREATE3 prediction");
         assertTrue(pool.code.length > 0, "pool has no code");
         assertTrue(vault.isPoolRegistered(pool), "pool not registered with vault");
+    }
+
+    function test_Witness_TokensRegisteredInAscendingOrder() public view {
+        (IERC20[] memory tokens, , , ) = vault.getPoolTokenInfo(pool);
+
+        assertEq(tokens.length, 3, "token count is not 3");
+        assertTrue(address(tokens[0]) < address(tokens[1]), "tokens[0] not strictly less than tokens[1]");
+        assertTrue(address(tokens[1]) < address(tokens[2]), "tokens[1] not strictly less than tokens[2]");
+
+        // Strict ascending ordering plus a membership count of three together pin the registered set
+        // exactly, since strict ordering forbids duplicates.
+        uint256 membershipCount;
+        for (uint256 i = 0; i < 3; ++i) {
+            address t = address(tokens[i]);
+            if (t == address(aumm) || t == address(susds) || t == address(svZchf)) {
+                ++membershipCount;
+            }
+        }
+        assertEq(membershipCount, 3, "registered set is not exactly {aumm, susds, svZchf}");
+    }
+
+    /**
+     * @notice Regression pin for lockstep weight permutation with sorted tokens.
+     * @dev    DeployDerBodensee.s.sol builds its token configs at L82-L84 and its weights at L87-L89 from
+     *         the same sorted locals and dispatches on token identity rather than index, so lockstep holds
+     *         structurally in the current implementation. PB-D26 was exactly the failure this shape
+     *         prevents — a sorted token array paired with an unpermuted weights array produced a mispriced
+     *         pool that still registered cleanly. This test locks the property against a future refactor
+     *         reintroducing raw-config-order weights.
+     */
+    function test_Witness_WeightsPermutedInLockstepWithTokens() public view {
+        (IERC20[] memory tokens, , , ) = vault.getPoolTokenInfo(pool);
+        uint256[] memory weights = IWeightedPool(pool).getNormalizedWeights();
+
+        assertEq(weights.length, 3, "weight count is not 3");
+
+        uint256 total;
+        for (uint256 i = 0; i < 3; ++i) {
+            if (address(tokens[i]) == address(aumm)) {
+                assertEq(weights[i], 4e17, "aumm weight is not 4e17");
+            } else {
+                assertEq(weights[i], 3e17, "non-aumm weight is not 3e17");
+            }
+            total += weights[i];
+        }
+        assertEq(total, 1e18, "weights do not sum to 1e18");
+    }
+
+    function test_Witness_LegConfigSurvivedTheSort() public view {
+        (IERC20[] memory tokens, TokenInfo[] memory info, , ) = vault.getPoolTokenInfo(pool);
+
+        assertEq(info.length, 3, "token info count is not 3");
+
+        // The two not-equal-to-the-mainnet-literal assertions are the load-bearing half: they prove the
+        // PB-D27 (v) _resolveRateProvider override actually substituted the stub instances rather than
+        // silently passing the hardcoded mainnet literals through, which is the exact envOr passthrough
+        // behaviour that would register a Sepolia pool against addresses carrying no code.
+        for (uint256 i = 0; i < 3; ++i) {
+            if (address(tokens[i]) == address(aumm)) {
+                assertTrue(info[i].tokenType == TokenType.STANDARD, "aumm token type is not STANDARD");
+                assertEq(address(info[i].rateProvider), address(0), "aumm rate provider is not zero");
+                assertFalse(info[i].paysYieldFees, "aumm paysYieldFees is not false");
+            } else if (address(tokens[i]) == address(susds)) {
+                assertTrue(info[i].tokenType == TokenType.WITH_RATE, "susds token type is not WITH_RATE");
+                assertEq(address(info[i].rateProvider), address(susdsRp), "susds rate provider is not stub");
+                assertTrue(
+                    address(info[i].rateProvider) != SUSDS_RATE_PROVIDER,
+                    "susds rate provider is still the mainnet literal"
+                );
+                assertTrue(info[i].paysYieldFees, "susds paysYieldFees is not true");
+            } else {
+                assertTrue(info[i].tokenType == TokenType.WITH_RATE, "svZchf token type is not WITH_RATE");
+                assertEq(address(info[i].rateProvider), address(svZchfRp), "svZchf rate provider is not stub");
+                assertTrue(
+                    address(info[i].rateProvider) != SV_ZCHF_RATE_PROVIDER,
+                    "svZchf rate provider is still the mainnet literal"
+                );
+                assertTrue(info[i].paysYieldFees, "svZchf paysYieldFees is not true");
+            }
+        }
     }
 }
