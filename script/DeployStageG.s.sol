@@ -53,11 +53,20 @@ import { GaugeGenesisManifest } from "./config/GaugeGenesisManifest.sol";
  *        AUMM                  address  — AuMM ERC-20 (GaugeEligibility forbidden token + genesisBlock source)
  *        SV_ZCHF               address  — svZCHF (bond + fee token; SwapAndDeposit / VaultClassRegistry / GaugeRegistry)
  *        SUSDS                 address  — sUSDS (SwapAndDeposit Bodensee pay-token)
- *        WEIGHTED_POOL_FACTORY address  — AureumWeightedPoolFactory (GaugeEligibility G-D15a approvedFactory)
+ *        WEIGHTED_POOL_FACTORY address  — the pool factory admitted as GaugeEligibility's G-D15a approvedFactory (NOT the Aureum factory -- see the E-D16 note below)
  *        TVL_ORACLE            address  — Stage F TVLOracle (GaugeEligibility OQ-G2)
  *        EFFICIENCY_ORACLE     address  — Stage F EfficiencyOracle (GaugeEligibility G-D23)
  *        FEE_ROUTING_HOOK      address  — Stage D AureumFeeRoutingHook (GaugeEligibility I-D13 canonical-hook gate)
  *        GOVERNANCE_MULTISIG   address  — unified governor (P-D31 Class B/C: VCR setters + GaugeRegistry.governance + the donateAuthorizer handoff target)
+ *
+ * @dev **E-D16 naming trap / PB-D27 (ix):** `WEIGHTED_POOL_FACTORY` holds the UPSTREAM Balancer
+ *      `WeightedPoolFactory` bound to the Aureum Vault — NOT `src/factory/AureumWeightedPoolFactory.sol`.
+ *      `script/DeployAureumWeightedPoolFactory.s.sol` L37 constructs the upstream contract, and both
+ *      production spines cast that address to the Aureum type, so no existing path binds the real Aureum
+ *      factory here and its factory-level `QualityGateUnsatisfied` guard never runs. The script-side
+ *      MIN_ERC4626_WEIGHT check duplicates the same threshold, so the admitted set is unaffected
+ *      (PB-D27 (ix)). Sepolia keeps this configuration; Stage R deploys the real Aureum factory, which
+ *      also requires splitting this overloaded key from `AUREUM_WEIGHTED_POOL_FACTORY`.
  */
 contract DeployStageG is Script {
     // -------------------------------------------------------------------------
