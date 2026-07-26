@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { console2 } from "forge-std/console2.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -110,6 +111,9 @@ contract StagePRunRehearsalTest is Test {
     address[18] internal stageNPools;
 
     function setUp() public {
+        // PB3.5f1 (PB-D27 (vii)(1)) -- brackets the whole deployment spine so the SepETH target
+        //                              is a measured number rather than an estimate.
+        uint256 gasAtStart = gasleft();
         // PB-D25 (ii) — the stub roster runs FIRST: it publishes SV_ZCHF, SUSDS and the five N-D7 RP
         // keys that every downstream pool config reads during its own .run(), so nothing below may
         // precede it. No rate providers are constructed here (the P10 fixture builds five by hand) —
@@ -331,6 +335,9 @@ contract StagePRunRehearsalTest is Test {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("PERMIT2_ADDRESS", vm.toString(CANONICAL_PERMIT2));
         router = new DeployRouter().run();
+
+        uint256 spineGasUsed = gasAtStart - gasleft();
+        console2.log("PB3.5f spine gas used (fork, setUp total):", spineGasUsed);
     }
 
     /// @dev 1_000 whole tokens per slot, scaled by each token's OWN decimals. The P10 fixture's
