@@ -34,6 +34,29 @@ import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/W
  *      **E-D22 / OQ-11 (2026-04-26 supersession, precision-corrected F-20/P-D40):** `swapFeeManager: address(0)` defers fee changes to the Vault authorizer — NOT "no one can change." Der Bodensee's fee is multisig-changeable pre-K via `AureumAuthorizer` and stays unreachable post-K only because `AureumGovernance.proposeFeeChange` excludes `BODENSEE_POOL`, not because the role is frozen; `governanceMultisig` retains only `pauseManager` as an explicit role. See `docs/FINDINGS.md` OQ-11 and `docs/STAGE_E_NOTES.md` E-D22.
  */
 contract DeployDerBodensee is Script {
+    /// @notice A WITH_RATE slot's non-zero rate provider resolved to address(0) via a STUB_ override; a zeroed
+    ///         RP would flip both QG legs and Vault registration semantics (PB-D20 (i)).
+    error StubRateProviderZeroed(address original);
+
+    /// @dev PB-D27 (v) — testnet stub override resolver, mirrored from `deploy-miliarium-pool.s.sol` L50-L52.
+    ///      With no matching `STUB_` key set the resolved address IS `original`, so the mainnet path stays
+    ///      byte-identical. The `envOr` passthrough is deliberate and must NOT be tightened to `envAddress`:
+    ///      that would oblige Stage R to publish an identity map for keys it has no reason to set. The
+    ///      Sepolia mitigation is PB-D27 (iii)(c) — the stub map merged into `.env` before this script runs.
+    function _resolveStub(address original) internal view returns (address) {
+        return vm.envOr(string.concat("STUB_", vm.toString(original)), original);
+    }
+
+    /// @dev PB-D27 (v) — rate-provider override with fail-fast, mirrored from `deploy-miliarium-pool.s.sol`
+    ///      L57-L63. Applies `_resolveStub`; a WITH_RATE slot whose non-zero RP resolves to address(0) reverts.
+    function _resolveRateProvider(IRateProvider original, TokenType tokenType) internal view returns (IRateProvider) {
+        address resolved = _resolveStub(address(original));
+        if (tokenType == TokenType.WITH_RATE && address(original) != address(0) && resolved == address(0)) {
+            revert StubRateProviderZeroed(address(original));
+        }
+        return IRateProvider(resolved);
+    }
+
     function run() external returns (address pool) {
         address weightedPoolFactory = vm.envAddress("WEIGHTED_POOL_FACTORY");
         address aumm = vm.envAddress("AUMM");
@@ -93,7 +116,7 @@ contract DeployDerBodensee is Script {
         address aumm,
         address sUsds,
         address svZchf
-    ) private pure returns (TokenConfig memory) {
+    ) private view returns (TokenConfig memory) {
         if (token == aumm) {
             return TokenConfig({
                 token: IERC20(token),
@@ -105,14 +128,20 @@ contract DeployDerBodensee is Script {
             return TokenConfig({
                 token: IERC20(token),
                 tokenType: TokenType.WITH_RATE,
-                rateProvider: IRateProvider(0x1195BE91e78ab25494C855826FF595Eef784d47B),
+                rateProvider: _resolveRateProvider(
+                    IRateProvider(0x1195BE91e78ab25494C855826FF595Eef784d47B),
+                    TokenType.WITH_RATE
+                ),
                 paysYieldFees: true
             });
         } else if (token == svZchf) {
             return TokenConfig({
                 token: IERC20(token),
                 tokenType: TokenType.WITH_RATE,
-                rateProvider: IRateProvider(0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c),
+                rateProvider: _resolveRateProvider(
+                    IRateProvider(0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c),
+                    TokenType.WITH_RATE
+                ),
                 paysYieldFees: true
             });
         } else {
