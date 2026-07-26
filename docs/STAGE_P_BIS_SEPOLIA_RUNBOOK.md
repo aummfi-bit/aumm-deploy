@@ -50,7 +50,7 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 
 1. **Stubs.** `test-stubs/DeployTestnetStubs.s.sol` deploys the testnet token roster.
 2. **Base layer, per-granular.** `DeployAureumVault`, `DeployAureumWeightedPoolFactory`, `DeployAuMM`, `DeployDerBodensee`, `DeployFeeRoutingHook`, `DeployRouter` — in an order fixed by the PB-D27 (iv) address cycle, not by convenience.
-3. **Pools.** The 26 pool scripts under `script/pools/`, three pilots plus five majors plus eighteen Miliarium slots. All 26 must be on disk in `.env` before phase 4, because `DeployStageP` drives Stage I, M and N internally and those read the pool keys.
+3. **Pools.** The 26 pool scripts under `script/pools/`. All 26 are Miliarium pools occupying slots in one flat slot space numbered 1 to 28; the `PILOT_`, `MAJOR_` and `MILIARIUM_` env-key prefixes are deploy-plumbing artifacts of the stage each pool first landed in, not a pool taxonomy. All 26 keys must be in `.env` before phase 4, because `DeployStageP` drives Stage I, M and N internally and those read them.
 4. **Orchestration.** `DeployStageP.run()`, one process, composing Stage F through Stage K and threading its own intermediate addresses internally.
 5. **Router seat.** The F-09 trusted-router seat. No script performs it: `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4). An unseated Router mints BPT but records nothing, so this step is load-bearing rather than cosmetic.
 6. **Verification.** Explorer verification of the deployed set.
@@ -139,3 +139,65 @@ A count written here from source-reading would be a number an operator could act
 - Reads: `AUREUM_VAULT`, `WETH_ADDRESS`, `PERMIT2_ADDRESS`. `PERMIT2_ADDRESS` is the canonical cross-chain instance verified present at PB3.1; `WETH_ADDRESS` is the operator-pinned Sepolia value described above.
 - Emits: `Aureum Router deployed at:` followed by the address.
 - Set in `.env`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
+
+## 7. Phase 3 to 6 — pools, orchestration, Router seat, verification
+
+**Phase 3 — the 26 Miliarium pools.**
+
+All 26 are Miliarium pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry. The `PILOT_`, `MAJOR_` and `MILIARIUM_` prefixes on the `.env` keys record only which stage each pool first landed in, and carry no meaning at deploy time. Reading `MAJOR_POOL_03` as a different kind of pool from `MILIARIUM_POOL_12` is the misreading this paragraph exists to prevent.
+
+Each pool is its own invocation, in the same form as section 6. Every one of the 26 scripts emits the SAME stdout line — `Miliarium pool deployed at:` — from the shared base at `script/pools/deploy-miliarium-pool.s.sol` L129, with nothing in the line identifying which pool it was. Stdout alone therefore cannot tell the deployments apart. Run one script at a time and record its address before starting the next, or key the capture off `broadcast/<ScriptName>.s.sol/11155111/run-latest.json`, which is named per script and is unambiguous. Do not batch the 26 and reconcile the log afterwards.
+
+The slot each script fills appears nowhere in the script itself. The mapping below comes from `test/fork/StagePRunRehearsal.t.sol` L216-L256 paired with L268-L318, the only place in the repo binding script to key, validated by that fixture running 9/9 fork-green. It is listed in slot order; deployment order is unconstrained, since the pool scripts have no dependency on one another and every base-layer address projection is already fixed before phase 3 begins.
+
+| Slot | Script | `.env` key |
+| --- | --- | --- |
+| 01 | `DeployIxHelvetia` | `PILOT_POOL_01` |
+| 02 | `DeployIxAetheron` | `MILIARIUM_POOL_02` |
+| 03 | `DeployIxCasper` | `MAJOR_POOL_03` |
+| 05 | `DeployIxEdelweiss` | `PILOT_POOL_05` |
+| 06 | `DeployIxLibertas` | `MILIARIUM_POOL_06` |
+| 08 | `DeployIxBrevis` | `MAJOR_POOL_08` |
+| 09 | `DeployIxAltrix` | `MAJOR_POOL_09` |
+| 10 | `DeployIxMediox` | `MAJOR_POOL_10` |
+| 11 | `DeployIxLongus` | `MAJOR_POOL_11` |
+| 12 | `DeployIxStrata` | `MILIARIUM_POOL_12` |
+| 13 | `DeployIxForum` | `MILIARIUM_POOL_13` |
+| 14 | `DeployIxAurebit` | `PILOT_POOL_14` |
+| 15 | `DeployIxRegistrum` | `MILIARIUM_POOL_15` |
+| 16 | `DeployIxDebitum` | `MILIARIUM_POOL_16` |
+| 17 | `DeployIxEquitix` | `MILIARIUM_POOL_17` |
+| 18 | `DeployIxInnovix` | `MILIARIUM_POOL_18` |
+| 19 | `DeployIxGigantus` | `MILIARIUM_POOL_19` |
+| 20 | `DeployIxMagnix` | `MILIARIUM_POOL_20` |
+| 21 | `DeployIxNubix` | `MILIARIUM_POOL_21` |
+| 22 | `DeployIxMoneta` | `MILIARIUM_POOL_22` |
+| 23 | `DeployIxColossix` | `MILIARIUM_POOL_23` |
+| 24 | `DeployIxVitalix` | `MILIARIUM_POOL_24` |
+| 25 | `DeployIxMedicix` | `MILIARIUM_POOL_25` |
+| 26 | `DeployIxMercatura` | `MILIARIUM_POOL_26` |
+| 27 | `DeployIxAurix` | `MILIARIUM_POOL_27` |
+| 28 | `DeployIxMetallum` | `MILIARIUM_POOL_28` |
+
+Slots 04 and 07 are absent by design: ixViatica and ixCambio were descoped to the Stage-O composition-challenge path at PB-D8, so the constellation launches 26 of 28. The gaps are expected and are not missed deployments.
+
+Every one of the 26 keys must be in `.env` before phase 4. `DeployStageP` drives Stage I, M and N inside its own process and those read the keys directly, so a single missing key aborts the orchestrator partway through a sequence that has already broadcast.
+
+**Phase 4 — the orchestrator.**
+
+- Command: `forge script script/DeployStageP.s.sol:DeployStageP`
+- One invocation, one process, composing Stage F through Stage K per PB-D23 (vii). It threads its own intermediate addresses internally, so nothing between Stage F and Stage K needs capturing: `MILIARIUM_REGISTRY`, `TVL_ORACLE`, `EFFICIENCY_ORACLE`, `EMA_SAMPLER`, `CCB_MULTIPLIER`, `SWAP_AND_DEPOSIT`, `VAULT_CLASS_REGISTRY`, `GAUGE_REGISTRY`, `EMISSION_DISTRIBUTOR` and `BODENSEE_CHANNEL` are all set by the orchestrator on itself as it goes.
+- Reads from `.env`: everything phases 1 to 3 wrote, plus `EMERGENCY_MULTISIG`, consumed by `DeployStageK.s.sol` L125 and one of the keys missing from `.env.example`.
+- The run asserts its own post-conditions, including the four-way genesis check and the authorizer migration. A revert here stops the sequence with the base layer already live; it does not unwind.
+
+**Phase 5 — the Router seat (F-09).**
+
+No script performs this. `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4). The seat is two governor-signed transactions, in this order: point the governance module at the governor, then seat the Router. `script/DeployRouter.s.sol` L25 documents the pair as `setGovernanceModule(GOVERNANCE_MULTISIG)` followed by `setTrustedRouter(router, true)`, using the `ROUTER` address captured at step 7.
+
+Load-bearing rather than cosmetic: an unseated Router still mints BPT on an add, but the position is never recorded, so the LP holds a receipt the protocol does not know about — the F-09 fail-closed behaviour the PB3.3 fork witness pinned as a negative case before seating and as a credited add afterwards.
+
+**Phase 6 — verification.**
+
+With `ETHERSCAN_API_KEY` provisioned per prerequisite 3, contracts deployed with `--verify` are submitted automatically. Anything deployed before the key was in place, or whose verification failed in flight, is re-submitted with `forge verify-contract` against the Sepolia explorer. Der Bodensee and the 26 Miliarium pools are CREATE3 deployments made by the factory rather than by the deployer EOA, so verification is submitted against the pool address with the factory's pool creation code, not against a deployer transaction.
+
+Recording the full deployed set into `test-stubs/sepolia-stubs.env` per PB-D21 (v), replacing the committed fork-sample addresses with live Sepolia ones, is rung i rather than this one.
