@@ -16,7 +16,9 @@ import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/W
  *         `forge script ... --fork-url`; this file deliberately omits any
  *         mainnet broadcast wiring.
  *
- * @dev **D-D6:** Fork-only scope: no production broadcast path here.
+ * @dev **D-D6:** Fork-only scope at authoring; D-D6 (`STAGE_D_PLAN.md` L88) reserves MAINNET for Stage R
+ *      and says nothing about testnets, so a Sepolia `--broadcast` does not violate it. This script is
+ *      exercised as a live Sepolia broadcast starting at PB3.5 (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`).
  *
  *      **D11:** Rate provider addresses are existing mainnet deployments
  *      (sUSDS and svZCHF); AuMM uses the identity provider (`address(0)`).

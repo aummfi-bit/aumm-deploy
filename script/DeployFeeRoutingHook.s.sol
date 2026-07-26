@@ -24,11 +24,13 @@ import { AureumFeeRoutingHook } from "../src/fee_router/AureumFeeRoutingHook.sol
  *      would need a mock svZCHF exposing asset()). The other six arguments are stored with no
  *      external call.
  *
- * @dev P-D3 / D-D6 — fork-only scope; no production broadcast within Stage P. `run()` is the
- *      broadcast / simulation entry (reads the seven inputs from env); `deploy(...)` is the
- *      testable no-broadcast entry the P9.5 orchestrator calls with args threaded directly,
- *      bypassing the DER_BODENSEE_POOL / BODENSEE_POOL and SV_ZCHF / SVZCHF env-key divergence
- *      the orchestrator normalizes (P-D25).
+ * @dev P-D3 / D-D6 — fork-only scope within Stage P; D-D6 (`STAGE_D_PLAN.md` L88) reserves MAINNET for
+ *      Stage R and says nothing about testnets, so it does not bar a Sepolia `--broadcast` — this
+ *      script is exercised as a live Sepolia broadcast starting at PB3.5
+ *      (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`). `run()` is the broadcast / simulation entry (reads the
+ *      seven inputs from env); `deploy(...)` is the testable no-broadcast entry the P9.5 orchestrator
+ *      calls with args threaded directly, bypassing the DER_BODENSEE_POOL / BODENSEE_POOL and
+ *      SV_ZCHF / SVZCHF env-key divergence the orchestrator normalizes (P-D25).
  *
  * @dev Env vars required by run() (no defaults — a real deploy must never silently fall back to zero):
  *

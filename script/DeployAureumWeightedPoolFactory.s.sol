@@ -11,7 +11,9 @@ import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/W
  *         Balancer's unchanged submodule bytecode; only the IVault constructor argument and version strings
  *         differ from Balancer mainnet WPF.
  *
- * @dev **D-D6:** fork-only scope; no production broadcast path.
+ * @dev **D-D6:** fork-only scope at authoring; D-D6 (`STAGE_D_PLAN.md` L88) reserves MAINNET for
+ *      Stage R and says nothing about testnets, so it does not bar a Sepolia `--broadcast`. This
+ *      script is exercised as a live Sepolia broadcast starting at PB3.5 (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`).
  *
  * @dev **D30:** Factory sourcing resolution — the `WEIGHTED_POOL_FACTORY` env consumed by
  *      `script/DeployDerBodensee.s.sol` is expected to be this script's output, not a mainnet Balancer WPF

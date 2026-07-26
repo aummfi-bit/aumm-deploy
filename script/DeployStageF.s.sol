@@ -40,9 +40,12 @@ import { IGaugeRegistry } from "../src/ccb/IGaugeRegistry.sol";
  *      MUST equal the value later given to GaugeRegistry + EmissionDistributor; the P9.5
  *      orchestrator asserts the four-way GENESIS_BLOCK equality.
  *
- * @dev P-D3 / D-D6 — fork-only scope; no production broadcast within Stage P. run() reads the
- *      six inputs from env and broadcasts; deploy(deployer) is the testable no-broadcast entry
- *      the P9.5 orchestrator and fork fixtures call with deployer = the executing address.
+ * @dev P-D3 / D-D6 — fork-only scope within Stage P; D-D6 (`STAGE_D_PLAN.md` L88) reserves MAINNET for
+ *      Stage R and says nothing about testnets, so it does not bar a Sepolia `--broadcast` — this
+ *      script is exercised as a live Sepolia broadcast starting at PB3.5
+ *      (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`). run() reads the six inputs from env and broadcasts;
+ *      deploy(deployer) is the testable no-broadcast entry the P9.5 orchestrator and fork fixtures
+ *      call with deployer = the executing address.
  *
  * @dev Env vars required (no defaults — a real deploy must never silently fall back to zero):
  *
