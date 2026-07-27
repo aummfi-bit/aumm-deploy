@@ -40,7 +40,7 @@ Every address captured in this runbook is written into `.env` on disk, never int
 
 **Der Bodensee's salt is scoped to the broadcast sender.** `BasePoolFactory._computeFinalSalt` is `keccak256(abi.encode(msg.sender, block.chainid, salt))` at `lib/balancer-v3-monorepo/pkg/pool-utils/contracts/BasePoolFactory.sol` L126-L128, and the CREATE3 creator is the factory rather than the caller. `DeployDerBodensee.run()` opens a bare `vm.startBroadcast()`, so the `msg.sender` the factory hashes is the broadcast sender, which under `--broadcast` is the deployer EOA. PB3.5d established this by execution rather than by reading: `test/fork/DerBodenseeScriptWitness.t.sol` drives the real script, and the pool lands exactly at the address derived from the broadcast sender rather than from the script contract or the test contract. That witness pins the MECHANISM; the live case substitutes the deployer EOA for the test default sender.
 
-**What the operator must project, and when.** Before the first broadcast: the weighted-pool factory, as an EOA CREATE at the nonce the vault step leaves behind; der Bodensee, as `CREATE3.getDeployed(keccak256(abi.encode(deployerEOA, 11155111, BODENSEE_SALT)), predictedFactory)`; and the hook, as an EOA CREATE at the nonce reached after the factory, AuMM and der-Bodensee steps. The last two are written into `.env` as `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` before `DeployAureumVault` runs. Each projection advances the nonce by the per-step transaction totals of the steps in between — which is exactly what section 5 does not yet contain. Rung h derives those totals from its own dry run at the real deployer nonce and fills section 5 in. Until it has, the projection cannot be computed and no broadcast may begin.
+**What the operator must project, and when.** Before the first broadcast: the weighted-pool factory, as an EOA CREATE at the nonce the vault step leaves behind; der Bodensee, as `CREATE3.getDeployed(keccak256(abi.encode(deployerEOA, 11155111, BODENSEE_SALT)), predictedFactory)`, which carries no nonce term of its own beyond the one fixing the factory; and the hook, as an EOA CREATE at the nonce reached after the factory and AuMM steps — the hook precedes der Bodensee per PB-D30, so no der-Bodensee count enters its projection. The last two are written into `.env` as `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` before `DeployAureumVault` runs. Each projection advances the nonce by the per-step transaction totals of the steps in between — which is exactly what section 5 does not yet contain. Rung h phase A derives those totals at the real deployer nonce and fills section 5 in. Until it has, the projection cannot be computed and no broadcast may begin.
 
 **Three self-asserts, and what they do not undo.** `DeployAureumVault` reverts `FactoryAddressMismatch` if its own factory lands off-projection (L203-L205); `DeployDerBodensee` reverts `BodenseeAddressMismatch` if the created pool diverges from `DER_BODENSEE_POOL` (PB3.5c1b); `DeployFeeRoutingHook` reverts `HookAddressMismatch` if the deployed hook diverges from `FEE_ROUTING_HOOK` (PB3.5c2). The first is self-contained within its step. The other two compare against predictions the fee controller has ALREADY sealed as immutables, so by the time either fires the damage is done: the assert stops the sequence from compounding, but it cannot unwind the vault. Recovery is a full restart of the whole sequence on fresh addresses. That is tolerable on testnet gas and is precisely why the rung h dry run is mandatory rather than advisory.
 
@@ -49,7 +49,7 @@ Every address captured in this runbook is written into `.env` on disk, never int
 The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestration stays the single composed `DeployStageP.run()`. Collapsing either was rejected at PB-D27 (i).
 
 1. **Stubs.** `test-stubs/DeployTestnetStubs.s.sol` deploys the testnet token roster.
-2. **Base layer, per-granular.** `DeployAureumVault`, `DeployAureumWeightedPoolFactory`, `DeployAuMM`, `DeployDerBodensee`, `DeployFeeRoutingHook`, `DeployRouter` — in an order fixed by the PB-D27 (iv) address cycle, not by convenience.
+2. **Base layer, per-granular.** `DeployAureumVault`, `DeployAureumWeightedPoolFactory`, `DeployAuMM`, `DeployFeeRoutingHook`, `DeployDerBodensee`, `DeployRouter` — in an order fixed by the PB-D27 (iv) address cycle and the PB-D30 hook-before-Bodensee swap, not by convenience.
 3. **Pools.** The 26 pool scripts under `script/pools/`. All 26 are Miliarium pools occupying slots in one flat slot space numbered 1 to 28; the `PILOT_`, `MAJOR_` and `MILIARIUM_` env-key prefixes are deploy-plumbing artifacts of the stage each pool first landed in, not a pool taxonomy. All 26 keys must be in `.env` before phase 4, because `DeployStageP` drives Stage I, M and N internally and those read them.
 4. **Orchestration.** `DeployStageP.run()`, one process, composing Stage F through Stage K and threading its own intermediate addresses internally.
 5. **Router seat.** The F-09 trusted-router seat. No script performs it: `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4). An unseated Router mints BPT but records nothing, so this step is load-bearing rather than cosmetic.
@@ -67,8 +67,8 @@ A count written here from source-reading would be a number an operator could act
 | 2 | `DeployAureumVault` | PENDING-h |
 | 3 | `DeployAureumWeightedPoolFactory` | PENDING-h |
 | 4 | `DeployAuMM` | PENDING-h |
-| 5 | `DeployDerBodensee` | PENDING-h |
-| 6 | `DeployFeeRoutingHook` | PENDING-h |
+| 5 | `DeployFeeRoutingHook` | PENDING-h |
+| 6 | `DeployDerBodensee` | PENDING-h |
 | 7 | `DeployRouter` | PENDING-h |
 | 8 | Each pool script, per invocation | PENDING-h |
 | 9 | `DeployStageP.run()` | PENDING-h |
@@ -117,21 +117,22 @@ A count written here from source-reading would be a number an operator could act
 - Emits: `AuMM deployed at:` followed by the address.
 - Set in `.env`: `AUMM`.
 
-**Step 5 — der Bodensee.**
-
-- Command: `forge script script/DeployDerBodensee.s.sol:DeployDerBodensee`
-- Reads: `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `GOVERNANCE_MULTISIG`, `BODENSEE_SALT`, `DER_BODENSEE_POOL`, plus the two rate-provider `STUB_` keys from step 1.
-- Emits: `der-Bodensee pool deployed at:` followed by the address.
-- The script asserts the created pool equals `DER_BODENSEE_POOL` and reverts `BodenseeAddressMismatch` otherwise, before the success log.
-- Set in `.env`: `BODENSEE_POOL`, to the same address. Do NOT rewrite `DER_BODENSEE_POOL` — it already holds the projection, and the two keys are read by different scripts.
-
-**Step 6 — fee routing hook.**
+**Step 5 — fee routing hook.**
 
 - Command: `forge script script/DeployFeeRoutingHook.s.sol:DeployFeeRoutingHook`
 - Reads: `FEE_ROUTING_HOOK`, `VAULT`, `DER_BODENSEE_POOL`, `SV_ZCHF`, `SUSDS`, `AUMM`, `FEE_CONTROLLER`, `GOVERNANCE_MULTISIG`.
 - Emits: `AureumFeeRoutingHook deployed at:` followed by the address.
 - The script asserts the deployed hook equals `FEE_ROUTING_HOOK` and reverts `HookAddressMismatch` otherwise, before the success log.
 - Set in `.env`: nothing new. `FEE_ROUTING_HOOK` already holds the projection; confirm the logged address matches it.
+- This step precedes der Bodensee deliberately, per PB-D30. `DER_BODENSEE_POOL` is read here as a projection only — the hook's constructor zero-checks it and then stores it without ever calling it, so der Bodensee needs no code yet, and `DeployDerBodensee` in turn reads no `FEE_ROUTING_HOOK` key at all. Do not restore the older Bodensee-then-hook order: it puts a step that cannot be simulated before the broadcast inside the hook's own nonce projection, which is what made the pre-broadcast count set unobtainable.
+
+**Step 6 — der Bodensee.**
+
+- Command: `forge script script/DeployDerBodensee.s.sol:DeployDerBodensee`
+- Reads: `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `GOVERNANCE_MULTISIG`, `BODENSEE_SALT`, `DER_BODENSEE_POOL`, plus the two rate-provider `STUB_` keys from step 1.
+- Emits: `der-Bodensee pool deployed at:` followed by the address.
+- The script asserts the created pool equals `DER_BODENSEE_POOL` and reverts `BodenseeAddressMismatch` otherwise, before the success log.
+- Set in `.env`: `BODENSEE_POOL`, to the same address. Do NOT rewrite `DER_BODENSEE_POOL` — it already holds the projection, and the two keys are read by different scripts.
 
 **Step 7 — Router.**
 
