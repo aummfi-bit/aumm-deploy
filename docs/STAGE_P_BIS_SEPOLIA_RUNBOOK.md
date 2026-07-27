@@ -25,7 +25,7 @@ Every address captured in this runbook is written into `.env` on disk, never int
 | # | Item | State at authoring | Gate |
 | --- | --- | --- | --- |
 | 1 | `SEPOLIA_RPC_URL` reachable, chain id 11155111 | verified at PB3.1 | — |
-| 2 | Deployer EOA funded with SepETH | 0.05 at PB3.1; the target is fixed by the rung f gas measurement | rung f |
+| 2 | Deployer EOA funded with SepETH | 0.05 at PB3.1; target ~1-2 SepETH per the rung f gas measurement, section 6 | before phase 1 |
 | 3 | `ETHERSCAN_API_KEY` present in `.env` | ABSENT at PB3.1 — must be provisioned | before verification |
 | 4 | Canonical Permit2 at `0x000000000022D473030F116dDEE9F6B43aC78BA3` | verified present at PB3.1 | — |
 | 5 | `script/config/mainnet-token-decimals.env` merged into `.env` | committed at PB3.5b2 | before phase 1 |
@@ -139,6 +139,8 @@ A count written here from source-reading would be a number an operator could act
 - Reads: `AUREUM_VAULT`, `WETH_ADDRESS`, `PERMIT2_ADDRESS`. `PERMIT2_ADDRESS` is the canonical cross-chain instance verified present at PB3.1; `WETH_ADDRESS` is the operator-pinned Sepolia value described above.
 - Emits: `Aureum Router deployed at:` followed by the address.
 - Set in `.env`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
+
+**Gas budget (PB-D27 (vii)(1)).** The full spine — testnet stubs through the Router seat, replayed end-to-end at `test/fork/StagePRunRehearsal.t.sol` `setUp()` — measures 367,079,280 gas, identical across all nine fork tests: `setUp` re-runs per test, so nine matching values is the harness's own determinism check, confirming nothing nondeterministic sits in the deployment path. At 1-3 gwei Sepolia basefee this is 0.37-1.10 SepETH. The figure is a floor, not the live cost: `forge script --broadcast` sends each `new X(...)` as its own transaction, adding per-transaction intrinsic gas plus init-code calldata at 16 gas/byte on top of the fork-measured opcode cost, on the order of 2-3%. Fund the deployer to roughly 1-2 SepETH via the pk910 PoW faucet before starting phase 1 — the 0.05 SepETH from PB3.1 is 7 to 22 times short.
 
 ## 7. Phase 3 to 6 — pools, orchestration, Router seat, verification
 
