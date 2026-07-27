@@ -57,16 +57,18 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 
 ## 5. Per-step EOA transaction counts
 
-Every cell below reads PENDING-h by design. PB-D27 (iv)(1) requires these counts be derived from a dry run rather than read off the source, and PB-D28 (ii) defers that derivation to rung h — the Sepolia-fork dry run at the real deployer's live nonce. Rung h populates this table before any broadcast command is issued.
+Rows 1 through 4 carry measured counts; rows 5 through 10 still read PENDING-h. PB-D27 (iv)(1) requires these counts be derived from a run rather than read off the source, and PB-D28 (ii) deferred that derivation to rung h. Phase A measured rows 1 through 4 at the live deployer nonce, which is all the projection arithmetic consumes per PB-D30 (iii); the remaining rows fill from the broadcast itself at rung i, since no projection reads them.
 
 A count written here from source-reading would be a number an operator could act on, and the failure mode of an undercount is a mis-projected address sealing a vault immutable — the unrecoverable class PB-D27 (iv) exists to convert into an abort. An empty cell cannot be misread as an answer.
 
+Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for each of 45 STANDARD tokens; the 67 `STUB_` pairs the script emits are those 14 plus 45 plus 8 distinct rate-provider literals, which are recorded as aliases of an already-deployed provider rather than as fresh deploys. Row 2's 4 is three CREATEs — authorizer, fee controller, vault factory — plus the `factory.create()` call. Every transaction in rows 1 through 4 is a CREATE except that one call.
+
 | # | Step | Count |
 | --- | --- | --- |
-| 1 | `DeployTestnetStubs` | PENDING-h |
-| 2 | `DeployAureumVault` | PENDING-h |
-| 3 | `DeployAureumWeightedPoolFactory` | PENDING-h |
-| 4 | `DeployAuMM` | PENDING-h |
+| 1 | `DeployTestnetStubs` | 87 |
+| 2 | `DeployAureumVault` | 4 |
+| 3 | `DeployAureumWeightedPoolFactory` | 1 |
+| 4 | `DeployAuMM` | 1 |
 | 5 | `DeployFeeRoutingHook` | PENDING-h |
 | 6 | `DeployDerBodensee` | PENDING-h |
 | 7 | `DeployRouter` | PENDING-h |
