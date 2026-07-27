@@ -73,6 +73,10 @@ contract DeployTestnetStubs is Script {
     uint256 internal constant MAINNET_CHAIN_ID = 1;
 
     function run() external {
+        // PB-D31: every CREATE in this script happens inside the 26 `_processConfig` calls below.
+        // Without this wrapper a live `--broadcast` sends nothing while still emitting a complete
+        // STUB_ map of addresses that carry no code on the target chain.
+        vm.startBroadcast();
         _processConfig(IxHelvetiaConfig.config());
         _processConfig(IxAetheronConfig.config(address(0), address(0)));
         _processConfig(IxCasperConfig.config(address(0)));
@@ -99,6 +103,7 @@ contract DeployTestnetStubs is Script {
         _processConfig(IxMercaturaConfig.config());
         _processConfig(IxAurixConfig.config(address(0)));
         _processConfig(IxMetallumConfig.config());
+        vm.stopBroadcast();
 
         console2.log("STUB_ pairs recorded (unique tokens + hardcoded RPs):", envKeys.length);
         _emitNamedKeys();
