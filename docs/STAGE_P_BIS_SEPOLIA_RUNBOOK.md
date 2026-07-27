@@ -204,3 +204,53 @@ Load-bearing rather than cosmetic: an unseated Router still mints BPT on an add,
 With `ETHERSCAN_API_KEY` provisioned per prerequisite 3, contracts deployed with `--verify` are submitted automatically. Anything deployed before the key was in place, or whose verification failed in flight, is re-submitted with `forge verify-contract` against the Sepolia explorer. Der Bodensee and the 26 Miliarium pools are CREATE3 deployments made by the factory rather than by the deployer EOA, so verification is submitted against the pool address with the factory's pool creation code, not against a deployer transaction.
 
 Recording the full deployed set into `test-stubs/sepolia-stubs.env` per PB-D21 (v), replacing the committed fork-sample addresses with live Sepolia ones, is rung i rather than this one.
+
+## 8. Rung h — the pre-broadcast dry run
+
+Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast command of section 6. Phase B runs per step, interleaved with that sequence.
+
+**Why this is two phases and not one dry run.** Two mechanics rule out a single upfront full-sequence run. Simulation sends nothing, so the deployer nonce never advances: every step simulated before any broadcast places its CREATEs at the same live nonce, never at the chained nonce it will occupy, so a chained projection cannot be verified in advance even in principle. And every step past the vault consumes a live predecessor, so it reverts pre-broadcast against an address carrying no code, for a reason unrelated to prediction. Phase A therefore computes the projections analytically; phase B verifies each one against reality at the moment it becomes checkable.
+
+**Simulation form.** Every command in phase A and phase B is a section 6 command with `--broadcast` omitted: `forge script <path>:<Contract> --rpc-url $SEPOLIA_RPC_URL --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Nothing is sent and no nonce moves.
+
+**Reading a transaction count.** The count is the number of entries in the `transactions` array of the dry-run artifact forge writes under `broadcast/<ScriptFile>.s.sol/11155111/dry-run/run-latest.json` — `jq '.transactions | length' <that path>`, or without jq `grep -o '"transactionType"' <that path> | wc -l`. Confirm the artifact path on the first invocation and use whatever path forge actually reports if it differs on this toolchain.
+
+### Phase A — before any broadcast
+
+**A1. Record the live nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --rpc-url $SEPOLIA_RPC_URL`. Call it `n0`. Every projection below is relative to it, and any transaction sent from the deployer between A1 and the first broadcast invalidates all of them — if that happens, restart phase A.
+
+**A2. Count step 1.** Simulate `DeployTestnetStubs`. Record the count as `c1` in section 5 row 1.
+
+**A3. Project the vault step.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1>` is the authorizer; `--nonce <n0 + c1 + 1>` is the fee controller, which is `FEE_CONTROLLER`; `--nonce <n0 + c1 + 2>` is the vault factory. The Vault itself is a CREATE3 from that factory using the RAW `SALT` value — not the sender-hashed form — per the derivation in the closing subsection. Write it to both `VAULT` and `AUREUM_VAULT`.
+
+**A4. Count step 2.** Set `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` to any non-zero placeholder for this run only. The fee controller zero-checks both (`ZeroBodenseeAddress`, `ZeroHookAddress`) but never calls them, so a placeholder passes and no code is needed at either address. Simulate `DeployAureumVault`. Record the count as `c2` in section 5 row 2. The addresses this run reports will NOT match the A3 projections, because the simulation runs at `n0` rather than at `n0 + c1`. That divergence is expected and is not an error. Take only the count from this run and write none of its addresses into `.env`.
+
+**A5. Project the weighted-pool factory.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1 + c2>`. Write it to both `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY`, one address under two keys per PB-D27 (ix).
+
+**A6. Count step 3.** With `AUREUM_VAULT` holding the A3 projection, simulate `DeployAureumWeightedPoolFactory`. Record the count as `c3` in section 5 row 3. The projected vault needs no code here: the constructor chain is pure storage — `WeightedPoolFactory` into `BasePoolFactory` stores `_creationCode`, `SingletonAuthentication` stores `_vault`, and nothing in that chain calls the vault.
+
+**A7. Project der Bodensee.** A CREATE3 from the A5 factory, using the SENDER-HASHED salt, per the closing subsection. Write it to `DER_BODENSEE_POOL`, replacing the A4 placeholder.
+
+**A8. Count step 4.** Set `GENESIS_BLOCK` first, per section 6 step 4. Simulate `DeployAuMM`. Record the count as `c4` in section 5 row 4.
+
+**A9. Project the fee-routing hook.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1 + c2 + c3 + c4>`. Write it to `FEE_ROUTING_HOOK`, replacing the A4 placeholder. This is the step the PB-D30 reorder exists to make computable: with the hook at step 5 no der-Bodensee count enters this sum, and der Bodensee at step 6 needs no nonce projection at all.
+
+**A10. Close phase A.** Section 5 rows 1 through 4 now hold real counts; rows 5 through 10 stay `PENDING-h` and fill from the broadcast itself at rung i, since no projection reads them. Before step 2 may run, `.env` must hold: `VAULT`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `WEIGHTED_POOL_FACTORY`, `AUREUM_WEIGHTED_POOL_FACTORY`, `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK`, all from the projections above and none from a simulation's reported output.
+
+### Phase B — interleaved with the broadcast
+
+**Before each broadcast step, simulate it.** Run that step's exact section 6 command with `--broadcast` omitted, and confirm the address it reports equals the projection already in `.env`. By this point the step's predecessors are live, so the simulation runs at the true nonce and its reported address is the one the send will produce. Any divergence aborts the sequence — do not broadcast the step and do not edit the projection to match.
+
+**The self-asserts do this for three steps automatically.** `FactoryAddressMismatch`, `HookAddressMismatch` and `BodenseeAddressMismatch` fire identically under simulation and under broadcast, so for steps 2, 5 and 6 a mismatch reverts the simulation rather than requiring a manual compare.
+
+**What phase B cannot undo.** The vault seals `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` as immutables at step 2. If either projection is wrong, it is already immutable by the time step 5 or step 6 asserts against it: the assert stops the sequence compounding but cannot unwind the vault, and recovery is a full restart of the whole sequence on fresh addresses. That is the accepted failure mode PB-D27 (iv) records, tolerable on testnet gas, and it is why the A3 through A9 arithmetic is double-checked before step 2 rather than trusted to the asserts.
+
+### The CREATE3 derivation
+
+`CREATE3.getDeployed(salt, creator)` at `lib/balancer-v3-monorepo/pkg/solidity-utils/contracts/solmate/CREATE3.sol` L64-L86 is two steps: a CREATE2 proxy from the creator, then a plain CREATE from that proxy at nonce 1. Both are computable with stock `cast`, in four commands. The proxy init-code hash is `0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f`, reproducible as `cast keccak 0x67363d3d37363d34f03d5260086018f3`; confirm it matches before relying on it.
+
+For der Bodensee the salt is sender-hashed, because `BasePoolFactory._computeFinalSalt` hashes the broadcast sender: `cast keccak $(cast abi-encode "f(address,uint256,bytes32)" 0xA851478dbee97375E784e9b98c0D7D599662bF85 11155111 $BODENSEE_SALT)` gives the final salt; then `cast create2 --deployer <the A5 factory> --salt <that final salt> --init-code-hash 0x21c35dbe1b344a2488cf3321d6ce542f8e9f305544ff09e4993a62319a497c1f` gives the proxy; then `cast compute-address <that proxy> --nonce 1` gives the pool.
+
+For the Vault the salt is RAW — the vault factory's CREATE3 does not hash the sender — so the same three commands run with `--salt $SALT` directly and `--deployer <the A3 vault factory>`. Applying the sender-hashed form to the Vault, or the raw form to der Bodensee, produces a wrong address that nothing catches until the corresponding step aborts.
+
+**Residual, recorded rather than closed.** Nothing validates this command chain independently before the vault seals its output. Its correctness rests on matching the CREATE3.sol derivation above and on the proxy hash matching the published solmate constant. The first live confirmation is `BodenseeAddressMismatch` at step 6, which is after the sealing step.
