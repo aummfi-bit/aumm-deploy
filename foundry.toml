@@ -27,6 +27,10 @@ evm_version = "cancun"
 bytecode_hash = "none"
 cbor_metadata = false
 
+# PB-D33: `script/DeployAureumVault.s.sol` reads the Vault creation codes from the
+# artifacts built by `FOUNDRY_PROFILE=vault forge build`, which needs read access here.
+fs_permissions = [{ access = "read", path = "./out-vault" }]
+
 # Test verbosity defaults
 verbosity = 2
 
@@ -85,3 +89,58 @@ sepolia = "${SEPOLIA_RPC_URL}"
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }
+
+# ---------------------------------------------------------------------------
+# PB-D33 option C — the Balancer vault build.
+#
+# `Vault.sol` overruns the EIP-170 24,576-byte limit under this project's default
+# settings and cannot be deployed at all. Balancer compiled their mainnet Vault at
+# 500 optimizer runs WITH an explicit Yul optimizer step sequence; the step sequence
+# alone is worth 782 bytes and is what brings the artifact under the limit. Verified
+# against the Sourcify `exact_match` standard-json input for the deployed Vault at
+# 0xbA1333333333a1BA1108E8412f11850A5C319bA9.
+#
+# These settings are deliberately CONFINED to this profile. Applying them project-wide
+# was tried and rejected: it compiles `src/` and `script/` correctly but breaks the test
+# tree with an unattributable Yul stack-too-deep exception, and at 9999 runs it is
+# computationally intractable at this tree's size. See docs/STAGE_P_BIS_NOTES.md PB-D33.
+#
+# Build with:  FOUNDRY_PROFILE=vault forge build
+# Consumed by: script/DeployAureumVault.s.sol via vm.getCode()
+#
+# Keys under optimizer_details are camelCase, NOT snake_case. Foundry drops multi-word
+# snake_case keys here SILENTLY — no error, no warning — and the only symptom is a
+# larger artifact. Verify any change with `forge build --build-info`, which writes the
+# literal standard-json handed to solc.
+# ---------------------------------------------------------------------------
+[profile.vault]
+src = "lib/balancer-v3-monorepo/pkg/vault/contracts"
+out = "out-vault"
+test = "lib/balancer-v3-monorepo/pkg/vault/contracts"
+script = "lib/balancer-v3-monorepo/pkg/vault/contracts"
+# solc 0.8.30, NOT the project's 0.8.26. At 500 runs with the step sequence below,
+# 0.8.26 raises an internal compiler error ("Assembly exception for bytecode") on this
+# tree — at every scope tried, down to Vault.sol's own closure. Balancer's own source
+# compiles fine at these exact settings, so the trigger is our submodule revision, which
+# PB-D33 (viii) already records as drifted. 0.8.30 compiles the package cleanly. The
+# version delta is worth 2 bytes on Vault, measured. [profile.default] stays on 0.8.26.
+solc = "0.8.30"
+optimizer = true
+optimizer_runs = 500
+via_ir = true
+evm_version = "cancun"
+bytecode_hash = "none"
+cbor_metadata = false
+[profile.vault.optimizer_details]
+peephole = true
+inliner = true
+jumpdestRemover = true
+orderLiterals = true
+deduplicate = true
+cse = true
+constantOptimizer = true
+yul = true
+simpleCounterForLoopUncheckedIncrement = true
+[profile.vault.optimizer_details.yulDetails]
+stackAllocation = true
+optimizerSteps = "dhfoDgvulfnTUtnIf [ xa[r]EscLM cCTUtTOntnfDIul Lcul Vcul [j] Tpeul xa[rul] xa[r]cL gvif CTUca[r]LSsTFOtfDnca[r]Iulc ] jmul[jul] VcTOcul jmul : fDnTOcmu"

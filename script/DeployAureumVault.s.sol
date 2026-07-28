@@ -9,10 +9,6 @@ import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol"
 
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 
-import { Vault } from "@balancer-labs/v3-vault/contracts/Vault.sol";
-import { VaultAdmin } from "@balancer-labs/v3-vault/contracts/VaultAdmin.sol";
-import { VaultExtension } from "@balancer-labs/v3-vault/contracts/VaultExtension.sol";
-
 import { AureumAuthorizer } from "../src/vault/AureumAuthorizer.sol";
 import { AureumProtocolFeeController } from "../src/vault/AureumProtocolFeeController.sol";
 import { AureumVaultFactory } from "../src/vault/AureumVaultFactory.sol";
@@ -135,15 +131,18 @@ contract DeployAureumVault is Script {
         // -- 1. Hash the three creation codes -----------------------------
         // The factory stores these as immutables and reverts in `create()`
         // if the runtime-supplied creation code does not hash to the stored
-        // value. Computing them here once from `type(X).creationCode` means
-        // the script and the factory agree by construction. Inlined
-        // (rather than via intermediate `bytes memory` locals) to keep the
-        // Yul stack-frame size of _deploy within the IR optimiser's limit
+        // value. These are read from the `out-vault` artifacts, not from
+        // `type(X).creationCode`: `Vault.sol` overruns the EIP-170 limit under
+        // this project's default compiler settings and is only deployable when
+        // built by the vault profile (PB-D33). Reading the artifacts means the
+        // hashes and the bytes passed to `create()` are the same compilation.
+        // BUILD PREREQUISITE: run `FOUNDRY_PROFILE=vault forge build` first.
+        // Inlined (rather than via intermediate `bytes memory` locals) to keep
+        // the Yul stack-frame size of _deploy within the IR optimiser's limit
         // after the D-D7 addition of a third constructor argument.
-
-        bytes32 vaultCreationCodeHash = keccak256(type(Vault).creationCode);
-        bytes32 vaultAdminCreationCodeHash = keccak256(type(VaultAdmin).creationCode);
-        bytes32 vaultExtensionCreationCodeHash = keccak256(type(VaultExtension).creationCode);
+        bytes32 vaultCreationCodeHash = keccak256(vm.getCode("out-vault/Vault.sol/Vault.json"));
+        bytes32 vaultAdminCreationCodeHash = keccak256(vm.getCode("out-vault/VaultAdmin.sol/VaultAdmin.json"));
+        bytes32 vaultExtensionCreationCodeHash = keccak256(vm.getCode("out-vault/VaultExtension.sol/VaultExtension.json"));
 
         // -- 2. Predict the factory's eventual address --------------------
         // The factory will be the N-th CREATE from `deployer`, where N is
@@ -208,9 +207,9 @@ contract DeployAureumVault is Script {
         aureumFactory.create(
             salt,
             predictedVault,
-            type(Vault).creationCode,
-            type(VaultExtension).creationCode,
-            type(VaultAdmin).creationCode
+            vm.getCode("out-vault/Vault.sol/Vault.json"),
+            vm.getCode("out-vault/VaultExtension.sol/VaultExtension.json"),
+            vm.getCode("out-vault/VaultAdmin.sol/VaultAdmin.json")
         );
 
         // -- 5. Final sanity check ----------------------------------------
