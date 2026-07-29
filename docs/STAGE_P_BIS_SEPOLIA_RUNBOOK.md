@@ -223,6 +223,8 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 **Simulation form.** Every command in phase A and phase B is a section 6 command with `--broadcast` omitted: `forge script <path>:<Contract> --rpc-url $SEPOLIA_RPC_URL --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Nothing is sent and no nonce moves.
 
+**Where phase A writes.** Every projection phase A computes is written into `.env.sepolia`, never into `.env` directly, per section 1's write-direction rule. Phase A's simulations read `.env` like any other command, and several of them read a key an earlier step just projected — A6 reads `AUREUM_VAULT` from A3, A8 reads `GENESIS_BLOCK` — so run `cp .env.sepolia .env` after each write and before the next simulation. A projection that never reaches `.env` produces a simulation that fails on an empty key, or worse one that silently runs against the previous value.
+
 **Reading a transaction count.** The count is the number of entries in the `transactions` array of the dry-run artifact forge writes under `broadcast/<ScriptFile>.s.sol/11155111/dry-run/run-latest.json` — `jq '.transactions | length' <that path>`, or without jq `grep -o '"transactionType"' <that path> | wc -l`. Confirm the artifact path on the first invocation and use whatever path forge actually reports if it differs on this toolchain.
 
 ### Phase A — before any broadcast
@@ -233,7 +235,7 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 **A3. Project the vault step.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1>` is the authorizer; `--nonce <n0 + c1 + 1>` is the fee controller, which is `FEE_CONTROLLER`; `--nonce <n0 + c1 + 2>` is the vault factory. The Vault itself is a CREATE3 from that factory using the RAW `SALT` value — not the sender-hashed form — per the derivation in the closing subsection. Write it to both `VAULT` and `AUREUM_VAULT`.
 
-**A4. Count step 2.** Set `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` to any non-zero placeholder for this run only. The fee controller zero-checks both (`ZeroBodenseeAddress`, `ZeroHookAddress`) but never calls them, so a placeholder passes and no code is needed at either address. Simulate `DeployAureumVault`. Record the count as `c2` in section 5 row 2. The addresses this run reports will NOT match the A3 projections, because the simulation runs at `n0` rather than at `n0 + c1`. That divergence is expected and is not an error. Take only the count from this run and write none of its addresses into `.env`.
+**A4. Count step 2.** Set `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` to any non-zero placeholder for this run only. The fee controller zero-checks both (`ZeroBodenseeAddress`, `ZeroHookAddress`) but never calls them, so a placeholder passes and no code is needed at either address. Simulate `DeployAureumVault`. Record the count as `c2` in section 5 row 2. The addresses this run reports will NOT match the A3 projections, because the simulation runs at `n0` rather than at `n0 + c1`. That divergence is expected and is not an error. Take only the count from this run and write none of its addresses into `.env.sepolia`.
 
 **A5. Project the weighted-pool factory.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1 + c2>`. Write it to both `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY`, one address under two keys per PB-D27 (ix).
 
@@ -245,7 +247,7 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 **A9. Project the fee-routing hook.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1 + c2 + c3 + c4>`. Write it to `FEE_ROUTING_HOOK`, replacing the A4 placeholder. This is the step the PB-D30 reorder exists to make computable: with the hook at step 5 no der-Bodensee count enters this sum, and der Bodensee at step 6 needs no nonce projection at all.
 
-**A10. Close phase A.** Section 5 rows 1 through 4 now hold real counts; rows 5 through 10 stay `PENDING-h` and fill from the broadcast itself at rung i, since no projection reads them. Before step 2 may run, `.env` must hold: `VAULT`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `WEIGHTED_POOL_FACTORY`, `AUREUM_WEIGHTED_POOL_FACTORY`, `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK`, all from the projections above and none from a simulation's reported output.
+**A10. Close phase A.** Section 5 rows 1 through 4 now hold real counts; rows 5 through 10 stay `PENDING-h` and fill from the broadcast itself at rung i, since no projection reads them. Before step 2 may run, `.env.sepolia` must hold, with `.env` refreshed from it: `VAULT`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `WEIGHTED_POOL_FACTORY`, `AUREUM_WEIGHTED_POOL_FACTORY`, `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK`, all from the projections above and none from a simulation's reported output.
 
 ### Phase B — interleaved with the broadcast
 
