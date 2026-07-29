@@ -92,7 +92,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 **Salts pinned for this deployment.** `SALT` is `0x0000000000000000000000000000000000000000000000000000000000000001`. `BODENSEE_SALT` is `0x0000000000000000000000000000000000000000000000000000000000000002`, matching the PB3.4 rehearsal so that the rung h dry run exercises the same der-Bodensee derivation the live broadcast will. `.env.example` L96 carries a zero value for `BODENSEE_SALT` and is stale against this decision; correcting it is a later rung, and the value above is authoritative.
 
-**Keys absent from `.env.example`.** `EMERGENCY_MULTISIG` (read by `DeployStageK.s.sol` L125), `WETH_ADDRESS` and `GENESIS_BLOCK` are all consumed by this sequence but are not in the committed template. Add them before the steps that need them. `WETH_ADDRESS` has no Sepolia value anywhere in this repo — the fork fixtures inject the mainnet WETH literal, which has no code on Sepolia — so a Sepolia WETH must be pinned by the operator before step 7.
+**Keys absent from `.env.example`.** `EMERGENCY_MULTISIG` (read by `DeployStageK.s.sol` L125), `WETH_ADDRESS` and `GENESIS_BLOCK` are all consumed by this sequence but are not in the committed template. Add them to `.env.sepolia` before the steps that need them. `WETH_ADDRESS` has no Sepolia value anywhere in this repo — the fork fixtures inject the mainnet WETH literal, which has no code on Sepolia — so a Sepolia WETH must be pinned by the operator before step 7.
 
 **Aliases the orchestrator bridges, and the ones it does not.** `DeployStageP` sets `VAULT_EXPLORER` and `SVZCHF` from `VAULT` and `SV_ZCHF` inside its own process (L152-L153), so neither is an operator obligation. Every other alias pair below IS: `VAULT` and `AUREUM_VAULT` hold the same address under two keys, and so do `BODENSEE_POOL` and `DER_BODENSEE_POOL`. Setting only one of a pair leaves a later step reading an empty key and aborting mid-sequence.
 
@@ -101,7 +101,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 - Command: `forge script test-stubs/DeployTestnetStubs.s.sol:DeployTestnetStubs`
 - Reads: the `DECIMALS_` table merged per prerequisite 5. Every STANDARD slot reads its key with no default, so a missing entry aborts before any stub is constructed.
 - Emits: the stub map on stdout, already `.env`-shaped, as `STUB_<mainnet literal>=<sepolia stub>` pairs plus seven named keys: `WAETHWSTETH_COMPOSITE_RATE_PROVIDER`, `SFRXETH_RATE_PROVIDER`, `WOETH_RATE_PROVIDER`, `YSYBOLD_RATE_PROVIDER`, `SCRVUSD_RATE_PROVIDER`, `SV_ZCHF`, `SUSDS`.
-- Capture: redirect the emitted map and append it to `.env`. Because the emission is already `.env`-shaped this is a redirect, not a parse (PB-D27 (iii)). It must land before step 5, which is the first consumer of `SV_ZCHF`, `SUSDS` and the two rate-provider `STUB_` keys.
+- Capture: redirect the emitted map and append it to `.env.sepolia`. Because the emission is already `.env`-shaped this is a redirect, not a parse (PB-D27 (iii)). It must land before step 5, which is the first consumer of `SV_ZCHF`, `SUSDS` and the two rate-provider `STUB_` keys.
 
 **Step 2 — Aureum Vault.**
 
@@ -109,14 +109,14 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 - Reads: `GOVERNANCE_MULTISIG`, `DER_BODENSEE_POOL`, `FEE_ROUTING_HOOK`, `SALT`, `PAUSE_WINDOW_DURATION`, `BUFFER_PERIOD_DURATION`, `MIN_TRADE_AMOUNT`, `MIN_WRAP_AMOUNT`. The two prediction keys must already hold the section 3 projections.
 - Emits: nothing on stdout. This script logs no address.
 - Capture: none is required, and none should be parsed out of `broadcast/*.json`. All four addresses are projections the operator already computed: the authorizer at nonce N, the fee controller at N+1, the vault factory at N+2, and the Vault as `CREATE3.getDeployed(SALT, factory)`. The script asserts the factory itself at L203-L205; the broadcast confirms the projection rather than revealing it.
-- Set in `.env`: `VAULT` and `AUREUM_VAULT`, both to the projected Vault address, and `FEE_CONTROLLER` to the nonce-N+1 projection.
+- Set in `.env.sepolia`: `VAULT` and `AUREUM_VAULT`, both to the projected Vault address, and `FEE_CONTROLLER` to the nonce-N+1 projection.
 
 **Step 3 — weighted pool factory.**
 
 - Command: `forge script script/DeployAureumWeightedPoolFactory.s.sol:DeployAureumWeightedPoolFactory`
 - Reads: `AUREUM_VAULT`.
 - Emits: `Aureum WeightedPoolFactory (WPF) deployed at:` followed by the address.
-- Set in `.env`: `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY`, both to that one address, per PB-D27 (ix). Sepolia deploys the UPSTREAM Balancer factory; the two `create()` parameter lists are selector-identical, so the pool scripts' Aureum-typed cast dispatches against it and executes the upstream body with the factory-level quality gate skipped silently. The script-side gate remains operative, so the admitted set is unchanged.
+- Set in `.env.sepolia`: `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY`, both to that one address, per PB-D27 (ix). Sepolia deploys the UPSTREAM Balancer factory; the two `create()` parameter lists are selector-identical, so the pool scripts' Aureum-typed cast dispatches against it and executes the upstream body with the factory-level quality gate skipped silently. The script-side gate remains operative, so the admitted set is unchanged.
 - Confirm the logged address equals the projection used to derive der Bodensee in section 3. A divergence here invalidates that derivation and the sequence must stop.
 
 **Step 4 — AuMM.**
@@ -125,7 +125,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 - Reads: `GENESIS_BLOCK`, `GOVERNANCE_MULTISIG`.
 - Set `GENESIS_BLOCK` immediately before this step, to the current Sepolia head plus one epoch of blocks per PB-D19, decoupling the emission clock from deploy time. `DeployAuMM.s.sol` L33 reads it with no `block.number` clamp, so the value is taken literally.
 - Emits: `AuMM deployed at:` followed by the address.
-- Set in `.env`: `AUMM`.
+- Set in `.env.sepolia`: `AUMM`.
 
 **Step 5 — fee routing hook.**
 
@@ -133,7 +133,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 - Reads: `FEE_ROUTING_HOOK`, `VAULT`, `DER_BODENSEE_POOL`, `SV_ZCHF`, `SUSDS`, `AUMM`, `FEE_CONTROLLER`, `GOVERNANCE_MULTISIG`.
 - Emits: `AureumFeeRoutingHook deployed at:` followed by the address.
 - The script asserts the deployed hook equals `FEE_ROUTING_HOOK` and reverts `HookAddressMismatch` otherwise, before the success log.
-- Set in `.env`: nothing new. `FEE_ROUTING_HOOK` already holds the projection; confirm the logged address matches it.
+- Set in `.env.sepolia`: nothing new. `FEE_ROUTING_HOOK` already holds the projection; confirm the logged address matches it.
 - This step precedes der Bodensee deliberately, per PB-D30. `DER_BODENSEE_POOL` is read here as a projection only — the hook's constructor zero-checks it and then stores it without ever calling it, so der Bodensee needs no code yet, and `DeployDerBodensee` in turn reads no `FEE_ROUTING_HOOK` key at all. Do not restore the older Bodensee-then-hook order: it puts a step that cannot be simulated before the broadcast inside the hook's own nonce projection, which is what made the pre-broadcast count set unobtainable.
 
 **Step 6 — der Bodensee.**
@@ -142,14 +142,14 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 - Reads: `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `GOVERNANCE_MULTISIG`, `BODENSEE_SALT`, `DER_BODENSEE_POOL`, plus the two rate-provider `STUB_` keys from step 1.
 - Emits: `der-Bodensee pool deployed at:` followed by the address.
 - The script asserts the created pool equals `DER_BODENSEE_POOL` and reverts `BodenseeAddressMismatch` otherwise, before the success log.
-- Set in `.env`: `BODENSEE_POOL`, to the same address. Do NOT rewrite `DER_BODENSEE_POOL` — it already holds the projection, and the two keys are read by different scripts.
+- Set in `.env.sepolia`: `BODENSEE_POOL`, to the same address. Do NOT rewrite `DER_BODENSEE_POOL` — it already holds the projection, and the two keys are read by different scripts.
 
 **Step 7 — Router.**
 
 - Command: `forge script script/DeployRouter.s.sol:DeployRouter`
 - Reads: `AUREUM_VAULT`, `WETH_ADDRESS`, `PERMIT2_ADDRESS`. `PERMIT2_ADDRESS` is the canonical cross-chain instance verified present at PB3.1; `WETH_ADDRESS` is the operator-pinned Sepolia value described above.
 - Emits: `Aureum Router deployed at:` followed by the address.
-- Set in `.env`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
+- Set in `.env.sepolia`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
 
 **Gas budget (PB-D27 (vii)(1)).** The full spine — testnet stubs through the Router seat, replayed end-to-end at `test/fork/StagePRunRehearsal.t.sol` `setUp()` — measures 367,079,280 gas, identical across all nine fork tests: `setUp` re-runs per test, so nine matching values is the harness's own determinism check, confirming nothing nondeterministic sits in the deployment path. At 1-3 gwei Sepolia basefee this is 0.37-1.10 SepETH. The figure is a floor, not the live cost: `forge script --broadcast` sends each `new X(...)` as its own transaction, adding per-transaction intrinsic gas plus init-code calldata at 16 gas/byte on top of the fork-measured opcode cost, on the order of 2-3%. Fund the deployer to roughly 1-2 SepETH via the pk910 PoW faucet before starting phase 1 — the 0.05 SepETH from PB3.1 is 7 to 22 times short.
 
