@@ -86,7 +86,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 **Invocation form.** Every command in this section is `forge script <path>:<Contract> --rpc-url $SEPOLIA_RPC_URL --broadcast --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Once `ETHERSCAN_API_KEY` is provisioned per prerequisite 3, append `--verify --etherscan-api-key $ETHERSCAN_API_KEY`.
 
-**Capture and refresh.** Every address this section captures is written into `.env.sepolia`, never into `.env` directly, per section 1's write-direction rule. Because forge reads only `.env`, run `cp .env.sepolia .env` after each capture and before the next command — a step whose predecessor captured a key it needs will otherwise read the pre-capture value, aborting on an empty key or sealing a stale address into an immutable. Before step 1, confirm the posture once with `grep -c '^AUMM_ENV_CHAIN=sepolia$' .env`, which must return exactly 1.
+**Capture and refresh.** Every address this runbook captures is written into `.env.sepolia`, never into `.env` directly, per section 1's write-direction rule. Because forge reads only `.env`, run `cp .env.sepolia .env` after each capture and before the next command — a step whose predecessor captured a key it needs will otherwise read the pre-capture value, aborting on an empty key or sealing a stale address into an immutable. Before step 1, confirm the posture once with `grep -c '^AUMM_ENV_CHAIN=sepolia$' .env`, which must return exactly 1.
 
 **Key posture (PB-D27 (vii)(3)).** The deployer key is imported once into forge's keystore with `cast wallet import aumm-sepolia --interactive` and referenced thereafter as `--account aumm-sepolia`. The key never appears on a command line, in shell history, or in `.env`. Chosen over per-invocation `--interactive` because this sequence runs to roughly three dozen invocations and paste-fatigue across that many prompts is its own failure mode.
 
@@ -157,13 +157,13 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 **Phase 3 — the 26 Miliarium pools.**
 
-All 26 are Miliarium pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry. The `PILOT_`, `MAJOR_` and `MILIARIUM_` prefixes on the `.env` keys record only which stage each pool first landed in, and carry no meaning at deploy time. Reading `MAJOR_POOL_03` as a different kind of pool from `MILIARIUM_POOL_12` is the misreading this paragraph exists to prevent.
+All 26 are Miliarium pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry. The `PILOT_`, `MAJOR_` and `MILIARIUM_` prefixes on the `.env.sepolia` keys record only which stage each pool first landed in, and carry no meaning at deploy time. Reading `MAJOR_POOL_03` as a different kind of pool from `MILIARIUM_POOL_12` is the misreading this paragraph exists to prevent.
 
 Each pool is its own invocation, in the same form as section 6. Every one of the 26 scripts emits the SAME stdout line — `Miliarium pool deployed at:` — from the shared base at `script/pools/deploy-miliarium-pool.s.sol` L129, with nothing in the line identifying which pool it was. Stdout alone therefore cannot tell the deployments apart. Run one script at a time and record its address before starting the next, or key the capture off `broadcast/<ScriptName>.s.sol/11155111/run-latest.json`, which is named per script and is unambiguous. Do not batch the 26 and reconcile the log afterwards.
 
 The slot each script fills appears nowhere in the script itself. The mapping below comes from `test/fork/StagePRunRehearsal.t.sol` L216-L256 paired with L268-L318, the only place in the repo binding script to key, validated by that fixture running 9/9 fork-green. It is listed in slot order; deployment order is unconstrained, since the pool scripts have no dependency on one another and every base-layer address projection is already fixed before phase 3 begins.
 
-| Slot | Script | `.env` key |
+| Slot | Script | `.env.sepolia` key |
 | --- | --- | --- |
 | 01 | `DeployIxHelvetia` | `PILOT_POOL_01` |
 | 02 | `DeployIxAetheron` | `MILIARIUM_POOL_02` |
