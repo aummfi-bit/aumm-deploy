@@ -98,6 +98,8 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 **Aliases the orchestrator bridges, and the ones it does not.** `DeployStageP` sets `VAULT_EXPLORER` and `SVZCHF` from `VAULT` and `SV_ZCHF` inside its own process (L152-L153), so neither is an operator obligation. Every other alias pair below IS: `VAULT` and `AUREUM_VAULT` hold the same address under two keys, and so do `BODENSEE_POOL` and `DER_BODENSEE_POOL`. Setting only one of a pair leaves a later step reading an empty key and aborting mid-sequence.
 
+**Which branch this sequence is on — read before running anything.** Section 6 is written for a GREENFIELD deployment that starts at step 1. The live Sepolia sequence is a RESUME: the 87 stubs at nonces 0—86 are already deployed and are reused from the committed `STUB_` map, so step 1 is NOT run and the sequence begins at step 2. Re-broadcasting step 1 mints a fresh stub roster from the live nonce upward, orphans the map every later step reads, and consumes the nonces all seven address projections derive from, voiding them and forcing phase A to restart against a re-funded deployer. Before step 2, confirm the reused map is real rather than assumed: every address in the `STUB_` block of `.env` must have code on chain, which is the confirm-and-skip form A2 takes on this branch. Per PB-D38 (ii); the live projections are in `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 7.
+
 **Step 1 — testnet stubs.**
 
 - Command: `forge script test-stubs/DeployTestnetStubs.s.sol:DeployTestnetStubs`
