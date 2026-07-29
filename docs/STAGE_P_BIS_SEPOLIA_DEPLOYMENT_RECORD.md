@@ -32,7 +32,58 @@ Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, held in t
 
 The live addresses are the `STUB_` block of `.env.sepolia`: 67 `STUB_<mainnet literal>=<sepolia stub>` pairs plus seven named keys. That file is gitignored, so those 87 addresses are presently unversioned. `test-stubs/sepolia-stubs.env` holds the FORK-SAMPLE map committed at PB3.2e3, which is a different value set and not a substitute. Closing that gap is an open item.
 
-## 3. Related
+## 3. Gas limits and the provider ceiling
+
+`forge script` sets each transaction's gas limit to the raw estimate scaled by `--gas-estimate-multiplier`, default 130. The figure it prints as `Estimated total gas used for script` IS that limit, not the raw estimate — confirmed by publicnode reporting `tx: 17552577` against a printed 17,552,577.
+
+**Four providers refused the Vault transaction at its default-multiplier limit of 17,552,577.**
+
+| Endpoint | Response | Cap disclosed |
+| --- | --- | --- |
+| Alchemy, the configured `SEPOLIA_RPC_URL` | `-32003` gas limit too high | none |
+| `ethereum-sepolia-rpc.publicnode.com` | `-32000` gas limit too high | **16,777,216**, exactly 2^24 |
+| `sepolia.drpc.org` | `-32000` INTERNAL_ERROR: gas limit is too high | none |
+| `1rpc.io/sepolia` | could not serve the head block it had just reported | not reached |
+
+The Sepolia block gas limit is 60,000,000, so every refusal is provider policy rather than chain capacity. `1rpc.io` failed differently and is unusable for `forge script` at all: a lagging or non-archive replica that answered `failed to get block number: 11376730; latest block number: 11376730`, so its ceiling was never learned.
+
+**The resolution is to lower the multiplier, never the estimate.** A refused submission is free and consumes no nonce; a mined out-of-gas consumes the nonce and, at nonce 93, was unrecoverable for the reason section 4 gives. So the limit is set as high as the provider ceiling allows rather than as low as seems safe: too high costs a round trip, too low costs the deployment.
+
+| Nonce | Transaction | Multiplier | Limit sent | Gas used | Limit used |
+| --- | --- | --- | --- | --- | --- |
+| 93 | Vault, CALL | 123 | 16,607,439 | 12,707,749 | 76.5% |
+| 94 | weighted pool factory, CREATE | 117 | 16,573,764 | 14,165,611 | 85.5% |
+| 95 | AuMM, CREATE | 130 | 1,002,948 | 771,499 | 76.9% |
+| 96 | fee-routing hook, CREATE | 130 | 3,684,240 | 2,834,031 | 76.9% |
+| 97 | der Bodensee, CALL | 130 | 7,030,275 | 4,807,026 | 68.4% |
+
+**A direct CREATE consumes its estimate exactly; a CALL does not.** At the default multiplier the two direct deployments each used precisely 1/1.30 of their limit — AuMM and the fee-routing hook both at 76.9% — and the weighted pool factory used precisely 1/1.17 of its trimmed limit. In all three the estimate equalled actual consumption to the gas. The two CALL transactions ran well under: the Vault by 5.9% and der Bodensee by 11.1%, slack the 63/64 rule builds in when a call deploys contracts internally.
+
+The operational consequence is that on a direct CREATE the multiplier is the entire safety margin, with no estimator conservatism beneath it. A trim must therefore be justified against the provider ceiling, not against a belief that the estimate runs high.
+
+**The Vault's own limit was 91.6% arithmetic.** Its 56,867 bytes of deployed code fix 11,373,400 gas of deposit cost at 200 gas per byte, plus roughly 970,192 for 60,637 bytes of init code carried as calldata and about 24,790 of intrinsic and EIP-3860 word cost — a floor near 12,368,382 against an estimate of roughly 13.5M. That ratio, not a tolerance for risk, is what made the trim to 123 defensible.
+
+## 4. The nonce-93 recovery
+
+`DeployAureumVault` was broadcast as one four-transaction sequence. The first three landed at nonces 90, 91 and 92 in block 11375957. The fourth, `factory.create()`, was refused at submission for exceeding the provider gas ceiling. Because a refusal never reaches the chain, nonce 93 remained unconsumed and every downstream projection stayed valid.
+
+**Re-running the script would have been destructive.** `_deploy` derives `predictedFactory` from the LIVE deployer nonce, so a second `run()` deploys a second authorizer, fee controller and vault factory at nonces 93, 94 and 95 and strands the sealed immutables of the first set.
+
+`script/CreateAureumVault.s.sol`, committed at `4d0157d`, is the create-only tail: it calls `create()` on the already-deployed factory, contains no new-expression, consumes exactly one nonce, and asserts twice before `startBroadcast` — that `getDeploymentAddress(salt)` equals the projected Vault, and that the Vault is not already deployed. Both asserts sit above the broadcast window, so a mismatch aborts before anything is signed.
+
+**Why burning nonce 93 would have been unrecoverable.** The fee controller at nonce 91 seals `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK` as constructor immutables, and those addresses derive from nonces 94 and 96. A consumed nonce 93 shifts the weighted pool factory to 95 and the hook to 97, making both sealed values wrong. Correcting them requires a new fee controller, whose address is itself sealed into the factory at nonce 92, which requires a new factory. The cascade is a full base-layer restart in which only the 87 stubs survive — the accepted failure mode PB-D27 (iv) records.
+
+## 5. On-chain verification evidence
+
+Every step was confirmed at a second endpoint and at a later block than inclusion, because a load-balanced provider served stale nonce and code for at least one block after the refused broadcast, and a single post-broadcast read wrongly reported that nothing had been sent when three contracts had landed.
+
+* **Option F2 confirmed live.** `Vault.getProtocolFeeController()` returns `0xb424796989Ba0Baaaa879Db0C0d1FEf638fEa3ef`, the nonce-91 controller — the external `IProtocolFeeController` injection the `AureumVaultFactory` fork exists to permit, working outside a fork test for the first time.
+* **Mutual immutables closed.** `hook.FEE_CONTROLLER()` returns the controller and `controller.FEE_ROUTING_HOOK()` returns the hook: two immutables sealed six transactions apart, each naming the other.
+* **Genesis sealed as intended.** `AuMM.GENESIS_BLOCK()` returns 11477620, set from live head 11376820 plus exactly 100,800 per PB-D19. `MAX_SUPPLY` reads 21e24, `totalSupply` reads 0 and `minter` reads the zero address — the fair-launch claim made checkable by anyone, with the minter slot awaiting the Stage K handoff.
+* **PB-D26 validated live.** `getPoolTokens` on der Bodensee returns sUSDS, svZCHF, AuMM in ascending address order, which is the runtime sort proving itself on the exact defect that reverted ixAurebit in the PB3.4 rehearsal.
+* **Deployed sizes match the artifacts.** The Vault reads 24,393 bytes on chain, the figure `test/unit/BytecodeSize.t.sol` gates at 183 bytes under the EIP-170 limit.
+
+## 6. Related
 
 - Projections confirmed by this record: `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 7.
 - Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8.
