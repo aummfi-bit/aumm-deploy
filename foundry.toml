@@ -29,7 +29,14 @@ cbor_metadata = false
 
 # PB-D33: `script/DeployAureumVault.s.sol` reads the Vault creation codes from the
 # artifacts built by `FOUNDRY_PROFILE=vault forge build`, which needs read access here.
-fs_permissions = [{ access = "read", path = "./out-vault" }]
+#
+# PB-D37 (vi): `test/unit/BytecodeSize.t.sol` walks `src/` with `vm.readDir` to assert that
+# the hand-listed contract roster still covers every source file, which needs read access
+# to `./src`.
+fs_permissions = [
+    { access = "read", path = "./out-vault" },
+    { access = "read", path = "./src" },
+]
 
 # Test verbosity defaults
 verbosity = 2
