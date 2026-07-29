@@ -73,6 +73,18 @@ The projections below are retained only as the record of what phase A computed. 
 | CREATE3 | `VAULT` / `AUREUM_VAULT` | `0xD3c076a2B096A8b7B6744A078473C20b5E8a6c03` |
 | CREATE3 | `DER_BODENSEE_POOL` | `0xbE98Bbd2856d8694b42A47585c5F65011f5FD0Bc` |
 
+**Superseded by the PB3.5i8 re-run.** The table above is history. Phase A re-ran on 2026-07-29 from the live nonce `n0 = 90` with `c1` omitted per PB-D38 (ii), because the 87 stubs at nonces 0—86 are reused rather than redeployed. The set below is CANONICAL and is what `.env.sepolia` now holds. Note the overlap: nonces 91, 92 and 93 appear in BOTH tables carrying DIFFERENT keys, because an address is a pure function of deployer and nonce — no pair may be copied from the void table.
+
+| Nonce | Key | Address — CANONICAL |
+| --- | --- | --- |
+| 90 | *(authorizer, no env key)* | `0x21E5f855B45943d18Fa2A76635A06D024d1f0E3A` |
+| 91 | `FEE_CONTROLLER` | `0xb424796989Ba0Baaaa879Db0C0d1FEf638fEa3ef` |
+| 92 | *(vault factory, no env key)* | `0x0321Cc252D09C30E21D59B17f667c2e6e43f2855` |
+| 94 | `WEIGHTED_POOL_FACTORY` / `AUREUM_WEIGHTED_POOL_FACTORY` | `0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F` |
+| 96 | `FEE_ROUTING_HOOK` | `0x954c972170eC131364570658D42F14e833A08588` |
+| CREATE3 | `VAULT` / `AUREUM_VAULT` | `0x9c7e8F56D12823609C28788d4b80a315CcC5fC80` |
+| CREATE3 | `DER_BODENSEE_POOL` | `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798` |
+
 `GENESIS_BLOCK` is deliberately a `999999999` placeholder — set it to Sepolia head plus 100,800 immediately before step 4 per PB-D19. The Etherscan API key is still absent.
 
 `.env` is gitignored. Its projection set is now void; its live 67-pair `STUB_` map is the part that still matters, and losing that machine means redeploying the stubs as well as re-running phase A.
