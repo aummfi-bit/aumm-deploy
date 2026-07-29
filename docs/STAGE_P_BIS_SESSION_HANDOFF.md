@@ -47,7 +47,7 @@ The irreversible portion of step 2 completed correctly. Nothing on chain is corr
 
 ## 3. Hard constraint
 
-**The deployer EOA must send nothing until the new phase A has been run.** The projections that were offsets from nonce 90 are already void, for the reason section 4 gives, so a stray transaction no longer destroys them. What still holds is narrower and just as strict: phase A must be re-derived from whatever nonce is live once the corrected build exists, and that derivation is valid only if the nonce holds still from the moment it is read until step 1 is broadcast. Per runbook section 8.
+**The deployer EOA must send nothing between the phase A nonce read and the step 2 broadcast.** Phase A re-ran on 2026-07-29 and its output is live: `n0 = 90` was read at A1, and all seven keys in section 4's canonical table derive from it. Any transaction sent from the deployer before step 2 is broadcast shifts the nonce and voids every one of them, forcing phase A to restart from a fresh `n0`. Note that on this resume step 1 is NOT re-broadcast — the 87 stubs are reused per PB-D38 (ii) — so step 2, `DeployAureumVault`, is the first broadcast of the sequence and the point at which the projected nonce range begins to be consumed. Per runbook section 8.
 
 ## 4. Recovery — the base layer is dead from nonce 87
 
