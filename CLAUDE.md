@@ -482,6 +482,7 @@ Loop grep-and-confirm per §6 / §8e; all git mutations in user's terminal; Curs
   - **PB12** — a fork sim that rolls `block.number` to mature an EMA also ramps `timeFactor` (`min(timeInPool, ON_RAMP_PERIOD_BLOCKS)/ON_RAMP_PERIOD_BLOCKS`, 180-day cap); pre-roll past the cap to pin it at 1.0 before measuring, or the observed delta conflates the on-ramp with the term under test.
   - **PB13** — net-new prose for Cursor to insert goes INSIDE the CURSOR PROMPT between explicit begin-insert / end-insert banners, never a separate review fence (else Cursor gets the instruction with an empty payload and stops).
   - **PB14** — a file's zero-hit grep sentinel runs against the drafted §8e.1 payload before handoff, not only the saved file after; a payload that names the banned token (even to say it was removed) defeats the file's invariant on faithful transcription — name it, don't quote it. Full recipe: `docs/STAGE_P_BIS_NOTES.md` PB14.
+  - **PB15** — a compiler-configuration surface is unverified until a build artifact confirms it: foundry drops wrong-case `optimizer_details` keys SILENTLY (they are camelCase, not snake_case), and a value that reads like a tool's documented default can still be load-bearing — `forge build --build-info` writes the literal standard-json handed to solc and is the diagnostic. Full recipe: `docs/STAGE_P_BIS_NOTES.md` PB15.
 
 ---
 
