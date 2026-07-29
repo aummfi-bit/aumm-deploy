@@ -32,9 +32,9 @@ Three files, two canonical and one derived. `.env.mainnet` and `.env.sepolia` ea
 | --- | --- | --- | --- |
 | 1 | `SEPOLIA_RPC_URL` reachable, chain id 11155111 | verified at PB3.1 | — |
 | 2 | Deployer EOA funded with SepETH | 0.05 at PB3.1; target ~1-2 SepETH per the rung f gas measurement, section 6 | before phase 1 |
-| 3 | `ETHERSCAN_API_KEY` present in `.env` | ABSENT at PB3.1 — must be provisioned | before verification |
+| 3 | `ETHERSCAN_API_KEY` present in both canonical files | ABSENT at PB3.1 — must be provisioned | before verification |
 | 4 | Canonical Permit2 at `0x000000000022D473030F116dDEE9F6B43aC78BA3` | verified present at PB3.1 | — |
-| 5 | `script/config/mainnet-token-decimals.env` merged into `.env` | committed at PB3.5b2 | before phase 1 |
+| 5 | `script/config/mainnet-token-decimals.env` merged into `.env.sepolia` | committed at PB3.5b2 | before phase 1 |
 
 ## 3. Prediction model
 
