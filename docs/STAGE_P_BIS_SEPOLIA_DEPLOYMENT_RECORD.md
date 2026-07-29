@@ -4,7 +4,7 @@ Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, held in t
 
 **Why this file exists.** `.gitignore` L6 excludes `broadcast/` and L15 excludes `.env.sepolia`, so forge's own run artifacts and the operator environment are both local-only and unversioned. Without this record a lost working tree would leave the chain as the sole source of truth, and the deployment would have to be reconstructed by forensics rather than read.
 
-## 1. Base layer — nonces 87 to 97
+## 1. Base layer — nonces 87 to 98
 
 | Nonce | Contract | Address | Block | Gas used | Transaction |
 | --- | --- | --- | --- | --- | --- |
@@ -19,6 +19,7 @@ Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, held in t
 | 95 | `AuMM` CREATE | `0xb8947f2fE2177d36f2f990300106f27c738DFC8D` | 11376849 | 771,499 | `0x4bf7d4cf5fa603cd3da00a10968fd29c76fd0633162815a5a0c7b61d26a8dd5e` |
 | 96 | `AureumFeeRoutingHook` CREATE | `0x954c972170eC131364570658D42F14e833A08588` | 11376875 | 2,834,031 | `0x75f78cf76d477bdd9f435f25ce7b383194d9636a35d325155f7e036d61c019d7` |
 | 97 | der Bodensee pool, via WPF `create()` CALL | `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798` | 11376924 | 4,807,026 | `0x63579432c28bbc5031507e0a1d6eabcede8f120a20eb144d3d13470c522e359b` |
+| 98 | `Router`, canonical Balancer V3, CREATE | `0xF0495705D3AFeC43A658D8451971c464df2CdF8a` | 11377215 | 5,024,459 | `0x00c940aee024fa0b0f216b6f87d2a228168a625f9845e8f253bd870f3f16a5b8` |
 
 **Nonces 87 to 89 are dead and abandoned in place.** They are the pre-EIP-170-fix base layer. `AureumVaultFactory` seals `keccak256(type(Vault).creationCode)` as a constructor immutable, and the Vault compiled at that revision overran the 24,576-byte limit, so the factory at nonce 89 is permanently bound to a Vault that cannot be deployed on any chain. PB-D32 through PB-D34 record the diagnosis and the scoped `[profile.vault]` fix. They are listed here because a block explorer shows them and a reader must be able to tell which set is live.
 
@@ -47,6 +48,8 @@ The live addresses are the `STUB_` block of `.env.sepolia`: 67 `STUB_<mainnet li
 
 The Sepolia block gas limit is 60,000,000, so every refusal is provider policy rather than chain capacity. `1rpc.io` failed differently and is unusable for `forge script` at all: a lagging or non-archive replica that answered `failed to get block number: 11376730; latest block number: 11376730`, so its ceiling was never learned.
 
+**`sepolia.drpc.org` is unreliable in a second, independent way.** Later in the same session it began answering `eth_blockNumber` and `eth_getCode` with `-32601 method does not exist/is not available` behind a Cloudflare front, while continuing to serve `eth_getTransactionCount` and `eth_getTransactionReceipt` normally. Partial method availability rather than an outage — so an endpoint that answers one verification call is not thereby proven able to answer the next, and a two-endpoint check must confirm that both endpoints actually answered.
+
 **The resolution is to lower the multiplier, never the estimate.** A refused submission is free and consumes no nonce; a mined out-of-gas consumes the nonce and, at nonce 93, was unrecoverable for the reason section 4 gives. So the limit is set as high as the provider ceiling allows rather than as low as seems safe: too high costs a round trip, too low costs the deployment.
 
 | Nonce | Transaction | Multiplier | Limit sent | Gas used | Limit used |
@@ -56,6 +59,7 @@ The Sepolia block gas limit is 60,000,000, so every refusal is provider policy r
 | 95 | AuMM, CREATE | 130 | 1,002,948 | 771,499 | 76.9% |
 | 96 | fee-routing hook, CREATE | 130 | 3,684,240 | 2,834,031 | 76.9% |
 | 97 | der Bodensee, CALL | 130 | 7,030,275 | 4,807,026 | 68.4% |
+| 98 | Router, CREATE | 130 | 6,531,796 | 5,024,459 | 76.9% |
 
 **A direct CREATE consumes its estimate exactly; a CALL does not.** At the default multiplier the two direct deployments each used precisely 1/1.30 of their limit — AuMM and the fee-routing hook both at 76.9% — and the weighted pool factory used precisely 1/1.17 of its trimmed limit. In all three the estimate equalled actual consumption to the gas. The two CALL transactions ran well under: the Vault by 5.9% and der Bodensee by 11.1%, slack the 63/64 rule builds in when a call deploys contracts internally.
 
@@ -82,6 +86,9 @@ Every step was confirmed at a second endpoint and at a later block than inclusio
 * **Genesis sealed as intended.** `AuMM.GENESIS_BLOCK()` returns 11477620, set from live head 11376820 plus exactly 100,800 per PB-D19. `MAX_SUPPLY` reads 21e24, `totalSupply` reads 0 and `minter` reads the zero address — the fair-launch claim made checkable by anyone, with the minter slot awaiting the Stage K handoff.
 * **PB-D26 validated live.** `getPoolTokens` on der Bodensee returns sUSDS, svZCHF, AuMM in ascending address order, which is the runtime sort proving itself on the exact defect that reverted ixAurebit in the PB3.4 rehearsal.
 * **Deployed sizes match the artifacts.** The Vault reads 24,393 bytes on chain, the figure `test/unit/BytecodeSize.t.sol` gates at 183 bytes under the EIP-170 limit.
+* **The Router exposes only `version()`.** Its `_vault`, `_weth` and `_permit2` immutables have no getters, so the vault binding cannot be read back from chain. `version()` returns `Aureum V3 Router v1 (Balancer V3 Router, pinned 68057fda)`, which proves the right code at the right address but says nothing about what it is bound to. Functional proof of the binding comes at the trusted-router seat with a credited add, the pattern `test/fork/RouterIntegration.t.sol` established.
+* **WETH provenance established by measurement, not convention.** `WETH_ADDRESS` is pinned to `0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14`, whose runtime code is 3,124 bytes and whose leading 6,000 hex characters are identical to mainnet WETH9 at `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2`. The two keccaks differ only because the trailing CBOR metadata differs. It is canonical WETH9's source recompiled rather than a reimplementation — the audit-inheritance standard CLAUDE.md section 1 applies to the Vault, applied to the one external dependency the Router seals as an immutable. A second candidate at `0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9` is a functionally correct but structurally different WETH9 of 1,786 bytes, and was rejected on that basis. No Aureum pool references WETH; the value governs only the Router's native-ETH wrapping path.
+* **A verification form that can lie, and must not be reused.** `cast code <address> | wc -c` prints `0` when the RPC call FAILS, because the pipe discards the exit status and no output reaches `wc`. That `0` is indistinguishable at a glance from a real measurement, and reads as less than the value 3 a genuinely codeless address returns — so a failed call looks like a stronger emptiness result than emptiness itself. Capture the output and branch on the command's success instead: `C=$(cast code ...) && echo "len=${#C}" || echo "RPC ERROR"`. On mainnet a misread empty-code answer could trigger an unnecessary and destructive redeploy of a contract that already exists.
 
 ## 6. Related
 
