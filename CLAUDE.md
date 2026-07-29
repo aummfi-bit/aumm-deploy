@@ -354,6 +354,25 @@ Claude Code does not add *ad-hoc* fields beyond this shape. The only top-level f
 
 The user runs all `git add`, `git commit`, `git push`, `git tag` in their own terminal. Claude Code drafts the exact commands (including full commit message) and confirms expected `git status` state before and after. Neither Claude Code nor Cursor runs git mutations. All terminal command blocks that Claude Code drafts for the user — including git command sequences — begin with `clear` on its own line, for the same reason as USER VERIFY blocks: the terminal starts fresh and paste-back output is easy to isolate. When a ✅ audit verdict closes a sub-step that warrants a commit, Claude Code emits the commit as a single text-fenced code block containing the full paste-ready sequence — `clear`, then `git add <paths>`, then `git commit -m "<message>"`, then `git log --oneline -3`, then `git status -sb` — never as the bare commit-message string alone. The bare message forces the user to reconstruct the `git add` and verification lines from memory, undermining the same paste-and-go ergonomics that the USER VERIFY two-block rule was written to preserve.
 
+### 8f. Broadcast recording
+
+**Every transaction broadcast to a live chain gets a committed row in that chain's deployment record.** Not at the end of the stage and not from memory — the row lands while the receipt is still on screen, and the record is a tracked file under `docs/`.
+
+The reason is structural rather than clerical. `.gitignore` excludes `broadcast/` and the canonical `.env` files, so forge's own run artifacts and the operator environment are local-only and unversioned: a lost working tree leaves the chain as the sole source of truth. A partially-failed run leaves gaps even locally — a `forge script` that aborts mid-sequence writes its `transactions` array with no `receipts`, so the transactions that DID land carry hashes but no block, no gas, and no status. That case is not hypothetical; it is how nonces 90 to 92 of the Sepolia base layer came to be recorded only after a manual chain read.
+
+Per-chain records:
+
+* **Sepolia** — `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`.
+* **Mainnet** — `docs/STAGE_R_MAINNET_DEPLOYMENT_RECORD.md`, created at Stage R before the first broadcast, not after it.
+
+Each row carries nonce, contract, address, block, gas used, and transaction hash. Abandoned or superseded deployments stay in the table under an explicit label rather than being deleted — a block explorer shows them regardless, and a reader must be able to tell which set is live.
+
+**The narrative is part of the record, not commentary on it.** Gas-limit decisions and the arithmetic behind them, RPC-provider refusals, every deviation from the runbook, and every recovery from a partial failure get written down. These are the first things an auditor asks about, and they exist in no artifact — forge records what was sent, never why.
+
+**Verification is a source-diff, never a self-check.** The USER VERIFY block greps every hash and address in the saved record against `broadcast/`, so the comparison target is forge's own artifact rather than a transcription of what the record was believed to say. Per §8e.1's transcription rule, an expected-file typed from a prior reading is not evidence.
+
+**Mainnet is stricter.** Stage R execution is one-shot per the Testing-strategy note in `docs/STAGES_OVERVIEW.md`: the record is written transaction by transaction as receipts arrive, never batched at the end of a sequence, because there is no second run in which to reconstruct a missed row.
+
 ---
 
 ## 9. Why the rules exist — the C14 lineage of incidents
