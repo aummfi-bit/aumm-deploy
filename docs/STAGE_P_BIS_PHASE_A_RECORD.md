@@ -1,8 +1,8 @@
 # Stage P-bis — phase A measurement record
 
-**What this is.** A dated snapshot of the rung h phase A run, per `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` section 8. Measured 2026-07-26 against Sepolia (chain 11155111).
+**What this is.** A dated record of the phase A runs, per `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` section 8, both against Sepolia (chain 11155111). Two are recorded: the rung h run of 2026-07-26 in sections 1 through 6, and the PB3.5i8 re-run of 2026-07-29 in section 7. Section 7 is the live one. Sections 1 through 6 are retained as history — their counts still hold, their addresses do not.
 
-**What this is not.** Not a procedure and not a specification. The procedure is section 8 of the runbook; this file records one execution of it. The counts in section 2 below are structural and durable per PB-D28 (ii). The addresses in section 4 are NOT: they are derived values, valid only under the precondition in section 6, and a fresh phase A supersedes them entirely.
+**What this is not.** Not a procedure and not a specification. The procedure is section 8 of the runbook; this file records executions of it. The counts in section 2 are structural and durable per PB-D28 (ii), with the qualification section 7 adds: `c1` is the fresh-stub-deploy figure and is not an addend when a sequence resumes onto stubs already live. Addresses are never durable — section 4's were derived under the precondition in section 6, that precondition broke when the base layer died, and section 7 supersedes them; a fresh phase A would supersede section 7 the same way. No address in section 4 may be acted on, or copied into section 7's set.
 
 ## 1. Inputs
 
@@ -144,4 +144,4 @@ Seven keys, written into `.env.sepolia` with `.env` refreshed from it per PB-D36
 
 - Procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` section 8.
 - Count table: the same runbook, section 5, rows 1 through 4.
-- Decisions: PB-D28 (ii) for the structural-versus-nonce-dependent split, PB-D29 for the two-phase shape, PB-D30 for the hook-before-Bodensee reorder, PB-D31 for the missing-broadcast defect this run surfaced.
+- Decisions: PB-D28 (ii) for the structural-versus-nonce-dependent split, PB-D29 for the two-phase shape, PB-D30 for the hook-before-Bodensee reorder, PB-D31 for the missing-broadcast defect the first run surfaced, PB-D33 (ix) for the voiding of section 4, and PB-D38 for the re-run recorded in section 7.
