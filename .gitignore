@@ -1,5 +1,7 @@
 # Foundry
 out/
+# PB-D34 vault compiler profile output; required by DeployAureumVault. Regenerate: FOUNDRY_PROFILE=vault forge build
+out-vault/
 cache/
 broadcast/
 artifacts/
