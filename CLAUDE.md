@@ -35,7 +35,7 @@ These are settled. Do not re-litigate without explicit user direction.
 | --- | --- |
 | Factory pattern | Option F2 — `AureumVaultFactory.sol`, ~5-line diff fork of `VaultFactory.sol`, accepts external `IProtocolFeeController` via constructor |
 | Authorizer | Governance Safe multisig for Stages A–K; migrates to on-chain governance at Stage K |
-| Compiler | `solc 0.8.26`, optimizer `9999` runs, `via_ir = true`, EVM version `cancun` — **exact match to Balancer's mainnet deployment** |
+| Compiler | Two profiles (PB-D33 / PB-D34). `[profile.default]` — `solc 0.8.26`, optimizer `9999` runs, `via_ir = true`, EVM `cancun` — all Aureum source, into `out/`. `[profile.vault]` — `solc 0.8.30`, optimizer `500` runs, plus an explicit `optimizer_details` / `yulDetails.optimizerSteps` block — the Balancer vault package only, into `out-vault/`, because `Vault.sol` overruns EIP-170 under the default settings. **Not byte parity** with Balancer's deployed Vault — the prior toolchain-parity claim on this row is WITHDRAWN per PB-D33 / PB-D34; Sepolia needs EIP-170 fit only, and parity rides to the Stage-R submodule-pin bump. Deployed sizes gated by `test/unit/BytecodeSize.t.sol` (PB-D37). |
 | Balancer submodule | `aummfi-bit/balancer-v3-monorepo`, pinned to commit `68057fda` (Dec 3 2024), verified against Etherscan source at `0xAc27df81663d139072E615855eF9aB0Af3FBD281` |
 | Balancer V3 Vault (mainnet) | `0xbA1333333333a1BA1108E8412f11850A5C319bA9` |
 | OpenZeppelin | `openzeppelin-contracts v5.6.1` (ERC20 base only — **not** ERC20Burnable) |
