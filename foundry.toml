@@ -1,14 +1,24 @@
 # foundry.toml
 #
-# Solc, optimizer, and EVM version are pinned to MATCH BALANCER V3 MAINNET EXACTLY.
-# From verified Etherscan source of VaultFactory (0xAc27df81663d139072E615855eF9aB0Af3FBD281):
+# [profile.default] pins solc, optimizer, and EVM version to the verified Etherscan
+# source of VaultFactory (0xAc27df81663d139072E615855eF9aB0Af3FBD281):
 #   - Compiler: v0.8.26+commit.8a97fa7a
 #   - Optimization: enabled, 9999 runs
 #   - EVM version: cancun
 #
+# This is NOT a full match to Balancer's mainnet toolchain; the earlier blanket claim of
+# an exact match is WITHDRAWN. Balancer compiled Vault.sol and VaultExtension.sol at 500
+# runs WITH an explicit Yul optimizer step sequence, worth 782 bytes on its own, and its
+# absence left our Vault at 28,304 bytes: over the EIP-170 limit, undeployable to any
+# chain. The vault package therefore builds under [profile.vault] at the bottom of this
+# file. See docs/STAGE_P_BIS_NOTES.md PB-D33 and PB-D34.
+#
 # Do not change these values without a corresponding decision documented in
-# docs/STAGE_A_PLAN.md. The audit-inheritance argument for the un-modified
-# Vault/VaultAdmin/VaultExtension bytecode depends on byte-level toolchain parity.
+# docs/STAGE_A_PLAN.md. The audit-inheritance argument rests on the Balancer submodule
+# SOURCE being byte-identical to audited code, NOT on byte-identical compiled output:
+# our Vault artifact is explicitly not byte parity with the deployed mainnet Vault
+# (PB-D34, user-adjudicated). Sepolia needs EIP-170 fit only; byte parity is a Stage-R
+# gate, reached via the submodule-pin bump.
 
 [profile.default]
 src = "src"
