@@ -11,6 +11,7 @@ artifacts/
 # Environment
 .env
 .env.sepolia
+.env.mainnet
 .env.local
 .env.*.local
 
