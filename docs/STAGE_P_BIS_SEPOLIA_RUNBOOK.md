@@ -69,6 +69,8 @@ A count written here from source-reading would be a number an operator could act
 
 Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for each of 45 STANDARD tokens; the 67 `STUB_` pairs the script emits are those 14 plus 45 plus 8 distinct rate-provider literals, which are recorded as aliases of an already-deployed provider rather than as fresh deploys. Row 2's 4 is three CREATEs — authorizer, fee controller, vault factory — plus the `factory.create()` call. Every transaction in rows 1 through 4 is a CREATE except that one call.
 
+**Resume caveat.** Row 1's 87 is the count for a FRESH stub deploy. On a resume onto stubs already live on chain — the PB-D38 (ii) branch, where step 1 is not re-broadcast — that figure is history rather than an addend, and the phase A arithmetic in section 8 drops every `c1` term. Rows 2 through 4 are invariant under both branches.
+
 | # | Step | Count |
 | --- | --- | --- |
 | 1 | `DeployTestnetStubs` | 87 |
