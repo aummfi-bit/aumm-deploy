@@ -88,7 +88,59 @@ Section 4's addresses are void, and phase A must be re-run in full, if any of th
 
 Section 2's counts survive all of these except the third, being structural and invariant under both nonce and chain per PB-D28 (ii) and PB-D30 (v).
 
-## 7. Related
+## 7. The 2026-07-29 re-run (PB3.5i8)
+
+**Why there is a second run.** The base layer died between the two. `AureumVaultFactory` seals `keccak256(type(Vault).creationCode)` as a constructor immutable, so the factory deployed at nonce 89 is permanently bound to a `Vault` that overran EIP-170 and must be redeployed; that shifts every later nonce and carries der Bodensee's CREATE3 address with it. PB-D33 (ix) voided all eight of section 4's projections, and this run recomputes them. Governed by PB-D38.
+
+**Inputs, against section 1.** `n0` is 90, measured at A1 with `cast nonce`, not 0. The deployer, the chain id, `SALT`, `BODENSEE_SALT` and the CREATE3 proxy init-code hash are unchanged.
+
+**This is the resume branch.** The 87 stubs at nonces 0—86 are live from the first sequence and are reused from the committed `STUB_` map, so step 1 is NOT re-broadcast, effective `c1 = 0`, and every `c1` term drops out of the A3, A5 and A9 arithmetic. A2 became confirm-and-skip: verify the reused map has code at every address rather than re-measure it. Per PB-D38 (ii).
+
+### Counts
+
+| Step | Script | Count | Against section 2 |
+| --- | --- | --- | --- |
+| 2 | `DeployAureumVault` | 4 | agrees |
+| 3 | `DeployAureumWeightedPoolFactory` | 1 | agrees |
+| 4 | `DeployAuMM` | 1 | agrees |
+
+Re-measured at this run rather than carried across, per the PB15 rule that an unverified reading is not a measurement. Section 2's `c1 = 87` remains the correct count for a fresh stub deploy and is not an addend here. This run measured counts, not gas: step 1 is not re-broadcast, so section 2's row 1 gas and cost do not apply to the resumed sequence.
+
+A count is the length of the top-level `transactions` array and nothing else. The grep form runbook section 8 used to offer is WITHDRAWN as a double-counter — every entry inside a transaction's `additionalContracts` array carries the same type field, and at this run's step 2 it returned 8 against the authoritative 4, the four extras being VaultAdmin, VaultExtension, the CREATE3 proxy and the Vault, all deployed inside `factory.create()`. PB-D38 (iv).
+
+### Nonce ledger
+
+| Nonce | Consumer |
+| --- | --- |
+| 0—86 | the 87 stubs, live from the first sequence, reused; step 1 NOT re-broadcast |
+| 87—89 | the dead base layer — authorizer, fee controller, vault factory — abandoned in place |
+| 90 | `AureumAuthorizer` CREATE |
+| 91 | `AureumProtocolFeeController` CREATE |
+| 92 | `AureumVaultFactory` CREATE |
+| 93 | `factory.create()` CALL |
+| 94 | weighted pool factory CREATE |
+| 95 | AuMM CREATE |
+| 96 | fee-routing hook CREATE |
+
+### Projections — CANONICAL
+
+| Key | Address | Derivation |
+| --- | --- | --- |
+| (authorizer, no env key) | `0x21E5f855B45943d18Fa2A76635A06D024d1f0E3A` | CREATE at nonce 90 |
+| `FEE_CONTROLLER` | `0xb424796989Ba0Baaaa879Db0C0d1FEf638fEa3ef` | CREATE at nonce 91 |
+| (vault factory, no env key) | `0x0321Cc252D09C30E21D59B17f667c2e6e43f2855` | CREATE at nonce 92 |
+| `VAULT` and `AUREUM_VAULT` | `0x9c7e8F56D12823609C28788d4b80a315CcC5fC80` | CREATE3 from the vault factory, RAW `SALT` |
+| `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY` | `0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F` | CREATE at nonce 94; one address under two keys per PB-D27 (ix) |
+| `DER_BODENSEE_POOL` | `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798` | CREATE3 from the weighted pool factory, SENDER-HASHED salt |
+| `FEE_ROUTING_HOOK` | `0x954c972170eC131364570658D42F14e833A08588` | CREATE at nonce 96 |
+
+Seven keys, written into `.env.sepolia` with `.env` refreshed from it per PB-D36 — exactly the set runbook A10 requires before step 2, and no more. Section 4 additionally projected `AUMM`; this run does not. AuMM's address is captured from step 4's own broadcast, and its only script consumers are `script/DeployFeeRoutingHook.s.sol` L68 and `script/DeployDerBodensee.s.sol` L68, which run at steps 5 and 6.
+
+**The two sets overlap, and no pair may be copied forward.** Nonces 91, 92 and 93 carry addresses in both section 4 and here, under DIFFERENT keys each time: an address is a pure function of deployer and nonce, so the same value lands under a different role. Section 4 is history; this table is what `.env.sepolia` holds.
+
+`GENESIS_BLOCK` stands provisional at 11475787 and is re-derived from Sepolia head plus 100,800 immediately before step 4 per PB-D19.
+
+## 8. Related
 
 - Procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` section 8.
 - Count table: the same runbook, section 5, rows 1 through 4.
