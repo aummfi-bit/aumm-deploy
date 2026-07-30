@@ -161,7 +161,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 **Phase 3 — the 26 Miliarium pools.**
 
-All 26 are Miliarium pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry. The `PILOT_`, `MAJOR_` and `MILIARIUM_` prefixes on the `.env.sepolia` keys record only which stage each pool first landed in, and carry no meaning at deploy time. Reading `MAJOR_POOL_03` as a different kind of pool from `MILIARIUM_POOL_12` is the misreading this paragraph exists to prevent.
+All 26 are Miliarium Aureum pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry, and der Bodensee, the only other pool in the protocol, holds no slot and is not one of them. Every key is `MILIARIUM_POOL_nn` for the pool's slot number, uniformly. The `PILOT_` and `MAJOR_` prefixes that eight of these keys carried until PB-D40 recorded only which stage each pool first landed in, never a class; they survive in completed-stage plans and notes as history, and nothing in the deploy path reads them.
 
 Each pool is its own invocation, in the same form as section 6. Every one of the 26 scripts emits the SAME stdout line — `Miliarium pool deployed at:` — from the shared base at `script/pools/deploy-miliarium-pool.s.sol` L129, with nothing in the line identifying which pool it was. Stdout alone therefore cannot tell the deployments apart. Run one script at a time and record its address before starting the next, or key the capture off `broadcast/<ScriptName>.s.sol/11155111/run-latest.json`, which is named per script and is unambiguous. Do not batch the 26 and reconcile the log afterwards.
 
@@ -169,18 +169,18 @@ The slot each script fills appears nowhere in the script itself. The mapping bel
 
 | Slot | Script | `.env.sepolia` key |
 | --- | --- | --- |
-| 01 | `DeployIxHelvetia` | `PILOT_POOL_01` |
+| 01 | `DeployIxHelvetia` | `MILIARIUM_POOL_01` |
 | 02 | `DeployIxAetheron` | `MILIARIUM_POOL_02` |
-| 03 | `DeployIxCasper` | `MAJOR_POOL_03` |
-| 05 | `DeployIxEdelweiss` | `PILOT_POOL_05` |
+| 03 | `DeployIxCasper` | `MILIARIUM_POOL_03` |
+| 05 | `DeployIxEdelweiss` | `MILIARIUM_POOL_05` |
 | 06 | `DeployIxLibertas` | `MILIARIUM_POOL_06` |
-| 08 | `DeployIxBrevis` | `MAJOR_POOL_08` |
-| 09 | `DeployIxAltrix` | `MAJOR_POOL_09` |
-| 10 | `DeployIxMediox` | `MAJOR_POOL_10` |
-| 11 | `DeployIxLongus` | `MAJOR_POOL_11` |
+| 08 | `DeployIxBrevis` | `MILIARIUM_POOL_08` |
+| 09 | `DeployIxAltrix` | `MILIARIUM_POOL_09` |
+| 10 | `DeployIxMediox` | `MILIARIUM_POOL_10` |
+| 11 | `DeployIxLongus` | `MILIARIUM_POOL_11` |
 | 12 | `DeployIxStrata` | `MILIARIUM_POOL_12` |
 | 13 | `DeployIxForum` | `MILIARIUM_POOL_13` |
-| 14 | `DeployIxAurebit` | `PILOT_POOL_14` |
+| 14 | `DeployIxAurebit` | `MILIARIUM_POOL_14` |
 | 15 | `DeployIxRegistrum` | `MILIARIUM_POOL_15` |
 | 16 | `DeployIxDebitum` | `MILIARIUM_POOL_16` |
 | 17 | `DeployIxEquitix` | `MILIARIUM_POOL_17` |
