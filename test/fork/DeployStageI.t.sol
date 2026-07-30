@@ -39,6 +39,8 @@ contract DeployStageIForkTest is StageGIntegrationFixture {
     // GOVERNANCE_MULTISIG is INHERITED from StageGIntegrationFixture L64.
     // -------------------------------------------------------------------------
 
+    address internal constant EFFICIENCY_ORACLE_PLACEHOLDER =
+        address(uint160(uint256(keccak256("efficiencyOracle"))));
     address internal constant VAULT_EXPLORER_PLACEHOLDER =
         address(uint160(uint256(keccak256("vaultExplorer"))));
     address internal constant EMA_SAMPLER_PLACEHOLDER =
@@ -91,6 +93,8 @@ contract DeployStageIForkTest is StageGIntegrationFixture {
         vm.setEnv("CCB_MULTIPLIER", vm.toString(CCB_MULTIPLIER_PLACEHOLDER));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MILIARIUM_REGISTRY", vm.toString(MILIARIUM_REGISTRY_PLACEHOLDER));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("EFFICIENCY_ORACLE", vm.toString(EFFICIENCY_ORACLE_PLACEHOLDER));
 
         deployStageHScript = new DeployStageH();
         emissionDistributor = deployStageHScript.deploy(address(deployStageHScript));
