@@ -95,3 +95,45 @@ Every step was confirmed at a second endpoint and at a later block than inclusio
 - Projections confirmed by this record: `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 7.
 - Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8.
 - Decisions: PB-D19 the genesis offset, PB-D26 the token sort, PB-D27 the go-live architecture, PB-D30 hook before der Bodensee, PB-D32 through PB-D34 the EIP-170 blocker, PB-D35 and PB-D36 environment isolation, PB-D38 the resume branch.
+
+## 7. Miliarium Aureum pools — nonces 99 to 123
+
+Twenty-five of the twenty-six Miliarium Aureum pools are live. Slot 14 `ixAurebit` landed alone at nonce 99 in block 11377740; the remaining twenty-four went out as one sequence at nonces 100 through 123, blocks 11383588 to 11383898. Each is a CREATE3 deployment performed by the weighted-pool factory at `0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F` under the pool's slot-derived salt per E-D20, so the transaction recorded below is the factory `create` CALL sent by the deployer rather than a contract-creation transaction, and the pool address appears in forge's `additionalContracts` rather than in `contractAddress`.
+
+**Every address was fixed before the sequence ran and confirmed after it.** The twenty-five addresses are the projections already committed to `.env.sepolia`, derived through `getDeploymentAddress` against that factory; no address in this table was learned by reading stdout. Each broadcast was followed by a code-presence check at that pool's own projection before the next broadcast began, so a divergence would have halted the sequence at the pool that caused it instead of surfacing later at reconciliation. All twenty-five matched. That per-pool check is the condition under which the pools may be driven in a loop at all: the twenty-six scripts emit an identical `Miliarium pool deployed at:` line carrying nothing that identifies which pool produced it, so stdout cannot tell them apart and the capture must key off something else.
+
+**Batched rather than one row per broadcast, per PB-D39 (vii).** Section 8f requires a committed row per broadcast; these twenty-five land in a single section instead, on the ground that every Miliarium address is re-derivable from data already committed — the slot-derived salt in the pool's config library, through the factory — so a lost working tree costs only the block, gas and hash, each recoverable from any explorer given the address. The base layer has no such property, its addresses deriving from nonces that shift under any deviation, which is why section 1 is recorded transaction by transaction.
+
+| Nonce | Contract | Address | Block | Gas used | Transaction |
+| --- | --- | --- | --- | --- | --- |
+| 99 | `ixAurebit`, slot 14 | `0x7e7df0d96d8eb360bC973D6c68cDf42a051A2583` | 11377740 | 4,913,019 | `0xbb5c5c9238b75e7b2b2ec2bfaf1e30a48daf681a16d9de0ef020a861ac5f9758` |
+| 100 | `ixHelvetia`, slot 01 | `0xCFEDD49F254291aA67cFD725691Cd1C1Ecfe175f` | 11383588 | 4,807,977 | `0x53987f139e0a7fce13ffc345cb1de79b133b233edc6abd7adee89ab072730373` |
+| 101 | `ixCasper`, slot 03 | `0xad0e87A433700F299Ee41fFd04D1e038521514e0` | 11383626 | 4,953,607 | `0xce91b9c421bbee739bfcf56ae9ddc06cdbe786d8269032c5298649ed2638ce86` |
+| 102 | `ixEdelweiss`, slot 05 | `0x2163d0668383759fa7CF6Da176ECC412c708CbF1` | 11383638 | 4,898,303 | `0x541554b14919b87ed99cec00e7d89eaa4776ceffd7ee9164bde2a776e5d6e608` |
+| 103 | `ixLibertas`, slot 06 | `0x78D54464715C7f77f084023918737DC6BfC0E204` | 11383649 | 5,024,015 | `0x170f2b5edb8c6df492ad67eec35b9713d0784d77ab356f1eda37a2ba263881fd` |
+| 104 | `ixBrevis`, slot 08 | `0x6b3419CD3794A43c503be60ed58535C3cFeF3F51` | 11383660 | 4,913,007 | `0x78da60f36c2566f2cee3e648ef3db44ec7ecf4657f6f5d86962b4c1fc6e1cadd` |
+| 105 | `ixAltrix`, slot 09 | `0x378f2563A1731F89F32C05398fB8fDF71bfb451B` | 11383671 | 4,913,007 | `0x962c19e377563b0f84ff542d1536dca5c49736e74bbb6ed601e7e1888de166f6` |
+| 106 | `ixMediox`, slot 10 | `0xc8921e3f691Af718D77339475B4a0AbA25a43eA6` | 11383682 | 4,913,007 | `0x891ea5a9db532f0742cbda1701cec6c767ec35e50866d0656773dcce6ffaf9c4` |
+| 107 | `ixLongus`, slot 11 | `0x2fe687F042432446988E67295E0fbbBA98d4C45E` | 11383692 | 4,877,937 | `0x44cd52c5ecb805563dff30eec95607b6b8389e7255983d41394aa8b1c98086ad` |
+| 108 | `ixStrata`, slot 12 | `0x79e01791024173C534a1b286d9680864c5E75655` | 11383708 | 4,913,007 | `0xcd23c4fd456dba67c664dbc50f30bd8072454ee684328f369fefa0832af8ce6e` |
+| 109 | `ixForum`, slot 13 | `0xfc438921AA48b3BEA513e2bc8e119E820E72C0E8` | 11383722 | 4,912,971 | `0x0690170a17ed28db6cbc4d2600fe389f0c46f3754f5c9e7d494392792aec106b` |
+| 110 | `ixRegistrum`, slot 15 | `0x93871abd6bD3e0625AF82a536B8B2A1E7FbA4f26` | 11383734 | 4,913,137 | `0xf8ffa34e16d62cec6c9c61d52d5d9b8ee993098641d457fa1f29dd7d00e8f78c` |
+| 111 | `ixDebitum`, slot 16 | `0x6358045D14df6792902266d4BB8E2e567663fD84` | 11383748 | 4,913,089 | `0xfe5533e27326f84ba902ae9ea642ba69e83fda12f71bbfdd3297cb95e1a73129` |
+| 112 | `ixEquitix`, slot 17 | `0x891F3D4cEA1A8975071c61229076C8De2205a429` | 11383761 | 4,913,089 | `0x3065ffd81baab9a1bdfe7fde9b1c5c429c6d77053263d5cf9dcf0ec94af6ed6b` |
+| 113 | `ixInnovix`, slot 18 | `0x4f2E5bF8d91cD64c7FcbC092887AF5D7c9A5eb8e` | 11383772 | 4,913,031 | `0x2590b5d792c0426ad5638cf4f5765f4af4102afe384414d43e13d3f56aa8cade` |
+| 114 | `ixGigantus`, slot 19 | `0x97385c238b2E20ED8882553838FCf01F8ddd1fd8` | 11383782 | 4,913,043 | `0x045a6511d6776d7e73ca524d91b3e2f4d33a97ac23fe431c7d9eaceb17177c23` |
+| 115 | `ixMagnix`, slot 20 | `0xD5dA48b648687F297863cB7eAad20bC25C9f9afc` | 11383794 | 4,913,007 | `0x5b021317487f18f9618a68a1569ac4bf68cfe6f9fd2a7f83e7ce7d0276b0ccfe` |
+| 116 | `ixNubix`, slot 21 | `0x5cFAc5FD417081F72596d3A99c2D1a17412667b5` | 11383808 | 4,913,041 | `0xee4d0e2953815c5383249567f6e46abccdadc77ce56b9a841d9d1ceb94133455` |
+| 117 | `ixMoneta`, slot 22 | `0xF5e338FaEE83096fcD375DBfaD33a42C654830d1` | 11383821 | 4,912,995 | `0x7ef7c95a8963b10b09f6a595656590cf498c15b5a16f723fc53bee6a15d69b35` |
+| 118 | `ixColossix`, slot 23 | `0x8BBe0A1Fe73CdE710a2Db2E069b040EE888bcE62` | 11383834 | 4,913,113 | `0x089f48c9204f5b12cb2d0b39477268633daddaa782d7d86b58ec6dff62aabfb4` |
+| 119 | `ixVitalix`, slot 24 | `0x74A63e807EF64B0C1a5A3BA0Da2508E499f77920` | 11383847 | 4,913,077 | `0x40f9477db5a47f3464f91afcf8998f8280060a7104513bbf197d271f724bbf33` |
+| 120 | `ixMedicix`, slot 25 | `0xDE37541c154af244A3F90b669876d3cA194E830a` | 11383858 | 4,913,089 | `0xe80887e4e5f576cab58353d02263814449d61c6b55af62a751788abfe231739c` |
+| 121 | `ixMercatura`, slot 26 | `0x1657b73834113aA0f09971ada1B7f3A5f5521DaD` | 11383871 | 4,913,137 | `0x104664e3fa548385789e8c22ce56e053db5d90c2fdfb860fdd93e763d58d4cb0` |
+| 122 | `ixAurix`, slot 27 | `0x91748a5Fa6F79d0CCCbB62BF4796e2956AB1977E` | 11383886 | 4,912,971 | `0xf15d75ee68f6fdd3b6f36c6a4f431d4885f9fb13ff09402a37634aba80c8fbfb` |
+| 123 | `ixMetallum`, slot 28 | `0xcEbf3dCa8C20FAe8F57836FCB3EC073c17478faD` | 11383898 | 4,913,043 | `0xe10d57cec8363dde39f0513bef1dff52341f0dc7f63d52dd627debcab69b3c5b` |
+
+**Slot 02 `ixAetheron` is absent and is not a missed deployment.** Its slot-derived salt collides with `BODENSEE_SALT` in the factory's sender-scoped CREATE3 namespace, so it broadcasts from a second EOA per PB-D39; its address is not reproducible from the deployer named at the head of this record, and its row therefore lands with its own receipt rather than inside this batch. Slots 04 and 07 are absent by design, descoped to the Stage-O composition-challenge path at PB-D8, so the constellation launches twenty-six of twenty-eight.
+
+**Gas.** 122,822,719 gas across the twenty-five, ranging from 4,807,977 to 5,024,015 per pool, at an effective 1.00 to 1.12 gwei. The twenty-four-pool sequence cost approximately 0.126 SepETH against a balance of 5.88. No manual gas limit was set for any of them and no submission was refused: forge's own 130 percent multiplier held throughout, unlike the base-layer ceiling section 3 describes.
+
+**Verification is outstanding for all twenty-five.** None was submitted with `--verify`, because `ETHERSCAN_API_KEY` was still unprovisioned when they were broadcast. Each is a phase-6 obligation and is submitted against the pool address using the factory's pool creation code, not against a deployer transaction.
