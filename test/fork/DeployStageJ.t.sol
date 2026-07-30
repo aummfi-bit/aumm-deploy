@@ -17,9 +17,9 @@ contract DeployStageJTest is Test {
         address pilot14 = makeAddr("pilot14");
 
         vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(governor));
-        vm.setEnv("PILOT_POOL_01", vm.toString(pilot01));
-        vm.setEnv("PILOT_POOL_05", vm.toString(pilot05));
-        vm.setEnv("PILOT_POOL_14", vm.toString(pilot14));
+        vm.setEnv("MILIARIUM_POOL_01", vm.toString(pilot01));
+        vm.setEnv("MILIARIUM_POOL_05", vm.toString(pilot05));
+        vm.setEnv("MILIARIUM_POOL_14", vm.toString(pilot14));
 
         MiliariumRegistry deployed = new DeployStageJ().deploy(governor);
 

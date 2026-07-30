@@ -132,9 +132,9 @@ contract DeployStageP is Script {
 
         (new DeployStageN()).deploy(address(this));
 
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_01"));
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_05"));
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_14"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_01"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_05"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_14"));
 
         incendiaryRegistry = (new DeployStageL()).deploy(address(this));
 
@@ -210,9 +210,9 @@ contract DeployStageP is Script {
         (new DeployStageN()).run();
 
         vm.startBroadcast(governor);
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_01"));
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_05"));
-        gaugeRegistry.seedFoundingPool(vm.envAddress("PILOT_POOL_14"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_01"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_05"));
+        gaugeRegistry.seedFoundingPool(vm.envAddress("MILIARIUM_POOL_14"));
         vm.stopBroadcast();
 
         DeployStageL l = new DeployStageL();
@@ -267,14 +267,14 @@ contract DeployStageP is Script {
 
     function _rosterPools() internal view returns (address[26] memory) {
         return [
-            vm.envAddress("PILOT_POOL_01"),
-            vm.envAddress("PILOT_POOL_05"),
-            vm.envAddress("PILOT_POOL_14"),
-            vm.envAddress("MAJOR_POOL_03"),
-            vm.envAddress("MAJOR_POOL_08"),
-            vm.envAddress("MAJOR_POOL_09"),
-            vm.envAddress("MAJOR_POOL_10"),
-            vm.envAddress("MAJOR_POOL_11"),
+            vm.envAddress("MILIARIUM_POOL_01"),
+            vm.envAddress("MILIARIUM_POOL_05"),
+            vm.envAddress("MILIARIUM_POOL_14"),
+            vm.envAddress("MILIARIUM_POOL_03"),
+            vm.envAddress("MILIARIUM_POOL_08"),
+            vm.envAddress("MILIARIUM_POOL_09"),
+            vm.envAddress("MILIARIUM_POOL_10"),
+            vm.envAddress("MILIARIUM_POOL_11"),
             vm.envAddress("MILIARIUM_POOL_02"),
             vm.envAddress("MILIARIUM_POOL_06"),
             vm.envAddress("MILIARIUM_POOL_12"),

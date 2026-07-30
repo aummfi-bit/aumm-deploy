@@ -55,9 +55,9 @@ import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
  *                                         distributor governance (post-Stage-H)
  *        FEE_ROUTING_HOOK      address  — canonical AureumFeeRoutingHook (I-D16 recorder slot)
  *        EMISSION_DISTRIBUTOR  address  — Stage H EmissionDistributor (I-D9 per-pool bind)
- *        PILOT_POOL_01         address  — ixHelvetia pilot (Stage E slot 01)
- *        PILOT_POOL_05         address  — ixEdelweiss pilot (Stage E slot 05)
- *        PILOT_POOL_14         address  — ixAurebit pilot (Stage E slot 14)
+ *        MILIARIUM_POOL_01     address  — ixHelvetia pilot (Stage E slot 01)
+ *        MILIARIUM_POOL_05     address  — ixEdelweiss pilot (Stage E slot 05)
+ *        MILIARIUM_POOL_14     address  — ixAurebit pilot (Stage E slot 14)
  */
 contract DeployStageI is Script {
     /// @notice Reverts when `distributor.governance() != governor` at the start
@@ -103,9 +103,9 @@ contract DeployStageI is Script {
         // 2. Bind each pilot pool's recorder gate to the hook (I-D9) — one-shot per
         //    pool. Slots 01/05/14 = ixHelvetia / ixEdelweiss / ixAurebit (Stage E).
         address[3] memory pilots = [
-            vm.envAddress("PILOT_POOL_01"),
-            vm.envAddress("PILOT_POOL_05"),
-            vm.envAddress("PILOT_POOL_14")
+            vm.envAddress("MILIARIUM_POOL_01"),
+            vm.envAddress("MILIARIUM_POOL_05"),
+            vm.envAddress("MILIARIUM_POOL_14")
         ];
         for (uint256 i = 0; i < pilots.length; i++) {
             distributor.setAuMTContractForPool(pilots[i], address(hook));

@@ -47,11 +47,11 @@ import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
  *        GAUGE_REGISTRY        address  — GaugeRegistry (seedFoundingPool target)
  *        EMISSION_DISTRIBUTOR  address  — EmissionDistributor (setAuMTContractForPool target)
  *        FEE_ROUTING_HOOK      address  — shared-hook recorder (I-D9; per DeployStageI:111)
- *        MAJOR_POOL_03         address  — ixCasper (slot 03)
- *        MAJOR_POOL_08         address  — ixBrevis (slot 08)
- *        MAJOR_POOL_09         address  — ixAltrix (slot 09)
- *        MAJOR_POOL_10         address  — ixMediox (slot 10)
- *        MAJOR_POOL_11         address  — ixLongus (slot 11)
+ *        MILIARIUM_POOL_03     address  — ixCasper (slot 03)
+ *        MILIARIUM_POOL_08     address  — ixBrevis (slot 08)
+ *        MILIARIUM_POOL_09     address  — ixAltrix (slot 09)
+ *        MILIARIUM_POOL_10     address  — ixMediox (slot 10)
+ *        MILIARIUM_POOL_11     address  — ixLongus (slot 11)
  */
 contract DeployStageM is Script {
     /// @notice Reverts when `registry.governanceContract() != governor` at the start of `_bind`.
@@ -100,11 +100,11 @@ contract DeployStageM is Script {
 
         uint256[5] memory slots = [uint256(3), 8, 9, 10, 11];
         address[5] memory pools = [
-            vm.envAddress("MAJOR_POOL_03"),
-            vm.envAddress("MAJOR_POOL_08"),
-            vm.envAddress("MAJOR_POOL_09"),
-            vm.envAddress("MAJOR_POOL_10"),
-            vm.envAddress("MAJOR_POOL_11")
+            vm.envAddress("MILIARIUM_POOL_03"),
+            vm.envAddress("MILIARIUM_POOL_08"),
+            vm.envAddress("MILIARIUM_POOL_09"),
+            vm.envAddress("MILIARIUM_POOL_10"),
+            vm.envAddress("MILIARIUM_POOL_11")
         ];
 
         for (uint256 i = 0; i < pools.length; i++) {

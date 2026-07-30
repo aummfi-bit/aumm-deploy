@@ -13,7 +13,7 @@ import { MiliariumRegistry } from "../src/registry/MiliariumRegistry.sol";
  *      external calls, so keccak-derived placeholder env values are valid in fork tests
  *      (contrast with H-D42 / `BodenseeBootstrapChannel`, whose constructor external-calls
  *      into `VAULT` and therefore requires real fork state).
- * @dev I-D18 slot-named env vars — `PILOT_POOL_01`, `PILOT_POOL_05`, `PILOT_POOL_14` name
+ * @dev I-D18 slot-named env vars — `MILIARIUM_POOL_01`, `MILIARIUM_POOL_05`, `MILIARIUM_POOL_14` name
  *      the three Stage E pilot pool addresses at Miliarium slots 01 / 05 / 14.
  * @dev `GOVERNANCE_MULTISIG` is the initial `governanceContract` at construction (J-D5);
  *      Stage K rebinds via `setGovernanceContract` during the governance handoff.
@@ -22,9 +22,9 @@ import { MiliariumRegistry } from "../src/registry/MiliariumRegistry.sol";
  * @dev Env vars required (no defaults — a real deploy must never silently fall back to zero values):
  *
  *        GOVERNANCE_MULTISIG   address  — initial governance gate
- *        PILOT_POOL_01         address  — ixHelvetia pilot (Stage E slot 01)
- *        PILOT_POOL_05         address  — ixEdelweiss pilot (Stage E slot 05)
- *        PILOT_POOL_14         address  — ixAurebit pilot (Stage E slot 14)
+ *        MILIARIUM_POOL_01     address  — ixHelvetia pilot (Stage E slot 01)
+ *        MILIARIUM_POOL_05     address  — ixEdelweiss pilot (Stage E slot 05)
+ *        MILIARIUM_POOL_14     address  — ixAurebit pilot (Stage E slot 14)
  */
 contract DeployStageJ is Script {
     /// @notice The deployed MiliariumRegistry — public so the composed `DeployStageP.run()` reads it
@@ -54,9 +54,9 @@ contract DeployStageJ is Script {
         slotNumbers[1] = 5;
         slotNumbers[2] = 14;
         address[] memory pools = new address[](3);
-        pools[0] = vm.envAddress("PILOT_POOL_01");
-        pools[1] = vm.envAddress("PILOT_POOL_05");
-        pools[2] = vm.envAddress("PILOT_POOL_14");
+        pools[0] = vm.envAddress("MILIARIUM_POOL_01");
+        pools[1] = vm.envAddress("MILIARIUM_POOL_05");
+        pools[2] = vm.envAddress("MILIARIUM_POOL_14");
         miliariumRegistry = new MiliariumRegistry(governor, slotNumbers, pools);
         return miliariumRegistry;
     }

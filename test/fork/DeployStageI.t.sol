@@ -99,11 +99,11 @@ contract DeployStageIForkTest is StageGIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("EMISSION_DISTRIBUTOR", vm.toString(address(emissionDistributor)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_01", vm.toString(pilotPools[0]));
+        vm.setEnv("MILIARIUM_POOL_01", vm.toString(pilotPools[0]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_05", vm.toString(pilotPools[1]));
+        vm.setEnv("MILIARIUM_POOL_05", vm.toString(pilotPools[1]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_14", vm.toString(pilotPools[2]));
+        vm.setEnv("MILIARIUM_POOL_14", vm.toString(pilotPools[2]));
     }
 
     // -------------------------------------------------------------------------

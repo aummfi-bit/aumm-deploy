@@ -287,21 +287,21 @@ abstract contract StagePIntegrationFixture is Test {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("EMERGENCY_MULTISIG", vm.toString(EMERGENCY_MULTISIG));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_01", vm.toString(pilotPools[0]));
+        vm.setEnv("MILIARIUM_POOL_01", vm.toString(pilotPools[0]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_05", vm.toString(pilotPools[1]));
+        vm.setEnv("MILIARIUM_POOL_05", vm.toString(pilotPools[1]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("PILOT_POOL_14", vm.toString(pilotPools[2]));
+        vm.setEnv("MILIARIUM_POOL_14", vm.toString(pilotPools[2]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("MAJOR_POOL_03", vm.toString(majorPools[0]));
+        vm.setEnv("MILIARIUM_POOL_03", vm.toString(majorPools[0]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("MAJOR_POOL_08", vm.toString(majorPools[1]));
+        vm.setEnv("MILIARIUM_POOL_08", vm.toString(majorPools[1]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("MAJOR_POOL_09", vm.toString(majorPools[2]));
+        vm.setEnv("MILIARIUM_POOL_09", vm.toString(majorPools[2]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("MAJOR_POOL_10", vm.toString(majorPools[3]));
+        vm.setEnv("MILIARIUM_POOL_10", vm.toString(majorPools[3]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("MAJOR_POOL_11", vm.toString(majorPools[4]));
+        vm.setEnv("MILIARIUM_POOL_11", vm.toString(majorPools[4]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MILIARIUM_POOL_02", vm.toString(stageNPools[0]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
