@@ -691,12 +691,12 @@ Caught at PB3.8e1, on the first net-new file placed in `test-stubs/` that nothin
 
 | Candidate seed | Effect |
 | --- | --- |
-| svZCHF (the numeraire) | Skipped unconditionally at `_twoHopRatio` L288 on every chain; hopping through the numeraire IS the direct path already tried at `_constellationRatio` step 2 |
+| svZCHF (the numeraire) | Skipped unconditionally at `_twoHopRatio` L287 on every chain; hopping through the numeraire IS the direct path already tried at `_constellationRatio` step 2 |
 | Raw ZCHF | Inert on the genesis roster, Sepolia AND mainnet: svZCHF self-maps and no Miliarium config holds raw ZCHF, so nothing resolves to it and `h2` is always zero |
 | sUSDS, the ERC-4626 share | TRAP: the share resolves to its own underlying, so nothing resolves to the share; `balBase == 0`, the hop dies silently and slot 06 underprices |
 | The sUSDS `asset()` underlying | The live intermediate, and what PB-D7's seed line meant by "USDS" |
 
-**(iii) svZCHF is structurally ineligible, on every chain, and this is not a stub artifact.** `TVLOracle.sol` L288 reads `if (hop == underlying || hop == SVZCHF) continue;`. The exclusion is unconditional and has nothing to do with self-mapping or with stubs — seed the real svZCHF on mainnet and the loop skips it identically. This does NOT mean svZCHF liquidity is ignored: a svZCHF balance in the pool being valued contributes through the `_constellationRatio` L234 identity at a 1e18 ratio, and most pools price their non-numeraire legs directly because they hold svZCHF themselves and are Leg 2 venues. The two roles are separate and only the hop role is excluded.
+**(iii) svZCHF is structurally ineligible, on every chain, and this is not a stub artifact.** `TVLOracle.sol` L287 reads `if (hop == underlying || hop == SVZCHF) continue;`. The exclusion is unconditional and has nothing to do with self-mapping or with stubs — seed the real svZCHF on mainnet and the loop skips it identically. This does NOT mean svZCHF liquidity is ignored: a svZCHF balance in the pool being valued contributes through the `_constellationRatio` L234 identity at a 1e18 ratio, and most pools price their non-numeraire legs directly because they hold svZCHF themselves and are Leg 2 venues. The two roles are separate and only the hop role is excluded.
 
 **(iv) Raw ZCHF is inert on mainnet, not only on Sepolia.** The only ZCHF-named constants across all 26 configs are `SVZCHF` and `SVZCHF_RATE_PROVIDER`; no pool holds raw ZCHF. Combined with the svZCHF self-map, nothing resolves to ZCHF on either chain, so a ZCHF entry costs one loop iteration and one `_directRatio` call returning zero. Harmless but dead on the genesis roster, and it must not be added on the assumption that Sepolia is the special case; (vii) governs the case where a later permissionless pool makes it live.
 
