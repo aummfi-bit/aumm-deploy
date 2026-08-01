@@ -40,11 +40,15 @@ contract DeployDerBodensee is Script {
     ///         RP would flip both QG legs and Vault registration semantics (PB-D20 (i)).
     error StubRateProviderZeroed(address original);
 
+    /// @notice A non-zero resolved rate provider did not answer `getRate()` with a usable value — the call
+    ///         reverted (no code at the address, or no such function) or returned zero (PB-D47 (vii)).
+    error RateProviderProbeFailed(address original, address resolved);
+
     /// @notice The created pool diverged from the `DER_BODENSEE_POOL` prediction that `DeployAureumVault`
     ///         and `DeployFeeRoutingHook` have already consumed (PB-D27 (iv)(3)); abort immediately.
     error BodenseeAddressMismatch(address predicted, address actual);
 
-    /// @dev PB-D27 (v) — testnet stub override resolver, mirrored from `deploy-miliarium-pool.s.sol` L50-L52.
+    /// @dev PB-D27 (v) — testnet stub override resolver, mirrored from `MiliariumPoolDeployer._resolveStub`.
     ///      With no matching `STUB_` key set the resolved address IS `original`, so the mainnet path stays
     ///      byte-identical. The `envOr` passthrough is deliberate and must NOT be tightened to `envAddress`:
     ///      that would oblige Stage R to publish an identity map for keys it has no reason to set. The
@@ -53,12 +57,28 @@ contract DeployDerBodensee is Script {
         return vm.envOr(string.concat("STUB_", vm.toString(original)), original);
     }
 
-    /// @dev PB-D27 (v) — rate-provider override with fail-fast, mirrored from `deploy-miliarium-pool.s.sol`
-    ///      L57-L63. Applies `_resolveStub`; a WITH_RATE slot whose non-zero RP resolves to address(0) reverts.
+    /// @dev PB-D27 (v) as amended by PB-D47 (vii) — rate-provider override with fail-fast, mirrored from
+    ///      `MiliariumPoolDeployer._resolveRateProvider`. Resolution reads the dedicated `STUB_RP_` namespace
+    ///      first and falls back to the token-level `STUB_` namespace, where this script's two providers — the
+    ///      sUSDS and svZCHF literals below — are keyed on live Sepolia. A WITH_RATE slot whose non-zero RP
+    ///      resolves to address(0) reverts, and every non-zero resolved provider is probed with a live
+    ///      `getRate()` call before it can reach a registration that seals it permanently.
     function _resolveRateProvider(IRateProvider original, TokenType tokenType) internal view returns (IRateProvider) {
-        address resolved = _resolveStub(address(original));
+        address resolved = vm.envOr(
+            string.concat("STUB_RP_", vm.toString(address(original))),
+            _resolveStub(address(original))
+        );
         if (tokenType == TokenType.WITH_RATE && address(original) != address(0) && resolved == address(0)) {
             revert StubRateProviderZeroed(address(original));
+        }
+        if (resolved != address(0)) {
+            try IRateProvider(resolved).getRate() returns (uint256 rate) {
+                if (rate == 0) {
+                    revert RateProviderProbeFailed(address(original), resolved);
+                }
+            } catch {
+                revert RateProviderProbeFailed(address(original), resolved);
+            }
         }
         return IRateProvider(resolved);
     }

@@ -33,6 +33,10 @@ abstract contract MiliariumPoolDeployer is Script {
     ///         RP would flip both QG legs and Vault registration semantics (PB-D20 (i)).
     error StubRateProviderZeroed(address original);
 
+    /// @notice A non-zero resolved rate provider did not answer `getRate()` with a usable value — the call
+    ///         reverted (no code at the address, or no such function) or returned zero (PB-D47 (vii)).
+    error RateProviderProbeFailed(address original, address resolved);
+
     /// @dev Returns the per-pool config. `view` (not `pure`) per N-D7 so the RP-dependent wrappers
     ///      (ixMagnix 20, ixAurix 27, ixLibertas 06, ixAetheron 02) can resolve their Aureum-deployed
     ///      Rate-Provider address(es) from env vars; the clean pure-literal wrappers keep `pure override`
@@ -51,13 +55,32 @@ abstract contract MiliariumPoolDeployer is Script {
         return vm.envOr(string.concat("STUB_", vm.toString(original)), original);
     }
 
-    /// @dev PB-D20 (i): rate-provider override with fail-fast. Applies `_resolveStub`; a WITH_RATE
-    ///      slot whose non-zero RP resolves to address(0) reverts (a zeroed RP flips both QG legs and
-    ///      Vault registration semantics).
+    /// @dev PB-D20 (i) as amended by PB-D47 (vii): rate-provider override with fail-fast. Resolution reads the
+    ///      dedicated `STUB_RP_` namespace that `DeployTestnetStubs` now writes, falling back to the token-level
+    ///      `STUB_` namespace — that script is forward-only per PB-D42 and is never re-run, so the eight
+    ///      providers standing on live Sepolia are keyed there and nowhere else. A WITH_RATE slot whose non-zero
+    ///      RP resolves to address(0) still reverts. Every non-zero resolved provider is then probed with a live
+    ///      `getRate()` call. The probe is unconditional and chain-independent by design: `VaultExtension`
+    ///      L217-L221 writes `TokenInfo` once and no rate-provider setter exists anywhere in the Vault, so a
+    ///      provider that cannot answer is caught here or never, on mainnet exactly as on Sepolia. It is also
+    ///      what makes the fallback safe — the one thing that fallback can re-seat is the shadowing token stub
+    ///      PB-D47 found at slot 02, and `StubERC4626` exposes no `getRate()`.
     function _resolveRateProvider(IRateProvider original, TokenType tokenType) internal view returns (IRateProvider) {
-        address resolved = _resolveStub(address(original));
+        address resolved = vm.envOr(
+            string.concat("STUB_RP_", vm.toString(address(original))),
+            _resolveStub(address(original))
+        );
         if (tokenType == TokenType.WITH_RATE && address(original) != address(0) && resolved == address(0)) {
             revert StubRateProviderZeroed(address(original));
+        }
+        if (resolved != address(0)) {
+            try IRateProvider(resolved).getRate() returns (uint256 rate) {
+                if (rate == 0) {
+                    revert RateProviderProbeFailed(address(original), resolved);
+                }
+            } catch {
+                revert RateProviderProbeFailed(address(original), resolved);
+            }
         }
         return IRateProvider(resolved);
     }
