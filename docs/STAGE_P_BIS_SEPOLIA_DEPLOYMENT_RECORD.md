@@ -162,3 +162,21 @@ This address sits inside the nonce 0 to 86 batch of section 2 and its individual
 
 **The code that consumed the bad map is fixed.** `DeployTestnetStubs` now writes providers into a disjoint `STUB_RP_` namespace. `MiliariumPoolDeployer._resolveRateProvider` and `DeployDerBodensee` read that namespace first and fall back to `STUB_` for the eight providers already keyed there on live Sepolia, then probe `getRate()` on every non-zero resolved provider before returning it. The probe is what makes the fallback safe: the one thing a `STUB_` fallback can re-seat is the shadowing token stub, and `StubERC4626` exposes no `getRate()`. Because the Vault seals the provider at registration, a provider that cannot answer is caught at deploy time or never — on mainnet exactly as on Sepolia.
 
+## 10. Slot 02 `ixAetheron` redeployed — the third-sender broadcast
+
+The replacement anticipated in section 9 is live. `ixAetheron` now carries the recovered `ERC4626RateProvider` on its weETH leg, and is registered, empty and correct.
+
+| Nonce | Contract | Address | Block | Gas used | Transaction |
+| --- | --- | --- | --- | --- | --- |
+| 0, third sender | `ixAetheron`, slot 02 — supersedes section 8 | `0x45014C1C6720DaD745F2a791521a6723d102aDD8` | 11399372 | 4,933,856 | `0x105f9bb5ea013a03ebe8d8d06a0fb8d5c37c72cd3fd2d312a73f3b301d831b10` |
+
+**The sender is a third EOA, `0x87969483c553fC350684cB76007ef114105C8eDc`.** Slot 02's salt `bytes32(uint256(2))` is unmutated per E-D20 and is consumed in two CREATE3 namespaces already — the canonical deployer's, where it produced der Bodensee, and the second sender's, where it produced the pool section 8 records. A third sender was therefore arithmetic rather than preference. Its nonce reads 0 because this was its first transaction, exactly as the second sender's did, and it is not a deployer nonce.
+
+**Three slot-02-adjacent addresses now exist and must always be compared in full.** der Bodensee at `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798`, the superseded pool at `0xD259F35a138383Ac8b545F06C5eBADcA3f6a2890`, and the live pool at `0x45014C1C6720DaD745F2a791521a6723d102aDD8`. The first two differ by a single hex digit inside their first four characters, the hazard section 8 already states. The third is visually distinct but is not re-derivable from either other sender, so anyone recomputing this slot must supply the third sender or they will land on one of the other two.
+
+**The address was fixed before the broadcast rather than read out of it.** It was derived through `getDeploymentAddress` against the factory with the third sender as `--from`, committed to `.env.sepolia` as `MILIARIUM_POOL_02`, and only then broadcast — the discipline section 7 applies to the twenty-five, and what makes the post-broadcast check an independent confirmation rather than a readback of the script's own stdout. Pre-flight also asserted the projection held no code, so a salt consumed between derivation and send would have aborted the run before it spent anything.
+
+**The fix is verified in sealed state rather than inferred.** `getPoolTokenInfo` against the live pool returns the weETH stub `0x3294eB8582279311D4900D18fa88726Abc9aa5E2` paired with rate provider `0x4a4EA25a6359852d4e47031Fc1316F3aE13de0a3`, where the superseded pool carried that stub as its own provider. All four WITH_RATE legs hold a non-zero provider and the fifth holds `address(0)` with `paysYieldFees` false, so the `InvalidTokenConfiguration` rule holds on both sides of the token set. Gas came to 4,933,856, identical to the superseded broadcast to the unit, the two runs differing in one constructor address and nothing else.
+
+**The pool is registered and empty.** Balances read zero across all five tokens; initialization belongs to a later rung, and slot 02 was among the five slots the rung-h dry run never reached. Verification is outstanding on the same phase-6 obligation as the twenty-five pools of section 7, for the same reason — `ETHERSCAN_API_KEY` remains unprovisioned.
+
