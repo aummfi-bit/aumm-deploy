@@ -53,10 +53,17 @@ import { IxMetallumConfig } from "script/pools/configs/28_ixMetallum.s.sol";
  *         emission, console map, and coverage asserts land at e2b2.
  */
 contract DeployTestnetStubs is Script {
-    /// @dev mainnet token/RP address -> deployed stub; also the dedup sentinel (address(0) = unseen).
+    /// @dev mainnet TOKEN address -> deployed stub; also the dedup sentinel (address(0) = unseen).
+    ///      Rate-provider literals are keyed separately in `stubRpOf` per PB-D47 (vii): holding both in
+    ///      one namespace let a token that is its own rate provider shadow itself, which is how slot 02
+    ///      registered a pool token as its own provider and became permanently un-initializable.
     mapping(address => address) internal stubOf;
     /// @dev mainnet WITH_RATE token -> its deployed ERC4626RateProvider (for the e2b2 named-key emission).
     mapping(address => address) internal rpOfToken;
+    /// @dev mainnet RATE-PROVIDER literal -> deployed stub provider; the dedup sentinel for the STUB_RP_
+    ///      namespace, disjoint from `stubOf` so a self-referential provider literal cannot collide with
+    ///      the token entry that shares its address (PB-D47 (vii)).
+    mapping(address => address) internal stubRpOf;
 
     /// @dev Ordered emission pairs — STUB_-literal keys + (e2b2) named keys — console-logged by _emitMap.
     string[] internal envKeys;
@@ -119,9 +126,9 @@ contract DeployTestnetStubs is Script {
             if (cfg.tokenTypes[i] == TokenType.WITH_RATE) {
                 _ensureWithRate(token);
                 address rp = address(cfg.rateProviders[i]);
-                if (rp != address(0) && stubOf[rp] == address(0)) {
-                    stubOf[rp] = rpOfToken[token];
-                    _record(string.concat("STUB_", vm.toString(rp)), rpOfToken[token]);
+                if (rp != address(0) && stubRpOf[rp] == address(0)) {
+                    stubRpOf[rp] = rpOfToken[token];
+                    _record(string.concat("STUB_RP_", vm.toString(rp)), rpOfToken[token]);
                 }
             } else {
                 _ensureStandard(token);
