@@ -74,7 +74,7 @@ contract StagePRunRehearsalTest is Test {
     uint256 internal constant MIN_WRAP_AMOUNT = 1_000;
     string internal constant FACTORY_VERSION = '{"name":"AureumWeightedPoolFactory","version":1,"deployment":"20260718-fork-rehearsal"}';
     string internal constant POOL_VERSION = '{"name":"AureumWeightedPool","version":1,"deployment":"20260718-fork-rehearsal"}';
-    // The real mainnet susds / svZchf RP literals — used only as the STUB_ lookup keys for the bodensee stub RPs.
+    // The real mainnet susds / svZchf RP literals - used only as the STUB_RP_ lookup keys for the bodensee stub RPs.
     address internal constant SUSDS_RATE_PROVIDER = 0x1195BE91e78ab25494C855826FF595Eef784d47B;
     address internal constant SV_ZCHF_RATE_PROVIDER = 0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c;
     uint256 internal constant INIT_SEED = 1_000e18;
@@ -103,7 +103,7 @@ contract StagePRunRehearsalTest is Test {
     address internal bodenseePool;
     IERC20 internal svZchf;
     IERC4626 internal susds;
-    // Resolved from the STUB_ roster in setUp (the stub RPs for the bodensee stub susds / svZchf).
+    // Resolved from the STUB_RP_ roster in setUp (the stub RPs for the bodensee stub susds / svZchf).
     IRateProvider internal bodenseeSusdsRp;
     IRateProvider internal bodenseeSvZchfRp;
     address[3] internal pilotPools;
@@ -353,7 +353,7 @@ contract StagePRunRehearsalTest is Test {
     }
 
     /// @dev PB-D25 (ii) — deploy the stub roster in-process and replay its full emission into env.
-    ///      DeployTestnetStubs accumulates the STUB_ literal pairs plus the named keys (SV_ZCHF,
+    ///      DeployTestnetStubs accumulates the STUB_ and STUB_RP_ literal pairs plus the named keys (SV_ZCHF,
     ///      SUSDS, the five N-D7 RP keys); looping them through vm.setEnv gives the pool configs
     ///      and the base layer the same drift-free map the e2 capture and the PB3.5 broadcast
     ///      consume. The script's own _assertCoverage gate reverts the run on any unresolved slot.
@@ -367,10 +367,10 @@ contract StagePRunRehearsalTest is Test {
             vm.setEnv(key, vm.toString(val));
         }
 
-        // The bodensee legs are WITH_RATE: their stub RPs live under the STUB_ key of the REAL
-        // mainnet RP literal (the same derivation _resolveStub uses), never a named key.
-        bodenseeSusdsRp = IRateProvider(vm.envAddress(string.concat("STUB_", vm.toString(SUSDS_RATE_PROVIDER))));
-        bodenseeSvZchfRp = IRateProvider(vm.envAddress(string.concat("STUB_", vm.toString(SV_ZCHF_RATE_PROVIDER))));
+        // The bodensee legs are WITH_RATE: their stub RPs live under the STUB_RP_ key of the REAL
+        // mainnet RP literal (the same derivation _resolveRateProvider uses), never a named key.
+        bodenseeSusdsRp = IRateProvider(vm.envAddress(string.concat("STUB_RP_", vm.toString(SUSDS_RATE_PROVIDER))));
+        bodenseeSvZchfRp = IRateProvider(vm.envAddress(string.concat("STUB_RP_", vm.toString(SV_ZCHF_RATE_PROVIDER))));
     }
 
     /// @dev The der-Bodensee token configs — AuMM STANDARD (no RP, no yield fees), the two stub
