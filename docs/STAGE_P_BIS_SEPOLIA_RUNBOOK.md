@@ -12,6 +12,7 @@
 - `--rpc-url` resolves to the Sepolia endpoint on every command here. A mainnet RPC on any command in this document is a §8c violation rather than a typo to correct in place: stop, discard the shell, restart the step.
 - `DEPLOYER_PRIVATE_KEY` is entered by the operator alone. Never committed, never echoed to the terminal, never pasted into chat, never written where git can see it.
 - The deployer EOA is `0xA851478dbee97375E784e9b98c0D7D599662bF85` (PB3.1) and is also `GOVERNANCE_MULTISIG` on Sepolia per PB-D23 (iv). The broadcast key MUST be that address. This is enforced operationally, not by an in-script assert, per PB-D27 (vii)(4).
+- The deployer EOA sends NOTHING outside a broadcast sequence while one is in flight — no faucet top-up, no probe transaction, no wallet-initiated approval. Every such transaction moves the nonce, and both phase A's address projections and phase 4's `--resume` fail closed against a moved nonce. Per PB-D49 (vii); the phase 4 case and its recovery are section 9.
 - D-D6 reserves mainnet for Stage R. Nothing in this document targets mainnet.
 
 ## 1. Environment files
@@ -204,10 +205,11 @@ Every one of the 26 keys must be in `.env` before phase 4. `DeployStageP` drives
 
 **Phase 4 — the orchestrator.**
 
-- Command: `forge script script/DeployStageP.s.sol:DeployStageP`
+- Command: `forge script script/DeployStageP.s.sol:DeployStageP --slow`, otherwise the section 6 invocation form. `--slow` is mandatory here rather than optional: it confirms each transaction before sending the next, which is what leaves a stalled run a clean confirmed-versus-unsent boundary for `--resume` to recover from. Per PB-D49 (iii).
 - One invocation, one process, composing Stage F through Stage K per PB-D23 (vii). It threads its own intermediate addresses internally, so nothing between Stage F and Stage K needs capturing: `MILIARIUM_REGISTRY`, `TVL_ORACLE`, `EFFICIENCY_ORACLE`, `EMA_SAMPLER`, `CCB_MULTIPLIER`, `SWAP_AND_DEPOSIT`, `VAULT_CLASS_REGISTRY`, `GAUGE_REGISTRY`, `EMISSION_DISTRIBUTOR` and `BODENSEE_CHANNEL` are all set by the orchestrator on itself as it goes.
 - Reads from `.env`: everything phases 1 to 3 wrote, plus `EMERGENCY_MULTISIG`, consumed by `DeployStageK.s.sol` L125 and one of the keys missing from `.env.example`.
 - The run asserts its own post-conditions, including the four-way genesis check and the authorizer migration. A revert here stops the sequence with the base layer already live; it does not unwind.
+- A stall does not end the sequence, and phase 4 is the only phase with a recovery procedure of its own: `--resume` behind a mandatory nonce-reconciliation gate, in section 9. Do not re-invoke phase 4 from the top after a partial run — that redeploys all sixteen CREATEs at new addresses and orphans everything the stalled run already landed.
 
 **Phase 5 — the Router seat (F-09).**
 
