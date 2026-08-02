@@ -63,13 +63,15 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 
 ## 5. Per-step EOA transaction counts
 
-Rows 1 through 4 carry measured counts; rows 5 through 10 still read PENDING-h. PB-D27 (iv)(1) requires these counts be derived from a run rather than read off the source, and PB-D28 (ii) deferred that derivation to rung h. Phase A measured rows 1 through 4 at the live deployer nonce, which is all the projection arithmetic consumes per PB-D30 (iii); the remaining rows fill from the broadcast itself at rung i, since no projection reads them.
+Rows 1 through 4 and row 9 carry measured counts; rows 5 through 8 and row 10 still read PENDING-h. PB-D27 (iv)(1) requires these counts be derived from a run rather than read off the source, and PB-D28 (ii) deferred that derivation to rung h. Phase A measured rows 1 through 4 at the live deployer nonce, which is all the projection arithmetic consumes per PB-D30 (iii); the remaining rows fill from the broadcast itself at rung i, since no projection reads them.
 
 A count written here from source-reading would be a number an operator could act on, and the failure mode of an undercount is a mis-projected address sealing a vault immutable — the unrecoverable class PB-D27 (iv) exists to convert into an abort. An empty cell cannot be misread as an answer.
 
 Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for each of 45 STANDARD tokens; the 67 `STUB_` pairs the script emits are those 14 plus 45 plus 8 distinct rate-provider literals, which are recorded as aliases of an already-deployed provider rather than as fresh deploys. Row 2's 4 is three CREATEs — authorizer, fee controller, vault factory — plus the `factory.create()` call. Every transaction in rows 1 through 4 is a CREATE except that one call.
 
 **Resume caveat.** Row 1's 87 is the count for a FRESH stub deploy. On a resume onto stubs already live on chain — the PB-D38 (ii) branch, where step 1 is not re-broadcast — that figure is history rather than an addend, and the phase A arithmetic in section 8 drops every `c1` term. Rows 2 through 4 are invariant under both branches.
+
+**Row 9 is a dry-run count, not a broadcast count.** Every other filled row in this table is either derived from phase A projection or, per the sentence above, waits for the broadcast itself. Row 9 is neither: `DeployStageP.run()` has never been broadcast, and 114 is what a live-Sepolia `forge script` simulation produced without `--broadcast`, against real chain state, per PB-D48. It is written here because it answers this exact cell, not because rung i has occurred.
 
 | # | Step | Count |
 | --- | --- | --- |
@@ -81,7 +83,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 | 6 | `DeployDerBodensee` | PENDING-h |
 | 7 | `DeployRouter` | PENDING-h |
 | 8 | Each pool script, per invocation | PENDING-h |
-| 9 | `DeployStageP.run()` | PENDING-h |
+| 9 | `DeployStageP.run()` | 114 |
 | 10 | Router seat | PENDING-h |
 
 ## 6. Phase 1 and 2 — commands and capture
