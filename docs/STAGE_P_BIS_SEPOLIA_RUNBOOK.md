@@ -274,3 +274,60 @@ For der Bodensee the salt is sender-hashed, because `BasePoolFactory._computeFin
 For the Vault the salt is RAW — the vault factory's CREATE3 does not hash the sender — so the same three commands run with `--salt $SALT` directly and `--deployer <the A3 vault factory>`. Applying the sender-hashed form to the Vault, or the raw form to der Bodensee, produces a wrong address that nothing catches until the corresponding step aborts.
 
 **Residual, narrowed at the first phase A run.** The command chain itself is no longer unvalidated: at PB3.5h2 the three plain CREATEs and the CREATE3 Vault were all reproduced exactly by these commands at nonce 0, checked against forge's own dry-run artifact, with the artifact's `additionalContracts` corroborating the two-step mechanism — recorded in full at `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 5. What remains is narrower and still real: that validation was performed at nonce 0, and applying it to nonces 87 through 93 rests entirely on the section 5 counts being right. A count wrong by one shifts every projection downstream of it, and no check here would catch that — the derivation would still be correct, applied to the wrong nonce. The first live confirmation remains `BodenseeAddressMismatch` at step 6, which is after the vault has sealed its immutables.
+
+## 9. Phase 4 stall recovery — the pre-flight gate and `--resume`
+
+**Scope.** This section applies to phase 4 alone. Phases 1 through 3 send one transaction per invocation, so their recovery is to re-read the projection and re-run the single step. Phase 4 is one invocation carrying 114 sequential transactions with no idempotency anywhere in `DeployStageP`, `DeployStageF` or `DeployStageJ` — a stall part way therefore cannot be re-invoked from the top, and a fresh run redeploys all sixteen CREATEs at new addresses while the first set is orphaned on chain. Locked as PB-D49.
+
+**The posture, in one line.** `--slow` on the first send; on any stall, pass the pre-flight gate below and then `--resume`. Never a fresh invocation after a partial run, and never a resume before the gate.
+
+### The rule
+
+`--resume` is FORBIDDEN until the deployer's live confirmed nonce equals the recorded nonce of the first unsent transaction in the broadcast artifact. This is a prohibition and not a recommendation — where the two disagree, the operator reconciles the difference, establishes its cause, and writes the finding into `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` before resuming anything.
+
+forge states the contract itself in `forge script --help`: `--resume` does not simulate the script again and expects nonces to have remained the same, with the worked example that a transaction carrying nonce 22 requires the account to be at nonce 22 or the resume fails. The failure is loud rather than silent, so this gate exists to be passed deliberately rather than to catch an error that would otherwise slip through.
+
+### Why the artifact can disagree with the chain
+
+CLAUDE.md §8f records the mechanism as structural rather than accidental: a `forge script` that aborts mid-sequence writes its `transactions` array with no `receipts`, so a transaction that DID land carries a hash but no block, no gas and no status — the artifact then under-reports what happened, and a resume computed from it targets a nonce the chain has already consumed.
+
+This is not hypothetical on this chain. Base-layer nonces 90 to 92 were recorded only after a manual chain read, and `script/CreateAureumVault.s.sol` exists as a bespoke recovery because that episode had no procedure to follow — this section is that procedure, written before the second occasion rather than after it.
+
+Field semantics, confirmed at PB3.8h9f against both a dry-run artifact and a live one rather than assumed:
+
+| Artifact state | Meaning |
+| --- | --- |
+| `.transactions[].hash` is null | never submitted |
+| `.transactions[].hash` is non-null | submitted; may or may not have confirmed |
+| a `.receipts[]` entry with `status` of `0x1` | forge saw it confirm and succeed |
+| a non-null hash with no matching receipt | the §8f gap; this transaction's fate must be read from chain |
+
+`--slow` narrows the window in which that gap opens, by confirming each transaction before sending the next, but it does not close the window — an RPC provider dying, an operator interrupt, a suspended machine, or the process being killed between a successful send and the receipt write all produce the same artifact against a nonce that has already moved.
+
+### The pre-flight, in order
+
+Run every step. Do not skip one because the previous run looked clean, and do not reorder them: R2 and R3 must both be read before R4, because a transaction still sitting in the mempool changes what R5's comparison means.
+
+**R1. Confirm the active environment.** `grep -c '^AUMM_ENV_CHAIN=sepolia$' .env` must return exactly 1, per section 1. A count of 0 is a failure and not a pass.
+
+**R2. Read the confirmed nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block latest --rpc-url $SEPOLIA_RPC_URL`. This is how many transactions the deployer has actually had confirmed, and it is the ground truth the artifact is checked against.
+
+**R3. Read the pending nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block pending --rpc-url $SEPOLIA_RPC_URL`. It must equal R2 — a higher pending nonce means a transaction from this deployer is still in the mempool, and a resume will collide with it. Wait for that transaction to confirm or drop, then re-read both.
+
+**R4. Read the artifact's boundary.** `jq -r '{sent: ([.transactions[]|select(.hash != null)]|length), unsent: ([.transactions[]|select(.hash == null)]|length), receipts: (.receipts|length), next_nonce: ([.transactions[]|select(.hash == null)][0].transaction.nonce)}' broadcast/DeployStageP.s.sol/11155111/run-latest.json`. Note the path carries no `dry-run` component: the dry-run artifact holds 114 null hashes and is not what a resume reads.
+
+**R5. Compare.** `next_nonce` is hex and R2's reading is decimal; convert with `cast to-dec <next_nonce>` and require exact equality. Equality means every transaction the artifact shows as submitted did land, and the chain sits exactly where the resume will start — the gate is passed and R6 is skipped. Any inequality sends you to R6, and `sent` exceeding `receipts` in R4's output names the transactions to investigate first.
+
+**R6. Reconcile before anything else.** For every transaction whose hash is non-null, read its fate from chain with `cast receipt <hash> --rpc-url $SEPOLIA_RPC_URL`, and record each one that landed into `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` per §8f — nonce, contract, address, block, gas used and status. Two outcomes are possible and they point opposite ways: a hash returning a receipt landed and consumed its nonce, so the artifact under-reported; a hash returning nothing was dropped from the mempool and never consumed its nonce, so the artifact over-reported and the chain sits behind the boundary. Only once every submitted hash resolves into one of those two may the boundary be judged, and resuming before that is complete is the prohibited action this section exists to prevent.
+
+### The resume invocation
+
+`forge script script/DeployStageP.s.sol:DeployStageP --rpc-url $SEPOLIA_RPC_URL --broadcast --resume --slow --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`
+
+`--resume` accompanies `--broadcast` rather than replacing it — the foundry scripting guide's own resume example is `forge script script/Deploy.s.sol --broadcast --rpc-url $RPC_URL --resume`, checked 2026-08-02. Two details beyond that are load-bearing. `--slow` stays on for the same reason it was on the first send, so that a resume which itself stalls still leaves a clean boundary for the next one. And `--rpc-url` takes the full-URL `$SEPOLIA_RPC_URL` form used throughout section 6, not the `sepolia` alias the rung-h dry runs were invoked with, keeping the resume on exactly the footing of the send it is recovering.
+
+### What not to do
+
+- Do not re-invoke phase 4 without `--resume` after a partial run. A fresh invocation starts from the live nonce, redeploys all sixteen CREATEs at new addresses, and leaves everything the stalled run landed orphaned on chain while the second run's wiring binds the second set — the exact failure that produced `script/CreateAureumVault.s.sol`.
+- Do not delete, truncate or hand-edit `broadcast/DeployStageP.s.sol/11155111/run-latest.json` to make a resume begin where you would like it to. `broadcast/` is gitignored, so that file is the only local record of what was sent, and editing it destroys the evidence R4 through R6 depend on.
+- Do not send anything else from the deployer EOA between the first send and the last confirmation, or between a stall and its resume. A faucet top-up, a probe transaction or a wallet-initiated approval all move the nonce and void the resume. Per PB-D49 (vii), and the same discipline phase A carries at A1, extended from a four-transaction window to a 114-transaction one.
