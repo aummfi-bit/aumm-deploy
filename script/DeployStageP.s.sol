@@ -175,7 +175,13 @@ contract DeployStageP is Script {
         j.run();
         miliariumRegistry = j.miliariumRegistry();
         vm.setEnv("MILIARIUM_REGISTRY", vm.toString(address(miliariumRegistry)));
-        vm.setEnv("GAUGE_REGISTRY_PLACEHOLDER", vm.toString(address(this)));
+        // PB3.8: `governor`, NOT `address(this)`. `forge script` rejects `address(this)` in a
+        // script contract: under --broadcast the script is ephemeral and never deployed, so its
+        // address is meaningless. Any non-zero address satisfies the CCBMultiplier constructor,
+        // which zero-checks all three registries and calls none of them, and this slot is sealed
+        // to the real GaugeRegistry below once the G stack lands. The fork `deploy()` path at L102
+        // keeps `address(this)` deliberately — there the script contract genuinely exists.
+        vm.setEnv("GAUGE_REGISTRY_PLACEHOLDER", vm.toString(governor));
 
         DeployStageF f = new DeployStageF();
         (tvlOracle, efficiencyOracle, emaSampler, ccbMultiplier) = f.run();
