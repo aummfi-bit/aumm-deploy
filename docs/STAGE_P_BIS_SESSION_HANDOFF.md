@@ -1,10 +1,12 @@
 # Stage P-bis — session handoff, 2026-07-27
 
-**Status: the EIP-170 blocker is CLOSED; the Sepolia sequence remains MID-SEQUENCE AND HALTED.** The build defect that stopped rung i is fixed — `Vault` now compiles to 24,393 bytes, inside the 24,576 limit, via a scoped compiler profile landed at `4268e50`. What has not changed: steps 1 and 2 of the base-layer broadcast were partially executed on live Sepolia, and the base layer is dead from nonce 87. No further broadcast may occur until phase A re-runs against the corrected build and the deployer is funded.
+**SUPERSEDED 2026-08-01. This document is frozen history; do not act on anything below.** The resume anchor is CLAUDE.md §11, advanced 2026-08-01 at `4a49e18`. The current state of workstream B is PB-D41 through PB-D48 in `docs/STAGE_P_BIS_NOTES.md`, the newest being the PB-D48 lock at L771. Where this file and those disagree, they are right and this file is wrong — the reverse of what the preamble here used to assert.
 
-CLAUDE.md §11 is current only through rung h and knows nothing of PB-D32 through PB-D35 or of the fix. Read this file alongside it; where they disagree, the NOTES locks are authoritative.
+**The halt is lifted and PB3.5 is COMPLETE.** The base layer is live on Sepolia and `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` records it: nonces 87 to 98 in section 1, the 87 stubs in section 2, twenty-five Miliarium pools at nonces 99 to 123 in section 7, and slot 02 `ixAetheron` across sections 8 through 10. Three things this file still asserts are therefore withdrawn here by name. Section 2's nonce state and section 4's dead base layer are both overtaken; the redeploy they call for was executed at rung i9. Section 3's hard constraint on the deployer EOA is spent — the step-2 broadcast it guarded landed long since. And `GENESIS_BLOCK` is not the placeholder section 4 records; it is sealed in the deployed AuMM at 11477620.
 
-**Superseded in part by PB-D32 through PB-D35** (`docs/STAGE_P_BIS_NOTES.md`, 2026-07-27 and 2026-07-28). Sections 1, 3, 4, 5 and 6 are revised to match those locks. Section 2's on-chain facts stand exactly as recorded, but all three contracts it lists are now dead — see section 4.
+**Retained rather than rewritten or deleted, because section 4 is cited evidence.** PB-D36 (vii) removed the void projection keys from `.env.sepolia` on the express ground that their values survive in section 4 of this file and in `docs/STAGE_P_BIS_PHASE_A_RECORD.md`. Sections 1 through 6 stand as the record of the EIP-170 episode and of the two phase A runs as they read on 2026-07-29, and they stay exactly as written.
+
+**What is actually outstanding is the phase-4 broadcast.** Runbook section 4's phases 4, 5 and 6 have never been broadcast at all, which is what blocks PB3.8 rungs f and i. Read CLAUDE.md §11 and the PB-D48 lock for that; nothing below bears on it.
 
 ## 1. The EIP-170 blocker — CLOSED
 
