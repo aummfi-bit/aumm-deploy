@@ -19,7 +19,7 @@
 
 Three files, two canonical and one derived. `.env.mainnet` and `.env.sepolia` each hold a COMPLETE variable set for their own chain; `.env` is a working copy of exactly one of them and is the only file foundry reads. All three are gitignored and untracked, and only `.env.example` is tracked. This is the PB-D36 model, which replaces PB-D35 (iv)'s overlay: there is no precedence rule and no inheritance, so whichever set is active is the whole answer and nothing shows through from the other chain.
 
-**Switching posture.** Run `cp .env.sepolia .env` before the broadcast sequence, and `cp .env.mainnet .env` to return to mainnet fork testing. Nothing is sourced and no command in this runbook carries a `set -a` preamble — foundry auto-loads `.env`, and that is the whole mechanism.
+**Switching posture.** Run `cp .env.sepolia .env` before the broadcast sequence, and `cp .env.mainnet .env` to return to mainnet fork testing. Nothing is sourced and no command in this runbook carries a `set -a` preamble — foundry auto-loads `.env`, and that is the whole mechanism. That mechanism belongs to foundry alone, which is why every command in this document writes `--rpc-url sepolia` rather than passing the URL as a shell variable reference: the shell expands a variable on the command line before foundry is ever launched, and the shell has never read `.env`, so the variable form resolves to an empty string and the command dies with a missing-value error. The alias is defined at `foundry.toml` L103, where `sepolia` maps to the `SEPOLIA_RPC_URL` value foundry itself reads from `.env`.
 
 **Write direction is canonical to `.env`, never the reverse.** Every address captured in this runbook is written into `.env.sepolia`, never into `.env`, never into a tracked file, and never through `vm.setEnv`. `.env` is then refreshed from the canonical file. Editing `.env` directly is exactly the drift PB-D35 (vii) had to repair by hand, and the check that catches it is `diff .env .env.sepolia`, which must be empty while the Sepolia posture is active.
 
@@ -89,7 +89,7 @@ Row 1's 87 decomposes as 3 CREATEs for each of 14 WITH_RATE tokens plus 1 for ea
 
 ## 6. Phase 1 and 2 — commands and capture
 
-**Invocation form.** Every command in this section is `forge script <path>:<Contract> --rpc-url $SEPOLIA_RPC_URL --broadcast --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Once `ETHERSCAN_API_KEY` is provisioned per prerequisite 3, append `--verify --etherscan-api-key $ETHERSCAN_API_KEY`.
+**Invocation form.** Every command in this section is `forge script <path>:<Contract> --rpc-url sepolia --broadcast --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. The `sepolia` alias is required rather than stylistic, for the reason section 1 gives. Once `ETHERSCAN_API_KEY` is provisioned per prerequisite 3, append `--verify`; if an explicit `--etherscan-api-key` proves necessary, supply its value literally rather than as a shell variable reference, which expands to an empty string exactly as the RPC URL does — the same trap, one flag over.
 
 **Capture and refresh.** Every address this runbook captures is written into `.env.sepolia`, never into `.env` directly, per section 1's write-direction rule. Because forge reads only `.env`, run `cp .env.sepolia .env` after each capture and before the next command — a step whose predecessor captured a key it needs will otherwise read the pre-capture value, aborting on an empty key or sealing a stale address into an immutable. Before step 1, confirm the posture once with `grep -c '^AUMM_ENV_CHAIN=sepolia$' .env`, which must return exactly 1.
 
@@ -229,7 +229,7 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 **Why this is two phases and not one dry run.** Two mechanics rule out a single upfront full-sequence run. Simulation sends nothing, so the deployer nonce never advances: every step simulated before any broadcast places its CREATEs at the same live nonce, never at the chained nonce it will occupy, so a chained projection cannot be verified in advance even in principle. And every step past the vault consumes a live predecessor, so it reverts pre-broadcast against an address carrying no code, for a reason unrelated to prediction. Phase A therefore computes the projections analytically; phase B verifies each one against reality at the moment it becomes checkable.
 
-**Simulation form.** Every command in phase A and phase B is a section 6 command with `--broadcast` omitted: `forge script <path>:<Contract> --rpc-url $SEPOLIA_RPC_URL --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Nothing is sent and no nonce moves.
+**Simulation form.** Every command in phase A and phase B is a section 6 command with `--broadcast` omitted: `forge script <path>:<Contract> --rpc-url sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`. Nothing is sent and no nonce moves.
 
 **Where phase A writes.** Every projection phase A computes is written into `.env.sepolia`, never into `.env` directly, per section 1's write-direction rule. Phase A's simulations read `.env` like any other command, and several of them read a key an earlier step just projected — A6 reads `AUREUM_VAULT` from A3, A8 reads `GENESIS_BLOCK` — so run `cp .env.sepolia .env` after each write and before the next simulation. A projection that never reaches `.env` produces a simulation that fails on an empty key, or worse one that silently runs against the previous value.
 
@@ -239,7 +239,7 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 ### Phase A — before any broadcast
 
-**A1. Record the live nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --rpc-url $SEPOLIA_RPC_URL`. Call it `n0`. Every projection below is relative to it, and any transaction sent from the deployer between A1 and the first broadcast invalidates all of them — if that happens, restart phase A.
+**A1. Record the live nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --rpc-url sepolia`. Call it `n0`. Every projection below is relative to it, and any transaction sent from the deployer between A1 and the first broadcast invalidates all of them — if that happens, restart phase A.
 
 **A2. Count step 1.** Simulate `DeployTestnetStubs`. Record the count as `c1` in section 5 row 1.
 
@@ -312,21 +312,21 @@ Run every step. Do not skip one because the previous run looked clean, and do no
 
 **R1. Confirm the active environment.** `grep -c '^AUMM_ENV_CHAIN=sepolia$' .env` must return exactly 1, per section 1. A count of 0 is a failure and not a pass.
 
-**R2. Read the confirmed nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block latest --rpc-url $SEPOLIA_RPC_URL`. This is how many transactions the deployer has actually had confirmed, and it is the ground truth the artifact is checked against.
+**R2. Read the confirmed nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block latest --rpc-url sepolia`. This is how many transactions the deployer has actually had confirmed, and it is the ground truth the artifact is checked against.
 
-**R3. Read the pending nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block pending --rpc-url $SEPOLIA_RPC_URL`. It must equal R2 — a higher pending nonce means a transaction from this deployer is still in the mempool, and a resume will collide with it. Wait for that transaction to confirm or drop, then re-read both.
+**R3. Read the pending nonce.** `cast nonce 0xA851478dbee97375E784e9b98c0D7D599662bF85 --block pending --rpc-url sepolia`. It must equal R2 — a higher pending nonce means a transaction from this deployer is still in the mempool, and a resume will collide with it. Wait for that transaction to confirm or drop, then re-read both.
 
 **R4. Read the artifact's boundary.** `jq -r '{sent: ([.transactions[]|select(.hash != null)]|length), unsent: ([.transactions[]|select(.hash == null)]|length), receipts: (.receipts|length), next_nonce: ([.transactions[]|select(.hash == null)][0].transaction.nonce)}' broadcast/DeployStageP.s.sol/11155111/run-latest.json`. Note the path carries no `dry-run` component: the dry-run artifact holds 114 null hashes and is not what a resume reads.
 
 **R5. Compare.** `next_nonce` is hex and R2's reading is decimal; convert with `cast to-dec <next_nonce>` and require exact equality. Equality means every transaction the artifact shows as submitted did land, and the chain sits exactly where the resume will start — the gate is passed and R6 is skipped. Any inequality sends you to R6, and `sent` exceeding `receipts` in R4's output names the transactions to investigate first.
 
-**R6. Reconcile before anything else.** For every transaction whose hash is non-null, read its fate from chain with `cast receipt <hash> --rpc-url $SEPOLIA_RPC_URL`, and record each one that landed into `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` per §8f — nonce, contract, address, block, gas used and status. Two outcomes are possible and they point opposite ways: a hash returning a receipt landed and consumed its nonce, so the artifact under-reported; a hash returning nothing was dropped from the mempool and never consumed its nonce, so the artifact over-reported and the chain sits behind the boundary. Only once every submitted hash resolves into one of those two may the boundary be judged, and resuming before that is complete is the prohibited action this section exists to prevent.
+**R6. Reconcile before anything else.** For every transaction whose hash is non-null, read its fate from chain with `cast receipt <hash> --rpc-url sepolia`, and record each one that landed into `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` per §8f — nonce, contract, address, block, gas used and status. Two outcomes are possible and they point opposite ways: a hash returning a receipt landed and consumed its nonce, so the artifact under-reported; a hash returning nothing was dropped from the mempool and never consumed its nonce, so the artifact over-reported and the chain sits behind the boundary. Only once every submitted hash resolves into one of those two may the boundary be judged, and resuming before that is complete is the prohibited action this section exists to prevent.
 
 ### The resume invocation
 
-`forge script script/DeployStageP.s.sol:DeployStageP --rpc-url $SEPOLIA_RPC_URL --broadcast --resume --slow --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`
+`forge script script/DeployStageP.s.sol:DeployStageP --rpc-url "$(grep '^SEPOLIA_RPC_URL=' .env | cut -d= -f2-)" --broadcast --resume --slow --account aumm-sepolia --sender 0xA851478dbee97375E784e9b98c0D7D599662bF85`
 
-`--resume` accompanies `--broadcast` rather than replacing it — the foundry scripting guide's own resume example is `forge script script/Deploy.s.sol --broadcast --rpc-url $RPC_URL --resume`, checked 2026-08-02. Two details beyond that are load-bearing. `--slow` stays on for the same reason it was on the first send, so that a resume which itself stalls still leaves a clean boundary for the next one. And `--rpc-url` takes the full-URL `$SEPOLIA_RPC_URL` form used throughout section 6, not the `sepolia` alias the rung-h dry runs were invoked with, keeping the resume on exactly the footing of the send it is recovering.
+`--resume` accompanies `--broadcast` rather than replacing it — the foundry scripting guide's own resume example is `forge script script/Deploy.s.sol --broadcast --rpc-url $RPC_URL --resume`, checked 2026-08-02. Two details beyond that are load-bearing. `--slow` stays on for the same reason it was on the first send, so that a resume which itself stalls still leaves a clean boundary for the next one. And this is the one command in the runbook that does NOT take the `sepolia` alias: foundry issue 4346 reports that `--resume` stops resolving RPC aliases and demands a literal URL, so the invocation above lifts the value straight out of `.env` by command substitution, which needs neither an export nor a `set -a` and therefore leaves the section 1 posture intact. The trailing dash in `-f2-` is load-bearing in its own right, since an API key embedded in the URL may itself contain an equals sign.
 
 ### What not to do
 
