@@ -255,7 +255,7 @@ Governed by PB-D29 and PB-D30. Phase A runs once, before the first broadcast com
 
 **A9. Project the fee-routing hook.** `cast compute-address 0xA851478dbee97375E784e9b98c0D7D599662bF85 --nonce <n0 + c1 + c2 + c3 + c4>`. Write it to `FEE_ROUTING_HOOK`, replacing the A4 placeholder. This is the step the PB-D30 reorder exists to make computable: with the hook at step 5 no der-Bodensee count enters this sum, and der Bodensee at step 6 needs no nonce projection at all.
 
-**A10. Close phase A.** Section 5 rows 1 through 4 now hold real counts; rows 5 through 10 stay `PENDING-h` and fill from the broadcast itself at rung i, since no projection reads them. Before step 2 may run, `.env.sepolia` must hold, with `.env` refreshed from it: `VAULT`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `WEIGHTED_POOL_FACTORY`, `AUREUM_WEIGHTED_POOL_FACTORY`, `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK`, all from the projections above and none from a simulation's reported output.
+**A10. Close phase A.** Section 5 rows 1 through 4 now hold real counts; rows 5 through 8 and row 10 stay `PENDING-h` and fill from the broadcast itself at rung i, since no projection reads them. Row 9 is separately filled per PB-D48, from a rung-h9 dry run rather than from phase A or the broadcast. Before step 2 may run, `.env.sepolia` must hold, with `.env` refreshed from it: `VAULT`, `AUREUM_VAULT`, `FEE_CONTROLLER`, `WEIGHTED_POOL_FACTORY`, `AUREUM_WEIGHTED_POOL_FACTORY`, `DER_BODENSEE_POOL` and `FEE_ROUTING_HOOK`, all from the projections above and none from a simulation's reported output.
 
 ### Phase B — interleaved with the broadcast
 
