@@ -93,6 +93,7 @@ Every step was confirmed at a second endpoint and at a later block than inclusio
 ## 6. Related
 
 - Projections confirmed by this record: `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 7.
+- Per-transaction detail for phase 4: `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`, all 114 rows.
 - Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8.
 - Decisions: PB-D19 the genesis offset, PB-D26 the token sort, PB-D27 the go-live architecture, PB-D30 hook before der Bodensee, PB-D32 through PB-D34 the EIP-170 blocker, PB-D35 and PB-D36 environment isolation, PB-D38 the resume branch.
 
@@ -172,6 +173,8 @@ The replacement anticipated in section 9 is live. `ixAetheron` now carries the r
 
 **The sender is a third EOA, `0x87969483c553fC350684cB76007ef114105C8eDc`.** Slot 02's salt `bytes32(uint256(2))` is unmutated per E-D20 and is consumed in two CREATE3 namespaces already — the canonical deployer's, where it produced der Bodensee, and the second sender's, where it produced the pool section 8 records. A third sender was therefore arithmetic rather than preference. Its nonce reads 0 because this was its first transaction, exactly as the second sender's did, and it is not a deployer nonce.
 
+**The deployer funded this sender at nonce 124.** Transaction `0x513e793ece62841b000108ff9661928d83d2db0fd34ba8c6c61cbe0098cb54f4` moved 0.05 SepETH from `0xA851478dbee97375E784e9b98c0D7D599662bF85` to the third sender in block 11398896, at a fee of 0.000022590902943 ETH. It is recorded because it is a deployer transaction that left no `broadcast/` artifact, being a plain value transfer rather than a script run — and because without it the deployer's nonce ledger carries an unexplained gap between the last Miliarium pool at 123 and the first phase 4 transaction at 125. Section 8f's rule covers manual sends for exactly this reason, and this one went unrecorded until phase 4's own arithmetic exposed it.
+
 **Three slot-02-adjacent addresses now exist and must always be compared in full.** der Bodensee at `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798`, the superseded pool at `0xD259F35a138383Ac8b545F06C5eBADcA3f6a2890`, and the live pool at `0x45014C1C6720DaD745F2a791521a6723d102aDD8`. The first two differ by a single hex digit inside their first four characters, the hazard section 8 already states. The third is visually distinct but is not re-derivable from either other sender, so anyone recomputing this slot must supply the third sender or they will land on one of the other two.
 
 **The address was fixed before the broadcast rather than read out of it.** It was derived through `getDeploymentAddress` against the factory with the third sender as `--from`, committed to `.env.sepolia` as `MILIARIUM_POOL_02`, and only then broadcast — the discipline section 7 applies to the twenty-five, and what makes the post-broadcast check an independent confirmation rather than a readback of the script's own stdout. Pre-flight also asserted the projection held no code, so a salt consumed between derivation and send would have aborted the run before it spent anything.
@@ -180,3 +183,37 @@ The replacement anticipated in section 9 is live. `ixAetheron` now carries the r
 
 **The pool is registered and empty.** Balances read zero across all five tokens; initialization belongs to a later rung, and slot 02 was among the five slots the rung-h dry run never reached. Verification is outstanding on the same phase-6 obligation as the twenty-five pools of section 7, for the same reason — `ETHERSCAN_API_KEY` remains unprovisioned.
 
+## 11. Phase 4 — the Stage F through K orchestration, nonces 125 to 238
+
+Phase 4 broadcast on 2026-08-02 and completed in a single invocation. `DeployStageP.run()` composed Stages J, F, G, H, I, M, N, L and K, deploying sixteen contracts and firing ninety-eight wiring calls across 114 transactions, nonces 125 to 238 contiguous, in blocks 11403323 to 11403470. Total gas 27,666,605 at an average 1.057445744 gwei, for 0.029383870046196392 ETH. Every transaction succeeded — the artifact carries 114 receipts against 114 transactions with no status other than success, so the section 8f no-receipts gap never opened and the PB-D49 resume path, provisioned before the send and gated behind a mandatory nonce reconciliation, was never needed.
+
+The full per-transaction ledger, all 114 rows, is `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`. The sixteen contracts deployed are below.
+
+| Nonce | Contract | Address | Block | Gas used | Transaction |
+| --- | --- | --- | --- | --- | --- |
+| 125 | `MiliariumRegistry` | `0xfbe5e161955fb75fa99010dcfc71bbbe6405a511` | 11403323 | 841,260 | `0x171b7efbb9f8812246ec4129ca9f51ef19355cf7103ac122e6da32ad9cbc9137` |
+| 126 | `TVLOracle` | `0xbf78a49b1ab86247198f6660bf5a0491007e6a64` | 11403324 | 1,253,194 | `0x54fd52209c0b6bb61f0a25e1cf3109670192dd2483cc51c936e64a11f67dbdcd` |
+| 127 | `EfficiencyOracle` | `0x1e70661c3f1844c01be204e9df032b12d04110b3` | 11403326 | 750,861 | `0x502a06f181b8e7c3a563260e1f3aac6a79dfc71cc60cfdd12227b648ce3dae94` |
+| 128 | `EMASampler` | `0x51f8d9e771e5ec3a33555c15032110d034891b3a` | 11403327 | 302,413 | `0xa103b60ad0ec6191da7acb34df7372aa5965a8cc148b9ae73727bdce0c5aeb75` |
+| 129 | `CCBMultiplier` | `0xdbb357259be8dfb17fcbf0503d9bab01e976f735` | 11403328 | 939,805 | `0xa267e61639f8aef2722246a823caa9e86721e080ae4b39919b730ac7746b557e` |
+| 131 | `SwapAndDepositToBodensee` | `0x5f716bd785d2990c6d42750091b0f2914c557f25` | 11403330 | 1,542,160 | `0x2c0ea7d15d9bfbde533dbe245397ea933c52026d5aea4564c5cd365982d30903` |
+| 132 | `VaultClassRegistry` | `0xf6d7a7e633a1bc8b8896b7849bbfa53001854af7` | 11403332 | 1,432,037 | `0x92f63d1f88fc676f2f76b504987ebadff5e0f31ae08f3557ef722df7e2ef4a08` |
+| 133 | `GaugeEligibility` | `0x9b9304deb0230cab7780a66b184897d30f26cd78` | 11403333 | 1,522,144 | `0x83b5fa0fcd9da250968a0200576fa7964fc98f3d09985b779f4df63409239d7c` |
+| 134 | `GaugeRegistry` | `0xd6eee04ca4e27a3e2e395538f907b1dff523d987` | 11403335 | 1,268,012 | `0x21dc8d37a752239481641188d74c378ea399c6a979173e41521f2d5a62401b4a` |
+| 141 | `BodenseeBootstrapChannel` | `0x2325a6238ff80e5a4e8d8071ff1e949dcbcfb7cb` | 11403343 | 1,354,141 | `0x27f0971bf44dafbef8019728c26e26f542b95bb99b4bd8def7c07fe9ec5ee0e0` |
+| 142 | `EmissionDistributor` | `0x2933bc72f2ea002ece4a2270c7985b72cfd0a695` | 11403345 | 2,366,627 | `0xc6e394e3026e79d5f12de0192dfd9cd4df216145377c6c798a42cfb61fd1a4e5` |
+| 222 | `IncendiaryRegistry` | `0xe1304f04c7f9138f8932b71a18be7a7447cc93c1` | 11403451 | 1,585,860 | `0xecdde8762da72efb426c0f5054fab07ff4c6d650278c783f7348bde3043e077f` |
+| 225 | `VotingWeight` | `0x2d2678488e3483f905930571c1b01d5e3a138674` | 11403455 | 1,838,117 | `0xa57bc3f9d8b257a4c294ea9e26f0b05b30de9426b65d776fb8887e12f0fe76f3` |
+| 226 | `AureumGovernance` | `0x2c5fc5953c42b7e0bf1a5062632fcccbc97f0a69` | 11403457 | 2,143,679 | `0xb29aadb1609590f709c79d76c7688bd324a8993a8d369cfeca89745a81937eb4` |
+| 227 | `AureumGovernanceAuthorizer` | `0xd25f8510fbbc7fe0daebca3bb995b907211068b7` | 11403458 | 255,415 | `0x0c45f4d456ebbf988c95f2ed4168ad9ff18d393884bbb35285dd4743b1940f0d` |
+| 228 | `AuMMMinterRouter` | `0x71166f782df23a8f0af8769241c757c08d4998a8` | 11403459 | 255,892 | `0x9b33745b28b31eab21590db09c3d3c74e94ee7dbe9b13cc15060956b5bdc055e` |
+
+**Estimate against actual.** The pre-broadcast simulation quoted 36,934,592 gas at 2.231508907 gwei, or 0.082419871024410944 ETH. Execution consumed 27,666,605 gas at an average 1.057445744 gwei, or 0.029383870046196392 ETH. Neither figure is wrong — forge's estimate carries a buffer above the sum of its per-transaction estimates, which accounts for the roughly one-third gas overstatement, and the gas price fell by more than half between simulation and execution, which accounts for the rest. The deployer held 5.851532102045415695 SepETH going in, so the estimate was never a constraint on whether to proceed.
+
+**The consequential transaction carries no contract name.** Nonce 237 is `setAuthorizer(address)` against `0x9c7e8f56d12823609c28788d4b80a315ccc5fc80`, the Aureum Vault, and it moves the Vault's authorizer from the governance multisig to the `AureumGovernanceAuthorizer` deployed at nonce 227. The ledger shows an em dash where its contract name would be, because the Vault's artifact is built into `out-vault/` under the PB-D34 profile rather than into `out/`, so forge could not resolve the address to a name it knew. That is a labelling consequence of the two-profile build and not a defect: the target address is recorded in full, and the migration was read back independently on chain.
+
+**Post-conditions were asserted in simulation, then verified on chain.** `forge script` executes `run()` to completion in simulation to build the transaction list, and only then broadcasts, so `_assertPostConditions()` — the four-way genesis check, the authorizer migration, all 26 roster pools gauged and recorder-bound, and the CCB gauge-registry seal — passed against simulated state rather than against the chain as it now stands. Each was therefore re-read afterwards. `getAuthorizer()` on the Vault returns `0xd25f8510fbbc7fe0daebca3bb995b907211068b7`. `GENESIS_BLOCK()` returns 11477620 on `GaugeRegistry`, `EfficiencyOracle` and `EmissionDistributor` alike, matching the value sealed in the deployed AuMM. `CCBMultiplier.gaugeRegistry()` returns the `GaugeRegistry` at nonce 134. `isGaugeApproved` returns true for slot 01. The deployer's nonce reads 239, which is 125 plus 114 exactly.
+
+**The pre-flight that preceded the send.** The active environment marker read sepolia, `.env` matched `.env.sepolia` with no diff, no `STUB_` key was exported into the invoking shell, all 26 `MILIARIUM_POOL_nn` keys and `EMERGENCY_MULTISIG` were present, `GENESIS_BLOCK` in `.env` matched the value already sealed in the deployed AuMM, and the deployer stood at nonce 125 holding 5.8515 SepETH. A fresh dry run immediately before the broadcast reproduced the rung-h9 shape exactly — 114 transactions, 16 CREATEs, 36,934,592 estimated gas — so the sequence that was broadcast is the sequence that had been measured. `--slow` was carried per PB-D49 (iii), which is why every transaction above sits in its own block or close to it.
+
+**What remains.** Runbook phase 5, the F-09 Router seat, has not run: `DeployStageP` makes no `setTrustedRouter` call, structurally, per P-D26 (4), so the seat is two governor-signed transactions still outstanding. Phase 6, explorer verification, stays blocked on `ETHERSCAN_API_KEY`, still unprovisioned, so these sixteen contracts join the base layer and the twenty-six pools as unverified on the explorer. One thing is newly unblocked — PB3.8 rung f, the TVL-oracle wiring, has never run even in simulation because the oracle did not exist; `TVL_ORACLE` is now live at nonce 126 and can be written into the environment.
