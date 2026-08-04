@@ -51,6 +51,7 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
             IVaultExplorer(address(vault)),
             bodenseePool,
             address(svZchf),
+            address(wpf),
             address(awpf),
             address(this),
             new address[](0),

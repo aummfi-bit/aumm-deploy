@@ -64,10 +64,12 @@ contract F19UninitializedVenueLivenessTest is Test {
         mockExplorer = new MockVaultExplorer();
         mockFactory = new MockBasePoolFactory();
         poolTemplate = new MockWeightedPool();
+        // PB-D57 (v): both approved-factory slots take the same double, deliberately. This suite's subject is uninitialized-venue liveness rather than provenance disjunction, so one mock answering for both factories is adequate here; the disjunction itself is proven in the unit suite.
         oracle = new TVLOracle(
             IVaultExplorer(address(mockExplorer)),
             BODENSEE,
             SVZCHF,
+            address(mockFactory),
             address(mockFactory),
             GOVERNANCE,
             new address[](0),
