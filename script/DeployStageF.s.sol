@@ -43,7 +43,7 @@ import { IGaugeRegistry } from "../src/ccb/IGaugeRegistry.sol";
  * @dev P-D3 / D-D6 — fork-only scope within Stage P; D-D6 (`STAGE_D_PLAN.md` L88) reserves MAINNET for
  *      Stage R and says nothing about testnets, so it does not bar a Sepolia `--broadcast` — this
  *      script is exercised as a live Sepolia broadcast starting at PB3.5
- *      (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`). run() reads the eight inputs from env and broadcasts;
+ *      (`docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md`). run() reads the nine inputs from env and broadcasts;
  *      deploy(deployer) is the testable no-broadcast entry the P9.5 orchestrator and fork fixtures
  *      call with deployer = the executing address.
  *
@@ -55,6 +55,7 @@ import { IGaugeRegistry } from "../src/ccb/IGaugeRegistry.sol";
  *        BODENSEE_POOL        address  — der Bodensee pool (TVLOracle input)
  *        SVZCHF               address  — svZCHF (TVLOracle input)
  *        WEIGHTED_POOL_FACTORY  address  — the weighted-pool factory whose provenance gates constellation venues (TVLOracle input per PB-D52 (ii)); the same key `DeployStageG` passes to `GaugeEligibility`
+ *        AUREUM_WEIGHTED_POOL_FACTORY  address  — the Aureum weighted-pool factory, the second half of the TVLOracle venue provenance gate per PB-D57 (v); trust is disjunctive across this and the canonical factory above
  *        MILIARIUM_REGISTRY   address  — MiliariumRegistry (CCBMultiplier input)
  *        GAUGE_REGISTRY_PLACEHOLDER  address  — pre-seal gauge-registry placeholder (CCBMultiplier ctor input per PB-D18 (v); the orchestrator seals to the concrete GaugeRegistry via setGaugeRegistry after the G-stack deploys)
  */
@@ -114,6 +115,7 @@ contract DeployStageF is Script {
         address bodenseePool                 = vm.envAddress("BODENSEE_POOL");
         address svzchf                       = vm.envAddress("SVZCHF");
         address approvedFactory              = vm.envAddress("WEIGHTED_POOL_FACTORY");
+        address approvedFactoryAureum        = vm.envAddress("AUREUM_WEIGHTED_POOL_FACTORY");
         IMiliariumRegistry miliariumRegistry = IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY"));
         IGaugeRegistry gaugeRegistryPlaceholder = IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY_PLACEHOLDER"));
         uint256 genesisBlock                 = aumm.GENESIS_BLOCK();
@@ -125,6 +127,7 @@ contract DeployStageF is Script {
             bodenseePool,
             svzchf,
             approvedFactory,
+            approvedFactoryAureum,
             governanceMultisig,
             emptySeed,
             emptySeed
