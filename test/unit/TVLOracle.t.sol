@@ -552,6 +552,40 @@ contract TVLOracleTest is Test {
         assertEq(oracle.tvl(pool), 0);
     }
 
+    function test_tvl_venueFromSecondFactoryOnly_isAccepted() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        uint256[] memory vWeights = new uint256[](2);
+        vWeights[0] = 8e17;
+        vWeights[1] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        // Phase 1: vouched by the canonical factory only, which is what _setCompositionWeighted does.
+        assertEq(oracle.tvl(pool), 400e18);
+        // Phase 2: vouched by neither factory. Both operands of the disjunction must reject for the venue to drop out of the mean.
+        mockFactory.setFromFactory(venue, false);
+        assertEq(oracle.tvl(pool), 0);
+        // Phase 3: vouched by the AUREUM factory alone, per PB-D57 (v). Either operand admits on its own, and this is the operand no other test in the suite exercises: every venue elsewhere is vouched through the canonical mock, so a miswritten disjunction that never consults the Aureum factory would pass the entire rest of the file.
+        mockFactoryAureum.setFromFactory(venue, true);
+        assertEq(oracle.tvl(pool), 400e18);
+    }
+
     function test_tvl_poolMultiUnderlying_sumsAcrossTokens() public {
         address pool = _addr(0x5001);
         address venue1 = _addr(0x6001);
