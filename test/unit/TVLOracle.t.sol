@@ -374,7 +374,8 @@ contract TVLOracleTest is Test {
         uint256[] memory pBals = new uint256[](1);
         pBals[0] = 50e18;
         _setComposition(pool, pTokens, pBals);
-        assertEq(oracle.tvl(pool), 100e18);
+        // PB-D53 (ii): 100e18 was H-D9's biased reading, and this test was already exercising the aggregation branch that exposes it. The venue carries two base legs and one quote leg at 1e18/3 each, so wBase is 666666666666666666 against wQuote 333333333333333333, exactly two. At AMM parity the value of the base legs over the value of the quote leg equals that weight ratio, so 100e18 of underlying standing against 200e18 of svZCHF prices the underlying at 4 svZCHF rather than 2, and the pool's 50e18 holding is worth 200e18. The arithmetic is exact with no truncation residue, because 666666666666666666 is exactly twice 333333333333333333. This is the only pre-existing assertion in the suite that the PB-D50 fix moves: every other venue holds one base leg against one quote leg, where the weight term is exactly one.
+        assertEq(oracle.tvl(pool), 200e18);
     }
 
     function test_tvl_poolMultiUnderlying_sumsAcrossTokens() public {
