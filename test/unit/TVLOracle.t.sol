@@ -450,6 +450,99 @@ contract TVLOracleTest is Test {
         assertEq(oracle.tvl(pool), 400e18);
     }
 
+    function test_tvl_unprovenancedVenue_isSkipped() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        uint256[] memory vWeights = new uint256[](2);
+        vWeights[0] = 8e17;
+        vWeights[1] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 400e18);
+        mockFactory.setFromFactory(venue, false);
+        // PB-D52 (ii): only provenance changed. The venue still holds both legs at the same balances and weights, so a zero here is the factory gate skipping it and nothing else. This is the F-12 threat model in miniature: a pool that answers getNormalizedWeights perfectly well but is not from the approved factory contributes nothing to the mean.
+        assertEq(oracle.tvl(pool), 0);
+    }
+    function test_tvl_weightLengthMismatch_isSkipped() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        uint256[] memory vWeights = new uint256[](2);
+        vWeights[0] = 8e17;
+        vWeights[1] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 400e18);
+        uint256[] memory shortWeights = new uint256[](1);
+        shortWeights[0] = 1e18;
+        MockWeightedPool(venue).setWeights(shortWeights);
+        // PB-D53 (iv): only the weight vector's length changed, from two entries to one against a two-token venue. Without the length guard the loop indexes weights[1] and reverts with an out-of-bounds panic, which would propagate out of tvl() rather than degrading this one venue.
+        assertEq(oracle.tvl(pool), 0);
+    }
+    function test_tvl_zeroQuoteWeight_isSkipped() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        uint256[] memory vWeights = new uint256[](2);
+        vWeights[0] = 8e17;
+        vWeights[1] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        assertEq(oracle.tvl(pool), 400e18);
+        uint256[] memory zeroQuote = new uint256[](2);
+        zeroQuote[0] = 1e18;
+        zeroQuote[1] = 0;
+        MockWeightedPool(venue).setWeights(zeroQuote);
+        // PB-D53 (v): only the quote leg's weight changed, to zero. The divisor is balBase times wQuote, so without this guard the division panics with 0x12 and that panic propagates out of tvl() into EMASampler, GaugeEligibility and EmissionDistributor. The guard is load-bearing rather than ornamental for exactly that reason: an arithmetic panic is not caught by reading the revert surface. A zero on the BASE leg instead would not panic, but would enter the mean as an eligible venue carrying a zero ratio, which the same condition also prevents.
+        assertEq(oracle.tvl(pool), 0);
+    }
+
     function test_tvl_poolMultiUnderlying_sumsAcrossTokens() public {
         address pool = _addr(0x5001);
         address venue1 = _addr(0x6001);
