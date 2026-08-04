@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {TVLOracle} from "../../src/emission/TVLOracle.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
-import {MockVaultExplorer, MockBasePoolFactory} from "../fork/mocks/StageHMocks.sol";
+import {MockVaultExplorer, MockBasePoolFactory, MockWeightedPool} from "../fork/mocks/StageHMocks.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -56,12 +56,14 @@ contract F19UninitializedVenueLivenessTest is Test {
 
     MockVaultExplorer internal mockExplorer;
     MockBasePoolFactory internal mockFactory;
+    MockWeightedPool internal poolTemplate;
     MockMiliariumRegistry internal registry;
     TVLOracle internal oracle;
 
     function setUp() public {
         mockExplorer = new MockVaultExplorer();
         mockFactory = new MockBasePoolFactory();
+        poolTemplate = new MockWeightedPool();
         oracle = new TVLOracle(
             IVaultExplorer(address(mockExplorer)),
             BODENSEE,
@@ -94,6 +96,7 @@ contract F19UninitializedVenueLivenessTest is Test {
     }
 
     /// @dev Two-token venue: `underlyingBal` of TOK_U and `svzchfBal` of SVZCHF.
+    /// @dev PB-D54 (iv) / PB3.8i9c: the venue is given code by `vm.etch` on the `TVLOracle.t.sol` `_setComposition` precedent, which keeps `VENUE_A` and `VENUE_B` as the very constants every assertion in this suite already names. Weights are EQUAL across the two legs, so `wBase` equals `wQuote`, the PB-D50 weight term is exactly a no-op, and the 2e18 and 4e18 ratios asserted here are unchanged. Only these two addresses are registry-enumerated, so `_setPoolSingle` needs no equivalent: `POOL` is priced through `tvl()` balances and never evaluated as a venue.
     function _setVenue(address venue, uint256 underlyingBal, uint256 svzchfBal) internal {
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = IERC20(TOK_U);
@@ -101,6 +104,12 @@ contract F19UninitializedVenueLivenessTest is Test {
         uint256[] memory bals = new uint256[](2);
         bals[0] = underlyingBal;
         bals[1] = svzchfBal;
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 5e17;
+        weights[1] = 5e17;
+        vm.etch(venue, address(poolTemplate).code);
+        MockWeightedPool(venue).setWeights(weights);
+        mockFactory.setFromFactory(venue, true);
         mockExplorer.setPool(venue, tokens, bals);
     }
 
