@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {TVLOracle} from "../../src/emission/TVLOracle.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
-import {MockVaultExplorer} from "../fork/mocks/StageHMocks.sol";
+import {MockVaultExplorer, MockBasePoolFactory} from "../fork/mocks/StageHMocks.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -55,15 +55,18 @@ contract F19UninitializedVenueLivenessTest is Test {
     address internal constant UNDERLYING = address(0x00B1);
 
     MockVaultExplorer internal mockExplorer;
+    MockBasePoolFactory internal mockFactory;
     MockMiliariumRegistry internal registry;
     TVLOracle internal oracle;
 
     function setUp() public {
         mockExplorer = new MockVaultExplorer();
+        mockFactory = new MockBasePoolFactory();
         oracle = new TVLOracle(
             IVaultExplorer(address(mockExplorer)),
             BODENSEE,
             SVZCHF,
+            address(mockFactory),
             GOVERNANCE,
             new address[](0),
             new address[](0)
