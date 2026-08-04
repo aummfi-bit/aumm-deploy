@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {TVLOracle} from "../../src/emission/TVLOracle.sol";
 import {ITVLOracle} from "../../src/ccb/ITVLOracle.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
-import {MockVaultExplorer} from "../fork/mocks/StageHMocks.sol";
+import {MockVaultExplorer, MockBasePoolFactory} from "../fork/mocks/StageHMocks.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -38,14 +38,17 @@ contract TVLOracleTest is Test {
     address internal constant BODENSEE = address(0x1003);
 
     MockVaultExplorer internal mockExplorer;
+    MockBasePoolFactory internal mockFactory;
     TVLOracle internal oracle;
 
     function setUp() public {
         mockExplorer = new MockVaultExplorer();
+        mockFactory = new MockBasePoolFactory();
         oracle = new TVLOracle(
             IVaultExplorer(address(mockExplorer)),
             BODENSEE,
             SVZCHF,
+            address(mockFactory),
             GOVERNANCE,
             new address[](0),
             new address[](0)
@@ -58,35 +61,41 @@ contract TVLOracleTest is Test {
 
     function test_constructor_revert_zeroVaultExplorer() public {
         vm.expectRevert(TVLOracle.ZeroAddress.selector);
-        new TVLOracle(IVaultExplorer(address(0)), BODENSEE, SVZCHF, GOVERNANCE, new address[](0), new address[](0));
+        new TVLOracle(IVaultExplorer(address(0)), BODENSEE, SVZCHF, address(mockFactory), GOVERNANCE, new address[](0), new address[](0));
     }
 
     function test_constructor_revert_zeroBodensee() public {
         vm.expectRevert(TVLOracle.ZeroAddress.selector);
-        new TVLOracle(IVaultExplorer(address(mockExplorer)), address(0), SVZCHF, GOVERNANCE, new address[](0), new address[](0));
+        new TVLOracle(IVaultExplorer(address(mockExplorer)), address(0), SVZCHF, address(mockFactory), GOVERNANCE, new address[](0), new address[](0));
     }
 
     function test_constructor_revert_zeroSvzchf() public {
         vm.expectRevert(TVLOracle.ZeroAddress.selector);
-        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, address(0), GOVERNANCE, new address[](0), new address[](0));
+        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, address(0), address(mockFactory), GOVERNANCE, new address[](0), new address[](0));
+    }
+
+    function test_constructor_revert_zeroApprovedFactory() public {
+        vm.expectRevert(TVLOracle.ZeroAddress.selector);
+        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, address(0), GOVERNANCE, new address[](0), new address[](0));
     }
 
     function test_constructor_revert_zeroGovernance() public {
         vm.expectRevert(TVLOracle.ZeroAddress.selector);
-        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, address(0), new address[](0), new address[](0));
+        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, address(mockFactory), address(0), new address[](0), new address[](0));
     }
 
     function test_constructor_revert_arrayLengthMismatch() public {
         address[] memory tokens = new address[](2);
         address[] memory underlyings = new address[](3);
         vm.expectRevert(TVLOracle.ArrayLengthMismatch.selector);
-        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, GOVERNANCE, tokens, underlyings);
+        new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, address(mockFactory), GOVERNANCE, tokens, underlyings);
     }
 
     function test_constructor_wiresImmutablesAndGovernance() public {
         assertEq(address(oracle.vaultExplorer()), address(mockExplorer));
         assertEq(oracle.BODENSEE_POOL(), BODENSEE);
         assertEq(oracle.SVZCHF(), SVZCHF);
+        assertEq(oracle.approvedFactory(), address(mockFactory));
         assertEq(oracle.governance(), GOVERNANCE);
     }
 
@@ -97,7 +106,7 @@ contract TVLOracleTest is Test {
         address[] memory underlyings = new address[](2);
         underlyings[0] = _addr(0xB1);
         underlyings[1] = _addr(0xB2);
-        TVLOracle seeded = new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, GOVERNANCE, tokens, underlyings);
+        TVLOracle seeded = new TVLOracle(IVaultExplorer(address(mockExplorer)), BODENSEE, SVZCHF, address(mockFactory), GOVERNANCE, tokens, underlyings);
         assertEq(seeded.tokenToUnderlying(_addr(0xA1)), _addr(0xB1));
         assertEq(seeded.tokenToUnderlying(_addr(0xA2)), _addr(0xB2));
     }
