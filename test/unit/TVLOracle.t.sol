@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {TVLOracle} from "../../src/emission/TVLOracle.sol";
 import {ITVLOracle} from "../../src/ccb/ITVLOracle.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
-import {MockVaultExplorer, MockBasePoolFactory} from "../fork/mocks/StageHMocks.sol";
+import {MockVaultExplorer, MockBasePoolFactory, MockWeightedPool} from "../fork/mocks/StageHMocks.sol";
 import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -39,11 +39,13 @@ contract TVLOracleTest is Test {
 
     MockVaultExplorer internal mockExplorer;
     MockBasePoolFactory internal mockFactory;
+    MockWeightedPool internal poolTemplate;
     TVLOracle internal oracle;
 
     function setUp() public {
         mockExplorer = new MockVaultExplorer();
         mockFactory = new MockBasePoolFactory();
+        poolTemplate = new MockWeightedPool();
         oracle = new TVLOracle(
             IVaultExplorer(address(mockExplorer)),
             BODENSEE,
@@ -236,11 +238,17 @@ contract TVLOracleTest is Test {
         oracle.addHopUnderlying(underlying);
     }
 
+    /// @dev PB-D54 (iv) / PB3.8i9c: the venue is given code by `vm.etch` rather than deployed, because its address is an INPUT to this helper that every caller already holds. Etching keeps all eleven call sites and their nineteen `tvl()` expectations byte-stable, which is exactly what the equal-weight decision was taken to buy; deploying instead would hand back a new address and rewrite every site, reopening the drift surface that decision closed. This is the FIRST `vm.etch` in the tree and it is justified by that assertion freeze rather than by convenience: `MockWeightedPool` declares no constructor and has no construction side effects, so etched runtime code is semantically identical to a deployed instance. Weights are EQUAL across the venue's tokens, so a venue contributing one token to each side yields `wBase` equal to `wQuote` and the PB-D50 weight term is exactly a no-op here; the unequal-weight venues that actually prove the fix are the PB-D54 (vi) additions, not these.
     function _setComposition(address target, address[] memory tokenAddrs, uint256[] memory balances) internal {
         IERC20[] memory ierc20Tokens = new IERC20[](tokenAddrs.length);
+        uint256[] memory weights = new uint256[](tokenAddrs.length);
         for (uint256 i = 0; i < tokenAddrs.length; i++) {
             ierc20Tokens[i] = IERC20(tokenAddrs[i]);
+            weights[i] = 1e18 / tokenAddrs.length;
         }
+        vm.etch(target, address(poolTemplate).code);
+        MockWeightedPool(target).setWeights(weights);
+        mockFactory.setFromFactory(target, true);
         mockExplorer.setPool(target, ierc20Tokens, balances);
     }
 
