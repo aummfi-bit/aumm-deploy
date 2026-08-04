@@ -252,6 +252,18 @@ contract TVLOracleTest is Test {
         mockExplorer.setPool(target, ierc20Tokens, balances);
     }
 
+    /// @dev PB-D54 (vi): the explicit-weights sibling of _setComposition, for venues carrying deliberately unequal weights. The etch, vouch and register sequence is duplicated rather than shared, so _setComposition keeps the exact shape verified at PB3.8i9c1 and its eleven callers are untouched by this addition. Nothing here validates the weight vector, matching MockWeightedPool.setWeights, so a short vector or a zero entry passes straight through to exercise the PB-D53 (iv) and PB-D53 (v) skips.
+    function _setCompositionWeighted(address target, address[] memory tokenAddrs, uint256[] memory balances, uint256[] memory weights) internal {
+        IERC20[] memory ierc20Tokens = new IERC20[](tokenAddrs.length);
+        for (uint256 i = 0; i < tokenAddrs.length; i++) {
+            ierc20Tokens[i] = IERC20(tokenAddrs[i]);
+        }
+        vm.etch(target, address(poolTemplate).code);
+        MockWeightedPool(target).setWeights(weights);
+        mockFactory.setFromFactory(target, true);
+        mockExplorer.setPool(target, ierc20Tokens, balances);
+    }
+
     function _addVenue(address venue, address[] memory tokenAddrs, uint256[] memory balances) internal {
         _setComposition(venue, tokenAddrs, balances);
         vm.prank(GOVERNANCE);
@@ -376,6 +388,66 @@ contract TVLOracleTest is Test {
         _setComposition(pool, pTokens, pBals);
         // PB-D53 (ii): 100e18 was H-D9's biased reading, and this test was already exercising the aggregation branch that exposes it. The venue carries two base legs and one quote leg at 1e18/3 each, so wBase is 666666666666666666 against wQuote 333333333333333333, exactly two. At AMM parity the value of the base legs over the value of the quote leg equals that weight ratio, so 100e18 of underlying standing against 200e18 of svZCHF prices the underlying at 4 svZCHF rather than 2, and the pool's 50e18 holding is worth 200e18. The arithmetic is exact with no truncation residue, because 666666666666666666 is exactly twice 333333333333333333. This is the only pre-existing assertion in the suite that the PB-D50 fix moves: every other venue holds one base leg against one quote leg, where the weight term is exactly one.
         assertEq(oracle.tvl(pool), 200e18);
+    }
+
+    function test_tvl_venueUnequalWeights_appliesWeightTerm() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU = _addr(0xA1);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](2);
+        vTokens[0] = tokenU;
+        vTokens[1] = SVZCHF;
+        uint256[] memory vBals = new uint256[](2);
+        vBals[0] = 100e18;
+        vBals[1] = 200e18;
+        uint256[] memory vWeights = new uint256[](2);
+        vWeights[0] = 8e17;
+        vWeights[1] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        // PB-D50: ratio is (200e18 * 8e17 * 1e18) / (100e18 * 2e17) = 8e18, so the pool's 50e18 is worth 400e18. The bare balance ratio H-D9 specified would give 2e18 and 100e18, so this assertion fails against the pre-fix estimator. This is the plain unequal-weight case: one base leg, one quote leg, no aggregation.
+        assertEq(oracle.tvl(pool), 400e18);
+    }
+    function test_tvl_venueAggregatesWeightsInLockstep() public {
+        address pool = _addr(0x5001);
+        address venue = _addr(0x6001);
+        address tokenU1 = _addr(0xA1);
+        address tokenU2 = _addr(0xA2);
+        address underlying = _addr(0xB1);
+        _mapToken(tokenU1, underlying);
+        _mapToken(tokenU2, underlying);
+        _mapToken(SVZCHF, SVZCHF);
+        address[] memory vTokens = new address[](3);
+        vTokens[0] = tokenU1;
+        vTokens[1] = tokenU2;
+        vTokens[2] = SVZCHF;
+        uint256[] memory vBals = new uint256[](3);
+        vBals[0] = 60e18;
+        vBals[1] = 40e18;
+        vBals[2] = 200e18;
+        uint256[] memory vWeights = new uint256[](3);
+        vWeights[0] = 5e17;
+        vWeights[1] = 3e17;
+        vWeights[2] = 2e17;
+        _setCompositionWeighted(venue, vTokens, vBals, vWeights);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(venue);
+        address[] memory pTokens = new address[](1);
+        pTokens[0] = tokenU1;
+        uint256[] memory pBals = new uint256[](1);
+        pBals[0] = 50e18;
+        _setComposition(pool, pTokens, pBals);
+        // PB-D53 (ii) and (iii), the discriminator the genesis roster cannot supply: two base legs resolve to one underlying, so balBase sums to 100e18 and wBase must sum in lockstep to 8e17 against wQuote 2e17. Ratio is (200e18 * 8e17 * 1e18) / (100e18 * 2e17) = 8e18 and the pool's 50e18 is worth 400e18. A single-leg reading taking only tokenU1's 5e17 would give ratio 5e18 and 250e18, so this assertion is what separates a correct aggregation from a plausible wrong one.
+        assertEq(oracle.tvl(pool), 400e18);
     }
 
     function test_tvl_poolMultiUnderlying_sumsAcrossTokens() public {
