@@ -60,3 +60,43 @@ contract MockVaultExplorer {
         _uninitialized[pool] = flag;
     }
 }
+
+/// @title MockWeightedPool — settable-weights weighted-pool double for `TVLOracle._venueRatio`'s PB-D50 weight term
+/// @notice Implements only `getNormalizedWeights`, the sole weighted-pool surface `TVLOracle._venueRatio` calls — deliberately does NOT inherit `IWeightedPool`, per the `MockVaultExplorer` mock-cast precedent above (Stage F-D11 / G-D25c) and the hand-rolled `F12_SpoofWeightedPool` in `test/whitehat/F12_compositionGateProvenance.t.sol`. Consumers register the instance's address as a venue through `MockVaultExplorer.setPool` and vouch for it through `MockBasePoolFactory.setFromFactory`.
+/// @dev `setWeights` VALIDATES NOTHING, and that is load-bearing rather than an omission — the double must be able to return a vector shorter than the venue's token array and a vector containing a zero entry, because those are precisely the malformed responses the PB-D53 (iv) length-mismatch skip and the PB-D53 (v) zero-weight skip exist to catch. Do not add length or non-zero validation here; it would make two of the five PB-D54 (vi) tests unwritable.
+contract MockWeightedPool {
+    uint256[] internal _weights;
+
+    /// @notice Programs the weight vector returned by `getNormalizedWeights`; no validation, per the contract-level dev note.
+    /// @param weights The normalized-weight vector to return, in the venue's registered token order.
+    function setWeights(uint256[] memory weights) external {
+        _weights = weights;
+    }
+
+    /// @notice Mirrors `IWeightedPool.getNormalizedWeights` — index-aligned with the venue's registered tokens.
+    /// @return The programmed weight vector, empty until `setWeights` is called.
+    function getNormalizedWeights() external view returns (uint256[] memory) {
+        return _weights;
+    }
+}
+
+/// @title MockBasePoolFactory — settable-membership factory double for `TVLOracle._venueRatio`'s PB-D52 (ii) provenance gate
+/// @notice Implements only `isPoolFromFactory`, the sole factory surface `TVLOracle._venueRatio` calls — deliberately does NOT inherit `IBasePoolFactory`, per the same mock-cast precedent. Consumers pass the instance's address as the oracle's `approvedFactory` constructor argument.
+/// @dev Membership defaults to FALSE for every address, matching production semantics where a pool no factory created is not from that factory — a venue is skipped until `setFromFactory(pool, true)` vouches for it. A permissive default was available and is rejected: it would invert the production default so a test could pass against a venue the live path would skip, which is the answers-on-behalf-of trap PB-D54 (ii) names, and it saves nothing because every venue site is rewritten at PB3.8i9c regardless.
+contract MockBasePoolFactory {
+    mapping(address => bool) internal _fromFactory;
+
+    /// @notice Programs whether `pool` is reported as created by this factory.
+    /// @param pool The venue address to vouch for or disown.
+    /// @param flag True to report `pool` as factory-created, false to withhold provenance.
+    function setFromFactory(address pool, bool flag) external {
+        _fromFactory[pool] = flag;
+    }
+
+    /// @notice Mirrors `IBasePoolFactory.isPoolFromFactory` — false for any address never passed to `setFromFactory`.
+    /// @param pool The venue address under evaluation.
+    /// @return True when `pool` has been vouched for, false otherwise.
+    function isPoolFromFactory(address pool) external view returns (bool) {
+        return _fromFactory[pool];
+    }
+}
