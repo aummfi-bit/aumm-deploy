@@ -24,8 +24,11 @@ contract TVLOracle is ITVLOracle {
     /// @notice Immutable svZCHF numéraire address per H-D9 — quote currency for all `tvl()` outputs; may itself appear as a constellation pool token (svZCHF dual-role).
     address public immutable SVZCHF;
 
-    /// @notice Immutable approved Aureum weighted-pool factory — the venue provenance gate per PB-D52 (ii) / F-12, seeded from the same `WEIGHTED_POOL_FACTORY` value `DeployStageG` passes to `GaugeEligibility`. Normalized weights are pool-self-reported rather than Vault-authoritative, so a venue that is not from this factory is skipped rather than trusted.
+    /// @notice Immutable canonical weighted-pool factory — one half of the venue provenance gate per PB-D52 (ii) and PB-D57 (v), seeded from `WEIGHTED_POOL_FACTORY`, which per the E-D16 naming trap recorded at `DeployStageG` L62 holds the UPSTREAM Balancer factory and is the same value `GaugeEligibility` receives. Normalized weights are pool-self-reported rather than Vault-authoritative, so a venue claimed by neither approved factory is skipped rather than trusted.
     address public immutable approvedFactory;
+
+    /// @notice Immutable Aureum weighted-pool factory — the other half of the provenance gate per PB-D57 (v), seeded from `AUREUM_WEIGHTED_POOL_FACTORY`. A constellation venue is a pricing source rather than an Aureum-owned asset, so a genuine weighted pool from either factory is trusted; the F-12 hand-rolled spoof is claimed by neither.
+    address public immutable approvedFactoryAureum;
 
     /* ---------- Governance (Stage K) ---------- */
 
@@ -126,6 +129,7 @@ contract TVLOracle is ITVLOracle {
         address _bodenseePool,
         address _svzchf,
         address _approvedFactory,
+        address _approvedFactoryAureum,
         address _initialGovernance,
         address[] memory _tokensSeed,
         address[] memory _underlyingsSeed
@@ -134,6 +138,7 @@ contract TVLOracle is ITVLOracle {
         if (_bodenseePool == address(0)) revert ZeroAddress();
         if (_svzchf == address(0)) revert ZeroAddress();
         if (_approvedFactory == address(0)) revert ZeroAddress();
+        if (_approvedFactoryAureum == address(0)) revert ZeroAddress();
         if (_initialGovernance == address(0)) revert ZeroAddress();
 
         if (_tokensSeed.length != _underlyingsSeed.length) revert ArrayLengthMismatch();
@@ -142,6 +147,7 @@ contract TVLOracle is ITVLOracle {
         BODENSEE_POOL = _bodenseePool;
         SVZCHF = _svzchf;
         approvedFactory = _approvedFactory;
+        approvedFactoryAureum = _approvedFactoryAureum;
         governance = _initialGovernance;
 
         for (uint256 i = 0; i < _tokensSeed.length; i++) {
@@ -305,18 +311,18 @@ contract TVLOracle is ITVLOracle {
 
     /**
      * @notice Per-venue weighted balance-ratio contribution shared by `_directRatio` enumeration legs (K-D8), carrying the PB-D50 weight term.
-     * @dev Sums `balancesLiveScaled18` into `balBase` / `balQuote` and `getNormalizedWeights` into `wBase` / `wQuote` across `v`'s tokens by `tokenToUnderlying` resolution, aggregating in LOCKSTEP so a summed balance is paired with the summed weight of exactly the legs that produced it (PB-D53 (ii)) — a weighted pool's parity relation is per-value-share, so the share carried by a summed balance is the sum of its legs' weights. H-D9 amended per PB-D50: a bare balance ratio is parity-exact only where quote and base weights are equal, which no constellation venue satisfies. Provenance is asserted BEFORE the weight read per PB-D52 (ii), so a venue that is not from the approved weighted-pool factory is skipped and the unsupported `getNormalizedWeights` call is never made, and a pool's self-reported weights never enter the mean unless its provenance is established (F-12); `BODENSEE_POOL` is exempt per PB-D55 (v), because a zero-checked constructor immutable carries structural provenance and der Bodensee is created by a different factory from the Miliarium pools wherever the two factory environment keys diverge. Every rejection SKIPS rather than reverts per PB-D52 (iii): this is a pricing mean and not an admission check, so one mis-curated roster entry degrades a single venue's contribution instead of bricking `tvl()` for `EMASampler`, `GaugeEligibility` and `EmissionDistributor`. `_directRatio` counts only eligible venues, so a skip leaves the cross-venue mean over the venues that remain.
+     * @dev Sums `balancesLiveScaled18` into `balBase` / `balQuote` and `getNormalizedWeights` into `wBase` / `wQuote` across `v`'s tokens by `tokenToUnderlying` resolution, aggregating in LOCKSTEP so a summed balance is paired with the summed weight of exactly the legs that produced it (PB-D53 (ii)) — a weighted pool's parity relation is per-value-share, so the share carried by a summed balance is the sum of its legs' weights. H-D9 amended per PB-D50: a bare balance ratio is parity-exact only where quote and base weights are equal, which no constellation venue satisfies. Provenance is asserted BEFORE the weight read per PB-D52 (ii), so a venue that is not from the approved weighted-pool factory is skipped and the unsupported `getNormalizedWeights` call is never made, and a pool's self-reported weights never enter the mean unless its provenance is established (F-12); trust is DISJUNCTIVE per PB-D57 (v), so a venue claimed by either the canonical or the Aureum weighted-pool factory passes, which is what admits a genuine third-party pricing venue while still excluding the F-12 spoof, claimed by neither. Every rejection SKIPS rather than reverts per PB-D52 (iii): this is a pricing mean and not an admission check, so one mis-curated roster entry degrades a single venue's contribution instead of bricking `tvl()` for `EMASampler`, `GaugeEligibility` and `EmissionDistributor`. `_directRatio` counts only eligible venues, so a skip leaves the cross-venue mean over the venues that remain.
      * @param v The constellation venue (pool) to read.
      * @param base The valuation base underlying.
      * @param quote The valuation quote underlying.
      * @return ratio `(balQuote * wBase * 1e18) / (balBase * wQuote)` when eligible, else `0`.
-     * @return eligible True when `v` is `BODENSEE_POOL` or is factory-provenanced, and holds both `base` and `quote` with positive scaled balances and positive summed weights.
+     * @return eligible True when `v` is claimed by either approved factory and holds both `base` and `quote` with positive scaled balances and positive summed weights.
      */
     function _venueRatio(address v, address base, address quote) internal view returns (uint256 ratio, bool eligible) {
         // F-19 / P-D37 — an uninitialized venue cannot price and would return (0, false) anyway; skip BEFORE the getPoolData read, which carries the Vault's withInitializedPool modifier and reverts PoolNotInitialized.
         if (!vaultExplorer.isPoolInitialized(v)) return (0, false);
-        // PB-D52 (ii) / PB-D55 (v) — provenance precedes every read it protects; a non-weighted venue is not from this factory, so getNormalizedWeights is never called on a pool that cannot answer it, and no unprovenanced pool's self-reported weights reach the mean. BODENSEE_POOL short-circuits ahead of the factory call: its provenance is structural rather than asserted, and it is created by a different factory from the Miliarium pools wherever the two factory environment keys diverge.
-        if (v != BODENSEE_POOL && !IBasePoolFactory(approvedFactory).isPoolFromFactory(v)) return (0, false);
+        // PB-D52 (ii) / PB-D57 (v) — provenance precedes every read it protects, and trust is disjunctive across the two weighted-pool factories this system actually runs. The Aureum factory is tested first because the Miliarium roster dominates the venue set, so the common case short-circuits on one call. A venue claimed by neither is skipped before getNormalizedWeights is reached, so a pool that cannot answer it is never asked. The PB-D55 BODENSEE_POOL exemption is retired here rather than kept beside this: der Bodensee is created from WEIGHTED_POOL_FACTORY and therefore passes on the general rule.
+        if (!IBasePoolFactory(approvedFactoryAureum).isPoolFromFactory(v) && !IBasePoolFactory(approvedFactory).isPoolFromFactory(v)) return (0, false);
         IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
         PoolData memory data = vaultExplorer.getPoolData(v);
         uint256[] memory weights = IWeightedPool(v).getNormalizedWeights();
