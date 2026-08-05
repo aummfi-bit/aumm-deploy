@@ -8,8 +8,14 @@ import { IVaultAdmin } from "@balancer-labs/v3-interfaces/contracts/vault/IVault
  * @title AureumGovernanceAuthorizer
  * @notice B-strict authorizer per OQ-10 — `GOVERNANCE_CONTRACT` holds full authorizer-gated authority;
  *         `EMERGENCY_MULTISIG` holds a narrow, time-boxed emergency role limited to {`pauseVault`,
- *         `enableRecoveryMode`} that dies permanently and irrevocably at `EMERGENCY_WINDOW_END_BLOCK`
- *         (strict `<` boundary).
+ *         `unpauseVault`, `enableRecoveryMode`, `disableRecoveryMode`} that dies permanently and
+ *         irrevocably at `EMERGENCY_WINDOW_END_BLOCK` (strict `<` boundary).
+ * @dev F-22 / PB-D63 / PB-D64 (vii) — the emergency set holds each action AND its inverse. Before
+ *      that pairing the role could enter `pauseVault` and `enableRecoveryMode` and leave neither,
+ *      and both entered states outlive the window: a pause until the Vault's buffer period ends, a
+ *      recovery-mode bit forever. The exit grant expires with the entry grant per PB-D64 (x), so
+ *      permanent de-escalation lives in `AureumGovernance`'s constrained proposal types rather than
+ *      in a standing key, which is what keeps the §xxix dissolution clause intact.
  * @dev Emergency action IDs are computed locally at construction (H13-safe — no external calls).
  *      Disambiguator = `vault_` address per Balancer `Authentication.getActionId` /
  *      `VaultAdmin` encoding (`Authentication.sol:51`, `VaultAdmin.sol:77`).
@@ -47,6 +53,18 @@ contract AureumGovernanceAuthorizer is IAuthorizer {
     // and AureumProtocolFeeController.
     // slither-disable-next-line naming-convention
     bytes32 public immutable EMERGENCY_ACTION_ENABLE_RECOVERY_MODE;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    bytes32 public immutable EMERGENCY_ACTION_UNPAUSE_VAULT;
+    // Rationale: Aureum immutables follow Balancer V3 SCREAMING_CASE convention
+    // for protocol-critical addresses, matching upstream-forked files. See
+    // foundry.toml [lint] ignore for the same decision on AureumVaultFactory
+    // and AureumProtocolFeeController.
+    // slither-disable-next-line naming-convention
+    bytes32 public immutable EMERGENCY_ACTION_DISABLE_RECOVERY_MODE;
 
     constructor(address governanceContract_, address emergencyMultisig_, address vault_) {
         require(governanceContract_ != address(0), "AureumGovernanceAuthorizer: zero governance");
@@ -60,6 +78,8 @@ contract AureumGovernanceAuthorizer is IAuthorizer {
         bytes32 vaultDisambiguator = bytes32(uint256(uint160(vault_)));
         EMERGENCY_ACTION_PAUSE_VAULT = keccak256(abi.encodePacked(vaultDisambiguator, IVaultAdmin.pauseVault.selector));
         EMERGENCY_ACTION_ENABLE_RECOVERY_MODE = keccak256(abi.encodePacked(vaultDisambiguator, IVaultAdmin.enableRecoveryMode.selector));
+        EMERGENCY_ACTION_UNPAUSE_VAULT = keccak256(abi.encodePacked(vaultDisambiguator, IVaultAdmin.unpauseVault.selector));
+        EMERGENCY_ACTION_DISABLE_RECOVERY_MODE = keccak256(abi.encodePacked(vaultDisambiguator, IVaultAdmin.disableRecoveryMode.selector));
     }
 
     function canPerform(bytes32 actionId, address account, address /* where */) external view returns (bool) {
@@ -73,6 +93,9 @@ contract AureumGovernanceAuthorizer is IAuthorizer {
     }
 
     function _isEmergencyAction(bytes32 actionId) internal view returns (bool) {
-        return actionId == EMERGENCY_ACTION_PAUSE_VAULT || actionId == EMERGENCY_ACTION_ENABLE_RECOVERY_MODE;
+        return actionId == EMERGENCY_ACTION_PAUSE_VAULT
+            || actionId == EMERGENCY_ACTION_ENABLE_RECOVERY_MODE
+            || actionId == EMERGENCY_ACTION_UNPAUSE_VAULT
+            || actionId == EMERGENCY_ACTION_DISABLE_RECOVERY_MODE;
     }
 }

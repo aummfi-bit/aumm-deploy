@@ -27,8 +27,12 @@ contract AureumGovernanceAuthorizerTest is Test {
         bytes32 disambiguator = bytes32(uint256(uint160(vault)));
         bytes32 expectedPause = keccak256(abi.encodePacked(disambiguator, IVaultAdmin.pauseVault.selector));
         bytes32 expectedRecovery = keccak256(abi.encodePacked(disambiguator, IVaultAdmin.enableRecoveryMode.selector));
+        bytes32 expectedUnpause = keccak256(abi.encodePacked(disambiguator, IVaultAdmin.unpauseVault.selector));
+        bytes32 expectedDisableRecovery = keccak256(abi.encodePacked(disambiguator, IVaultAdmin.disableRecoveryMode.selector));
         assertEq(authorizer.EMERGENCY_ACTION_PAUSE_VAULT(), expectedPause);
         assertEq(authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE(), expectedRecovery);
+        assertEq(authorizer.EMERGENCY_ACTION_UNPAUSE_VAULT(), expectedUnpause);
+        assertEq(authorizer.EMERGENCY_ACTION_DISABLE_RECOVERY_MODE(), expectedDisableRecovery);
     }
     // --- canPerform: governance ---
     function test_canPerform_governanceAlwaysTrue(bytes32 actionId, address target) public {
@@ -44,9 +48,17 @@ contract AureumGovernanceAuthorizerTest is Test {
     function test_canPerform_emergencyMultisigInWindow_enableRecoveryMode() public view {
         assertTrue(authorizer.canPerform(authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE(), multisig, address(0)));
     }
+    function test_canPerform_emergencyMultisigInWindow_unpauseVault() public view {
+        assertTrue(authorizer.canPerform(authorizer.EMERGENCY_ACTION_UNPAUSE_VAULT(), multisig, address(0)));
+    }
+    function test_canPerform_emergencyMultisigInWindow_disableRecoveryMode() public view {
+        assertTrue(authorizer.canPerform(authorizer.EMERGENCY_ACTION_DISABLE_RECOVERY_MODE(), multisig, address(0)));
+    }
     function test_canPerform_emergencyMultisigNonEmergencyAction_false(bytes32 actionId) public view {
         vm.assume(actionId != authorizer.EMERGENCY_ACTION_PAUSE_VAULT());
         vm.assume(actionId != authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE());
+        vm.assume(actionId != authorizer.EMERGENCY_ACTION_UNPAUSE_VAULT());
+        vm.assume(actionId != authorizer.EMERGENCY_ACTION_DISABLE_RECOVERY_MODE());
         assertFalse(authorizer.canPerform(actionId, multisig, address(0)));
     }
     // --- canPerform: emergency window expiry (strict <) ---
@@ -54,6 +66,8 @@ contract AureumGovernanceAuthorizerTest is Test {
         vm.roll(authorizer.EMERGENCY_WINDOW_END_BLOCK() + 1);
         assertFalse(authorizer.canPerform(authorizer.EMERGENCY_ACTION_PAUSE_VAULT(), multisig, address(0)));
         assertFalse(authorizer.canPerform(authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE(), multisig, address(0)));
+        assertFalse(authorizer.canPerform(authorizer.EMERGENCY_ACTION_UNPAUSE_VAULT(), multisig, address(0)));
+        assertFalse(authorizer.canPerform(authorizer.EMERGENCY_ACTION_DISABLE_RECOVERY_MODE(), multisig, address(0)));
     }
     function test_canPerform_windowBoundaryStrict() public {
         uint256 windowEnd = authorizer.EMERGENCY_WINDOW_END_BLOCK();
