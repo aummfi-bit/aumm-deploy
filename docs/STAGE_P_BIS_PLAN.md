@@ -506,3 +506,5 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB3.8i11b | `97e8cb0` | ✅ CLAUDE.md — section-11 resume anchor advanced past the entire PB-D50 through PB-D58 chain, which it previously did not mention at all. |
 | PB3.8i12 | `7dd6a82` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D60 lock appended, recording the formal re-gate as 55 of 55 with zero rework required, closing the last unmeasured surface of the PB-D50 through PB-D59 chain. |
 | PB3.8j | `—` | docs/STAGE_P_BIS_PLAN.md — the PB3.5, PB3.7 and PB3.8 Completion Log rows, 193 of them generated from git log rather than transcribed per the PB-D44 derive-rather-than-transcribe precedent, plus this row; the log is current through PB3.8i12 — this commit |
+| PB3.8k | `cc65880` | ✅ CLAUDE.md — PB18 lesson appended, the em-dash sentinel must be counted mechanically rather than predicted by eye, closing the gap this session's own four-miss pattern exposed. |
+| PB3.8l | `9e25144` | ✅ docs/STAGE_P_BIS_NOTES.md — PB18 lesson entry appended, the em-dash miscount traced to mixing grep -c (matching lines) with grep -o piped to wc -l (occurrences) as if they shared units. |
