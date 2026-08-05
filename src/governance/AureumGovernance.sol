@@ -307,9 +307,18 @@ contract AureumGovernance {
     ///      supersedes the F-01 live `totalSupply()` read: freezing both sides at `snapshotBlock` closes the
     ///      F-01 >100%-turnout face AND the F-06 post-`endBlock` denominator-inflation grief (a `poke` after
     ///      `endBlock` no longer moves the denominator this proposal reads).
+    /// @dev F-21 — a zero `getPastTotalSupply(p.snapshotBlock)` makes the quorum comparison vacuous, since
+    ///      `0 * 10_000 < 0 * QUORUM_BPS` is false; the `CompositionChallenge` branch then passes at
+    ///      `0 >= 0` while the strict branches defeat at `0 > 0`. The explicit zero-supply guard rejects the
+    ///      degenerate denominator before either majority branch is reached, so a snapshot at which no weight
+    ///      was qualified can never carry a proposal. The condition is unconditional for the first
+    ///      `EMA_MATURITY_BLOCKS` of any deployment, when `VotingWeight._positionPower` short-circuits every
+    ///      holder to zero and `poke` therefore never pushes a checkpoint (PB-D62).
     function _voteSucceeded(Proposal storage p) internal view returns (bool) {
         uint256 totalVotes = p.forVotes + p.againstVotes;
-        if (totalVotes * 10_000 < VOTING_WEIGHT.getPastTotalSupply(p.snapshotBlock) * QUORUM_BPS) return false; // 10_000 = basis-points denominator
+        uint256 snapshotSupply = VOTING_WEIGHT.getPastTotalSupply(p.snapshotBlock);
+        if (snapshotSupply == 0) return false; // F-21 — a zero denominator makes the quorum test vacuous
+        if (totalVotes * 10_000 < snapshotSupply * QUORUM_BPS) return false; // 10_000 = basis-points denominator
         if (p.proposalType == ProposalType.CompositionChallenge) {
             return p.forVotes * 3 >= totalVotes * 2;
         }
