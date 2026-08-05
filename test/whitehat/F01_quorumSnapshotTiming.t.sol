@@ -20,8 +20,8 @@ import {MockVotingWeight, MockGaugeRegistry, MockSlotRegistry, MockVault, MockBo
 ///         assert the documented F-01 attacks now Defeat under that denominator, using the block-agnostic
 ///         mock with consistent snapshot inputs; the block-precise freeze proof (a post-snapshot `poke`
 ///         cannot move `getPastTotalSupply(snapshotBlock)`) lives in `F06_*.t.sol` with a block-aware mock.
-///         `test_F06_vacuousQuorumAtZeroSnapshotStillOpen` records the one case F-06 does NOT close
-///         (ledger L140 mul-form, `snapshot == 0`), carried to Stage-P.
+///         The one case F-06 did NOT close (ledger L140 mul-form, `snapshot == 0`) escalated to F-21 at
+///         PB3.8p and is closed by the PB-D62 zero-supply guard; the three `test_F21_` cases below pin it.
 contract F01_QuorumSnapshotTimingTest is Test {
     AureumGovernance internal gov;
     MockVotingWeight internal votingWeight;
@@ -112,12 +112,12 @@ contract F01_QuorumSnapshotTimingTest is Test {
         assertFalse(gaugeReg.revoked(gaugePool));
     }
 
-    /// @notice F-06 does NOT close the `snapshot == 0` vacuous-quorum case: the stored mul-form
-    ///         `totalVotes * 10_000 < getPastTotalSupply(snapshotBlock) * QUORUM_BPS` passes vacuously when the
-    ///         denominator is 0 (0 < 0 is false), so a 1e18 vote Succeeds. Orthogonal to the F-01/F-06
-    ///         denominator-timing axis (ledger L140, the mul-form's permissive direction); a separate open
-    ///         observation carried to Stage-P, asserted here so a future div-form fix flips this test.
-    function test_F06_vacuousQuorumAtZeroSnapshotStillOpen() public {
+    /// @notice F-21 regression, the `snapshot == 0` case F-06 left open and PB-D62 closed. The stored
+    ///         mul-form `totalVotes * 10_000 < getPastTotalSupply(snapshotBlock) * QUORUM_BPS` passes
+    ///         vacuously when the denominator is 0, since `0 < 0` is false. The zero-supply guard now
+    ///         rejects that denominator before any majority branch is reached, so the proposal Defeats
+    ///         at any turnout — asserted here with a real 1e18 FOR vote, which Succeeded before the fix.
+    function test_F21_zeroSnapshotDefeatsGaugeDespiteVotes() public {
         votingWeight.setTotalSupply(0);
         vm.prank(attacker);
         uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
@@ -126,47 +126,44 @@ contract F01_QuorumSnapshotTimingTest is Test {
         vm.prank(attacker);
         gov.castVote(id, true);
         vm.roll(gov.getProposal(id).endBlock + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertFalse(gaugeReg.revoked(gaugePool));
     }
 
-    /// @notice F-21: the `snapshot == 0` vacuous quorum is SHARPER on CompositionChallenge than the
-    ///         F-06 carry records. `_voteSucceeded` branches on proposal type and the two branches use
-    ///         different comparisons: Gauge and Fee return `forVotes > againstVotes`, which is `0 > 0`
-    ///         and false at zero turnout, while Composition returns `forVotes * 3 >= totalVotes * 2`,
-    ///         which is `0 >= 0` and TRUE. With the denominator also zero the quorum guard passes
-    ///         vacuously, so a CompositionChallenge Succeeds with NO vote cast at all, where
-    ///         `test_F06_vacuousQuorumAtZeroSnapshotStillOpen` needed a 1e18 vote. Driven through queue
-    ///         and execute here to show the consequence is slot capture rather than a state label.
-    ///         Scope: the mock quality gate passes by default, so this proves the vote path only;
-    ///         whether an attacker-supplied pool clears the REAL `meetsCompositionQualityGate` is a
-    ///         separate question and is the actual cost barrier.
-    function test_F21_compositionZeroVoteCapturesSlotAtZeroSnapshot() public {
+    /// @notice F-21 regression, the sharp face: `_voteSucceeded` branches on proposal type and the two
+    ///         branches used different comparisons — Gauge and Fee return `forVotes > againstVotes`,
+    ///         false at `0 > 0`, while Composition returned `forVotes * 3 >= totalVotes * 2`, TRUE at
+    ///         `0 >= 0`. With the denominator also zero the quorum guard passed vacuously, so a
+    ///         CompositionChallenge Succeeded with NO vote cast at all and captured a Miliarium slot
+    ///         through queue and execute. The PB-D62 zero-supply guard closes it at the denominator, so
+    ///         the proposal now Defeats, `queue` reverts `ProposalNotSucceeded`, and the slot is untouched.
+    function test_F21_compositionZeroVoteCannotCaptureSlotAtZeroSnapshot() public {
         votingWeight.setTotalSupply(0);
         vm.prank(attacker);
         uint256 id = gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
 
-        // Premise asserted before the attack, so a passing capture is the mechanism firing rather
-        // than the fixture having started in the captured state.
+        // Premise asserted before the attempt, so an unchanged slot at the end is the guard holding
+        // rather than the fixture having started in some other state.
         assertEq(slotReg.poolAtSlot(5), occupantPool);
         assertFalse(gaugeReg.registered(candidatePool));
 
         // No castVote anywhere in this test. Turnout is exactly zero.
         vm.roll(gov.getProposal(id).endBlock + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
 
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotSucceeded.selector, id));
         gov.queue(id);
-        vm.roll(gov.getProposal(id).eta);
-        gov.execute(id);
 
-        assertEq(slotReg.poolAtSlot(5), candidatePool);
-        assertTrue(gaugeReg.revoked(occupantPool));
-        assertTrue(gaugeReg.registered(candidatePool));
+        assertEq(slotReg.poolAtSlot(5), occupantPool);
+        assertFalse(gaugeReg.revoked(occupantPool));
+        assertFalse(gaugeReg.registered(candidatePool));
     }
 
-    /// @notice F-21 control, and the discriminator that identifies the mechanism. Identical zero supply
-    ///         and identical zero turnout, differing only in proposal type: the Gauge branch evaluates
-    ///         `0 > 0` and Defeats. A single test showing Composition succeed would be consistent with
-    ///         several causes; the pair isolates the comparison operator as the one thing that differs.
+    /// @notice F-21 companion. Before the fix this was the discriminator: identical zero supply and zero
+    ///         turnout, differing only in proposal type, isolating the comparison operator as the one
+    ///         thing that made Composition succeed where Gauge defeated. The guard removes that
+    ///         divergence by rejecting the denominator ahead of both branches, so the pair now agrees
+    ///         and this case pins the Gauge side of that agreement rather than discriminating.
     function test_F21_gaugeChallengeZeroVoteDefeatsAtSameSnapshot() public {
         votingWeight.setTotalSupply(0);
         vm.prank(attacker);
