@@ -129,6 +129,53 @@ contract F01_QuorumSnapshotTimingTest is Test {
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
     }
 
+    /// @notice F-21: the `snapshot == 0` vacuous quorum is SHARPER on CompositionChallenge than the
+    ///         F-06 carry records. `_voteSucceeded` branches on proposal type and the two branches use
+    ///         different comparisons: Gauge and Fee return `forVotes > againstVotes`, which is `0 > 0`
+    ///         and false at zero turnout, while Composition returns `forVotes * 3 >= totalVotes * 2`,
+    ///         which is `0 >= 0` and TRUE. With the denominator also zero the quorum guard passes
+    ///         vacuously, so a CompositionChallenge Succeeds with NO vote cast at all, where
+    ///         `test_F06_vacuousQuorumAtZeroSnapshotStillOpen` needed a 1e18 vote. Driven through queue
+    ///         and execute here to show the consequence is slot capture rather than a state label.
+    ///         Scope: the mock quality gate passes by default, so this proves the vote path only;
+    ///         whether an attacker-supplied pool clears the REAL `meetsCompositionQualityGate` is a
+    ///         separate question and is the actual cost barrier.
+    function test_F21_compositionZeroVoteCapturesSlotAtZeroSnapshot() public {
+        votingWeight.setTotalSupply(0);
+        vm.prank(attacker);
+        uint256 id = gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
+
+        // Premise asserted before the attack, so a passing capture is the mechanism firing rather
+        // than the fixture having started in the captured state.
+        assertEq(slotReg.poolAtSlot(5), occupantPool);
+        assertFalse(gaugeReg.registered(candidatePool));
+
+        // No castVote anywhere in this test. Turnout is exactly zero.
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+
+        gov.queue(id);
+        vm.roll(gov.getProposal(id).eta);
+        gov.execute(id);
+
+        assertEq(slotReg.poolAtSlot(5), candidatePool);
+        assertTrue(gaugeReg.revoked(occupantPool));
+        assertTrue(gaugeReg.registered(candidatePool));
+    }
+
+    /// @notice F-21 control, and the discriminator that identifies the mechanism. Identical zero supply
+    ///         and identical zero turnout, differing only in proposal type: the Gauge branch evaluates
+    ///         `0 > 0` and Defeats. A single test showing Composition succeed would be consistent with
+    ///         several causes; the pair isolates the comparison operator as the one thing that differs.
+    function test_F21_gaugeChallengeZeroVoteDefeatsAtSameSnapshot() public {
+        votingWeight.setTotalSupply(0);
+        vm.prank(attacker);
+        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertFalse(gaugeReg.revoked(gaugePool));
+    }
+
     /// @notice F-01 regression: a single 100e18 voter cleared a composition 2/3 supermajority in the finding
     ///         because the propose-time snapshot excluded never-poked holders. Under snapshot voting the
     ///         denominator is the full checkpointed total, so 100e18 fails the 20% quorum outright and the
