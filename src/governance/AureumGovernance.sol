@@ -120,6 +120,8 @@ contract AureumGovernance {
         address newPool;
         uint256 slot;
         uint256 newFee;
+        // F-22 / PB-D64 (iii) — read only by VaultAuthorizerChange; zero for every other type.
+        address newAuthorizer;
     }
 
     uint256 public proposalCount;
@@ -195,17 +197,18 @@ contract AureumGovernance {
     }
 
     /// @notice Shared propose tail — pull deposit, donate to Bodensee, stamp the voting-delay snapshot block, record proposal.
-    /// @param proposalType_ gauge, composition, or fee variant.
+    /// @param proposalType_ gauge, composition, fee, or one of the three F-22 Vault-admin variants.
     /// @param targetPool_ fee or gauge target; zero when unused.
     /// @param newPool_ composition replacement pool; zero when unused.
     /// @param slot_ constellation slot for composition; zero when unused.
     /// @param newFee_ proposed swap fee; zero when unused.
+    /// @param newAuthorizer_ replacement Vault authorizer; zero when unused.
     /// @param payToken_ SVZCHF or sUSDS deposit token.
     /// @return proposalId 1-based identifier (`++proposalCount`).
     /// @dev Deposit is pulled via `safeTransferFrom(proposer → BODENSEE_CHANNEL)` then donated — proposer must
     ///      `approve` this contract before calling; deposit is non-refundable (permanent Bodensee donation per
     ///      K-D6d). This contract must be an `authorizedDonator` on `BODENSEE_CHANNEL` (G-D21, wired at K7).
-    function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, IERC20 payToken_) internal returns (uint256 proposalId) {
+    function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, address newAuthorizer_, IERC20 payToken_) internal returns (uint256 proposalId) {
         uint256 amount = _depositAmount(payToken_);
         payToken_.safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
         BODENSEE_CHANNEL.donate(payToken_, amount);
@@ -213,7 +216,7 @@ contract AureumGovernance {
         uint256 start = block.number;
         uint256 snapshotBlock = start + VOTING_DELAY_BLOCKS;
         uint256 end = snapshotBlock + VOTING_PERIOD_BLOCKS;
-        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotBlock: snapshotBlock, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_ });
+        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotBlock: snapshotBlock, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_, newAuthorizer: newAuthorizer_ });
         emit ProposalCreated(proposalId, proposalType_, msg.sender, start, snapshotBlock, end);
     }
 
@@ -224,7 +227,7 @@ contract AureumGovernance {
     /// @dev Proposer must `approve` this contract for the deposit amount before calling.
     function proposeGaugeChallenge(address targetPool_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (GAUGE_REGISTRY.gaugeStatus(targetPool_) != IGaugeRegistry.GaugeStatus.Active || SLOT_REGISTRY.slotOf(targetPool_) != 0) revert InvalidGaugeTarget(targetPool_);
-        proposalId = _createProposal(ProposalType.GaugeChallenge, targetPool_, address(0), 0, 0, payToken_);
+        proposalId = _createProposal(ProposalType.GaugeChallenge, targetPool_, address(0), 0, 0, address(0), payToken_);
     }
 
     /// @notice Propose a composition challenge to replace the pool at a filled constellation slot.
@@ -238,7 +241,7 @@ contract AureumGovernance {
         if (newPool_ == address(0)) revert ZeroAddress();
         if (SLOT_REGISTRY.poolAtSlot(slot_) == address(0)) revert InvalidCompositionTarget(slot_);
         if (!GAUGE_REGISTRY.meetsCompositionQualityGate(newPool_)) revert CompositionQualityGateFailed(newPool_);
-        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, payToken_);
+        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, address(0), payToken_);
     }
 
     /// @notice Propose a static swap-fee change on a gauged, non-Bodensee pool.
@@ -260,7 +263,42 @@ contract AureumGovernance {
         // propose-time suffices.
         address manager = VAULT.getPoolRoleAccounts(targetPool_).swapFeeManager;
         if (manager != address(0) && manager != address(this)) revert ExclusiveSwapFeeManager(targetPool_, manager);
-        proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, payToken_);
+        proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, address(0), payToken_);
+    }
+
+    /// @notice Propose an authorizer migration — the keystone Vault admin lever, gated to a two-thirds supermajority.
+    /// @param newAuthorizer_ replacement Vault authorizer; must be a nonzero contract address.
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling. F-22 / PB-D64 (vi):
+    ///      `newAuthorizer_` is frozen at propose time, so the zero-address and no-code guards here are
+    ///      sufficient — there is no mutable eligibility surface between propose and execute that could go
+    ///      stale, unlike the composition quality gate.
+    function proposeVaultAuthorizerChange(address newAuthorizer_, IERC20 payToken_) external returns (uint256 proposalId) {
+        if (newAuthorizer_ == address(0)) revert ZeroAddress();
+        if (newAuthorizer_.code.length == 0) revert AuthorizerNotContract(newAuthorizer_);
+        proposalId = _createProposal(ProposalType.VaultAuthorizerChange, address(0), address(0), 0, 0, newAuthorizer_, payToken_);
+    }
+
+    /// @notice Propose lifting the Vault's global pause — the de-escalation counterpart to the emergency pause.
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling. Carries no payload;
+    ///      every `Proposal` field besides the shared bookkeeping stays zero.
+    function proposeVaultUnpause(IERC20 payToken_) external returns (uint256 proposalId) {
+        proposalId = _createProposal(ProposalType.VaultUnpause, address(0), address(0), 0, 0, address(0), payToken_);
+    }
+
+    /// @notice Propose disabling recovery mode on a pool — the de-escalation counterpart to the emergency entry.
+    /// @param targetPool_ pool to take out of recovery mode; validated by the Vault's own registered-pool and
+    ///      recovery-mode-active checks at execute time.
+    /// @param payToken_ SVZCHF or sUSDS proposal deposit.
+    /// @return proposalId 1-based identifier.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling. No propose-time gate on
+    ///      `targetPool_`: unlike F-20's exclusive fee manager, a pool's recovery-mode status carries no state
+    ///      that can look valid at propose time and silently break by execute time.
+    function proposeVaultRecoveryDisable(address targetPool_, IERC20 payToken_) external returns (uint256 proposalId) {
+        proposalId = _createProposal(ProposalType.VaultRecoveryDisable, targetPool_, address(0), 0, 0, address(0), payToken_);
     }
 
     /// @notice Cast a snapshot-weighted vote on an active proposal.
@@ -307,8 +345,9 @@ contract AureumGovernance {
     /// @notice Evaluate quorum and per-type majority after the voting window closes.
     /// @param p Stored proposal record.
     /// @return `true` when turnout and majority thresholds are met.
-    /// @dev Quorum is 20% turnout per `QUORUM_BPS`. `CompositionChallenge` requires integer-exact 2/3
-    ///      supermajority; `GaugeChallenge` + `FeeChange` require simple majority, per K-D6c.
+    /// @dev Quorum is 20% turnout per `QUORUM_BPS`. `CompositionChallenge` and `VaultAuthorizerChange`
+    ///      require integer-exact 2/3 supermajority; `GaugeChallenge`, `FeeChange`, `VaultUnpause` and
+    ///      `VaultRecoveryDisable` require simple majority, per K-D6c and PB-D64 (iv).
     /// @dev F-06 — both the numerator (`forVotes` + `againstVotes`, each a `getPastVotes(voter, snapshotBlock)`
     ///      read in `castVote`) and the denominator (`getPastTotalSupply(p.snapshotBlock)`) are frozen at the
     ///      same snapshot block, so turnout cannot exceed 100% of the denominator by construction. This
@@ -327,7 +366,9 @@ contract AureumGovernance {
         uint256 snapshotSupply = VOTING_WEIGHT.getPastTotalSupply(p.snapshotBlock);
         if (snapshotSupply == 0) return false; // F-21 — a zero denominator makes the quorum test vacuous
         if (totalVotes * 10_000 < snapshotSupply * QUORUM_BPS) return false; // 10_000 = basis-points denominator
-        if (p.proposalType == ProposalType.CompositionChallenge) {
+        // F-22 / PB-D64 (iv) — VaultAuthorizerChange joins the 2/3 bar as the lever that redefines every
+        // permission; de-escalation (VaultUnpause, VaultRecoveryDisable) stays simple-majority by design.
+        if (p.proposalType == ProposalType.CompositionChallenge || p.proposalType == ProposalType.VaultAuthorizerChange) {
             return p.forVotes * 3 >= totalVotes * 2;
         }
         return p.forVotes > p.againstVotes;
@@ -374,6 +415,13 @@ contract AureumGovernance {
     /// @dev Per-type routing per K-D6e: gauge challenge revokes; composition is atomic
     ///      revoke-old → `replaceSlot` → register-new; fee change checks cooldown here, stamps
     ///      `lastFeeChangeBlock`, then calls `VAULT.setStaticSwapFeePercentage`.
+    /// @dev F-22 / PB-D64 — the three Vault-admin types dispatch to the Vault's own admin surface, reachable
+    ///      because `AureumGovernanceAuthorizer.canPerform` grants this contract every actionId: authorizer
+    ///      change calls `setAuthorizer`, unpause calls `unpauseVault`, recovery disable calls
+    ///      `disableRecoveryMode(targetPool)`. Every branch is an explicit `else if` and there is deliberately
+    ///      NO trailing bare `else` — the pre-fix trailing `else` was bound to `FeeChange`, so any appended
+    ///      type would have fallen into the fee-change path and called `setStaticSwapFeePercentage` on a
+    ///      zero pool. A future seventh type must add its own branch or no-op, never inherit another's.
     function _executeProposal(Proposal storage p) internal {
         if (p.proposalType == ProposalType.GaugeChallenge) {
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
@@ -383,10 +431,16 @@ contract AureumGovernance {
             GAUGE_REGISTRY.revokeGauge(oldPool);
             SLOT_REGISTRY.replaceSlot(p.slot, p.newPool);
             GAUGE_REGISTRY.registerGaugeFromComposition(p.newPool);
-        } else {
+        } else if (p.proposalType == ProposalType.FeeChange) {
             if (block.number < lastFeeChangeBlock[p.targetPool] + FEE_CHANGE_COOLDOWN_BLOCKS) revert FeeCooldownActive(p.targetPool);
             lastFeeChangeBlock[p.targetPool] = block.number;
             VAULT.setStaticSwapFeePercentage(p.targetPool, p.newFee);
+        } else if (p.proposalType == ProposalType.VaultAuthorizerChange) {
+            VAULT.setAuthorizer(IAuthorizer(p.newAuthorizer));
+        } else if (p.proposalType == ProposalType.VaultUnpause) {
+            VAULT.unpauseVault();
+        } else if (p.proposalType == ProposalType.VaultRecoveryDisable) {
+            VAULT.disableRecoveryMode(p.targetPool);
         }
     }
 }
