@@ -6,19 +6,31 @@ import { IProtocolFeeController } from "@balancer-labs/v3-interfaces/contracts/v
 import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 /**
  * @title F22_VaultAdminSurfaceUnreachable
- * @notice F-22 PoC. After the Stage-K authorizer handoff, every authenticate-gated Vault admin
- *         action other than setStaticSwapFeePercentage is permitted to AureumGovernance and
- *         reachable by no caller at all. setProtocolFeeController is the witness used here.
+ * @notice F-22 PoC and accepted-residual attestation (PB-D64 (viii)). After the Stage-K authorizer
+ *         handoff, every authenticate-gated Vault admin action other than setStaticSwapFeePercentage
+ *         was permitted to AureumGovernance and reachable by no caller at all. PB-D64 restored three
+ *         of those levers end to end — setAuthorizer, unpauseVault, disableRecoveryMode — witnessed
+ *         at test/unit/AureumGovernance.t.sol's propose/execute pairs and, for the keystone
+ *         setAuthorizer, at test/fork/StagePIntegration.t.sol's
+ *         test_F22_authorizerChangeExecutesEndToEnd. setProtocolFeeController is the witness used
+ *         here and stays unreachable BY DESIGN per PB-D63 (xi), which scopes F-22 to the exits plus
+ *         the keystone and nothing more. This file's three tests below therefore stay green
+ *         unchanged; their role changes from proof-of-defect to attestation that the named residual
+ *         is the one PB-D63 (xi) accepted, not one nobody noticed.
  * @dev The defect is EXPRESSIBILITY, not permission, and the two are separated deliberately by the
- *      test order below. AureumGovernanceAuthorizer.canPerform (L65-L73) returns true for
+ *      test order below. AureumGovernanceAuthorizer.canPerform (L85-L92) returns true for
  *      GOVERNANCE_CONTRACT on every actionId without exception, so the Vault will accept the call
- *      from that address. What does not exist is any way for AureumGovernance to emit it:
- *      execute() at src/governance/AureumGovernance.sol L343-L374 dispatches over exactly three
- *      proposal types to three fixed targets, GAUGE_REGISTRY.revokeGauge, the SLOT_REGISTRY
- *      replaceSlot composition path, and VAULT.setStaticSwapFeePercentage, and the Proposal struct
- *      carries no target field and no calldata field, so no proposal can name a different function.
- * @dev The EMERGENCY_MULTISIG does not close the gap. _isEmergencyAction (L75-L77) admits exactly
- *      two actionIds, pauseVault and enableRecoveryMode, and only below EMERGENCY_WINDOW_END_BLOCK.
+ *      from that address. What does not exist, for setProtocolFeeController specifically, is any way
+ *      for AureumGovernance to emit it: _executeProposal at src/governance/AureumGovernance.sol
+ *      L425-L444 now dispatches over six proposal types to six fixed targets — GaugeChallenge,
+ *      CompositionChallenge, FeeChange (the original three) plus PB-D64's VaultAuthorizerChange,
+ *      VaultUnpause, VaultRecoveryDisable, routing to setAuthorizer, unpauseVault and
+ *      disableRecoveryMode respectively — and the Proposal struct still carries no target field and
+ *      no calldata field, so no proposal can name a function outside that fixed six.
+ * @dev The EMERGENCY_MULTISIG does not close the residual either. _isEmergencyAction (L95-L100)
+ *      admits four actionIds post-PB-D64 — pauseVault, unpauseVault, enableRecoveryMode,
+ *      disableRecoveryMode — and only below EMERGENCY_WINDOW_END_BLOCK; setProtocolFeeController
+ *      was never among them.
  * @dev Prior art and the boundary of what is new. That AureumGovernance v1 exposes no generic-call
  *      hatch is already recorded, at K-D9 and at PB-D12 (ii), and the sibling witness
  *      DissolutionGovernanceHandoff.t.sol L16 states it. Both concern AUREUM-OWNED setters gated by

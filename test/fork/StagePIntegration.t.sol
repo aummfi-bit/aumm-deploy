@@ -847,6 +847,35 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(uint256(gr.gaugeStatus(c2Target)), uint256(IGaugeRegistry.GaugeStatus.Revoked));
     }
 
+    /// @notice F-22 / PB-D64 — the keystone reachability witness. Propose → vote → queue → execute
+    ///         drives VAULT.setAuthorizer on the REAL Vault, the lever F-22 found permitted to
+    ///         governance and reachable by no caller at all (PB-D63 (viii): the one lever that
+    ///         redefines every other permission decision). Scoped to setAuthorizer alone —
+    ///         VaultUnpause and VaultRecoveryDisable share identical propose/vote/queue/execute
+    ///         plumbing and are already dispatch-witnessed against a recording mock at the unit
+    ///         level (test/unit/AureumGovernance.t.sol); this fork leg exists specifically because
+    ///         setAuthorizer is the one PB-D63 (viii) ranks first and names the keystone.
+    /// @dev The candidate need only carry code per the propose-time AuthorizerNotContract guard
+    ///      (PB-D64 (vi)); orchestrator is a convenient already-deployed stand-in, not a
+    ///      functioning authorizer — no further authenticated call is routed through it after
+    ///      migration, so this witnesses reachability, not the candidate's own behavior.
+    function test_F22_authorizerChangeExecutesEndToEnd() public {
+        address voter = makeAddr("f22_authorizerChange_voter");
+        _seatVoter(voter);
+        AureumGovernance gov = orchestrator.governance();
+        address candidate = address(orchestrator);
+        assertNotEq(address(vault.getAuthorizer()), candidate);
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeVaultAuthorizerChange(candidate, svZchf);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(voter), 0);
+        _runProposal(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+        assertEq(address(vault.getAuthorizer()), candidate);
+    }
+
     /// @dev P-D39 Leg C1 candidate builder — a REAL uninitialized awpf pool
     ///      [susds 0.6 WITH_RATE, svZchf 0.4 WITH_RATE], no vm.mockCall (P-D36). Clears BOTH
     ///      gates: awpf.create's MIN_ERC4626_WEIGHT (both WITH_RATE-with-rate-provider, sum

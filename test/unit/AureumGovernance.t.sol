@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import {IAuthorizer} from "@balancer-labs/v3-interfaces/contracts/vault/IAuthorizer.sol";
 import {PoolRoleAccounts} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {AureumGovernance} from "src/governance/AureumGovernance.sol";
 import {IVotingWeight} from "src/governance/IVotingWeight.sol";
@@ -99,6 +100,22 @@ contract MockVault {
     function getPoolRoleAccounts(address) external pure returns (PoolRoleAccounts memory roleAccounts) {
         // all-zero roleAccounts: swapFeeManager == address(0) passes the F-20/P-D40 propose gate
     }
+    address public authorizer;
+    uint256 public setAuthorizerCalls;
+    uint256 public unpauseVaultCalls;
+    address public lastRecoveryDisabledPool;
+    uint256 public disableRecoveryModeCalls;
+    function setAuthorizer(IAuthorizer newAuthorizer) external {
+        authorizer = address(newAuthorizer);
+        setAuthorizerCalls++;
+    }
+    function unpauseVault() external {
+        unpauseVaultCalls++;
+    }
+    function disableRecoveryMode(address pool) external {
+        lastRecoveryDisabledPool = pool;
+        disableRecoveryModeCalls++;
+    }
 }
 contract MockBodenseeChannel {
     uint256 public donateCalls;
@@ -110,6 +127,10 @@ contract MockBodenseeChannel {
         lastDonateAmount = amount;
     }
 }
+/// @notice Minimal code-bearing stand-in for the F-22 authorizer-change target. The propose-time
+///         guard tests only `code.length != 0` and MockVault records the address without calling it,
+///         so no IAuthorizer surface is required here.
+contract MockAuthorizerStub {}
 /// @notice K4.6 unit cohort harness — propose / castVote / state / queue / execute over focused doubles.
 contract AureumGovernanceTest is Test {
     AureumGovernance internal gov;
@@ -128,6 +149,8 @@ contract AureumGovernanceTest is Test {
     address internal feePool = makeAddr("feePool");
     address internal occupantPool = makeAddr("occupantPool");
     address internal candidatePool = makeAddr("candidatePool");
+    address internal recoveryPool = makeAddr("recoveryPool");
+    address internal candidateAuthorizer;
     uint256 internal constant DEPOSIT_SVZCHF = 1_000e18;
     uint256 internal constant DEPOSIT_SUSDS = 1_250e18;
     uint256 internal constant TOTAL_SUPPLY = 1_000_000e18;
@@ -142,6 +165,7 @@ contract AureumGovernanceTest is Test {
         slotReg = new MockSlotRegistry();
         vault = new MockVault();
         channel = new MockBodenseeChannel();
+        candidateAuthorizer = address(new MockAuthorizerStub());
         svZchf = new MockERC20("Staked Frankencoin", "svZCHF", 18);
         sUsds = new MockERC20("Savings USDS", "sUSDS", 18);
         gov = new AureumGovernance(
@@ -177,6 +201,18 @@ contract AureumGovernanceTest is Test {
     function _proposeFee() internal returns (uint256 id) {
         vm.prank(proposer);
         id = gov.proposeFeeChange(feePool, FEE_OK, IERC20(address(svZchf)));
+    }
+    function _proposeAuthorizerChange() internal returns (uint256 id) {
+        vm.prank(proposer);
+        id = gov.proposeVaultAuthorizerChange(candidateAuthorizer, IERC20(address(svZchf)));
+    }
+    function _proposeUnpause() internal returns (uint256 id) {
+        vm.prank(proposer);
+        id = gov.proposeVaultUnpause(IERC20(address(svZchf)));
+    }
+    function _proposeRecoveryDisable() internal returns (uint256 id) {
+        vm.prank(proposer);
+        id = gov.proposeVaultRecoveryDisable(recoveryPool, IERC20(address(svZchf)));
     }
     function _voteAndClose(uint256 id, bool support) internal {
         votingWeight.setGovernanceWeight(voterA, TOTAL_SUPPLY);
@@ -670,5 +706,149 @@ contract AureumGovernanceTest is Test {
         assertFalse(gaugeReg.registered(candidatePool));
         AureumGovernance.Proposal memory p = gov.getProposal(id);
         assertFalse(p.executed);
+    }
+    /// @notice F-22 / PB-D64 — happy path. The proposal records VaultAuthorizerChange with the
+    ///         candidate in `newAuthorizer` and every other payload member zero.
+    function test_proposeVaultAuthorizerChange_happyPath_depositsAndRecords() public {
+        uint256 id = _proposeAuthorizerChange();
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.VaultAuthorizerChange));
+        assertEq(p.newAuthorizer, candidateAuthorizer);
+        assertEq(p.targetPool, address(0));
+        assertEq(p.newPool, address(0));
+        assertEq(p.slot, 0);
+        assertEq(p.newFee, 0);
+        assertEq(channel.donateCalls(), 1);
+        assertEq(channel.lastDonateAmount(), DEPOSIT_SVZCHF);
+    }
+    /// @notice F-22 / PB-D64 (vi) — a zero authorizer is rejected before the deposit is pulled.
+    function test_proposeVaultAuthorizerChange_revert_zeroAuthorizer() public {
+        vm.prank(proposer);
+        vm.expectRevert(AureumGovernance.ZeroAddress.selector);
+        gov.proposeVaultAuthorizerChange(address(0), IERC20(address(svZchf)));
+        assertEq(channel.donateCalls(), 0);
+    }
+    /// @notice F-22 / PB-D64 (vi) — a codeless address is rejected. An EOA authorizer would make
+    ///         every authenticate call in the Vault revert permanently, a worse failure than F-22.
+    function test_proposeVaultAuthorizerChange_revert_authorizerNotContract() public {
+        address eoa = makeAddr("eoaAuthorizer");
+        vm.prank(proposer);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.AuthorizerNotContract.selector, eoa));
+        gov.proposeVaultAuthorizerChange(eoa, IERC20(address(svZchf)));
+        assertEq(channel.donateCalls(), 0);
+    }
+    /// @notice F-22 / PB-D64 (iii) — VaultUnpause carries no payload at all.
+    function test_proposeVaultUnpause_happyPath_depositsAndRecords() public {
+        uint256 id = _proposeUnpause();
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.VaultUnpause));
+        assertEq(p.targetPool, address(0));
+        assertEq(p.newPool, address(0));
+        assertEq(p.newAuthorizer, address(0));
+        assertEq(p.slot, 0);
+        assertEq(p.newFee, 0);
+        assertEq(channel.donateCalls(), 1);
+    }
+    /// @notice F-22 / PB-D64 (iii) — VaultRecoveryDisable reuses the existing targetPool member and
+    ///         leaves newAuthorizer zero.
+    function test_proposeVaultRecoveryDisable_happyPath_depositsAndRecords() public {
+        uint256 id = _proposeRecoveryDisable();
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.VaultRecoveryDisable));
+        assertEq(p.targetPool, recoveryPool);
+        assertEq(p.newAuthorizer, address(0));
+        assertEq(p.newPool, address(0));
+        assertEq(p.slot, 0);
+        assertEq(p.newFee, 0);
+        assertEq(channel.donateCalls(), 1);
+    }
+    /// @notice F-22 / PB-D64 (iv) — VaultAuthorizerChange joins CompositionChallenge's integer-exact
+    ///         2/3 bar rather than the simple-majority else branch.
+    function test_state_authorizerChange_supermajorityExactPass() public {
+        uint256 id = _proposeAuthorizerChange();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(voterA, 200_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    /// @notice F-22 / PB-D64 (iv) — the same split that defeats CompositionChallenge also defeats
+    ///         VaultAuthorizerChange, proving the 2/3 join rather than an accidental simple-majority pass.
+    function test_state_authorizerChange_belowSupermajorityDefeated() public {
+        uint256 id = _proposeAuthorizerChange();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(voterA, 175_000e18);
+        votingWeight.setGovernanceWeight(voterB, 125_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+    }
+    /// @notice F-22 / PB-D64 (iv) — VaultUnpause is de-escalation and stays simple-majority.
+    function test_state_unpause_simpleMajorityPass() public {
+        uint256 id = _proposeUnpause();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(voterA, 200_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    /// @notice F-22 / PB-D64 (iv) — VaultRecoveryDisable is de-escalation and stays simple-majority.
+    function test_state_recoveryDisable_simpleMajorityPass() public {
+        uint256 id = _proposeRecoveryDisable();
+        vm.roll(gov.getProposal(id).snapshotBlock + 1);
+        votingWeight.setGovernanceWeight(voterA, 250_000e18);
+        votingWeight.setGovernanceWeight(voterB, 100_000e18);
+        vm.prank(voterA);
+        gov.castVote(id, true);
+        vm.prank(voterB);
+        gov.castVote(id, false);
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Succeeded));
+    }
+    /// @notice F-22 / PB-D64 — end-to-end dispatch. Execute calls VAULT.setAuthorizer with the
+    ///         proposal's recorded candidate.
+    function test_execute_authorizerChange_callsSetAuthorizer() public {
+        uint256 id = _proposeAuthorizerChange();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        assertEq(vault.authorizer(), candidateAuthorizer);
+        assertEq(vault.setAuthorizerCalls(), 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+    }
+    /// @notice F-22 / PB-D64 — end-to-end dispatch. Execute calls VAULT.unpauseVault.
+    function test_execute_unpause_callsUnpauseVault() public {
+        uint256 id = _proposeUnpause();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        assertEq(vault.unpauseVaultCalls(), 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
+    }
+    /// @notice F-22 / PB-D64 — end-to-end dispatch. Execute calls VAULT.disableRecoveryMode with the
+    ///         proposal's recorded targetPool.
+    function test_execute_recoveryDisable_callsDisableRecoveryMode() public {
+        uint256 id = _proposeRecoveryDisable();
+        _voteAndClose(id, true);
+        _queueAndReachEta(id);
+        gov.execute(id);
+        assertEq(vault.lastRecoveryDisabledPool(), recoveryPool);
+        assertEq(vault.disableRecoveryModeCalls(), 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed));
     }
 }
