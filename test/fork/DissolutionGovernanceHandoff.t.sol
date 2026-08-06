@@ -137,7 +137,7 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
 
     /**
      * @notice PB-D2(ii) pauseManager inert-pointer attestation — the Miliarium roster pool pauseManager is the write-once GOVERNANCE_MULTISIG (script/pools/deploy-miliarium-pool.s.sol L75), an inert pointer at the to-be-dissolved Safe post-dissolution; NOT rotated (PB-D2), unlike the five re-settable slots.
-     * @dev Harmless because the pause role is NON-exclusive — VaultAdmin `_ensureAuthenticatedByRole` (L787-793) falls through to the authorizer, so AureumGovernance holds pause via AureumGovernanceAuthorizer regardless (F-20 / P-D40); the non-exclusivity is the documented structural fact, not re-proven here.
+     * @dev Harmless because the pause role is NON-exclusive — VaultAdmin `_ensureAuthenticatedByRole` (L787-793) falls through to the authorizer rather than foreclosing on `pauseManager` alone, so the stale pointer was never the sole gate (F-20 / P-D40's EXCLUSIVE-vs-non-exclusive distinction). That fallback grants `GOVERNANCE_CONTRACT` permission unconditionally, but permission is not expressibility (F-22 / PB-D63 (vii)): `AureumGovernance` holds no code path that calls `pausePool`/`unpausePool`, so this attestation is about the role construction, not a live pause capability governance can exercise; the non-exclusivity is the documented structural fact, not re-proven here.
      */
     function test_pauseManager_inertNonExclusivePointer() public view {
         assertEq(vault.getPoolRoleAccounts(pilotPools[0]).pauseManager, address(orchestrator));

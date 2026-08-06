@@ -25,7 +25,7 @@ contract AureumVaultFactory is ReentrancyGuardTransient, Ownable2Step {
     bytes32 public immutable vaultExtensionCreationCodeHash;
 
     /// @notice The protocol fee controller this factory was deployed with, wired into every Vault produced by `create()`.
-    /// @dev The Vault's *current* controller may diverge from this if governance later calls `Vault.setProtocolFeeController`.
+    /// @dev The Vault's *current* controller stays pinned to this value: `AureumGovernance` v1 holds no code path that calls `Vault.setProtocolFeeController`, deliberately out of the F-22 fix's scope (PB-D63 (xi)), so the authorizer's unconditional grant to `GOVERNANCE_CONTRACT` is never exercised for this function.
     // Rationale: matches Balancer V3 immutable naming (SCREAMING_CASE for
     // protocol-critical addresses). Consistent with foundry.toml [lint]
     // ignore decision on the forked portion of this file.
