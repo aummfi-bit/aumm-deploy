@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IAuthorizer} from "@balancer-labs/v3-interfaces/contracts/vault/IAuthorizer.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import {IVotingWeight} from "./IVotingWeight.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
@@ -12,9 +13,10 @@ import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
 
 /**
  * @title AureumGovernance
- * @notice On-chain governance for three proposal types — gauge challenge, composition challenge, and
- *         fee change — with snapshot voting, a post-success execution timelock, and voter weight
- *         sourced from K3 `VotingWeight` (F-9 dampening consumed there, not reimplemented here).
+ * @notice On-chain governance for six proposal types — gauge challenge, composition challenge, fee
+ *         change, and the three F-22 Vault-admin types (authorizer change, unpause, recovery disable)
+ *         — with snapshot voting, a post-success execution timelock, and voter weight sourced from
+ *         K3 `VotingWeight` (F-9 dampening consumed there, not reimplemented here).
  * @dev Standalone contract — no `IAureumGovernance` interface; registries gate on a
  *      `governanceContract` address, not a typed interface. K-D6a—K-D6f locked at K4 pre-flight.
  *      K4.1 = scaffold only; function bodies land in K4.2—K4.5 (`propose`, `castVote`, `state`,
@@ -86,7 +88,12 @@ contract AureumGovernance {
     enum ProposalType {
         GaugeChallenge,
         CompositionChallenge,
-        FeeChange
+        FeeChange,
+        // F-22 / PB-D64 (ii) — append only; enum values are positional and stored proposals key on
+        // the index, so inserting anywhere but the end reinterprets records already written.
+        VaultAuthorizerChange,
+        VaultUnpause,
+        VaultRecoveryDisable
     }
 
     enum ProposalState {
@@ -147,6 +154,7 @@ contract AureumGovernance {
     error InvalidCompositionTarget(uint256 slot);
     error CompositionQualityGateFailed(address pool);
     error ExclusiveSwapFeeManager(address pool, address manager);
+    error AuthorizerNotContract(address newAuthorizer);
 
     constructor(
         IVotingWeight votingWeight_,
