@@ -29,8 +29,8 @@ Stage P-bis exists so the Stage-Q external audit receives a frozen, self-audited
 | canonical Router deploy + `setTrustedRouter` binds | B | PB3.3 | P-D26 close-out; seats the F-09 allowlist |
 | production `run()` path in `DeployStageP.s.sol` | B | PB3.4 | un-defer `ProductionOrchestrationDeferredToPbis` |
 | Sepolia broadcast + explorer verification | B | PB3.5 | the live go-live (user-run, §8b) |
-| F-14 ops + fee-custody process record | B | PB3.6 | ixAetheron off-chain-conversion rails (P-D12) |
 | deployed-addresses artifact | B | PB3.7 | the C-integration contract the frontend consumes |
+| F-14 ops + fee-custody process record | B | PB3.10 | ixAetheron off-chain-conversion rails (P-D12) |
 | frontend-reads-Sepolia completion evidence | C | PB4.2 | the PB-D4 workstream-C gate record |
 | close set (`STAGES_OVERVIEW.md` row, Completion Log, §11, tag) | — | PB5 | PENDING_PBIS two-commit close (PB-D3) |
 
