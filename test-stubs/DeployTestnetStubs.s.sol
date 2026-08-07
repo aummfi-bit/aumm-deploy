@@ -112,7 +112,7 @@ contract DeployTestnetStubs is Script {
         _processConfig(IxMetallumConfig.config());
         vm.stopBroadcast();
 
-        console2.log("STUB_ pairs recorded (unique tokens + hardcoded RPs):", envKeys.length);
+        console2.log("STUB_ pairs recorded (tokens + underlyings + hardcoded RPs):", envKeys.length);
         _emitNamedKeys();
         _assertCoverage();
         _emitMap();
@@ -137,6 +137,7 @@ contract DeployTestnetStubs is Script {
     }
 
     /// @dev WITH_RATE: 18-dec StubERC20 underlying + StubERC4626 + ERC4626RateProvider (PB-D21 (ii)); 18/18.
+    ///      Vault under STUB_, underlying under STUB_UL_ per PB-D65 (v); provider under STUB_RP_ by the caller.
     function _ensureWithRate(address token) internal {
         if (stubOf[token] != address(0)) return;
         StubERC20 underlying = new StubERC20("Stub Underlying", "STUBU", 18);
@@ -145,6 +146,7 @@ contract DeployTestnetStubs is Script {
         stubOf[token] = address(vault);
         rpOfToken[token] = address(rp);
         _record(string.concat("STUB_", vm.toString(token)), address(vault));
+        _record(string.concat("STUB_UL_", vm.toString(token)), address(underlying));
     }
 
     /// @dev STANDARD: StubERC20 at the token's real mainnet decimals — read off the literal on chain 1,
