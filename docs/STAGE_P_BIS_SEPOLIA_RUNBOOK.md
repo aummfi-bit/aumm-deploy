@@ -33,7 +33,7 @@ Three files, two canonical and one derived. `.env.mainnet` and `.env.sepolia` ea
 | --- | --- | --- | --- |
 | 1 | `SEPOLIA_RPC_URL` reachable, chain id 11155111 | verified at PB3.1 | — |
 | 2 | Deployer EOA funded with SepETH | 0.05 at PB3.1; target ~1-2 SepETH per the rung f gas measurement, section 6 | before phase 1 |
-| 3 | `ETHERSCAN_API_KEY` present in both canonical files | ABSENT at PB3.1 — must be provisioned | before verification |
+| 3 | `ETHERSCAN_API_KEY` present in both canonical files | ABSENT at PB3.1; provisioned and verification executed at PB3.5i, see phase 6 | before verification |
 | 4 | Canonical Permit2 at `0x000000000022D473030F116dDEE9F6B43aC78BA3` | verified present at PB3.1 | — |
 | 5 | `script/config/mainnet-token-decimals.env` merged into `.env.sepolia` | committed at PB3.5b2 | before phase 1 |
 
@@ -219,9 +219,17 @@ Load-bearing rather than cosmetic: an unseated Router still mints BPT on an add,
 
 **Phase 6 — verification.**
 
-With `ETHERSCAN_API_KEY` provisioned per prerequisite 3, contracts deployed with `--verify` are submitted automatically. Anything deployed before the key was in place, or whose verification failed in flight, is re-submitted with `forge verify-contract` against the Sepolia explorer. Der Bodensee and the 26 Miliarium pools are CREATE3 deployments made by the factory rather than by the deployer EOA, so verification is submitted against the pool address with the factory's pool creation code, not against a deployer transaction.
+Executed at PB3.5i on 2026-08-07, once an operator supplied `ETHERSCAN_API_KEY` to both canonical files. Nothing had been deployed with `--verify`, the key having been absent throughout the broadcast, so every contract was submitted after the fact with `forge verify-contract --chain-id 11155111 --watch`. 50 contracts went out across three groups under per-command §8b approval: eleven base-layer, thirteen phase-4, and the twenty-six Miliarium pools. Six are deliberately excluded and stay unverified: nonces 87 to 89, permanently orphaned per PB-D32, and `TVLOracle`, `AureumGovernance` and `AureumGovernanceAuthorizer`, whose source moved after they were deployed. PB-D67 records both exclusions.
 
-Recording the full deployed set into `test-stubs/sepolia-stubs.env` per PB-D21 (v), replacing the committed fork-sample addresses with live Sepolia ones, is rung i rather than this one.
+**Verify locally before spending a submission.** Two read-only checks answer for free what a failed submission answers slowly and ambiguously. Compare each target's on-chain deployed-code length against its local artifact's `deployedBytecode`, which catches source drift and settles which compiler profile built a contract. Then extract each constructor argument by stripping the artifact's creation code off the init code forge recorded under `broadcast/`, which yields exact arguments and proves byte-exact creation-code identity in the same operation, creation code carrying no immutables and therefore having to be an exact prefix. Both ran clean across all 50 before the first submission. Do not hand-encode constructor arguments, and do not rely on `--guess-constructor-args`, which contacts the explorer and is unreliable for CREATE3.
+
+**Build order is load-bearing, and getting it wrong produces a misleading error.** `[profile.vault]` overrides `out` but not `cache_path`, so both profiles write `cache/solidity-files-cache.json` and the last build wins for every file they both compile. Running the vault build immediately before verification rewrote every `pkg/vault/contracts` entry to 0.8.30, and `Router`, the only vault-package contract the DEFAULT profile deploys, then failed lookup against a compiler version it was never built with while a correct artifact sat in `out/`. A plain `forge build` restored the entry and the submission passed. Run the default build last before verifying default-profile contracts. Registered as RB-018, and Stage R reproduces it by construction.
+
+**Which profile, and what to submit against.** `Vault`, `VaultAdmin` and `VaultExtension` verify under `FOUNDRY_PROFILE=vault`; every other contract verifies under the default profile, `Router` included despite its source living in the Balancer vault package. der Bodensee and the 26 Miliarium pools are CREATE3 deployments made by the factory rather than by the deployer EOA, so each is submitted against the pool address as `WeightedPool`, not against a deployer transaction. Etherscan matches at the runtime-bytecode layer, so one submission links the rest: all 26 pools returned already-verified off der Bodensee's.
+
+**The nonce-93 CALL deploys four contracts, not one.** `VaultAdmin`, `VaultExtension`, a CREATE3 proxy and the Vault. The first two hold most of the Vault's logic behind delegatecall and appear in no deployer transaction, so their addresses come from `broadcast/CreateAureumVault.s.sol/11155111/run-latest.json` and each is identified by init-code prefix match against a named artifact. Both were absent from the deployment record and from `deployments/11155111.json` until PB3.5i12 and i15b.
+
+Recording the full deployed set into `test-stubs/sepolia-stubs.env` per PB-D21 (v), replacing the committed fork-sample addresses with live Sepolia ones, was discharged at PB3.5i15c: all 67 `STUB_` pairs plus the PB-D47 `STUB_RP_` key and the seven named protocol keys, extracted from `.env.sepolia` by explicit key allowlist because that file also holds secrets. The topology of all 87 stub contracts, with their nonces, is `docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md`.
 
 ## 8. Rung h — the pre-broadcast dry run
 
