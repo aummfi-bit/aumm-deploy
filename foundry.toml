@@ -43,7 +43,12 @@ cbor_metadata = false
 # PB-D37 (vi): `test/unit/BytecodeSize.t.sol` walks `src/` with `vm.readDir` to assert that
 # the hand-listed contract roster still covers every source file, which needs read access
 # to `./src`.
+#
+# PB-D65 (vi): `test/unit/DeploymentArtifactAgreement.t.sol` reads `deployments/11155111.json`
+# to assert the phase-4 intersection agrees with `SepoliaPhase4Addresses.sol`, which needs read
+# access to `./deployments`.
 fs_permissions = [
+    { access = "read", path = "./deployments" },
     { access = "read", path = "./out-vault" },
     { access = "read", path = "./src" },
 ]
