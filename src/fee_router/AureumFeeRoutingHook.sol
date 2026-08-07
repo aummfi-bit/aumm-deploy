@@ -522,7 +522,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         address swapPool,
         IERC20 depositToken,
         uint256 minDepositTokenOut
-    ) private {
+    ) private returns (uint256) {
         // Tuple discard: amountCalculated == amountOut for EXACT_IN, redundant; bounded fee-token loop. See D8 NOTES F5/F7.
         // slither-disable-next-line unused-return,calls-loop
         (, uint256 amountIn, uint256 amountOut) = _vault.swap(
@@ -543,6 +543,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         // Vault sendTo inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F9.
         // slither-disable-next-line calls-loop
         _vault.sendTo(depositToken, address(this), amountOut);
+        return amountOut;
     }
 
     /// @dev Nested one-sided add from this hook: inside `IVault.addLiquidity`,
