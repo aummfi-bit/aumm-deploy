@@ -31,7 +31,7 @@ Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, held in t
 
 87 stubs across blocks 11364670 to 11364812, deployed by `test-stubs/DeployTestnetStubs.s.sol` and REUSED unchanged by the resume branch: `StubERC20`, `StubERC4626` and `ERC4626RateProvider` instances, 576,878 to 844,555 gas each. Step 1 was NOT re-broadcast per PB-D38 (ii) — re-running it would mint a fresh roster from the live nonce upward, orphan the map every later step reads, and consume the nonces the base-layer projections derive from.
 
-The live addresses are the `STUB_` block of `.env.sepolia`: 67 `STUB_<mainnet literal>=<sepolia stub>` pairs plus seven named keys. That file is gitignored, so those 87 addresses are presently unversioned. `test-stubs/sepolia-stubs.env` holds the FORK-SAMPLE map committed at PB3.2e3, which is a different value set and not a substitute. Closing that gap is an open item.
+The live addresses are the `STUB_` block of `.env.sepolia`: 67 `STUB_<mainnet literal>=<sepolia stub>` pairs plus seven named keys. That block decomposes as 59 token keys and 8 pre-PB-D47 legacy provider keys rather than 67 tokens, which is why `_resolveRateProvider` retains its legacy `STUB_` fallback. `test-stubs/sepolia-stubs.env` holds the FORK-SAMPLE map committed at PB3.2e3, which is a different value set and not a substitute. Because `.env.sepolia` is gitignored, those addresses were unversioned until PB3.7c2c1; `docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md` now carries all 87 with their nonces, derived from a live read per PB-D65 (viii) rather than transcribed. The 14 `StubERC20` underlyings appear there for the first time — they were never in `.env.sepolia` at all, reachable only by an `asset()` probe on their vault — and the emission fix that prevents a future run recreating the gap landed at PB3.7c1, closing RB-014.
 
 ## 3. Gas limits and the provider ceiling
 
@@ -96,6 +96,7 @@ Every step was confirmed at a second endpoint and at a later block than inclusio
 - Per-transaction detail for phase 4: `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`, all 114 rows.
 - Per-transaction detail for the rung-f TVL oracle wiring: `docs/STAGE_P_BIS_TVL_WIRING_LEDGER.md`, all 62 rows.
 - Per-transaction detail for the Miliarium pool seeding: `docs/STAGE_P_BIS_POOL_SEEDING_LEDGER.md`, all 389 rows.
+- Full stub topology, all 87 contracts with nonces: `docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md`.
 - Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8.
 - Decisions: PB-D19 the genesis offset, PB-D26 the token sort, PB-D27 the go-live architecture, PB-D30 hook before der Bodensee, PB-D32 through PB-D34 the EIP-170 blocker, PB-D35 and PB-D36 environment isolation, PB-D38 the resume branch.
 
