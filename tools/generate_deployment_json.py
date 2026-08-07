@@ -34,6 +34,16 @@ BASE_LAYER_KEYS = {
 
 ABANDONED_NONCES = {87, 88, 89}
 
+# Section 1 carries a second table for the three contracts the nonce-93 CALL created
+# beside the Vault, keyed by contract name rather than by deployer nonce (PB-D67 (v)).
+# The CREATE3 proxy is listed so an unexpected fourth row still raises, and maps to
+# None because it carries no source and no protocol role.
+VAULT_SIBLING_KEYS = {
+    "VaultAdmin": "VaultAdmin",
+    "VaultExtension": "VaultExtension",
+    "CREATE3 proxy": None,
+}
+
 KIND_TO_ROLE = {
     "VAULT": "vault",
     "UNDERLYING": "underlying",
@@ -72,7 +82,7 @@ def table_rows(lines):
         if not cells:
             continue
         first = cells[0]
-        if first == "Nonce" or first.startswith("---"):
+        if first in ("Nonce", "Contract") or first.startswith("---"):
             continue
         rows.append(cells)
     return rows
@@ -103,9 +113,12 @@ def expect_count(name: str, actual: int, expected: int) -> None:
 
 def parse_base_layer(record_text: str) -> dict:
     rows = table_rows(section_body(record_text, 1))
-    expect_count("section 1 rows", len(rows), 12)
+    nonce_rows = [cells for cells in rows if isinstance(parse_nonce(cells[0]), int)]
+    sibling_rows = [cells for cells in rows if not isinstance(parse_nonce(cells[0]), int)]
+    expect_count("section 1 nonce rows", len(nonce_rows), 12)
+    expect_count("section 1 vault-sibling rows", len(sibling_rows), 3)
     base_layer = {}
-    for cells in rows:
+    for cells in nonce_rows:
         nonce = parse_nonce(cells[0])
         if nonce not in BASE_LAYER_KEYS:
             raise ValueError(f"section 1 nonce {nonce!r} missing from BASE_LAYER_KEYS")
@@ -120,6 +133,18 @@ def parse_base_layer(record_text: str) -> dict:
             "address": unwrap(cells[2]),
             "nonce": nonce,
             "status": status,
+        }
+    for cells in sibling_rows:
+        name = unwrap(cells[0])
+        if name not in VAULT_SIBLING_KEYS:
+            raise ValueError(f"section 1 sibling {name!r} missing from VAULT_SIBLING_KEYS")
+        key = VAULT_SIBLING_KEYS[name]
+        if key is None:
+            continue
+        base_layer[key] = {
+            "address": unwrap(cells[1]),
+            "nonce": "via nonce 93 CALL",
+            "status": "live",
         }
     return base_layer
 
