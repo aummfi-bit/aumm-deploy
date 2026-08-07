@@ -55,6 +55,16 @@
       "nonce": 93,
       "status": "live"
     },
+    "VaultAdmin": {
+      "address": "0xb5e5690cdba0f0c41217cfa361ac424d1e356eb5",
+      "nonce": "via nonce 93 CALL",
+      "status": "live"
+    },
+    "VaultExtension": {
+      "address": "0xac58bab6a4ad5019d3725eb456531eae96550d44",
+      "nonce": "via nonce 93 CALL",
+      "status": "live"
+    },
     "WeightedPoolFactory": {
       "address": "0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F",
       "nonce": 94,
