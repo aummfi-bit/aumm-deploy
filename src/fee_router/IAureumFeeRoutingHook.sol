@@ -121,6 +121,29 @@ interface IAureumFeeRoutingHook {
     ///         fails or mints zero BPT.
     error BodenseeDepositFailed();
 
+    /// @notice Thrown by `recoverStrandedFees` when `depositToken` is
+    ///         neither `SV_ZCHF` nor `SUSDS`, the only two der-Bodensee
+    ///         deposit rails. See PB-D66 (xii).
+    error InvalidDepositToken(address token);
+
+    /// @notice Thrown by `recoverStrandedFees` when the swap path is
+    ///         empty. A zero-hop path is deliberately unsupported per
+    ///         PB-D66 (xii), including where `feeToken` already equals
+    ///         `depositToken`.
+    error EmptySwapPath();
+
+    /// @notice Thrown by `recoverStrandedFees` when its three parallel
+    ///         path arrays disagree in length. Carries all three lengths
+    ///         so a caller sees the whole disagreement in one revert
+    ///         rather than fixing one pair and meeting the next.
+    error SwapPathLengthMismatch(uint256 pools, uint256 outs, uint256 mins);
+
+    /// @notice Thrown by `recoverStrandedFees` when the final hop's output
+    ///         token is not `depositToken`. Distinct from
+    ///         `InvalidDepositToken`: there the rail itself is invalid,
+    ///         here the rail is valid but the route does not reach it.
+    error TerminalTokenMismatch(address expected, address actual);
+
     // -----------------------------------------------------------------
     //                       External primitives
     // -----------------------------------------------------------------
