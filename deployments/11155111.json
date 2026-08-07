@@ -1,0 +1,783 @@
+{
+  "baseLayer": {
+    "AuMM": {
+      "address": "0xb8947f2fE2177d36f2f990300106f27c738DFC8D",
+      "nonce": 95,
+      "status": "live"
+    },
+    "AureumAuthorizer": {
+      "address": "0x21E5f855B45943d18Fa2A76635A06D024d1f0E3A",
+      "nonce": 90,
+      "status": "live"
+    },
+    "AureumAuthorizerAbandoned": {
+      "address": "0x655efe2dd8728af106c933cd88a89646d2c7de02",
+      "nonce": 87,
+      "status": "abandoned"
+    },
+    "AureumFeeRoutingHook": {
+      "address": "0x954c972170eC131364570658D42F14e833A08588",
+      "nonce": 96,
+      "status": "live"
+    },
+    "AureumProtocolFeeController": {
+      "address": "0xb424796989Ba0Baaaa879Db0C0d1FEf638fEa3ef",
+      "nonce": 91,
+      "status": "live"
+    },
+    "AureumProtocolFeeControllerAbandoned": {
+      "address": "0x985ea467837ee8c2598474e54395db8b0822ce1f",
+      "nonce": 88,
+      "status": "abandoned"
+    },
+    "AureumVaultFactory": {
+      "address": "0x0321Cc252D09C30E21D59B17f667c2e6e43f2855",
+      "nonce": 92,
+      "status": "live"
+    },
+    "AureumVaultFactoryAbandoned": {
+      "address": "0x6649f7a65b6937f6d2e46d4fb418ffb12079f560",
+      "nonce": 89,
+      "status": "abandoned"
+    },
+    "DerBodenseePool": {
+      "address": "0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798",
+      "nonce": 97,
+      "status": "live"
+    },
+    "Router": {
+      "address": "0xF0495705D3AFeC43A658D8451971c464df2CdF8a",
+      "nonce": 98,
+      "status": "live"
+    },
+    "Vault": {
+      "address": "0x9c7e8F56D12823609C28788d4b80a315CcC5fC80",
+      "nonce": 93,
+      "status": "live"
+    },
+    "WeightedPoolFactory": {
+      "address": "0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F",
+      "nonce": 94,
+      "status": "live"
+    }
+  },
+  "chainId": 11155111,
+  "generatedFrom": [
+    "docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md",
+    "docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md"
+  ],
+  "phase4": {
+    "AuMMMinterRouter": {
+      "address": "0x71166f782df23a8f0af8769241c757c08d4998a8",
+      "nonce": 228,
+      "status": "live"
+    },
+    "AureumGovernance": {
+      "address": "0x2c5fc5953c42b7e0bf1a5062632fcccbc97f0a69",
+      "nonce": 226,
+      "status": "live"
+    },
+    "AureumGovernanceAuthorizer": {
+      "address": "0xd25f8510fbbc7fe0daebca3bb995b907211068b7",
+      "nonce": 227,
+      "status": "live"
+    },
+    "BodenseeBootstrapChannel": {
+      "address": "0x2325a6238ff80e5a4e8d8071ff1e949dcbcfb7cb",
+      "nonce": 141,
+      "status": "live"
+    },
+    "CCBMultiplier": {
+      "address": "0xdbb357259be8dfb17fcbf0503d9bab01e976f735",
+      "nonce": 129,
+      "status": "live"
+    },
+    "EMASampler": {
+      "address": "0x51f8d9e771e5ec3a33555c15032110d034891b3a",
+      "nonce": 128,
+      "status": "live"
+    },
+    "EfficiencyOracle": {
+      "address": "0x1e70661c3f1844c01be204e9df032b12d04110b3",
+      "nonce": 127,
+      "status": "live"
+    },
+    "EmissionDistributor": {
+      "address": "0x2933bc72f2ea002ece4a2270c7985b72cfd0a695",
+      "nonce": 142,
+      "status": "live"
+    },
+    "GaugeEligibility": {
+      "address": "0x9b9304deb0230cab7780a66b184897d30f26cd78",
+      "nonce": 133,
+      "status": "live"
+    },
+    "GaugeRegistry": {
+      "address": "0xd6eee04ca4e27a3e2e395538f907b1dff523d987",
+      "nonce": 134,
+      "status": "live"
+    },
+    "IncendiaryRegistry": {
+      "address": "0xe1304f04c7f9138f8932b71a18be7a7447cc93c1",
+      "nonce": 222,
+      "status": "live"
+    },
+    "MiliariumRegistry": {
+      "address": "0xfbe5e161955fb75fa99010dcfc71bbbe6405a511",
+      "nonce": 125,
+      "status": "live"
+    },
+    "SwapAndDepositToBodensee": {
+      "address": "0x5f716bd785d2990c6d42750091b0f2914c557f25",
+      "nonce": 131,
+      "status": "live"
+    },
+    "TVLOracle": {
+      "address": "0xbf78a49b1ab86247198f6660bf5a0491007e6a64",
+      "nonce": 126,
+      "status": "live"
+    },
+    "VaultClassRegistry": {
+      "address": "0xf6d7a7e633a1bc8b8896b7849bbfa53001854af7",
+      "nonce": 132,
+      "status": "live"
+    },
+    "VotingWeight": {
+      "address": "0x2d2678488e3483f905930571c1b01d5e3a138674",
+      "nonce": 225,
+      "status": "live"
+    }
+  },
+  "pools": {
+    "01": {
+      "address": "0xCFEDD49F254291aA67cFD725691Cd1C1Ecfe175f",
+      "name": "ixHelvetia",
+      "nonce": 100,
+      "status": "live"
+    },
+    "02": {
+      "address": "0x45014C1C6720DaD745F2a791521a6723d102aDD8",
+      "name": "ixAetheron",
+      "nonce": "0, third sender",
+      "status": "live"
+    },
+    "02-superseded": {
+      "address": "0xD259F35a138383Ac8b545F06C5eBADcA3f6a2890",
+      "name": "ixAetheron",
+      "nonce": "0, second sender",
+      "status": "superseded"
+    },
+    "03": {
+      "address": "0xad0e87A433700F299Ee41fFd04D1e038521514e0",
+      "name": "ixCasper",
+      "nonce": 101,
+      "status": "live"
+    },
+    "05": {
+      "address": "0x2163d0668383759fa7CF6Da176ECC412c708CbF1",
+      "name": "ixEdelweiss",
+      "nonce": 102,
+      "status": "live"
+    },
+    "06": {
+      "address": "0x78D54464715C7f77f084023918737DC6BfC0E204",
+      "name": "ixLibertas",
+      "nonce": 103,
+      "status": "live"
+    },
+    "08": {
+      "address": "0x6b3419CD3794A43c503be60ed58535C3cFeF3F51",
+      "name": "ixBrevis",
+      "nonce": 104,
+      "status": "live"
+    },
+    "09": {
+      "address": "0x378f2563A1731F89F32C05398fB8fDF71bfb451B",
+      "name": "ixAltrix",
+      "nonce": 105,
+      "status": "live"
+    },
+    "10": {
+      "address": "0xc8921e3f691Af718D77339475B4a0AbA25a43eA6",
+      "name": "ixMediox",
+      "nonce": 106,
+      "status": "live"
+    },
+    "11": {
+      "address": "0x2fe687F042432446988E67295E0fbbBA98d4C45E",
+      "name": "ixLongus",
+      "nonce": 107,
+      "status": "live"
+    },
+    "12": {
+      "address": "0x79e01791024173C534a1b286d9680864c5E75655",
+      "name": "ixStrata",
+      "nonce": 108,
+      "status": "live"
+    },
+    "13": {
+      "address": "0xfc438921AA48b3BEA513e2bc8e119E820E72C0E8",
+      "name": "ixForum",
+      "nonce": 109,
+      "status": "live"
+    },
+    "14": {
+      "address": "0x7e7df0d96d8eb360bC973D6c68cDf42a051A2583",
+      "name": "ixAurebit",
+      "nonce": 99,
+      "status": "live"
+    },
+    "15": {
+      "address": "0x93871abd6bD3e0625AF82a536B8B2A1E7FbA4f26",
+      "name": "ixRegistrum",
+      "nonce": 110,
+      "status": "live"
+    },
+    "16": {
+      "address": "0x6358045D14df6792902266d4BB8E2e567663fD84",
+      "name": "ixDebitum",
+      "nonce": 111,
+      "status": "live"
+    },
+    "17": {
+      "address": "0x891F3D4cEA1A8975071c61229076C8De2205a429",
+      "name": "ixEquitix",
+      "nonce": 112,
+      "status": "live"
+    },
+    "18": {
+      "address": "0x4f2E5bF8d91cD64c7FcbC092887AF5D7c9A5eb8e",
+      "name": "ixInnovix",
+      "nonce": 113,
+      "status": "live"
+    },
+    "19": {
+      "address": "0x97385c238b2E20ED8882553838FCf01F8ddd1fd8",
+      "name": "ixGigantus",
+      "nonce": 114,
+      "status": "live"
+    },
+    "20": {
+      "address": "0xD5dA48b648687F297863cB7eAad20bC25C9f9afc",
+      "name": "ixMagnix",
+      "nonce": 115,
+      "status": "live"
+    },
+    "21": {
+      "address": "0x5cFAc5FD417081F72596d3A99c2D1a17412667b5",
+      "name": "ixNubix",
+      "nonce": 116,
+      "status": "live"
+    },
+    "22": {
+      "address": "0xF5e338FaEE83096fcD375DBfaD33a42C654830d1",
+      "name": "ixMoneta",
+      "nonce": 117,
+      "status": "live"
+    },
+    "23": {
+      "address": "0x8BBe0A1Fe73CdE710a2Db2E069b040EE888bcE62",
+      "name": "ixColossix",
+      "nonce": 118,
+      "status": "live"
+    },
+    "24": {
+      "address": "0x74A63e807EF64B0C1a5A3BA0Da2508E499f77920",
+      "name": "ixVitalix",
+      "nonce": 119,
+      "status": "live"
+    },
+    "25": {
+      "address": "0xDE37541c154af244A3F90b669876d3cA194E830a",
+      "name": "ixMedicix",
+      "nonce": 120,
+      "status": "live"
+    },
+    "26": {
+      "address": "0x1657b73834113aA0f09971ada1B7f3A5f5521DaD",
+      "name": "ixMercatura",
+      "nonce": 121,
+      "status": "live"
+    },
+    "27": {
+      "address": "0x91748a5Fa6F79d0CCCbB62BF4796e2956AB1977E",
+      "name": "ixAurix",
+      "nonce": 122,
+      "status": "live"
+    },
+    "28": {
+      "address": "0xcEbf3dCa8C20FAe8F57836FCB3EC073c17478faD",
+      "name": "ixMetallum",
+      "nonce": 123,
+      "status": "live"
+    }
+  },
+  "stubs": {
+    "0x03C1EC4CA9DBb168E6Db0DeF827c085999CBffaF": {
+      "standard": {
+        "address": "0x7A9325b2f8810DeDD20C16c653596DaAc99cdDC5",
+        "nonce": 73
+      }
+    },
+    "0x0655977FEb2f289A4aB78af67BAB0d17aAb84367": {
+      "provider": {
+        "address": "0xC3cFF365145FaE3383F8Bf50557f5a3F9b725adD",
+        "nonce": 36
+      },
+      "underlying": {
+        "address": "0xE3d7124bd56b2333ee16C3fb1d576FFd26977681",
+        "nonce": 34
+      },
+      "vault": {
+        "address": "0xE4Cd794A7Fa89d55F68727B3Ed2e9D338BC375D6",
+        "nonce": 35
+      }
+    },
+    "0x0e397938C1Aa0680954093495B70A9F5e2249aBa": {
+      "standard": {
+        "address": "0xFD219f9d6e0306e7F02d207b303Aa0F029b1CC87",
+        "nonce": 65
+      }
+    },
+    "0x14c3abF95Cb9C93a8b82C1CdCB76D72Cb87b2d4c": {
+      "standard": {
+        "address": "0x9AE516b934727De33a43C43297762B11Ad16Aa99",
+        "nonce": 69
+      }
+    },
+    "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599": {
+      "standard": {
+        "address": "0x660318e2230fcD9a7fF22E92558E98674f8Fbbad",
+        "nonce": 57
+      }
+    },
+    "0x23346B04a7f55b8760E5860AA5A77383D63491cD": {
+      "provider": {
+        "address": "0xd93a39ba9784491FEBa254CAc368E1ff49894BF2",
+        "nonce": 39
+      },
+      "underlying": {
+        "address": "0x1ba19f0f46359d8C90EF5D5BEA98970a1e7942BF",
+        "nonce": 37
+      },
+      "vault": {
+        "address": "0x1302A75E54B693BD8AC9bc680f5D18406Dc31a4d",
+        "nonce": 38
+      }
+    },
+    "0x2411802D8BEA09be0aF8fD8D08314a63e706b29C": {
+      "provider": {
+        "address": "0x13e0eA24762A1cf547cDFb0074bA154Bc4f375Fe",
+        "nonce": 21
+      },
+      "underlying": {
+        "address": "0xaCb9EeE028C665547673FD6b705d2fd68602D0E2",
+        "nonce": 19
+      },
+      "vault": {
+        "address": "0xf41cC074Dfd5B933788781600eb9BDEAb80fC85e",
+        "nonce": 20
+      }
+    },
+    "0x28151F5888833D3d767C4d6945a0Ee50D1B193E3": {
+      "standard": {
+        "address": "0x7077Aac787CB1A9E9d3253E0701A2a1ceaB3F6a5",
+        "nonce": 77
+      }
+    },
+    "0x2D1F7226Bd1F780AF6B9A49DCC0aE00E8Df4bDEE": {
+      "standard": {
+        "address": "0xC3a3a96433d627AAdcbdBcA2F4D924cDa780170d",
+        "nonce": 67
+      }
+    },
+    "0x2Df38cA485D01fC15e4FD85847ed26b7EF871c1c": {
+      "standard": {
+        "address": "0x108fEb99Ca109E3065ecF03470a20Da1BCFF41C3",
+        "nonce": 50
+      }
+    },
+    "0x322AA5F5Be95644d6c36544B6c5061F072D16DF5": {
+      "provider": {
+        "address": "0x52035480CC450A61961E71266948a25BD7314b08",
+        "nonce": 24
+      },
+      "underlying": {
+        "address": "0xfb56419728242bAa8989c09B3B630C894B2DbA0d",
+        "nonce": 22
+      },
+      "vault": {
+        "address": "0xF60Ad24d6C182CF97E0f08C4DbDaac4907C67eC8",
+        "nonce": 23
+      }
+    },
+    "0x323c03c48660fE31186fa82c289b0766d331Ce21": {
+      "standard": {
+        "address": "0x237B5D430D15A32AE852d239Bdb043deFB480284",
+        "nonce": 59
+      }
+    },
+    "0x45804880De22913dAFE09f4980848ECE6EcbAf78": {
+      "standard": {
+        "address": "0x1bB40cCEB3355162A40519Cf92753b8EFB8f51d4",
+        "nonce": 83
+      }
+    },
+    "0x514910771AF9Ca656af840dff83E8264EcF986CA": {
+      "standard": {
+        "address": "0x26a8AAb1f51BB12CA80bb86B333EcA51eAcf972e",
+        "nonce": 53
+      }
+    },
+    "0x54C1Ff361b402f66c13107421E6A431C3375EF24": {
+      "standard": {
+        "address": "0x0ccA6Cd7d2BC2E6E08fBa0572A8B2D692BD21687",
+        "nonce": 48
+      }
+    },
+    "0x56072C95FAA701256059aa122697B133aDEd9279": {
+      "standard": {
+        "address": "0x1A5d9380f8a97e8D9E743b160C3886a197b61279",
+        "nonce": 55
+      }
+    },
+    "0x576E9CA70e3a040c00d8139b0665a2b7b7B64844": {
+      "standard": {
+        "address": "0x19675CCC69dB3846aCcB35E9c4975B6482DD3448",
+        "nonce": 75
+      }
+    },
+    "0x58D97B57BB95320F9a05dC918Aef65434969c2B2": {
+      "standard": {
+        "address": "0x85617e59e8C214331fB4547705307a25fD93ce06",
+        "nonce": 61
+      }
+    },
+    "0x5A98FcBEA516Cf06857215779Fd812CA3beF1B32": {
+      "standard": {
+        "address": "0x95b0869275a2e0bEf6cd27Fe6578523c966F83aC",
+        "nonce": 56
+      }
+    },
+    "0x5C424B9b60383FCE7fE7069D2a2B1047BCd04a73": {
+      "standard": {
+        "address": "0x3cb36aF55A116aEE86979e025bFE7db185ffE339",
+        "nonce": 46
+      }
+    },
+    "0x62cA254a363dc3c748e7E955c20447aB5bF06fF7": {
+      "standard": {
+        "address": "0xC3e17579Ff651c650BBcDA92bFd204A9A3698C9b",
+        "nonce": 63
+      }
+    },
+    "0x68749665FF8D2d112Fa859AA293F07A622782F38": {
+      "standard": {
+        "address": "0x931C2aCd2972e1482fe9903485d69D79847A4200",
+        "nonce": 84
+      }
+    },
+    "0x7Bc3485026Ac48b6cf9BaF0A377477Fff5703Af8": {
+      "provider": {
+        "address": "0x9D0955Bbde13E562eB7deE6F9893e73E527A84d9",
+        "nonce": 30
+      },
+      "underlying": {
+        "address": "0x3249FfB98dE511837C61cf4952f8b85AF7F6fa3f",
+        "nonce": 28
+      },
+      "vault": {
+        "address": "0xB4018b72FaC7b3C9d8cDc52500D22c9d07A5A1ab",
+        "nonce": 29
+      }
+    },
+    "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9": {
+      "standard": {
+        "address": "0xD627Bb8e31E89e0d83569927452Ce886e12CBeFF",
+        "nonce": 54
+      }
+    },
+    "0x7a0F89c1606f71499950AA2590d547c3975B728E": {
+      "standard": {
+        "address": "0x499431d73E7f66B04f721640eF5Cf57616fdC681",
+        "nonce": 76
+      }
+    },
+    "0x7c7378143a9c8839e0502e2178F058F46c6ea504": {
+      "standard": {
+        "address": "0xB5BA09fEF747cb85c2c5e9e50daEe9f83E796Cc4",
+        "nonce": 79
+      }
+    },
+    "0x8De5D49725550f7b318b2FA0f1B1F118E98E8D0F": {
+      "standard": {
+        "address": "0x0a624148547cB62b53cf91f538e61b173D094447",
+        "nonce": 47
+      }
+    },
+    "0x90551c1795392094FE6D29B758EcCD233cFAa260": {
+      "provider": {
+        "address": "0x3e9A79B53DF32ACFa80fF7aEa50eb31cB03DCe33",
+        "nonce": 27
+      },
+      "underlying": {
+        "address": "0xdB5BB6D92624b58Bafd98AF32fE29caf240942C1",
+        "nonce": 25
+      },
+      "vault": {
+        "address": "0xb95e2B38C627d7fA9261f768BFFCd569F1351ff5",
+        "nonce": 26
+      }
+    },
+    "0x992651BFeB9A0DCC4457610E284ba66D86489d4d": {
+      "standard": {
+        "address": "0x0f06E676121b14bbcb0E5F16Ba2a4208d47B97f3",
+        "nonce": 52
+      }
+    },
+    "0x998f02A9E343EF6E3E6f28700d5A20F839fD74E6": {
+      "standard": {
+        "address": "0x97072e4e6E222C7071fb8d3dEF0EbBfB0DfAd073",
+        "nonce": 81
+      }
+    },
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": {
+      "standard": {
+        "address": "0xaB6f66D0BFE01C0C40098B8405466D5b42893e33",
+        "nonce": 40
+      }
+    },
+    "0xB812837b81a3a6b81d7CD74CfB19A7f2784555E5": {
+      "standard": {
+        "address": "0x140282Be5CEaFD9752a85d05894f95B02a0c977E",
+        "nonce": 70
+      }
+    },
+    "0xC71Ea051a5F82c67ADcF634c36FFE6334793D24C": {
+      "provider": {
+        "address": "0x8B2bEe19817F58E5501941CFFE4a1300Dfb8c428",
+        "nonce": 44
+      },
+      "underlying": {
+        "address": "0x5C4E8Ca3C414F16278683aF27889447D4aecf4D4",
+        "nonce": 42
+      },
+      "vault": {
+        "address": "0xFa7C24f4aCF2F4900CDF1Dddd653B0fB43e1283F",
+        "nonce": 43
+      }
+    },
+    "0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee": {
+      "provider": {
+        "address": "0x4a4EA25a6359852d4e47031Fc1316F3aE13de0a3",
+        "nonce": 14
+      },
+      "underlying": {
+        "address": "0x0d140Fe8fEd35c83c937A91aBF280476285700DF",
+        "nonce": 12
+      },
+      "vault": {
+        "address": "0x3294eB8582279311D4900D18fa88726Abc9aa5E2",
+        "nonce": 13
+      }
+    },
+    "0xD4fa2D31b7968E448877f69A96DE69f5de8cD23E": {
+      "provider": {
+        "address": "0x249Bf1Ec2e1e632f466eF1bc945c2B5f02627614",
+        "nonce": 33
+      },
+      "underlying": {
+        "address": "0xf2dd907869FF4FB926fCf19b653a65C7500358C8",
+        "nonce": 31
+      },
+      "vault": {
+        "address": "0x0eABBa593D0459a551507443BD6e367940aDECAB",
+        "nonce": 32
+      }
+    },
+    "0xDcEe70654261AF21C44c093C300eD3Bb97b78192": {
+      "provider": {
+        "address": "0xf9D8F78378f395dC51d3Bf05818dC958f3314499",
+        "nonce": 17
+      },
+      "underlying": {
+        "address": "0xc90402484292C55C4389eaaE27BCc6411c24C8d0",
+        "nonce": 15
+      },
+      "vault": {
+        "address": "0xEB74e39714a0357cb81a63E94Fb8B9E2Bc495508",
+        "nonce": 16
+      }
+    },
+    "0xE5F130253fF137f9917C0107659A4c5262abf6b0": {
+      "provider": {
+        "address": "0x03c9D65ff340F27a23e2b2e9CABf51AA1E080799",
+        "nonce": 5
+      },
+      "underlying": {
+        "address": "0x1b5684d28F83249A7fe1Fd32C2129EE0CbF83113",
+        "nonce": 3
+      },
+      "vault": {
+        "address": "0x290a0E1dDc7de7e8588Aa1c15974FBd771c82700",
+        "nonce": 4
+      }
+    },
+    "0xE72B141DF173b999AE7c1aDcbF60Cc9833Ce56a8": {
+      "standard": {
+        "address": "0x9d132436BF2dD5E1648103E36C96e8102994D191",
+        "nonce": 60
+      }
+    },
+    "0xF042cfa86cf1D598a75Bdb55c3507a1F39f9493b": {
+      "standard": {
+        "address": "0xA53A473b7b6d947f6a91d9F64306CCa939A7A778",
+        "nonce": 82
+      }
+    },
+    "0xF3e4872e6a4cF365888D93b6146a2bAA7348F1A4": {
+      "standard": {
+        "address": "0x8De8a94A21120296597552145BA28F81c99A9A5c",
+        "nonce": 85
+      }
+    },
+    "0xFeDC5f4a6c38211c1338aa411018DFAf26612c08": {
+      "standard": {
+        "address": "0x228cEde6A4cA0B70e433559D3468dE5c8EBc5fdD",
+        "nonce": 64
+      }
+    },
+    "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD": {
+      "provider": {
+        "address": "0xe17791a546115cA7031131fB19EAD83A58581c5c",
+        "nonce": 2
+      },
+      "underlying": {
+        "address": "0xCc72810e4A91D2BDba70B380C9c41327D0E63169",
+        "nonce": 0
+      },
+      "vault": {
+        "address": "0x1AAaA43Ae8fa57d9686b8FbB7944d2d22f4Ff166",
+        "nonce": 1
+      }
+    },
+    "0xa753A7395cAe905Cd615Da0B82A53E0560f250af": {
+      "standard": {
+        "address": "0x92671935b0Fd8C9bf341B9796715594D7EA910C8",
+        "nonce": 66
+      }
+    },
+    "0xac3E018457B222d93114458476f3E3416Abbe38F": {
+      "provider": {
+        "address": "0xE48896b3c6BeF81C42a7da2A5c50E494d5F31d80",
+        "nonce": 8
+      },
+      "underlying": {
+        "address": "0x6Cc4b8dd6FB04EA16A0f760D426B8912a5357584",
+        "nonce": 6
+      },
+      "vault": {
+        "address": "0x323A0Dfbf09602daC3cd02118DdeB4E0d5bD94cB",
+        "nonce": 7
+      }
+    },
+    "0xae78736Cd615f374D3085123A210448E74Fc6393": {
+      "provider": {
+        "address": "0x7ABD72639d5532C623670AFfeafDF5e7e294acE2",
+        "nonce": 11
+      },
+      "underlying": {
+        "address": "0x9af2B048050f4d299BB1C0e1366185E93bE15681",
+        "nonce": 9
+      },
+      "vault": {
+        "address": "0xc2050f1C047702279c48bF3460cAd55B6083D0aE",
+        "nonce": 10
+      }
+    },
+    "0xb51EDdDD8c47856D81C8681EA71404Cec93E92c6": {
+      "standard": {
+        "address": "0x48678ecB4130b103A0e9519F07C7057D5c49cc01",
+        "nonce": 41
+      }
+    },
+    "0xbA47214eDd2bb43099611b208f75E4b42FDcfEDc": {
+      "standard": {
+        "address": "0x85E762022a47F3d48D56bAABC20a690C362bf082",
+        "nonce": 71
+      }
+    },
+    "0xbb8774FB97436d23d74C1b882E8E9A69322cFD31": {
+      "standard": {
+        "address": "0xF09E5B7E73eBcd5197e84e8Cf8ddE8Ce0223Fa56",
+        "nonce": 72
+      }
+    },
+    "0xc20059e0317DE91738d13af027DfC4a50781b066": {
+      "standard": {
+        "address": "0x15ed6445CD0182eaFfc412e7655c5EC949d60ED3",
+        "nonce": 62
+      }
+    },
+    "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf": {
+      "standard": {
+        "address": "0xA5B3A60A515c4a3429c76098addEb02e570Bf4C0",
+        "nonce": 58
+      }
+    },
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7": {
+      "standard": {
+        "address": "0xfaE8A69519da66aD8966AE20dA215f38bC8509Fe",
+        "nonce": 45
+      }
+    },
+    "0xdB57d9C14e357Fc01E49035a808779Df41E9B4e2": {
+      "standard": {
+        "address": "0xba7C38C1D4F1CF4693eAc7e0E1E171EB7f5Ff2BE",
+        "nonce": 74
+      }
+    },
+    "0xdd0E1e6162666a210905fFE8d368661B313c00e9": {
+      "standard": {
+        "address": "0x426b2dc999e65ec62e2151359227DCCA135A9DD3",
+        "nonce": 80
+      }
+    },
+    "0xe4a10951f962e6cB93Cb843a4ef05d2F99DB1F94": {
+      "standard": {
+        "address": "0xff277C20152269C00b58261DC8b849DD813F5D2A",
+        "nonce": 18
+      }
+    },
+    "0xeD3618Bb8778F8eBBe2f241Da532227591771D04": {
+      "standard": {
+        "address": "0xe1bCB81ef414617FA5e34ed3bbf8860392856C20",
+        "nonce": 49
+      }
+    },
+    "0xf192957AE52dB3eb088654403CC2eDeD014ae556": {
+      "standard": {
+        "address": "0x6C00022B5991Dee4a6571e4102501eeee091A995",
+        "nonce": 78
+      }
+    },
+    "0xf6b1117ec07684D3958caD8BEb1b302bfD21103f": {
+      "standard": {
+        "address": "0x2e1D08cbb257587FC98DCc0458d957e30A235b55",
+        "nonce": 68
+      }
+    },
+    "0xf98Ec282300892b3518B5cB996012b18d9B7D435": {
+      "standard": {
+        "address": "0x843a146d1Efdb82A154354f042380A07Bd3A944A",
+        "nonce": 86
+      }
+    },
+    "0xfF7CF16aA2fFc463b996DB2f7B7cf0130336899D": {
+      "standard": {
+        "address": "0x1383c458D5e3E1B65598246aecBBcb3328215242",
+        "nonce": 51
+      }
+    }
+  }
+}
