@@ -232,8 +232,13 @@ def main() -> int:
     phase4 = parse_phase4(record_text)
     stubs = parse_stubs(ledger_text)
 
+    # 53 = PB-D65's measured 51 plus the two contracts the nonce-93 CALL created beside
+    # the Vault, which no committed artifact named until PB-D67 (v). The 51 was never
+    # wrong; it counted what the record then held. VaultAdmin and VaultExtension are
+    # live protocol contracts by every test that matters, so they enter the total
+    # rather than sitting outside it as a special case.
     live_total = live_count(base_layer) + live_count(pools) + live_count(phase4)
-    expect_count("live protocol total", live_total, 51)
+    expect_count("live protocol total", live_total, 53)
 
     payload = {
         "chainId": CHAIN_ID,
