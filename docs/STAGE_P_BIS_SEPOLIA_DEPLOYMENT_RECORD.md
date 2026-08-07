@@ -150,7 +150,7 @@ Twenty-five of the twenty-six Miliarium Aureum pools are live. Slot 14 `ixAurebi
 
 **Gas.** 122,822,719 gas across the twenty-five, ranging from 4,807,977 to 5,024,015 per pool, at an effective 1.00 to 1.12 gwei. The twenty-four-pool sequence cost approximately 0.126 SepETH against a balance of 5.88. No manual gas limit was set for any of them and no submission was refused: forge's own 130 percent multiplier held throughout, unlike the base-layer ceiling section 3 describes.
 
-**Verification is outstanding for all twenty-five.** None was submitted with `--verify`, because `ETHERSCAN_API_KEY` was still unprovisioned when they were broadcast. Each is a phase-6 obligation and is submitted against the pool address using the factory's pool creation code, not against a deployer transaction.
+**All twenty-five are verified on Sepolia Etherscan.** None carried `--verify` at broadcast, because `ETHERSCAN_API_KEY` was still an empty slot when they landed; the submissions ran at PB3.5i once an operator supplied it. Each was submitted against the pool address as `WeightedPool` under `[profile.default]`, not against a deployer transaction, since every one is a CREATE3 deployment performed by the factory. All twenty-five returned already-verified rather than freshly verified: Etherscan matches at the runtime-bytecode layer, and der Bodensee's identical `WeightedPool` source, submitted with the base layer, linked the whole set. That response is address-keyed rather than heuristic, and it is corroborated independently — each pool's constructor arguments were extracted from its own creation trace and confirmed a byte-exact creation-code prefix against its own address before any submission was sent.
 
 ## 8. Slot 02 `ixAetheron` — the second-sender deviation
 
@@ -194,7 +194,7 @@ The replacement anticipated in section 9 is live. `ixAetheron` now carries the r
 
 **The fix is verified in sealed state rather than inferred.** `getPoolTokenInfo` against the live pool returns the weETH stub `0x3294eB8582279311D4900D18fa88726Abc9aa5E2` paired with rate provider `0x4a4EA25a6359852d4e47031Fc1316F3aE13de0a3`, where the superseded pool carried that stub as its own provider. All four WITH_RATE legs hold a non-zero provider and the fifth holds `address(0)` with `paysYieldFees` false, so the `InvalidTokenConfiguration` rule holds on both sides of the token set. Gas came to 4,933,856, identical to the superseded broadcast to the unit, the two runs differing in one constructor address and nothing else.
 
-**The pool is registered and empty.** Balances read zero across all five tokens; initialization belongs to a later rung, and slot 02 was among the five slots the rung-h dry run never reached. Verification is outstanding on the same phase-6 obligation as the twenty-five pools of section 7, for the same reason — `ETHERSCAN_API_KEY` remains unprovisioned.
+**The pool was empty when it landed and is capitalised now.** Balances read zero across all five tokens at this broadcast — initialization belonged to a later rung, and slot 02 was among the five slots the rung-h dry run never reached — and section 13 records it seeded with the other twenty-five at nonces 301 to 689. Its source is verified on Sepolia Etherscan on the same PB3.5i submission as the twenty-five of section 7, and returned already-verified for the same reason.
 
 ## 11. Phase 4 — the Stage F through K orchestration, nonces 125 to 238
 
