@@ -176,10 +176,10 @@ contract AureumFeeRoutingHookTest is Test {
     /// @dev Post-F-23 the shared helper donates rather than mints, which changes what a
     ///      unit mock has to satisfy in two ways (PB-D68 (v)). `addLiquidity` must hand
     ///      back zero BPT or `BptMintedOnDonation` fires, and the helper reads der
-    ///      Bodensee's reserve once before and once after the add, requiring the delta to
-    ///      equal `depositAmount` exactly. A single `vm.mockCall` cannot express the
-    ///      second: it would return the same reserve both times and trip
-    ///      `ReserveDeltaMismatch`. `vm.mockCalls` queues the two returns in call order.
+    ///      Bodensee's reserve once before and once after the add, requiring a strict
+    ///      rise per PB-D68 (xvii). A single `vm.mockCall` cannot express the second: it
+    ///      would return the same reserve both times, leaving post equal to pre, and trip
+    ///      `ReserveDidNotRise`. `vm.mockCalls` queues the two returns in call order.
     ///      `bptOut` stays parameterised so the negative test can hand back a nonzero
     ///      value and prove the guard fires.
     function _mockAddLiquidity(uint256 svZchfAmount, uint256 bptOut) internal {
@@ -193,7 +193,7 @@ contract AureumFeeRoutingHookTest is Test {
         _mockBodenseeReserve(1_000e18, 1_000e18 + svZchfAmount);
     }
 
-    /// @dev Queues the pre/post reserve pair the donation's `ReserveDeltaMismatch` check
+    /// @dev Queues the pre/post reserve pair the donation's `ReserveDidNotRise` check
     ///      compares. Only `balancesRaw[1]` is read, index 1 being what the setUp stub for
     ///      `getPoolTokenCountAndIndexOfToken` reports for svZCHF.
     function _mockBodenseeReserve(uint256 pre, uint256 post) internal {
@@ -930,11 +930,13 @@ contract AureumFeeRoutingHookTest is Test {
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
     }
 
-    /// @notice PB-D68 (v) — the reserve-delta guard. Zero BPT alone does not prove the donated
-    ///         depth landed: a Vault that took the settle and moved no reserve would strand the
-    ///         fee with nothing to show for it. Mocking a flat reserve across the add is the
-    ///         only way to exercise that leg, since the real Vault cannot produce it.
-    function test_onAfterSwap_revertsOnReserveDeltaMismatch() public {
+    /// @notice PB-D68 (xvii) — the reserve-rise guard. Zero BPT alone does not prove the
+    ///         donated depth landed: a Vault that took the settle and moved no reserve would
+    ///         strand the fee with nothing to show for it. Mocking a flat reserve across the
+    ///         add is the only way to exercise that leg, since the real Vault cannot produce
+    ///         it. The assertion is a strict rise, not an exact delta, so a flat reserve is
+    ///         exactly the boundary case it rejects.
+    function test_onAfterSwap_revertsWhenReserveDoesNotRise() public {
         uint256 amount = 100e18;
         zchf.mint(address(this), amount);
         zchf.approve(address(svZchf), amount);
@@ -953,8 +955,8 @@ contract AureumFeeRoutingHookTest is Test {
         vm.prank(vault);
         vm.expectRevert(
             abi.encodeWithSelector(
-                AureumFeeRoutingHook.ReserveDeltaMismatch.selector,
-                uint256(1_000e18) + amount,
+                AureumFeeRoutingHook.ReserveDidNotRise.selector,
+                uint256(1_000e18),
                 uint256(1_000e18)
             )
         );

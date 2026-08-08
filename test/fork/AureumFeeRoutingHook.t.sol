@@ -555,7 +555,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         assertEq(bptMinted, 0, "PB-D68 (vi) - donation mints no BPT");
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
         assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "F-23 - BPT supply unchanged by a donation");
-        assertEq(_bodenseeReserve(svZchf), reserveBefore + amount, "PB-D68 (v) - reserve rose by exactly the routed amount");
+        assertGt(_bodenseeReserve(svZchf), reserveBefore, "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails");
         assertEq(svZchf.balanceOf(address(hook)), 0);
 
         // Unprivileged caller — UnauthorizedCaller revert.
@@ -589,7 +589,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         assertEq(bptMinted, 0, "PB-D68 (vi) - donation mints no BPT");
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
         assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
-        assertEq(_bodenseeReserve(svZchf), bodenseeReserveBefore + amount, "PB-D68 (v) - reserve rose by exactly the routed amount");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails");
         assertEq(svZchf.balanceOf(address(hook)), 0);
         assertEq(svZchf.allowance(address(controller), address(hook)), 0);
 
@@ -733,7 +733,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         // economics and deepens the lake without minting a claim.
         assertEq(bpt, 0, "PB-D68 (vi) - donation mints no BPT");
         assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "F-23 - BPT supply unchanged by a donation");
-        assertEq(_bodenseeReserve(svZchf), reserveBefore + 100e18, "PB-D68 (v) - reserve rose by exactly the routed amount");
+        assertGt(_bodenseeReserve(svZchf), reserveBefore, "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails");
     }
 
     function test_Fork_RouteYieldFee_swapLegSucceedsAtRealisticBound() public {

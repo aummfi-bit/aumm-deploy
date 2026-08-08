@@ -186,10 +186,14 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     error BptMintedOnDonation(uint256 bptOut);
 
     /// @notice Reverts the one-sided der-Bodensee deposit when der
-    ///         Bodensee's reserve for the deposit token did not rise by
-    ///         exactly the donated amount. Mirrors
-    ///         `BodenseeBootstrapChannel` L97 per PB-D68 (v).
-    error ReserveDeltaMismatch(uint256 expected, uint256 actual);
+    ///         Bodensee's reserve for the deposit token did not rise at all.
+    ///         Deliberately a strict rise rather than an exact delta per
+    ///         PB-D68 (xvii): the Vault's DONATION branch round-trips raw
+    ///         through scaled18, and rate-bearing rails accrue yield fees in
+    ///         the same call, so no exact figure is predictable. Distinct
+    ///         from `BodenseeBootstrapChannel` L97, which asserts exactness
+    ///         and can, because AuMM is STANDARD at unit rate.
+    error ReserveDidNotRise(uint256 preReserve, uint256 postReserve);
 
     // -------------------------------------------------------------------------
     // Impl-side events
@@ -577,8 +581,10 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      if `DER_BODENSEE` does not contain the deposit token — no custom
     ///      error path. Debits settle the caller-supplied `depositAmount`,
     ///      because the Vault's returned `amountsIn` does not exist until
-    ///      after the add; `ReserveDeltaMismatch` is what then guarantees the
-    ///      Vault consumed exactly what was settled. Mirrors
+    ///      after the add; `ReserveDidNotRise` then proves the donation
+    ///      landed rather than the route silently skipping, which is the one
+    ///      thing supply-unchanged cannot distinguish. It asserts a strict
+    ///      rise and NOT an exact delta, per PB-D68 (xvii). Mirrors
     ///      `BodenseeBootstrapChannel._distributeCallback` and
     ///      `SwapAndDepositToBodensee._swapAndDepositCallback`, the two
     ///      sibling subsystems that already donate and already reject a
@@ -630,13 +636,14 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bptAmountOut = bptOut;
 
         uint256 postReserve = _currentBodenseeReserve(depositIndex);
-        if (postReserve != preReserve + depositAmount) {
-            revert ReserveDeltaMismatch(preReserve + depositAmount, postReserve);
+        // PB-D68 (xvii) — strict rise, not an exact delta: the DONATION branch computes amountsInRaw by round-tripping through scaled18 rather than copying maxAmountsIn the way UNBALANCED does, and the rate-bearing rails accrue yield fees inside the same call, so the exact figure is not predictable by the caller.
+        if (postReserve <= preReserve) {
+            revert ReserveDidNotRise(preReserve, postReserve);
         }
     }
 
     /// @dev Reads der Bodensee's raw reserve for token index `idx`, the
-    ///      pre/post snapshot pair the `ReserveDeltaMismatch` assertion
+    ///      pre/post snapshot pair the `ReserveDidNotRise` assertion
     ///      compares per PB-D68 (v). Mirrors
     ///      `BodenseeBootstrapChannel._currentReserve`
     ///      (`src/emission/BodenseeBootstrapChannel.sol` L321) with a
