@@ -501,6 +501,17 @@ contract AureumFeeRoutingHookForkTest is Test {
         amountOut = amountOut_;
     }
 
+    /// @dev der Bodensee's raw reserve for `token` — the pre/post pair every
+    ///      post-F-23 assertion compares. Supply-unchanged alone cannot
+    ///      distinguish a donation from a silently skipped route, since both
+    ///      leave BPT supply flat; the reserve delta is what separates them.
+    ///      Mirrors the hook's own `_currentBodenseeReserve` read.
+    function _bodenseeReserve(IERC20 token) internal view returns (uint256) {
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(bodenseePool, token);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balancesRaw[idx];
+    }
+
     // -------------------------------------------------------------------------
     // D7.1b–D7.1g — test bodies (empty in D7.1a)
     // -------------------------------------------------------------------------
@@ -533,14 +544,18 @@ contract AureumFeeRoutingHookForkTest is Test {
         _initializeBodensee();
         uint256 amount = 100e18;
         deal(address(svZchf), address(controller), amount, true);
+        uint256 supplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 reserveBefore = _bodenseeReserve(svZchf);
         vm.startPrank(address(controller));
         svZchf.approve(address(hook), amount);
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
         uint256 bptMinted = hook.routeYieldFee(tradingPool, svZchf, amount, 0, 0);
         vm.stopPrank();
-        assertGt(bptMinted, 0);
-        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
+        assertEq(bptMinted, 0, "PB-D68 (vi) - donation mints no BPT");
+        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
+        assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertEq(_bodenseeReserve(svZchf), reserveBefore + amount, "PB-D68 (v) - reserve rose by exactly the routed amount");
         assertEq(svZchf.balanceOf(address(hook)), 0);
 
         // Unprivileged caller — UnauthorizedCaller revert.
@@ -564,15 +579,17 @@ contract AureumFeeRoutingHookForkTest is Test {
         // entry point: no prank-as-controller, the real authenticate chain.
         deal(address(svZchf), address(controller), amount, true);
         uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
 
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
         vm.prank(GOVERNANCE_MULTISIG);
         uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
 
-        assertGt(bptMinted, 0);
-        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), bptMinted);
-        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore + bptMinted);
+        assertEq(bptMinted, 0, "PB-D68 (vi) - donation mints no BPT");
+        assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
+        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertEq(_bodenseeReserve(svZchf), bodenseeReserveBefore + amount, "PB-D68 (v) - reserve rose by exactly the routed amount");
         assertEq(svZchf.balanceOf(address(hook)), 0);
         assertEq(svZchf.allowance(address(controller), address(hook)), 0);
 
@@ -634,14 +651,20 @@ contract AureumFeeRoutingHookForkTest is Test {
         _initializeBodensee();
         _initializeTradingPool();
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
         uint256 swapAmount = 10e18;
         deal(address(svZchf), address(this), swapAmount, true);
         vault.unlock(abi.encodeCall(this._performSwapCallback, (swapAmount)));
 
         // Swap generates the protocol fee on tradingPool → Vault invokes
-        // hook.onAfterSwap, which routes the fee to Bodensee via nested
-        // swap + one-sided addLiquidity, minting new BPT.
-        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        // hook.onAfterSwap, which routes the fee to Bodensee via a nested
+        // swap plus a one-sided DONATION per PB-D68 (v): depth rises and no
+        // claim on that depth is created. The fee amount is not known
+        // test-side, so the reserve assertion is strict-greater rather than
+        // exact; paired with supply-unchanged it still separates a real
+        // donation from a silently skipped route.
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 
@@ -650,10 +673,12 @@ contract AureumFeeRoutingHookForkTest is Test {
         _initializeNoSvZchfPool();
         deal(address(susds), address(this), 10e18, true);
         uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(IERC20(address(susds)));
         // P-D12 (2) — noSvZchfPool = [AuMM, sUSDS] holds no svZCHF but holds sUSDS, so its Bodensee rail is sUSDS; onAfterSwap converts the fee to sUSDS on-pool and one-sides sUSDS into der Bodensee (routes, not skip).
         vault.unlock(abi.encodeCall(this._performSwapOnNoSvZchfPoolCallback, (10e18)));
         assertEq(hook.poolBodenseeDepositToken(noSvZchfPool), address(susds), "noSvZchfPool rail is sUSDS");
-        assertGt(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "sUSDS routed to Bodensee");
+        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(IERC20(address(susds))), bodenseeReserveBefore, "sUSDS donated to Bodensee, not silently skipped");
     }
 
     // -------------------------------------------------------------------------
@@ -665,7 +690,16 @@ contract AureumFeeRoutingHookForkTest is Test {
         deal(address(svZchf), address(controller), 100e18, true);
         vm.startPrank(address(controller));
         svZchf.approve(address(hook), 100e18);
-        vm.expectPartialRevert(IVaultErrors.BptAmountOutBelowMin.selector);
+        // PB-D68 (xiv) - post-F-23 the floor is unsatisfiable at every nonzero
+        // value, not merely at this one, so the revert now comes from the hook
+        // before the Vault is reached. The full encoding pins the offending
+        // value handed back to the caller.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAureumFeeRoutingHook.BptFloorUnavailableOnDonation.selector,
+                type(uint256).max
+            )
+        );
         hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, type(uint256).max);
         vm.stopPrank();
     }
@@ -683,31 +717,39 @@ contract AureumFeeRoutingHookForkTest is Test {
 
     function test_Fork_RouteYieldFee_addLegSucceedsAtRealisticBound() public {
         _initializeBodensee();
+        uint256 supplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 reserveBefore = _bodenseeReserve(svZchf);
         deal(address(svZchf), address(controller), 100e18, true);
         vm.startPrank(address(controller));
         svZchf.approve(address(hook), 100e18);
-        uint256 bptProbe = hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, 0);
+        uint256 bpt = hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, 0);
         vm.stopPrank();
 
-        deal(address(svZchf), address(controller), 100e18, true);
-        vm.startPrank(address(controller));
-        svZchf.approve(address(hook), 100e18);
-        uint256 bpt = hook.routeYieldFee(tradingPool, svZchf, 100e18, 0, bptProbe / 2);
-        vm.stopPrank();
-
-        assertGt(bpt, 0);
-        assertGe(bpt, bptProbe / 2);
+        // PB-D68 (xiv) - the probe-then-bound structure this test carried is
+        // gone with the mint leg: no floor above zero is satisfiable, so the
+        // only bound the add leg can take is zero. The name is retained as
+        // historical because the F-13 ledger row cites it; what the test now
+        // witnesses is that the leg still completes against real fork
+        // economics and deepens the lake without minting a claim.
+        assertEq(bpt, 0, "PB-D68 (vi) - donation mints no BPT");
+        assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertEq(_bodenseeReserve(svZchf), reserveBefore + 100e18, "PB-D68 (v) - reserve rose by exactly the routed amount");
     }
 
     function test_Fork_RouteYieldFee_swapLegSucceedsAtRealisticBound() public {
         _initializeBodensee();
         _initializeTradingPool();
+        uint256 reserveBefore = _bodenseeReserve(svZchf);
         deal(address(aumm), address(controller), 10e18, true);
         vm.startPrank(address(controller));
         IERC20(address(aumm)).approve(address(hook), 10e18);
-        uint256 bpt = hook.routeYieldFee(tradingPool, IERC20(address(aumm)), 10e18, 5e18, 1);
+        uint256 bpt = hook.routeYieldFee(tradingPool, IERC20(address(aumm)), 10e18, 5e18, 0);
         vm.stopPrank();
-        assertGt(bpt, 0);
+        // PB-D68 (xiv) - the realistic bound under test here is the SURVIVING
+        // one, minDepositTokenOut at 5e18 on the phase-1 swap leg; only the BPT
+        // floor moved to zero, so this test keeps its name.
+        assertEq(bpt, 0, "PB-D68 (vi) - donation mints no BPT");
+        assertGt(_bodenseeReserve(svZchf), reserveBefore, "PB-D68 (v) - swap leg output donated, not silently skipped");
     }
 
     // -------------------------------------------------------------------------

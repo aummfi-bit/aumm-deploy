@@ -11,16 +11,17 @@ import {
 
 /**
  * @title F23_FeeMintsRedeemableBpt
- * @notice F-23 PoC (PB-D68 rung b). Records CURRENT behaviour of
- *         `AureumFeeRoutingHook._addLiquidityOneSidedToBodenseeViaVault`: a protocol-fee route
- *         deposits into der Bodensee with `AddLiquidityKind.UNBALANCED` and mints redeemable BPT
- *         to the hook, where the value-capture model requires irreversible depth. Expected to
- *         INVERT at the F-23 fix, when the shared helper moves to `AddLiquidityKind.DONATION` and
- *         BPT stops being minted, per PB-D68 (v).
- * @dev Positive control already on tree: `test/fork/StageGIntegration.t.sol` asserts der Bodensee
- *      BPT `totalSupply` UNCHANGED on the donation paths through `SwapAndDepositToBodensee`, so
- *      both mechanisms are already exercised side by side against forked state and only the fee
- *      path is on the wrong one.
+ * @notice F-23 regression witness. Was the PoC at PB-D68 rung b, where it recorded the defect:
+ *         `AureumFeeRoutingHook._addLiquidityOneSidedToBodenseeViaVault` deposited into der
+ *         Bodensee with `AddLiquidityKind.UNBALANCED` and minted redeemable BPT, a claim on
+ *         depth the value-capture model requires to be irreversible. Inverted here at the fix
+ *         per PB-D68 (v): the shared helper now donates, so BPT supply stays flat, the hook
+ *         accumulates nothing, and der Bodensee's reserve is what rises.
+ * @dev The reserve assertion is not decoration. Supply-unchanged and hook-balance-unchanged are
+ *      both equally true of a route that silently skipped, so without a reserve delta this file
+ *      would pass against a hook that had stopped routing altogether. Positive control on tree:
+ *      `test/fork/StageGIntegration.t.sol` asserts the same supply-unchanged shape on the
+ *      donation paths through `SwapAndDepositToBodensee`, which the fee path now matches.
  */
 contract F23_FeeMintsRedeemableBpt is StagePIntegrationFixture {
     /// @notice Premise. Der Bodensee was created with donation enabled, so DONATION was available
@@ -33,39 +34,44 @@ contract F23_FeeMintsRedeemableBpt is StagePIntegrationFixture {
         );
     }
 
-    /// @notice The defect. A protocol-fee route mints redeemable BPT to the hook — a claim on
-    ///         depth the spec requires to be irreversible.
-    function test_F23_feeRouteMintsRedeemableBpt() public {
+    /// @notice The fix. A protocol-fee route deepens der Bodensee without minting any claim on
+    ///         the depth it added.
+    function test_F23_feeRouteDonatesWithoutMintingBpt() public {
         uint256 supplyBefore = IERC20(bodenseePool).totalSupply();
         uint256 hookBptBefore = IERC20(bodenseePool).balanceOf(address(hook));
+        uint256 reserveBefore = _bodenseeReserve(svZchf);
 
         uint256 amountOut = _performSwap(pilotPools[0], IERC20(address(susds)), svZchf, 1e18);
         assertGt(amountOut, 0, "swap produced output");
 
-        assertGt(
+        assertEq(
             IERC20(bodenseePool).totalSupply(),
             supplyBefore,
-            "DEFECT: BPT minted on a protocol-fee route (totalSupply rose); redeemable claim on depth the spec requires to be irreversible"
+            "F-23 - BPT supply unchanged by a protocol-fee route"
         );
-        assertGt(
+        assertEq(
             IERC20(bodenseePool).balanceOf(address(hook)),
             hookBptBefore,
-            "DEFECT: hook BPT balance rose on a protocol-fee route; redeemable claim on depth the spec requires to be irreversible"
+            "F-23 - hook BPT balance unchanged by a protocol-fee route"
+        );
+        assertGt(
+            _bodenseeReserve(svZchf),
+            reserveBefore,
+            "PB-D68 (v) - depth donated, not silently skipped"
         );
     }
 
-    /// @notice Aggravating condition. After a fee route the hook holds BPT, and
-    ///         `AureumFeeRoutingHook` declares no sweep, rescue, withdraw, recover, skim or
-    ///         transfer entry, so the claim is inert by omission rather than by construction.
-    /// @dev Do not attempt to call a non-existent function; the absence itself is the point.
-    function test_F23_mintedBptIsUnreachable() public {
+    /// @notice The claim is gone by construction rather than by omission. Before the fix the hook
+    ///         accrued BPT that only the absence of a sweep entry kept inert; now none is minted,
+    ///         so there is nothing for a future token-moving path to reach.
+    function test_F23_hookAccumulatesNoBptClaim() public {
         uint256 amountOut = _performSwap(pilotPools[0], IERC20(address(susds)), svZchf, 1e18);
         assertGt(amountOut, 0, "swap produced output");
 
-        assertGt(
+        assertEq(
             IERC20(bodenseePool).balanceOf(address(hook)),
             0,
-            "hook holds BPT after fee route, with no path to move it"
+            "F-23 - hook holds no BPT claim after a fee route"
         );
     }
 

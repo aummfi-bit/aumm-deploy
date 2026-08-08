@@ -144,6 +144,15 @@ interface IAureumFeeRoutingHook {
     ///         here the rail is valid but the route does not reach it.
     error TerminalTokenMismatch(address expected, address actual);
 
+    /// @notice Thrown by the one-sided der-Bodensee deposit when a caller
+    ///         supplies a nonzero `minBptAmountOut`. Protocol fees are
+    ///         donated per PB-D68 (v), so `AddLiquidityKind.DONATION`
+    ///         returns `bptOut == 0` by construction and no floor above zero
+    ///         is satisfiable at any value. Retained for ABI stability and
+    ///         rejected loudly rather than forwarded or silently dropped,
+    ///         per PB-D68 (xiv).
+    error BptFloorUnavailableOnDonation(uint256 minBptAmountOut);
+
     // -----------------------------------------------------------------
     //                       External primitives
     // -----------------------------------------------------------------

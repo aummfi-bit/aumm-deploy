@@ -488,6 +488,17 @@ abstract contract StagePIntegrationFixture is Test {
             vault.settle(tokens[i], amountsIn[i]);
         }
     }
+
+    /// @dev der Bodensee's raw reserve for `token` — the pre/post pair every
+    ///      post-F-23 assertion compares. Supply-unchanged alone cannot
+    ///      distinguish a donation from a silently skipped route, since both
+    ///      leave BPT supply flat; the reserve delta is what separates them.
+    ///      Mirrors the hook's own `_currentBodenseeReserve` read.
+    function _bodenseeReserve(IERC20 token) internal view returns (uint256) {
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(bodenseePool, token);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balancesRaw[idx];
+    }
 }
 
 /**
@@ -716,13 +727,15 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(d.pendingClaim(pilotPools[0], lp), 0);
     }
 
-    /// @notice P-D36 Leg B — the D-D21 hook↔controller bake dynamic: onAfterSwap → collectSwapAggregateFeesForHook → convert → one-sided Bodensee add.
+    /// @notice P-D36 Leg B — the D-D21 hook↔controller bake dynamic: onAfterSwap → collectSwapAggregateFeesForHook → convert → one-sided Bodensee DONATION per PB-D68 (v).
     function test_legB_swapFeeSweepGrowsBodensee() public {
         uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
         uint256 amountOut = _performSwap(pilotPools[0], IERC20(address(susds)), svZchf, 1e18);
         assertGt(amountOut, 0);
-        // Bodensee-growth witness
-        assertGt(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore);
+        // Bodensee-depth witness: donated, not minted
+        assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         // zero hook residue
         assertEq(svZchf.balanceOf(address(hook)), 0);
         assertEq(susds.balanceOf(address(hook)), 0);

@@ -353,6 +353,17 @@ abstract contract MiliariumPilotPoolBase is Test {
         vault.sendTo(tokenOut, address(this), outRcvd);
         amountOut = outRcvd;
     }
+
+    /// @dev der Bodensee's raw reserve for `token` — the pre/post pair every
+    ///      post-F-23 assertion compares. Supply-unchanged alone cannot
+    ///      distinguish a donation from a silently skipped route, since both
+    ///      leave BPT supply flat; the reserve delta is what separates them.
+    ///      Mirrors the hook's own `_currentBodenseeReserve` read.
+    function _bodenseeReserve(IERC20 token) internal view returns (uint256) {
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(bodenseePool, token);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balancesRaw[idx];
+    }
 }
 
 contract IxHelvetiaPilotTest is MiliariumPilotPoolBase {
@@ -370,8 +381,10 @@ contract IxHelvetiaPilotTest is MiliariumPilotPoolBase {
     function test_Fork_IxHelvetia_DeploysAndRoutesFee() external {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
         _performSwap(pilotPool, IERC20(address(susds)), svZchf, 1e18);
-        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 }
@@ -395,8 +408,10 @@ contract IxEdelweissPilotTest is MiliariumPilotPoolBase {
     function test_Fork_IxEdelweiss_DeploysAndRoutesFee() external {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
         _performSwap(pilotPool, IERC20(IxEdelweissConfig.WAETHUSDC), svZchf, 1e6);
-        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 }
@@ -421,8 +436,10 @@ contract IxAurebitPilotTest is MiliariumPilotPoolBase {
     function test_Fork_IxAurebit_DeploysAndRoutesFee() external {
         assertTrue(pilotPool != address(0));
         uint256 bptSupplyBefore = IERC20(bodenseePool).totalSupply();
+        uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
         _performSwap(pilotPool, IERC20(IxAurebitConfig.WBTC), svZchf, 1e8);
-        assertGt(IERC20(bodenseePool).totalSupply(), bptSupplyBefore);
+        assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyBefore, "F-23 - BPT supply unchanged by a donation");
+        assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         assertEq(svZchf.balanceOf(address(hook)), 0);
     }
 }

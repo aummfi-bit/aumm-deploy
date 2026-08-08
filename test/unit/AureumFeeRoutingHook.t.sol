@@ -12,9 +12,11 @@ import {
     HookFlags,
     LiquidityManagement,
     SwapKind,
-    TokenConfig
+    TokenConfig,
+    TokenInfo
 } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import {IVaultMain} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultMain.sol";
+import {IVaultExtension} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
 import {IVaultErrors} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 
 import {AureumFeeRoutingHook} from "src/fee_router/AureumFeeRoutingHook.sol";
@@ -171,6 +173,15 @@ contract AureumFeeRoutingHookTest is Test {
     ///      `svZchfAmount` at the svZCHF index (1, per the setUp mock
     ///      for `getPoolTokenCountAndIndexOfToken`), and `bptOut` plus
     ///      empty `returnData`.
+    /// @dev Post-F-23 the shared helper donates rather than mints, which changes what a
+    ///      unit mock has to satisfy in two ways (PB-D68 (v)). `addLiquidity` must hand
+    ///      back zero BPT or `BptMintedOnDonation` fires, and the helper reads der
+    ///      Bodensee's reserve once before and once after the add, requiring the delta to
+    ///      equal `depositAmount` exactly. A single `vm.mockCall` cannot express the
+    ///      second: it would return the same reserve both times and trip
+    ///      `ReserveDeltaMismatch`. `vm.mockCalls` queues the two returns in call order.
+    ///      `bptOut` stays parameterised so the negative test can hand back a nonzero
+    ///      value and prove the guard fires.
     function _mockAddLiquidity(uint256 svZchfAmount, uint256 bptOut) internal {
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[1] = svZchfAmount;
@@ -179,6 +190,28 @@ contract AureumFeeRoutingHookTest is Test {
             abi.encodeWithSelector(IVaultMain.addLiquidity.selector),
             abi.encode(amountsIn, bptOut, bytes(""))
         );
+        _mockBodenseeReserve(1_000e18, 1_000e18 + svZchfAmount);
+    }
+
+    /// @dev Queues the pre/post reserve pair the donation's `ReserveDeltaMismatch` check
+    ///      compares. Only `balancesRaw[1]` is read, index 1 being what the setUp stub for
+    ///      `getPoolTokenCountAndIndexOfToken` reports for svZCHF.
+    function _mockBodenseeReserve(uint256 pre, uint256 post) internal {
+        bytes[] memory reads = new bytes[](2);
+        reads[0] = _encodeReserve(pre);
+        reads[1] = _encodeReserve(post);
+        vm.mockCalls(
+            vault,
+            abi.encodeWithSelector(IVaultExtension.getPoolTokenInfo.selector),
+            reads
+        );
+    }
+
+    /// @dev The four-member `getPoolTokenInfo` return, carrying a balance only at index 1.
+    function _encodeReserve(uint256 balance) internal pure returns (bytes memory) {
+        uint256[] memory balancesRaw = new uint256[](2);
+        balancesRaw[1] = balance;
+        return abi.encode(new IERC20[](0), new TokenInfo[](0), balancesRaw, new uint256[](0));
     }
 
     function _afterSwap(
@@ -580,10 +613,10 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(svZchf.balanceOf(address(feeController)), amount);
 
         _setForward(poolAb, address(svZchf), amount);
-        _mockAddLiquidity(amount, 123e18);
+        _mockAddLiquidity(amount, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(svZchf), amount, 123e18);
+        emit SwapFeeRouted(poolAb, address(svZchf), amount, 0);
 
         vm.prank(vault);
         (bool ok, uint256 ret) = hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
@@ -603,10 +636,10 @@ contract AureumFeeRoutingHookTest is Test {
         zchf.mint(address(feeController), amount);
 
         _setForward(poolAb, address(zchf), amount);
-        _mockAddLiquidity(amount, 500e18);
+        _mockAddLiquidity(amount, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(zchf), amount, 500e18);
+        emit SwapFeeRouted(poolAb, address(zchf), amount, 0);
 
         vm.prank(vault);
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 0));
@@ -646,10 +679,10 @@ contract AureumFeeRoutingHookTest is Test {
         svZchf.deposit(sAmt, address(feeController));
 
         _setForward2(poolAb, address(zchf), zAmt, address(svZchf), sAmt);
-        _mockAddLiquidity(zAmt + sAmt, 999e18);
+        _mockAddLiquidity(zAmt + sAmt, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(zchf), zAmt, 999e18);
+        emit SwapFeeRouted(poolAb, address(zchf), zAmt, 0);
         vm.expectEmit(true, true, false, true, address(hook));
         emit SwapFeeRouted(poolAb, address(svZchf), sAmt, 0);
 
@@ -673,10 +706,10 @@ contract AureumFeeRoutingHookTest is Test {
         amts[1] = amount;
         feeController.setForward(poolAb, ts, amts);
 
-        _mockAddLiquidity(amount, 1e18);
+        _mockAddLiquidity(amount, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(zchf), amount, 1e18);
+        emit SwapFeeRouted(poolAb, address(zchf), amount, 0);
 
         vm.prank(vault);
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 0));
@@ -699,10 +732,10 @@ contract AureumFeeRoutingHookTest is Test {
 
         zchf.mint(address(feeController), freshZchf);
         _setForward(poolAb, address(zchf), freshZchf);
-        _mockAddLiquidity(dust + freshZchf, 777e18);
+        _mockAddLiquidity(dust + freshZchf, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(zchf), freshZchf, 777e18);
+        emit SwapFeeRouted(poolAb, address(zchf), freshZchf, 0);
 
         vm.prank(vault);
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 0));
@@ -736,7 +769,7 @@ contract AureumFeeRoutingHookTest is Test {
         svZchf.deposit(amount, address(feeController));
 
         _setForward(poolAb, address(svZchf), amount);
-        _mockAddLiquidity(amount, 1);
+        _mockAddLiquidity(amount, 0);
 
         vm.prank(vault);
         (, uint256 ret) = hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 424242));
@@ -847,7 +880,7 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(svZchf.balanceOf(address(feeController)), amount);
 
         _setForward(poolAb, address(svZchf), amount);
-        _mockAddLiquidity(amount, 123e18);
+        _mockAddLiquidity(amount, 0);
 
         uint256[] memory maxAmountsIn = new uint256[](2);
         maxAmountsIn[1] = amount;
@@ -856,7 +889,7 @@ contract AureumFeeRoutingHookTest is Test {
             to: address(hook),
             maxAmountsIn: maxAmountsIn,
             minBptAmountOut: 0,
-            kind: AddLiquidityKind.UNBALANCED,
+            kind: AddLiquidityKind.DONATION,
             userData: bytes("")
         });
         vm.expectCall(
@@ -865,7 +898,7 @@ contract AureumFeeRoutingHookTest is Test {
         );
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(svZchf), amount, 123e18);
+        emit SwapFeeRouted(poolAb, address(svZchf), amount, 0);
 
         vm.prank(vault);
         (bool ok, uint256 ret) = hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
@@ -875,6 +908,57 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(svZchf.balanceOf(address(hook)), 0, "hook holds no svZchf");
         assertEq(svZchf.balanceOf(address(feeController)), 0, "controller drained");
         assertEq(svZchf.balanceOf(vault), amount, "vault received the sweep");
+    }
+
+    /// @notice PB-D68 (v) — the zero-BPT guard. A Vault that returned BPT on a DONATION would
+    ///         mean the fee route had minted a redeemable claim, which is F-23 itself. The
+    ///         helper rejects that rather than trusting the kind field to have been honoured,
+    ///         so the invariant holds even if the substrate misbehaves.
+    function test_onAfterSwap_revertsWhenDonationMintsBpt() public {
+        uint256 amount = 100e18;
+        zchf.mint(address(this), amount);
+        zchf.approve(address(svZchf), amount);
+        svZchf.deposit(amount, address(feeController));
+
+        _setForward(poolAb, address(svZchf), amount);
+        _mockAddLiquidity(amount, 1);
+
+        vm.prank(vault);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumFeeRoutingHook.BptMintedOnDonation.selector, uint256(1))
+        );
+        hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
+    }
+
+    /// @notice PB-D68 (v) — the reserve-delta guard. Zero BPT alone does not prove the donated
+    ///         depth landed: a Vault that took the settle and moved no reserve would strand the
+    ///         fee with nothing to show for it. Mocking a flat reserve across the add is the
+    ///         only way to exercise that leg, since the real Vault cannot produce it.
+    function test_onAfterSwap_revertsOnReserveDeltaMismatch() public {
+        uint256 amount = 100e18;
+        zchf.mint(address(this), amount);
+        zchf.approve(address(svZchf), amount);
+        svZchf.deposit(amount, address(feeController));
+
+        _setForward(poolAb, address(svZchf), amount);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[1] = amount;
+        vm.mockCall(
+            vault,
+            abi.encodeWithSelector(IVaultMain.addLiquidity.selector),
+            abi.encode(amountsIn, uint256(0), bytes(""))
+        );
+        _mockBodenseeReserve(1_000e18, 1_000e18);
+
+        vm.prank(vault);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AureumFeeRoutingHook.ReserveDeltaMismatch.selector,
+                uint256(1_000e18) + amount,
+                uint256(1_000e18)
+            )
+        );
+        hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 7));
     }
 
     function test_routeYieldFee_forwardsBoundsIntoUnlockPayload() public {
@@ -893,7 +977,7 @@ contract AureumFeeRoutingHookTest is Test {
                 IVaultMain.unlock,
                 (abi.encodeCall(
                     hook._routeYieldFeeUnlocked,
-                    (address(feeController), poolAb, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                    (poolAb, IERC20(address(zchf)), 10e18, 5e17, 9e17)
                 ))
             )
         );
@@ -923,7 +1007,7 @@ contract AureumFeeRoutingHookTest is Test {
                 IVaultMain.unlock,
                 (abi.encodeCall(
                     hook._routeGovernanceDepositUnlocked,
-                    (gov, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                    (IERC20(address(zchf)), 10e18, 5e17, 9e17)
                 ))
             )
         );
@@ -953,7 +1037,7 @@ contract AureumFeeRoutingHookTest is Test {
                 IVaultMain.unlock,
                 (abi.encodeCall(
                     hook._routeIncendiaryDepositUnlocked,
-                    (inc, IERC20(address(zchf)), 10e18, 5e17, 9e17)
+                    (IERC20(address(zchf)), 10e18, 5e17, 9e17)
                 ))
             )
         );
@@ -978,10 +1062,10 @@ contract AureumFeeRoutingHookTest is Test {
         svZchf.deposit(amount, address(feeController));
 
         _setForward(poolAb, address(svZchf), amount);
-        _mockAddLiquidity(amount, amount); // 1:1 bpt for the fuzz path
+        _mockAddLiquidity(amount, 0); // PB-D68 (vi) - donation returns zero BPT on every path
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(svZchf), amount, amount);
+        emit SwapFeeRouted(poolAb, address(svZchf), amount, 0);
 
         vm.prank(vault);
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 0));
@@ -996,10 +1080,10 @@ contract AureumFeeRoutingHookTest is Test {
         zchf.mint(address(feeController), amount);
 
         _setForward(poolAb, address(zchf), amount);
-        _mockAddLiquidity(amount, amount);
+        _mockAddLiquidity(amount, 0);
 
         vm.expectEmit(true, true, false, true, address(hook));
-        emit SwapFeeRouted(poolAb, address(zchf), amount, amount);
+        emit SwapFeeRouted(poolAb, address(zchf), amount, 0);
 
         vm.prank(vault);
         hook.onAfterSwap(_afterSwap(poolAb, address(0xDEAD), 0));

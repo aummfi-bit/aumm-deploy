@@ -179,6 +179,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         token is supplied with no swap pool.
     error UnsupportedFeeToken(IERC20 feeToken);
 
+    /// @notice Reverts the one-sided der-Bodensee deposit when
+    ///         `AddLiquidityKind.DONATION` returned a nonzero `bptOut`.
+    ///         A donation must mint zero BPT per the Balancer V3 invariant.
+    ///         Mirrors `BodenseeBootstrapChannel` L94 per PB-D68 (v).
+    error BptMintedOnDonation(uint256 bptOut);
+
+    /// @notice Reverts the one-sided der-Bodensee deposit when der
+    ///         Bodensee's reserve for the deposit token did not rise by
+    ///         exactly the donated amount. Mirrors
+    ///         `BodenseeBootstrapChannel` L97 per PB-D68 (v).
+    error ReserveDeltaMismatch(uint256 expected, uint256 actual);
+
     // -------------------------------------------------------------------------
     // Impl-side events
     // -------------------------------------------------------------------------
@@ -373,7 +385,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 tokens[i],
                 forwardedAmounts[i],
                 params.pool,
-                address(this),
                 IERC20(depositToken),
                 0,
                 0
@@ -461,22 +472,24 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      nested-swap to the deposit token via `_swapExactInFeeTokenToDepositTokenViaVault`;
     ///      revert `UnsupportedFeeToken` if `swapPool == 0` for a
     ///      non—ZCHF—family token.
-    ///      Phase 2 — one-sided add the hook's entire deposit-token balance
-    ///      into der-Bodensee via `_addLiquidityOneSidedToBodenseeViaVault`,
-    ///      minting BPT to `bptRecipient`; returns `bptMinted` from phase 2.
+    ///      Phase 2 — one-sided DONATION of the hook's entire deposit-token
+    ///      balance into der-Bodensee via
+    ///      `_addLiquidityOneSidedToBodenseeViaVault`. No BPT is minted per
+    ///      PB-D68 (v), so `bptMinted` returns zero on every route and is
+    ///      retained for ABI stability per PB-D68 (vi).
     ///      Balance-sweep is intentional: any deposit token held by this hook
     ///      is protocol-owned and Bodensee-bound, including dust from
     ///      prior partial fills or donations (per D3.3.4 Q1 / Option X).
     ///      `minDepositTokenOut` bounds the phase-1 swap leg (EXACT_IN
     ///      minimum-out, enforced only when the swap leg runs; inert on the
     ///      ZCHF-to-svZCHF ERC-4626 fast path and the same-token no-op per
-    ///      PB-D9 (iii)). `minBptAmountOut` bounds the phase-2 one-sided add
-    ///      (enforced on every route).
+    ///      PB-D9 (iii)). `minBptAmountOut` is rejected nonzero by phase 2
+    ///      via `BptFloorUnavailableOnDonation` per PB-D68 (xiv); under
+    ///      DONATION no floor above zero is satisfiable at any value.
     function _swapFeeAndDeposit(
         IERC20 feeToken,
         uint256 amount,
         address swapPool,
-        address bptRecipient,
         IERC20 depositToken,
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
@@ -500,7 +513,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
             depositToken,
             depositToken.balanceOf(address(this)),
-            bptRecipient,
             minBptAmountOut
         );
     }
@@ -546,64 +558,95 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         return amountOut;
     }
 
-    /// @dev Nested one-sided add from this hook: inside `IVault.addLiquidity`,
-    ///      `msg.sender` is this contract, so the hook owns the transient
-    ///      deltas and must clear them before the outer `unlock` closes.
-    ///      Order: `addLiquidity`, then transfer the deposit token to the Vault and
-    ///      `settle`. BPT is minted to `to` via the `AddLiquidityParams.to`
-    ///      field, so no `sendTo` is needed to realise the credit leg.
-    ///      Returns `bptAmountOut` from the Vault.
-    ///      `minBptAmountOut` is caller-parameterized; the Vault reverts
-    ///      `BptAmountOutBelowMin` on violation (same trade-off class as
-    ///      `limitRaw` in `_swapExactInFeeTokenToDepositTokenViaVault`;
-    ///      MEV/sandwich risk internalised, tracked as a Stage Q audit
-    ///      surface per `STAGE_D_PLAN.md:L703` and PB-D9). `getPoolTokenCountAndIndexOfToken`
-    ///      reverts natively if `DER_BODENSEE` does not contain the deposit token
-    ///      — no custom error path. Debits are settled using the returned
-    ///      `amountsIn[depositIndex]` (actual consumed), not the caller-
-    ///      supplied `depositAmount`, per defensive-coding convention.
-    ///      Precedent for nested-Vault-add-from-hook:
+    /// @dev Nested one-sided DONATION from this hook: inside
+    ///      `IVault.addLiquidity`, `msg.sender` is this contract, so the hook
+    ///      owns the transient deltas and must clear them before the outer
+    ///      `unlock` closes. Order: transfer the deposit token to the Vault,
+    ///      `settle`, THEN `addLiquidity`. That inversion is load-bearing per
+    ///      PB-D68 (v) — a donation mints no BPT to offset the debit, so the
+    ///      credit must already exist when the add runs. No BPT is minted at
+    ///      all, so there is no recipient and no `sendTo` credit leg;
+    ///      `AddLiquidityParams.to` is this contract only because the field
+    ///      is non-optional. `bptAmountOut` is therefore always zero, kept
+    ///      for ABI stability per PB-D68 (vi) and asserted via
+    ///      `BptMintedOnDonation` rather than assumed. `minBptAmountOut` is
+    ///      rejected nonzero via `BptFloorUnavailableOnDonation` per
+    ///      PB-D68 (xiv): no floor above zero is satisfiable under DONATION,
+    ///      and F-13's bounded-route protection rests on `minDepositTokenOut`
+    ///      in phase 1. `getPoolTokenCountAndIndexOfToken` reverts natively
+    ///      if `DER_BODENSEE` does not contain the deposit token — no custom
+    ///      error path. Debits settle the caller-supplied `depositAmount`,
+    ///      because the Vault's returned `amountsIn` does not exist until
+    ///      after the add; `ReserveDeltaMismatch` is what then guarantees the
+    ///      Vault consumed exactly what was settled. Mirrors
+    ///      `BodenseeBootstrapChannel._distributeCallback` and
+    ///      `SwapAndDepositToBodensee._swapAndDepositCallback`, the two
+    ///      sibling subsystems that already donate and already reject a
+    ///      nonzero `bptOut`. Balancer-side precedent for a nested add from a
+    ///      hook already inside an open unlock:
     ///      `lib/balancer-v3-monorepo/pkg/pool-hooks/contracts/ExitFeeHookExample.sol:160`
-    ///      (different kind — DONATION — and different callback —
-    ///      `onAfterRemoveLiquidity` — but same structural property:
-    ///      nested Vault call from a hook already inside an open unlock,
-    ///      hook as delta-owner). Router-vs-Vault mechanism drift resolution
-    ///      recorded at D20 in `docs/STAGE_D_NOTES.md`.
+    ///      (same DONATION kind, different callback). Router-vs-Vault
+    ///      mechanism drift resolution recorded at D20 in
+    ///      `docs/STAGE_D_NOTES.md`; the superseded one-sided-mint shape and
+    ///      its G-D11 sanction are retired per PB-D68 (vii).
     function _addLiquidityOneSidedToBodenseeViaVault(
         IERC20 depositToken,
         uint256 depositAmount,
-        address to,
         uint256 minBptAmountOut
     ) private returns (uint256 bptAmountOut) {
         // depositAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
         // slither-disable-next-line incorrect-equality
         if (depositAmount == 0) return 0;
+        // PB-D68 (xiv) — DONATION returns bptOut == 0 by construction, so any nonzero floor is unsatisfiable at any value. Guarded here, beside the invariant it protects, rather than at the three external entries. Ordered after the zero-amount short-circuit deliberately: a donation that is not happening stays a no-op.
+        if (minBptAmountOut != 0) revert BptFloorUnavailableOnDonation(minBptAmountOut);
         // getPoolTokenCountAndIndexOfToken call inside bounded fee-token loop in onAfterSwap. See D8 NOTES F13.
         // slither-disable-next-line calls-loop
         (uint256 tokenCount, uint256 depositIndex) =
             _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, depositToken);
 
+        uint256 preReserve = _currentBodenseeReserve(depositIndex);
+
+        depositToken.safeTransfer(address(_vault), depositAmount);
+        // settle returns credit equal to depositAmount by construction; the credit must precede the DONATION debit per PB-D68 (v); bounded fee-token loop. See D8 NOTES F12/F15.
+        // slither-disable-next-line unused-return,calls-loop
+        _vault.settle(depositToken, depositAmount);
+
         uint256[] memory maxAmountsIn = new uint256[](tokenCount);
         maxAmountsIn[depositIndex] = depositAmount;
 
-        // Tuple discard: returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
+        // Tuple discard: amountsIn unused (DONATION consumes maxAmountsIn exactly, verified by the reserve delta below); returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
         // slither-disable-next-line unused-return,calls-loop
-        (uint256[] memory amountsIn, uint256 bptOut, ) = _vault.addLiquidity(
+        (, uint256 bptOut, ) = _vault.addLiquidity(
             AddLiquidityParams({
                 pool: DER_BODENSEE,
-                to: to,
+                to: address(this),
                 maxAmountsIn: maxAmountsIn,
-                minBptAmountOut: minBptAmountOut,
-                kind: AddLiquidityKind.UNBALANCED,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.DONATION,
                 userData: bytes("")
             })
         );
+        if (bptOut != 0) revert BptMintedOnDonation(bptOut);
         bptAmountOut = bptOut;
 
-        depositToken.safeTransfer(address(_vault), amountsIn[depositIndex]);
-        // settle returns credit equal to amountsIn[depositIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
-        // slither-disable-next-line unused-return,calls-loop
-        _vault.settle(depositToken, amountsIn[depositIndex]);
+        uint256 postReserve = _currentBodenseeReserve(depositIndex);
+        if (postReserve != preReserve + depositAmount) {
+            revert ReserveDeltaMismatch(preReserve + depositAmount, postReserve);
+        }
+    }
+
+    /// @dev Reads der Bodensee's raw reserve for token index `idx`, the
+    ///      pre/post snapshot pair the `ReserveDeltaMismatch` assertion
+    ///      compares per PB-D68 (v). Mirrors
+    ///      `BodenseeBootstrapChannel._currentReserve`
+    ///      (`src/emission/BodenseeBootstrapChannel.sol` L321) with a
+    ///      `uint256` index, since `getPoolTokenCountAndIndexOfToken`
+    ///      returns `uint256` where that channel carries a `uint8` field.
+    function _currentBodenseeReserve(uint256 idx) private view returns (uint256) {
+        // getPoolTokenInfo call inside bounded fee-token loop in onAfterSwap; twice per donation (pre and post). See D8 NOTES F13.
+        // slither-disable-next-line calls-loop
+        (, , uint256[] memory balancesRaw, ) = _vault.getPoolTokenInfo(DER_BODENSEE);
+        return balancesRaw[idx];
     }
 
     // -------------------------------------------------------------------------
@@ -627,7 +670,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeYieldFeeUnlocked,
-                (msg.sender, pool, feeToken, feeAmount, minDepositTokenOut, minBptAmountOut)
+                (pool, feeToken, feeAmount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -639,7 +682,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice Unlock callback for routeYieldFee. onlyVault; reached
     ///         exclusively via IVault.unlock from routeYieldFee.
     function _routeYieldFeeUnlocked(
-        address caller,
         address pool,
         IERC20 feeToken,
         uint256 feeAmount,
@@ -650,7 +692,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             feeToken,
             feeAmount,
             pool,
-            caller,
             IERC20(poolBodenseeDepositToken[pool]),
             minDepositTokenOut,
             minBptAmountOut
@@ -672,7 +713,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeGovernanceDepositUnlocked,
-                (msg.sender, token, amount, minDepositTokenOut, minBptAmountOut)
+                (token, amount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -688,7 +729,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         SV_ZCHF or ZCHF; any other token reverts
     ///         `UnsupportedFeeToken` inside `_swapFeeAndDeposit`.
     function _routeGovernanceDepositUnlocked(
-        address caller,
         IERC20 token,
         uint256 amount,
         uint256 minDepositTokenOut,
@@ -698,7 +738,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             token,
             amount,
             address(0),
-            caller,
             SV_ZCHF,
             minDepositTokenOut,
             minBptAmountOut
@@ -720,7 +759,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bytes memory result = _vault.unlock(
             abi.encodeCall(
                 this._routeIncendiaryDepositUnlocked,
-                (msg.sender, token, amount, minDepositTokenOut, minBptAmountOut)
+                (token, amount, minDepositTokenOut, minBptAmountOut)
             )
         );
         bptMinted = abi.decode(result, (uint256));
@@ -736,7 +775,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///         SV_ZCHF or ZCHF; any other token reverts
     ///         `UnsupportedFeeToken` inside `_swapFeeAndDeposit`.
     function _routeIncendiaryDepositUnlocked(
-        address caller,
         IERC20 token,
         uint256 amount,
         uint256 minDepositTokenOut,
@@ -746,7 +784,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             token,
             amount,
             address(0),
-            caller,
             SV_ZCHF,
             minDepositTokenOut,
             minBptAmountOut
