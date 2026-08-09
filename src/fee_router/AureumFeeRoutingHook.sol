@@ -565,10 +565,12 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @dev Nested one-sided DONATION from this hook: inside
     ///      `IVault.addLiquidity`, `msg.sender` is this contract, so the hook
     ///      owns the transient deltas and must clear them before the outer
-    ///      `unlock` closes. Order: transfer the deposit token to the Vault,
-    ///      `settle`, THEN `addLiquidity`. That inversion is load-bearing per
-    ///      PB-D68 (v) — a donation mints no BPT to offset the debit, so the
-    ///      credit must already exist when the add runs. No BPT is minted at
+    ///      `unlock` closes. Order: `addLiquidity`, then transfer and
+    ///      `settle`. PB-D68 (v) claimed the reverse was load-bearing on the
+    ///      grounds that a donation mints no BPT to offset the debit; that is
+    ///      withdrawn per PB-D68 (xix), since BPT is not a token credit in the
+    ///      unlock ledger and both kinds take their debt through one path.
+    ///      No BPT is minted at
     ///      all, so there is no recipient and no `sendTo` credit leg;
     ///      `AddLiquidityParams.to` is this contract only because the field
     ///      is non-optional. `bptAmountOut` is therefore always zero, kept
@@ -579,9 +581,13 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      and F-13's bounded-route protection rests on `minDepositTokenOut`
     ///      in phase 1. `getPoolTokenCountAndIndexOfToken` reverts natively
     ///      if `DER_BODENSEE` does not contain the deposit token — no custom
-    ///      error path. Debits settle the caller-supplied `depositAmount`,
-    ///      because the Vault's returned `amountsIn` does not exist until
-    ///      after the add; `ReserveDidNotRise` then proves the donation
+    ///      error path. Debits settle `amountsIn[depositIndex]`, the amount
+    ///      the Vault actually charged, NOT the caller-supplied
+    ///      `depositAmount`: the DONATION branch round-trips raw through
+    ///      scaled18 and charges less, so settling the offered amount
+    ///      over-credits the unlock and trips `BalanceNotSettled` at close
+    ///      (PB-D68 (xix)). The remainder stays on the hook as dust and the
+    ///      next route sweeps it. `ReserveDidNotRise` then proves the donation
     ///      landed rather than the route silently skipping, which is the one
     ///      thing supply-unchanged cannot distinguish. It asserts a strict
     ///      rise and NOT an exact delta, per PB-D68 (xvii). Mirrors
@@ -612,17 +618,12 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
 
         uint256 preReserve = _currentBodenseeReserve(depositIndex);
 
-        depositToken.safeTransfer(address(_vault), depositAmount);
-        // settle returns credit equal to depositAmount by construction; the credit must precede the DONATION debit per PB-D68 (v); bounded fee-token loop. See D8 NOTES F12/F15.
-        // slither-disable-next-line unused-return,calls-loop
-        _vault.settle(depositToken, depositAmount);
-
         uint256[] memory maxAmountsIn = new uint256[](tokenCount);
         maxAmountsIn[depositIndex] = depositAmount;
 
-        // Tuple discard: amountsIn unused (DONATION consumes maxAmountsIn exactly, verified by the reserve delta below); returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
+        // Tuple discard: returnData unused (der-Bodensee does not chain hooks); bounded fee-token loop. See D8 NOTES F11/F14.
         // slither-disable-next-line unused-return,calls-loop
-        (, uint256 bptOut, ) = _vault.addLiquidity(
+        (uint256[] memory amountsIn, uint256 bptOut, ) = _vault.addLiquidity(
             AddLiquidityParams({
                 pool: DER_BODENSEE,
                 to: address(this),
@@ -636,10 +637,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         bptAmountOut = bptOut;
 
         uint256 postReserve = _currentBodenseeReserve(depositIndex);
-        // PB-D68 (xvii) — strict rise, not an exact delta: the DONATION branch computes amountsInRaw by round-tripping through scaled18 rather than copying maxAmountsIn the way UNBALANCED does, and the rate-bearing rails accrue yield fees inside the same call, so the exact figure is not predictable by the caller.
+        // PB-D68 (xvii) — strict rise, not an exact delta: the DONATION branch computes amountsInRaw by round-tripping raw through scaled18 rather than deep-copying maxAmountsIn the way UNBALANCED does, so the consumed amount is not predictable by the caller.
         if (postReserve <= preReserve) {
             revert ReserveDidNotRise(preReserve, postReserve);
         }
+
+        // PB-D68 (xix) — settle what the Vault actually charged, not what was offered. amountsIn[depositIndex] is the round-tripped debit; settling depositAmount instead over-credits the unlock and fails BalanceNotSettled at close. The remainder stays on the hook as dust, and the next route sweeps it through depositToken.balanceOf(address(this)).
+        depositToken.safeTransfer(address(_vault), amountsIn[depositIndex]);
+        // settle returns credit equal to amountsIn[depositIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
+        // slither-disable-next-line unused-return,calls-loop
+        _vault.settle(depositToken, amountsIn[depositIndex]);
     }
 
     /// @dev Reads der Bodensee's raw reserve for token index `idx`, the

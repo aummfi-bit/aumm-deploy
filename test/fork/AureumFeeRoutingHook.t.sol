@@ -556,7 +556,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
         assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "F-23 - BPT supply unchanged by a donation");
         assertGt(_bodenseeReserve(svZchf), reserveBefore, "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails");
-        assertEq(svZchf.balanceOf(address(hook)), 0);
+        assertLt(svZchf.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
 
         // Unprivileged caller — UnauthorizedCaller revert.
         address attacker = address(uint160(uint256(keccak256("attacker"))));
@@ -590,7 +590,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
         assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
         assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails");
-        assertEq(svZchf.balanceOf(address(hook)), 0);
+        assertLt(svZchf.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
         assertEq(svZchf.allowance(address(controller), address(hook)), 0);
 
         // Step 3 — OQ-21: an immediate second route is epoch-throttled.
@@ -665,7 +665,7 @@ contract AureumFeeRoutingHookForkTest is Test {
         // donation from a silently skipped route.
         assertEq(IERC20(bodenseePool).totalSupply(), bptSupplyBefore, "F-23 - BPT supply unchanged by a donation");
         assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
-        assertEq(svZchf.balanceOf(address(hook)), 0);
+        assertLt(svZchf.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
     }
 
     function test_Fork_F14_sUsdsRailRoutesToBodensee() public {

@@ -737,8 +737,8 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(IERC20(bodenseePool).totalSupply(), bodenseeSupplyBefore, "F-23 - BPT supply unchanged by a donation");
         assertGt(_bodenseeReserve(svZchf), bodenseeReserveBefore, "PB-D68 (v) - depth donated, not silently skipped");
         // zero hook residue
-        assertEq(svZchf.balanceOf(address(hook)), 0);
-        assertEq(susds.balanceOf(address(hook)), 0);
+        assertLt(svZchf.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
+        assertLt(susds.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
     }
 
     /// @notice P-D36 Leg D — CCB month-walk: updateMultiplier's BLOCKS_PER_EPOCH cadence + F-8
