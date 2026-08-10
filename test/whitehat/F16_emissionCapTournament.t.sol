@@ -61,7 +61,8 @@ contract F16_EmissionCapTournamentTest is Test {
             PLACEHOLDER,          // auMM_
             address(this),        // gaugeRegistrySetter_ (this test calls setGaugeRegistry)
             address(effOracle),   // efficiencyOracle_ (real ranking input source)
-            PLACEHOLDER           // feeRoutingHook_
+            PLACEHOLDER,          // feeRoutingHook_
+            PLACEHOLDER           // admissionAuthority_ (unused in the tournament path)
         );
         gaugeRegistry = new GaugeRegistry(
             GOV,                  // governance (seedFoundingPools caller)

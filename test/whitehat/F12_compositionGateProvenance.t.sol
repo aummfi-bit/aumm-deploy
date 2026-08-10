@@ -45,7 +45,8 @@ contract F12_CompositionGateFactoryProvenanceTest is Test {
             makeAddr("auMM"),
             makeAddr("gaugeRegistrySetter"),
             makeAddr("efficiencyOracle"),
-            feeRoutingHook
+            feeRoutingHook,
+            makeAddr("admissionAuthority")
         );
 
         spoof = address(new F12_SpoofWeightedPool());
