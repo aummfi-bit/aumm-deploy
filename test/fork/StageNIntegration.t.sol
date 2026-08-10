@@ -6,6 +6,7 @@ import { DeployStageN } from "../../script/DeployStageN.s.sol";
 import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { ERC4626RateProvider } from "../../src/rate_provider/ERC4626RateProvider.sol";
 import { CompositeRateProvider } from "../../src/rate_provider/CompositeRateProvider.sol";
+import { GaugeEligibility } from "../../src/gauge/GaugeEligibility.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IxAetheronConfig } from "../../script/pools/configs/02_ixAetheron.s.sol";
 import { IxLibertasConfig } from "../../script/pools/configs/06_ixLibertas.s.sol";
@@ -245,5 +246,42 @@ contract StageNBindingLivenessTest is StageNIntegrationFixture {
             assertTrue(gaugeEligibility.evaluateEligibility(stageNPools[i]), "QG not cleared");
             assertTrue(gaugeEligibility.isEligible(stageNPools[i]), "not eligible after evaluate");
         }
+    }
+}
+
+/// @notice PB3.12e — the PB-D69 mainnet-fork witness over the REAL 02 ixAetheron, admitted and then revoked.
+/// @dev The only place in the tree where the conjunct meets a genuinely rail-less pool produced by the real
+///      AureumFeeRoutingHook.onRegister rather than by a mock. stageNPools[0] is ixAetheron by deploy order,
+///      and it is the only one of the twenty-six pool configs carrying neither svZCHF nor sUSDS per PB-D69 (i).
+contract StageNIxAetheronAdmissionTest is StageNIntegrationFixture {
+    function test_ixAetheron_railLess_admitThenRevoke() public {
+        address ixAetheron = stageNPools[0];
+        address ixLibertas = stageNPools[1];
+
+        // Premise, asserted first so a later pass means the conjunct moved and not the state: the real
+        // onRegister left ixAetheron with no rail, while a sUSDS-carrying sibling got one.
+        assertEq(hook.poolBodenseeDepositToken(ixAetheron), address(0), "ixAetheron must be rail-less");
+        assertTrue(hook.poolBodenseeDepositToken(ixLibertas) != address(0), "control pool must carry a rail");
+
+        _makePoolEligible(ixAetheron, 50_000e18);
+        assertFalse(gaugeEligibility.recoveryPathAdmitted(ixAetheron));
+
+        // Unadmitted: both gates reject, and neither is reachable by clearing any other criterion.
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
+        gaugeEligibility.evaluateEligibility(ixAetheron);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
+        gaugeEligibility.meetsCompositionQualityGate(ixAetheron);
+
+        // Admitted: the ops attestation is the only thing that changed, and it is sufficient.
+        gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, true);
+        assertTrue(gaugeEligibility.meetsCompositionQualityGate(ixAetheron));
+        assertTrue(gaugeEligibility.evaluateEligibility(ixAetheron));
+        assertTrue(gaugeEligibility.isEligible(ixAetheron));
+
+        // Revoked: bars the next evaluation, does NOT demote the live gauge, per PB-D69 (ix).
+        gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, false);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
+        gaugeEligibility.evaluateEligibility(ixAetheron);
+        assertTrue(gaugeEligibility.isEligible(ixAetheron), "latch survives revocation");
     }
 }
