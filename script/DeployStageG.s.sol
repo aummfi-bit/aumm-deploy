@@ -26,7 +26,8 @@ import { GaugeGenesisManifest } from "./config/GaugeGenesisManifest.sol";
  *      Class A (seal-only, = `deployer`, must be msg.sender during the seal) — SwapAndDeposit
  *      `moduleAdmin` + GaugeEligibility `gaugeRegistrySetter`; Class B (governance, = `GOVERNANCE_MULTISIG`
  *      at construction, consumed later by the unified governor; VCR's setters are one-shot, unrotatable) —
- *      VaultClassRegistry `votingWeightSetter` + `governanceSetter` + GaugeRegistry `governance`;
+ *      VaultClassRegistry `votingWeightSetter` + `governanceSetter` + GaugeRegistry `governance`
+ *      + GaugeEligibility `admissionAuthority` (rotatable thereafter, unlike the VCR pair, per PB-D69 (viii));
  *      Class C (`donateAuthorizer`) = `deployer` through the seal so `addAuthorizedDonator(vcr)` fires,
  *      then handed to `GOVERNANCE_MULTISIG` in-script via `setDonateAuthorizer` at the end of `_deploy`.
  *
@@ -157,7 +158,8 @@ contract DeployStageG is Script {
             genesisTypes
         );
 
-        // -- 3. GaugeEligibility (Class A gaugeRegistrySetter = deployer; 8-arg AuMM-only per P9.4a) --
+        // -- 3. GaugeEligibility (Class A gaugeRegistrySetter = deployer; Class B admissionAuthority =
+        //       GOVERNANCE_MULTISIG per PB-D69 (viii); 9-arg AuMM-only per P9.4a) --
         gaugeEligibility = new GaugeEligibility(
             approvedFactory,
             address(vaultClassRegistry),
@@ -166,7 +168,8 @@ contract DeployStageG is Script {
             address(aumm),
             deployer,
             efficiencyOracle,
-            feeRoutingHook
+            feeRoutingHook,
+            governanceMultisig
         );
 
         // -- 4. GaugeRegistry (Class B governance = GOVERNANCE_MULTISIG; genesisBlock from aumm.GENESIS_BLOCK()) --
