@@ -60,6 +60,12 @@ contract F12_CompositionGateFactoryProvenanceTest is Test {
         tokens[0] = IERC20(yieldToken);
         vm.mockCall(vault, abi.encodeWithSignature("getPoolTokens(address)", spoof), abi.encode(tokens));
         vm.mockCall(vcr, abi.encodeWithSignature("isAdmittedClass(address)", yieldToken), abi.encode(true));
+        // PB-D69 conjunct: spoof carries a rail, isolating the F-12 provenance check this test proves.
+        vm.mockCall(
+            feeRoutingHook,
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", spoof),
+            abi.encode(makeAddr("gaugeRail"))
+        );
     }
 
     function test_F12_fakedWeightsClearBar_butProvenanceGateBlocksNonFactorySpoof() public {

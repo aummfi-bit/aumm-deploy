@@ -338,6 +338,12 @@ contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
         );
         mockFactory.setPoolFromFactory(pool, true);
         mockTvlOracle.setTvl(pool, 10_000e18);
+        // PB-D69 conjunct: pool carries a rail so evaluateEligibility reaches its original checkpoint.
+        vm.mockCall(
+            feeRoutingHook,
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", pool),
+            abi.encode(makeAddr("gaugeRail"))
+        );
     }
 
     function _admittedFourSixTwoSix() internal returns (MockERC4626Token token) {
@@ -951,6 +957,12 @@ contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
             abi.encode(tokensArr)
         );
         mockFactory.setPoolFromFactory(pool, true);
+        // PB-D69 conjunct: pool carries a rail so meetsCompositionQualityGate reaches its original checkpoint.
+        vm.mockCall(
+            feeRoutingHook,
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", pool),
+            abi.encode(makeAddr("gaugeRail"))
+        );
     }
 
     function _admittedToken() internal returns (MockERC4626Token token) {
