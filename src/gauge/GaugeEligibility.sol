@@ -74,6 +74,12 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice F-10 per-pool emission cap in basis points assigned by the last `computeEpochSnapshot` — 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%) — **P-D13 (3)** / **P-D15 (2)**. Written each epoch for every ranked pool (including 0 that un-caps a pool which climbed back into the top 85% — self-correction per spec L129). Skipped pools (cold-start, warmup, post-warmup zero-denominator) retain their prior value per **P-D15 (4)**. Consumed by the EmissionDistributor via `IGaugeRegistry` delegation (F16e / F16f).
     mapping(address => uint256) public poolEmissionCapBps;
 
+    /// @notice **PB-D69 (viii)** governance authority over the recovery-path admission map — gates `setRecoveryPathAdmitted` and its own rotation via `setAdmissionAuthority`. Storage rather than immutable and rotatable rather than one-shot, inverting the `setGaugeRegistry` pattern below: a burned authority here would leave a dead map in which no rail-less pool could ever be admitted again. Seated at genesis on the same Safe that holds `AureumFeeRoutingHook.governanceModule`, never `AureumGovernance` (**PB-D61 (iii)**), because admission is an ops commitment tied to a manual call rather than a proposal.
+    address public admissionAuthority;
+
+    /// @notice **PB-D69** no-fees-no-emissions attestation — `true` when `admissionAuthority` has committed to recovering this pool's stranded protocol fees through the PB-D66 `recoverStrandedFees` path on `AureumFeeRoutingHook`. Read at **PB3.12c** as the second disjunct of the eligibility conjunct, so a pool carrying no der-Bodensee rail (`poolBodenseeDepositToken(pool) == address(0)`; live instance `02 ixAetheron`) stays eligible only while admitted. Deliberately an attestation and NOT a route registry per **PB-D69 (vi)** — recovery takes its route as calldata and carries no pool identifier, so nothing on that path could consume a per-pool route. It certifies capability-of-ops, never contribution (**PB-D69 (vii)**).
+    mapping(address => bool) public recoveryPathAdmitted;
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
@@ -108,6 +114,20 @@ contract GaugeEligibility is IGaugeEligibility {
      */
     event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
 
+    /**
+     * @notice Emitted when `setAdmissionAuthority` rotates the **PB-D69** admission authority.
+     * @param oldAuthority The authority in force before the rotation.
+     * @param newAuthority The authority in force after the rotation.
+     */
+    event AdmissionAuthorityTransferred(address indexed oldAuthority, address indexed newAuthority);
+
+    /**
+     * @notice Emitted on every `setRecoveryPathAdmitted` write — admission and revocation alike.
+     * @param pool The pool whose recovery-path attestation was written.
+     * @param admitted The value written — `true` admits, `false` revokes.
+     */
+    event RecoveryPathAdmissionSet(address indexed pool, bool admitted);
+
     // -------------------------------------------------------------------------
     // Custom errors
     // -------------------------------------------------------------------------
@@ -128,6 +148,8 @@ contract GaugeEligibility is IGaugeEligibility {
 
     error WrongFeeRoutingHook(address pool, address actualHook);
 
+    error OnlyAdmissionAuthority(address caller);
+
     // -------------------------------------------------------------------------
     // Modifiers
     // -------------------------------------------------------------------------
@@ -138,12 +160,18 @@ contract GaugeEligibility is IGaugeEligibility {
         _;
     }
 
+    /// @notice Gates the **PB-D69** admission surface — `setRecoveryPathAdmitted` and `setAdmissionAuthority` — to the current `admissionAuthority`.
+    modifier onlyAdmissionAuthority() {
+        if (msg.sender != admissionAuthority) revert OnlyAdmissionAuthority(msg.sender);
+        _;
+    }
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Wires the six deploy-time dependencies for eligibility evaluation and the 52% numerator path.
+     * @notice Wires the nine deploy-time dependencies for eligibility evaluation, the 52% numerator path, and the **PB-D69** admission surface.
      * @dev Assigns all immutables after **G-D15a** / G-D8 / OQ-1 address validation — any zero input reverts **ZeroAddress** before storage binds.
      * @param approvedFactory_ Balancer pool factory admitted for G-D15a singleton equality checks.
      * @param vaultClassRegistry_ **G-D8** `VaultClassRegistry` for ERC-4626 class admission look-ups.
@@ -152,6 +180,8 @@ contract GaugeEligibility is IGaugeEligibility {
      * @param auMM_ T-I3 forbidden token — AuMM.
      * @param gaugeRegistrySetter_ One-shot setter authority for wiring `gaugeRegistry` post-deploy per **G-D22**.
      * @param efficiencyOracle_ **G-D23 (i)** + **G-D23 (ii)** F-10 efficiency oracle binding (sibling to `tvlOracle`) for the OQ-G1 canonical formula at **G2.5**.
+     * @param feeRoutingHook_ Canonical `AureumFeeRoutingHook` — the only hook a gauge-eligible pool may carry per **I-D13** / **OQ-24**.
+     * @param admissionAuthority_ **PB-D69 (viii)** initial admission authority for `recoveryPathAdmitted` — seated on the same Safe as the hook's `governanceModule`, rotatable thereafter via `setAdmissionAuthority`.
      */
     constructor(
         address approvedFactory_,
@@ -161,7 +191,8 @@ contract GaugeEligibility is IGaugeEligibility {
         address auMM_,
         address gaugeRegistrySetter_,
         address efficiencyOracle_,
-        address feeRoutingHook_
+        address feeRoutingHook_,
+        address admissionAuthority_
     ) {
         if (approvedFactory_ == address(0)) revert ZeroAddress();
         if (vaultClassRegistry_ == address(0)) revert ZeroAddress();
@@ -171,6 +202,7 @@ contract GaugeEligibility is IGaugeEligibility {
         if (gaugeRegistrySetter_ == address(0)) revert ZeroAddress();
         if (efficiencyOracle_ == address(0)) revert ZeroAddress();
         if (feeRoutingHook_ == address(0)) revert ZeroAddress();
+        if (admissionAuthority_ == address(0)) revert ZeroAddress();
 
         approvedFactory = approvedFactory_;
         vaultClassRegistry = vaultClassRegistry_;
@@ -180,6 +212,7 @@ contract GaugeEligibility is IGaugeEligibility {
         gaugeRegistrySetter = gaugeRegistrySetter_;
         efficiencyOracle = efficiencyOracle_;
         feeRoutingHook = feeRoutingHook_;
+        admissionAuthority = admissionAuthority_;
     }
 
     // -------------------------------------------------------------------------
@@ -193,6 +226,34 @@ contract GaugeEligibility is IGaugeEligibility {
         if (gaugeRegistry_ == address(0)) revert ZeroAddress();
         gaugeRegistry = gaugeRegistry_;
         gaugeRegistrySetter = address(0);
+    }
+
+    // -------------------------------------------------------------------------
+    // External — PB-D69 recovery-path admission (no fees, no emissions)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @notice Writes the **PB-D69** recovery-path attestation for `pool` — `true` admits, `false` revokes.
+     * @dev `onlyAdmissionAuthority`-gated. Idempotent: a repeat write of the same value succeeds and re-emits, the slot being a plain flag with no roster push behind it. Revocation bars a LATER `evaluateEligibility` or `meetsCompositionQualityGate` and does NOT demote a live gauge — `isGaugeEligible` is written `true` and cleared nowhere in `src/`, so eviction stays with the governance `GaugeChallenge` path and `GaugeRegistry.revokeGauge` per **PB-D69 (ix)**. Reverts `ZeroAddress` when `pool == address(0)`. Emits `RecoveryPathAdmissionSet(pool, admitted)`.
+     * @param pool The pool whose attestation is written.
+     * @param admitted `true` to admit the pool's recovery path, `false` to revoke it.
+     */
+    function setRecoveryPathAdmitted(address pool, bool admitted) external onlyAdmissionAuthority {
+        if (pool == address(0)) revert ZeroAddress();
+        recoveryPathAdmitted[pool] = admitted;
+        emit RecoveryPathAdmissionSet(pool, admitted);
+    }
+
+    /**
+     * @notice Rotates the **PB-D69** admission authority to `newAuthority`.
+     * @dev `onlyAdmissionAuthority`-gated and repeatable — deliberately not the one-shot `setGaugeRegistry` pattern, because a burned authority leaves a dead map no rail-less pool could ever clear per **PB-D69 (viii)**. Reverts `ZeroAddress` when `newAuthority == address(0)`. Emits `AdmissionAuthorityTransferred(oldAuthority, newAuthority)`.
+     * @param newAuthority The incoming admission authority; must be non-zero.
+     */
+    function setAdmissionAuthority(address newAuthority) external onlyAdmissionAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        address oldAuthority = admissionAuthority;
+        admissionAuthority = newAuthority;
+        emit AdmissionAuthorityTransferred(oldAuthority, newAuthority);
     }
 
     // -------------------------------------------------------------------------
