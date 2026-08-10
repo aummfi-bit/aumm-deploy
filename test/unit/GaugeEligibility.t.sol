@@ -1121,3 +1121,93 @@ contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
     }
 }
 
+/// @notice PB3.12d2 — PB-D69 admission-authority surface: access control on both setters, the two zero-address
+///         guards, the idempotent re-emit, and rotation that is deliberately repeatable rather than one-shot.
+/// @dev Both events are redeclared locally, matching this file's existing convention at L574 and L582.
+contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
+    event AdmissionAuthorityTransferred(address indexed oldAuthority, address indexed newAuthority);
+
+    event RecoveryPathAdmissionSet(address indexed pool, bool admitted);
+
+    function testSetRecoveryPathAdmittedRevertsForNonAuthority() public {
+        address intruder = makeAddr("intruder");
+        vm.prank(intruder);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, intruder));
+        eligibility.setRecoveryPathAdmitted(makeAddr("admissionPool"), true);
+    }
+
+    function testSetAdmissionAuthorityRevertsForNonAuthority() public {
+        address intruder = makeAddr("intruder");
+        vm.prank(intruder);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, intruder));
+        eligibility.setAdmissionAuthority(makeAddr("usurper"));
+    }
+
+    function testSetRecoveryPathAdmittedRevertsOnZeroPool() public {
+        vm.prank(admissionAuthority);
+        vm.expectRevert(GaugeEligibility.ZeroAddress.selector);
+        eligibility.setRecoveryPathAdmitted(address(0), true);
+    }
+
+    function testSetAdmissionAuthorityRevertsOnZeroAuthority() public {
+        vm.prank(admissionAuthority);
+        vm.expectRevert(GaugeEligibility.ZeroAddress.selector);
+        eligibility.setAdmissionAuthority(address(0));
+    }
+
+    function testSetRecoveryPathAdmittedEmitsOnAdmitAndOnRevoke() public {
+        address pool = makeAddr("admissionPool");
+        vm.expectEmit(true, false, false, true, address(eligibility));
+        emit RecoveryPathAdmissionSet(pool, true);
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.recoveryPathAdmitted(pool));
+        vm.expectEmit(true, false, false, true, address(eligibility));
+        emit RecoveryPathAdmissionSet(pool, false);
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, false);
+        assertFalse(eligibility.recoveryPathAdmitted(pool));
+    }
+
+    function testSetRecoveryPathAdmittedIsIdempotentAndReEmits() public {
+        address pool = makeAddr("admissionPool");
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        vm.expectEmit(true, false, false, true, address(eligibility));
+        emit RecoveryPathAdmissionSet(pool, true);
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.recoveryPathAdmitted(pool));
+    }
+
+    function testAdmissionAuthorityRotationLocksOutOldHolder() public {
+        address newAuthority = makeAddr("newAdmissionAuthority");
+        address pool = makeAddr("admissionPool");
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit AdmissionAuthorityTransferred(admissionAuthority, newAuthority);
+        vm.prank(admissionAuthority);
+        eligibility.setAdmissionAuthority(newAuthority);
+        assertEq(eligibility.admissionAuthority(), newAuthority);
+        vm.prank(admissionAuthority);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, admissionAuthority));
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        vm.prank(newAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.recoveryPathAdmitted(pool));
+    }
+
+    function testAdmissionAuthorityRotationIsRepeatableNotOneShot() public {
+        address second = makeAddr("secondAuthority");
+        address third = makeAddr("thirdAuthority");
+        vm.prank(admissionAuthority);
+        eligibility.setAdmissionAuthority(second);
+        assertEq(eligibility.admissionAuthority(), second);
+        vm.prank(second);
+        eligibility.setAdmissionAuthority(third);
+        assertEq(eligibility.admissionAuthority(), third);
+        vm.prank(third);
+        eligibility.setRecoveryPathAdmitted(makeAddr("admissionPool"), true);
+        assertTrue(eligibility.recoveryPathAdmitted(makeAddr("admissionPool")));
+    }
+}
+
