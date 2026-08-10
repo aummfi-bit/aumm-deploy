@@ -621,3 +621,4 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB3.12f1 | `6cf2e57` | ✅ docs/ROBUSTNESS_BACKPORT_REGISTER.md — RB-016 re-anchored by twelve full-span replacements; bare-token replacement would have corrupted RB-013's independent citations |
 | PB3.12f2 | `a0a8c06` | ✅ docs/ROBUSTNESS_BACKPORT_REGISTER.md — RB-021 for clause (vii)'s admitted-but-never-recovered residual, plus the Attested-obligation verification class |
 | PB3.12f3 | `—` | docs/STAGE_P_BIS_PLAN.md — the PB-D69 Decisions row and the PB3.12a through f2 Completion Log rows plus this one, derived from git log per the PB-D44 precedent — this commit |
+| PB3.12f4 | `—` | CLAUDE.md section 11 + docs/STAGE_P_BIS_PLAN.md Completion Log — section 11 advanced to record PB3.12 COMPLETE across five in-place corrections, chief among them the `recoverStrandedFees` claim corrected from landed-at-b2 to specified-but-not-built, plus this row; closes PB3.12 — this commit |
