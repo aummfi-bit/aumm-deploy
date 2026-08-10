@@ -1033,3 +1033,91 @@ contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
     }
 }
 
+/// @notice PB3.12d1 — PB-D69 fee-rail conjunct semantics: the disjunction, the latch, and the short-circuit.
+/// @dev Slot 7 is `recoveryPathAdmitted` per `forge inspect storage-layout` at PB3.12d1. The short-circuit pair
+///      below is self-validating: the admitted case asserts the slot IS read, so a stale slot number cannot let
+///      the rail-carrying case pass vacuously.
+contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
+    uint256 internal constant RECOVERY_PATH_ADMITTED_SLOT = 7;
+
+    function _wireAdmissionPool(address rail) internal returns (address pool) {
+        MockERC4626Token token = new MockERC4626Token(makeAddr("admissionAsset"));
+        mockVaultClassRegistry.setAdmittedClass(address(token), true);
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(token);
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 1e18;
+        MockWeightedPool weightedPool = new MockWeightedPool();
+        weightedPool.setNormalizedWeights(weights);
+        pool = address(weightedPool);
+        vm.mockCall(vault, abi.encodeWithSignature("getPoolTokens(address)", pool), abi.encode(tokens));
+        mockFactory.setPoolFromFactory(pool, true);
+        mockTvlOracle.setTvl(pool, 10_000e18);
+        vm.mockCall(
+            feeRoutingHook,
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", pool),
+            abi.encode(rail)
+        );
+    }
+
+    function _admittedSlotWasRead(address pool) internal returns (bool) {
+        bytes32 target = keccak256(abi.encode(pool, RECOVERY_PATH_ADMITTED_SLOT));
+        (bytes32[] memory reads,) = vm.accesses(address(eligibility));
+        for (uint256 i = 0; i < reads.length; ++i) {
+            if (reads[i] == target) return true;
+        }
+        return false;
+    }
+
+    function testRailLessUnadmittedPoolRevertsInEvaluateEligibility() public {
+        address pool = _wireAdmissionPool(address(0));
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, pool));
+        eligibility.evaluateEligibility(pool);
+    }
+
+    function testRailLessUnadmittedPoolRevertsInCompositionGate() public {
+        address pool = _wireAdmissionPool(address(0));
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, pool));
+        eligibility.meetsCompositionQualityGate(pool);
+    }
+
+    function testRailLessAdmittedPoolPassesBothGates() public {
+        address pool = _wireAdmissionPool(address(0));
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.meetsCompositionQualityGate(pool));
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+    }
+
+    function testRailCarryingPoolPassesWithoutReadingAdmissionState() public {
+        address pool = _wireAdmissionPool(makeAddr("svZchfRail"));
+        assertFalse(eligibility.recoveryPathAdmitted(pool));
+        vm.record();
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertFalse(_admittedSlotWasRead(pool));
+    }
+
+    function testRailLessAdmittedPoolDoesReadAdmissionState() public {
+        address pool = _wireAdmissionPool(address(0));
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        vm.record();
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(_admittedSlotWasRead(pool));
+    }
+
+    function testRevocationBarsLaterEvaluationButLeavesLatchSet() public {
+        address pool = _wireAdmissionPool(address(0));
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.evaluateEligibility(pool));
+        assertTrue(eligibility.isEligible(pool));
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, false);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, pool));
+        eligibility.evaluateEligibility(pool);
+        assertTrue(eligibility.isEligible(pool));
+    }
+}
+
