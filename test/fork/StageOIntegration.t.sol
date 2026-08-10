@@ -33,6 +33,11 @@ abstract contract StageOIntegrationFixture is StageKIntegrationFixture {
         uint256[] memory weights = new uint256[](1);
         weights[0] = 1e18;
         vm.mockCall(candidate, abi.encodeWithSignature("getNormalizedWeights()"), abi.encode(weights));
+        vm.mockCall(
+            address(hook),
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", candidate),
+            abi.encode(makeAddr("gaugeRail"))
+        );
     }
 
     /// @dev Mocks `candidate`'s Vault reads so `meetsCompositionQualityGate` returns false: canonical
@@ -50,6 +55,11 @@ abstract contract StageOIntegrationFixture is StageKIntegrationFixture {
         weights[0] = 0.51e18;
         weights[1] = 0.49e18;
         vm.mockCall(candidate, abi.encodeWithSignature("getNormalizedWeights()"), abi.encode(weights));
+        vm.mockCall(
+            address(hook),
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", candidate),
+            abi.encode(makeAddr("gaugeRail"))
+        );
     }
 
     /// @dev Qualifies `voter` for a 100%-turnout composition vote — a recorded deposit on pilot 0

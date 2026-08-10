@@ -590,6 +590,11 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         HooksConfig memory _hc;
         _hc.hooksContract = address(hook);
         vm.mockCall(address(vault), abi.encodeWithSignature("getHooksConfig(address)", bodenseePool), abi.encode(_hc));
+        vm.mockCall(
+            address(hook),
+            abi.encodeWithSignature("poolBodenseeDepositToken(address)", bodenseePool),
+            abi.encode(makeAddr("gaugeRail"))
+        );
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.ForbiddenToken.selector, address(aumm)));
         gaugeEligibility.evaluateEligibility(bodenseePool);
     }

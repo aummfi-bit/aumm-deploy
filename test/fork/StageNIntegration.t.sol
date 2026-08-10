@@ -238,6 +238,8 @@ contract StageNBindingLivenessTest is StageNIntegrationFixture {
     }
 
     function test_qualityGate_allEighteenEligible() public {
+        // PB3.12e-pre: stageNPools[0] is real ixAetheron, rail-less; admit it here so the loop keeps testing the gate.
+        gaugeEligibility.setRecoveryPathAdmitted(stageNPools[0], true);
         for (uint256 i = 0; i < stageNPools.length; i++) {
             _makePoolEligible(stageNPools[i], 50_000e18);
             assertTrue(gaugeEligibility.evaluateEligibility(stageNPools[i]), "QG not cleared");
