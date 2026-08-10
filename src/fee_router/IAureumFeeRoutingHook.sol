@@ -268,4 +268,10 @@ interface IAureumFeeRoutingHook {
     /// @notice The AuMM ERC-20 — referenced by the hook for pool
     ///         eligibility checks. Immutable on the implementation.
     function AUMM() external view returns (IERC20);
+
+    /// @notice Per-pool der-Bodensee deposit rail — `address(0)` for a pool
+    ///         carrying neither svZCHF nor sUSDS. Written once by
+    ///         `onRegister` and read by `GaugeEligibility` as the first
+    ///         disjunct of the PB-D69 no-fees-no-emissions conjunct.
+    function poolBodenseeDepositToken(address pool) external view returns (address);
 }

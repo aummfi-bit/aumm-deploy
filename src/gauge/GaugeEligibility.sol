@@ -11,6 +11,7 @@ import {IGaugeEligibility} from "./IGaugeEligibility.sol";
 import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
 import {IEfficiencyOracle} from "./IEfficiencyOracle.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
+import {IAureumFeeRoutingHook} from "../fee_router/IAureumFeeRoutingHook.sol";
 
 /**
  * @title GaugeEligibility
@@ -149,6 +150,8 @@ contract GaugeEligibility is IGaugeEligibility {
     error WrongFeeRoutingHook(address pool, address actualHook);
 
     error OnlyAdmissionAuthority(address caller);
+
+    error NoFeeRailAndNotAdmitted(address pool);
 
     // -------------------------------------------------------------------------
     // Modifiers
