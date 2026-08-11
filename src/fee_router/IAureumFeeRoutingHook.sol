@@ -86,6 +86,18 @@ interface IAureumFeeRoutingHook {
         uint256 bptMinted
     );
 
+    /// @notice Emitted on a successful `recoverStrandedFees` sweep — one log
+    ///         line tying a recovery to the route that produced it. Carries
+    ///         no BPT figure, DONATION minting none by construction per
+    ///         PB-D68 (xiv), and no deposit-token amount, the terminal add
+    ///         sweeping `balanceOf` rather than the route's own output.
+    event StrandedFeesRecovered(
+        address indexed feeToken,
+        address indexed depositToken,
+        uint256 amountIn,
+        uint256 hops
+    );
+
     // -----------------------------------------------------------------
     //                              Errors
     // -----------------------------------------------------------------
@@ -242,6 +254,37 @@ interface IAureumFeeRoutingHook {
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
     ) external returns (uint256 bptMinted);
+
+    /// @notice Converts a stranded fee-token balance held by this hook along a
+    ///         caller-supplied route and donates the proceeds to der Bodensee.
+    ///         PB-D66's delayed recovery entry, the inverse of the `route*`
+    ///         family in one respect: it spends
+    ///         `feeToken.balanceOf(address(this))` rather than pulling from
+    ///         `msg.sender`, because the tokens are already here. Gated on
+    ///         `governanceModule` per PB-D66 (iv). Carries NO pool argument
+    ///         per PB-D66 (xii) — the hook holds a fungible balance per token
+    ///         with no memory of which pool produced it.
+    /// @dev Reverts `ZeroAmount` on a zero stranded balance per PB-D66 (xiv),
+    ///      `InvalidDepositToken` when `depositToken` is neither `SV_ZCHF` nor
+    ///      `SUSDS`, `EmptySwapPath` on a zero-length route,
+    ///      `SwapPathLengthMismatch` when the three arrays disagree, and
+    ///      `TerminalTokenMismatch` when the route does not end at
+    ///      `depositToken`. No zero-hop fast path exists, deliberately.
+    ///      `minHopOuts` carries this entry's ENTIRE slippage protection per
+    ///      PB-D66 (xiii); the Bodensee leg takes no floor because DONATION
+    ///      admits none. Emits `StrandedFeesRecovered`.
+    /// @param feeToken The stranded token; its full hook balance is spent.
+    /// @param depositToken The der-Bodensee rail, `SV_ZCHF` or `SUSDS`.
+    /// @param swapPools Pool per hop, in route order.
+    /// @param hopTokenOuts Output token per hop; the last equals `depositToken`.
+    /// @param minHopOuts Minimum output per hop.
+    function recoverStrandedFees(
+        IERC20 feeToken,
+        IERC20 depositToken,
+        address[] calldata swapPools,
+        IERC20[] calldata hopTokenOuts,
+        uint256[] calldata minHopOuts
+    ) external;
 
     // -----------------------------------------------------------------
     //                           View getters

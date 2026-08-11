@@ -803,4 +803,78 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             minBptAmountOut
         );
     }
+
+    /// @inheritdoc IAureumFeeRoutingHook
+    function recoverStrandedFees(
+        IERC20 feeToken,
+        IERC20 depositToken,
+        address[] calldata swapPools,
+        IERC20[] calldata hopTokenOuts,
+        uint256[] calldata minHopOuts
+    ) external override {
+        if (governanceModule == address(0)) revert ModuleNotSet();
+        if (msg.sender != governanceModule) revert UnauthorizedCaller(msg.sender);
+        if (address(depositToken) != address(SV_ZCHF) && address(depositToken) != address(SUSDS)) {
+            revert InvalidDepositToken(address(depositToken));
+        }
+
+        uint256 hops = swapPools.length;
+        if (hops == 0) revert EmptySwapPath();
+        if (hopTokenOuts.length != hops || minHopOuts.length != hops) {
+            revert SwapPathLengthMismatch(hops, hopTokenOuts.length, minHopOuts.length);
+        }
+        if (address(hopTokenOuts[hops - 1]) != address(depositToken)) {
+            revert TerminalTokenMismatch(address(depositToken), address(hopTokenOuts[hops - 1]));
+        }
+
+        uint256 amountIn = feeToken.balanceOf(address(this));
+        if (amountIn == 0) revert ZeroAmount();
+
+        // Return discarded: the callback returns nothing, the recovery's effect being the donation itself. See PB-D66 (xiii).
+        // slither-disable-next-line unused-return
+        _vault.unlock(
+            abi.encodeCall(
+                this._recoverStrandedFeesUnlocked,
+                (feeToken, depositToken, swapPools, hopTokenOuts, minHopOuts, amountIn)
+            )
+        );
+        // Emission follows unlock by causality; _vault.unlock is the Vault's reentrancy guard. Mirrors the route* entries. See D8 NOTES F17.
+        // slither-disable-next-line reentrancy-events
+        emit StrandedFeesRecovered(address(feeToken), address(depositToken), amountIn, hops);
+    }
+
+    /// @notice Unlock callback for recoverStrandedFees. onlyVault; reached
+    ///         exclusively via IVault.unlock from recoverStrandedFees, whose
+    ///         four route invariants are validated before the unlock opens.
+    /// @dev Walks the hops in order. Each swap settles its own tokenIn and
+    ///      sendTo-s its output to this hook, so hop i+1 spends exactly what
+    ///      hop i produced without re-reading balances — the return value
+    ///      PB3.10b2a added for this purpose. The terminal add sweeps
+    ///      `depositToken.balanceOf(address(this))` rather than the last
+    ///      hop's output, matching `_swapFeeAndDeposit` and collecting any
+    ///      dust earlier routes left; its floor is 0 because DONATION admits
+    ///      no other value per PB-D68 (xiv).
+    function _recoverStrandedFeesUnlocked(
+        IERC20 feeToken,
+        IERC20 depositToken,
+        address[] calldata swapPools,
+        IERC20[] calldata hopTokenOuts,
+        uint256[] calldata minHopOuts,
+        uint256 amountIn
+    ) external onlyVault {
+        IERC20 tokenIn = feeToken;
+        uint256 hopAmount = amountIn;
+        uint256 hops = swapPools.length;
+        for (uint256 i = 0; i < hops; ++i) {
+            hopAmount = _swapExactInFeeTokenToDepositTokenViaVault(
+                tokenIn,
+                hopAmount,
+                swapPools[i],
+                hopTokenOuts[i],
+                minHopOuts[i]
+            );
+            tokenIn = hopTokenOuts[i];
+        }
+        _addLiquidityOneSidedToBodenseeViaVault(depositToken, depositToken.balanceOf(address(this)), 0);
+    }
 }
