@@ -635,3 +635,4 @@ Two-commit PENDING_PBIS (PB-D3): the close commit writes `PENDING_PBIS` (the `ST
 | PB3.10e1 | `e60a9c8` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D61 clause (vi), both stale enumerations corrected with the conclusion strengthened; RB-017 more load-bearing, not less |
 | PB3.10e2 | `253122e` | ✅ docs/STAGE_P_BIS_NOTES.md — PB-D66 clause (xv), clause (ix)'s future-pools rule recorded as BUILT at PB-D69 and the rung-e register row retired with no subject |
 | PB3.10e3 | `—` | docs/STAGE_P_BIS_PLAN.md — the PB-D66 Decisions row, filling the PB-D65-to-PB-D67 gap PB3.5i11 left by design, plus the PB3.10a through e2 Completion Log rows and this one, derived from git log per PB-D44 — this commit |
+| PB3.10e4 | `—` | CLAUDE.md section 11 + docs/STAGE_P_BIS_PLAN.md Completion Log — section 11 records PB3.10 COMPLETE and `recoverStrandedFees` BUILT, correcting the not-built claim PB3.12f2 surfaced, plus this row; closes PB3.10 — this commit |
