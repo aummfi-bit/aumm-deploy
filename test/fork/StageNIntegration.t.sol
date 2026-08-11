@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { StageIIntegrationFixture } from "./StageIIntegration.t.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { DeployStageN } from "../../script/DeployStageN.s.sol";
 import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { ERC4626RateProvider } from "../../src/rate_provider/ERC4626RateProvider.sol";
@@ -285,3 +286,70 @@ contract StageNIxAetheronAdmissionTest is StageNIntegrationFixture {
         assertTrue(gaugeEligibility.isEligible(ixAetheron), "latch survives revocation");
     }
 }
+
+/// @notice PB3.10d — the PB-D66 rung-d mainnet-fork witness: a stranded LST recovered
+///         along the literal clause (vii) route, LST to ixEDEL on ixAetheron and ixEDEL
+///         to svZCHF on ixEdelweiss, terminating in a donation to der Bodensee.
+/// @dev `governanceModule` is already seated to `address(this)` at StageIIntegration
+///      L102-L103, one-shot and inherited down the G-I-K-N chain, so this contract IS
+///      the module and calls the entry directly with no prank and no second seating.
+///      `stageNPools[0]` is ixAetheron by deploy order; StageN registers it but seeds
+///      it in no fixture, so hop 1 is given depth here through the inherited
+///      `_initializePool`, which uses the two-argument `deal` form per E10.
+contract StageNStrandedFeeRecoveryTest is StageNIntegrationFixture {
+    uint256 internal constant HOP_SEED = 1_000e18;
+
+    uint256 internal constant STRAND = 10e18;
+
+    /// @dev Mirrors the hook's private `_currentBodenseeReserve` read.
+    function _bodenseeReserve(IERC20 token) internal view returns (uint256) {
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(bodenseePool, token);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(bodenseePool);
+        return balancesRaw[idx];
+    }
+
+    function _seedIxAetheron() internal {
+        IERC20[] memory tokens = vault.getPoolTokens(stageNPools[0]);
+        uint256[] memory amts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            amts[i] = HOP_SEED;
+        }
+        _initializePool(stageNPools[0], tokens, amts);
+    }
+
+    function test_recoverStrandedFees_twoHopIxEdelRouteReachesBodensee() public {
+        _seedIxAetheron();
+
+        address ixAetheron = stageNPools[0];
+        IERC20 sfrxEth = IERC20(IxAetheronConfig.SFRXETH);
+        IERC20 ixEdel = IERC20(IxAetheronConfig.IXEDEL);
+
+        // Premise, asserted before the act: ixAetheron genuinely carries no rail, so this
+        // strand is unreachable by the hot path and only the recovery entry can clear it.
+        assertEq(hook.poolBodenseeDepositToken(ixAetheron), address(0), "ixAetheron is rail-less");
+        deal(address(sfrxEth), address(hook), STRAND);
+        assertEq(sfrxEth.balanceOf(address(hook)), STRAND, "strand seeded on the hook");
+
+        address[] memory pools = new address[](2);
+        pools[0] = ixAetheron;
+        pools[1] = pilotPools[1];
+        IERC20[] memory outs = new IERC20[](2);
+        outs[0] = ixEdel;
+        outs[1] = svZchf;
+        uint256[] memory mins = new uint256[](2);
+
+        uint256 reserveBefore = _bodenseeReserve(svZchf);
+        uint256 supplyBefore = IERC20(bodenseePool).totalSupply();
+
+        hook.recoverStrandedFees(sfrxEth, svZchf, pools, outs, mins);
+
+        assertEq(sfrxEth.balanceOf(address(hook)), 0, "strand fully spent");
+        assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "donation mints no BPT");
+        assertGt(
+            _bodenseeReserve(svZchf),
+            reserveBefore,
+            "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails"
+        );
+    }
+}
+
