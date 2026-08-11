@@ -4,7 +4,8 @@ pragma solidity ^0.8.26;
 
 /**
  * @title SepoliaPhase4Addresses
- * @notice Live-Sepolia addresses of the sixteen contracts created by the PB3.8h9g phase-4 broadcast.
+ * @notice GENERATION 1, ABANDONED — the sixteen contracts created by the PB3.8h9g phase-4 broadcast,
+ *         frozen at their original values per PB-D70 (ix).
  *
  * @dev SEPOLIA ONLY, per PB-D44 (iv) and RB-010. Every address here holds code on Sepolia (chain 11155111)
  *      and none on mainnet, so a consumer that could run against either chain asserts `block.chainid`
@@ -25,6 +26,17 @@ pragma solidity ^0.8.26;
  *
  *      First PB3.7 rung, and the RB-014 discharge for this set. These addresses previously existed only in
  *      the deployment record and in a gitignored `.env.sepolia` that carries none of them but `TVL_ORACLE`.
+ *
+ *      FROZEN AS GENERATION 1 per PB-D70 (ix). Every address here was abandoned by the generation-2 refresh
+ *      at PB3.13, and this file is nevertheless kept at its original values permanently rather than being
+ *      repointed, because it has a consumer that cannot follow those addresses forward:
+ *      `test/fork/PB52SepoliaOracleEvidence.t.sol` forks Sepolia at PINNED block 11410000 and resolves
+ *      `TVL_ORACLE` and `MILIARIUM_REGISTRY` through this library, so repointing would aim a pinned
+ *      historical fork at contracts holding no code there. That test is the PB-D52 (viii) discharge
+ *      evidence and the refresh leaves it untouched. Generation 2 lives in a sibling library of this
+ *      shape: do NOT add generation-2 addresses here, and do not delete this file once generation 1 is
+ *      gone from every other artifact — an artifact recording a deployment does not stop being true
+ *      when that deployment is abandoned.
  */
 library SepoliaPhase4Addresses {
     /// @notice Count of contracts the phase-4 broadcast created.
@@ -33,7 +45,7 @@ library SepoliaPhase4Addresses {
     /// @notice Nonce 125 — Miliarium slot registry; the `_directRatio` Leg 2 enumeration source.
     address internal constant MILIARIUM_REGISTRY = 0xfBE5e161955Fb75FA99010dCfC71bbBE6405A511;
 
-    /// @notice Nonce 126 — the live TVLOracle, which per PB-D52 (ix) remains pre-PB-D50-fix.
+    /// @notice Nonce 126 — the generation-1 TVLOracle, which per PB-D52 (ix) remains pre-PB-D50-fix.
     address internal constant TVL_ORACLE = 0xBf78A49b1AB86247198f6660Bf5a0491007E6A64;
 
     /// @notice Nonce 127 — EfficiencyOracle.
