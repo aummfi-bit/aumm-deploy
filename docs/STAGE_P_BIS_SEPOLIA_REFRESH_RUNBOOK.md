@@ -73,3 +73,34 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 5. **Router seat.** The F-09 trusted-router seat. No script performs it: `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4). An unseated Router mints BPT but records nothing, so this step is load-bearing rather than cosmetic.
 6. **Verification.** Explorer verification of the deployed set.
 
+## 5. Per-step EOA transaction counts
+
+**This table ships COMPLETE, and that is the one place the refresh is better off than generation 1.** Its runbook shipped five cells reading PENDING-h because no broadcast had happened yet; here every count comes from a broadcast that has. PB-D27 (iv)(1) requires counts be derived from a run rather than read off the source, and a deployment that ran to completion satisfies that more strongly than the dry run the rule was written for. Every cell below names the deployment-record section it was measured from, so each is checkable against a committed artifact rather than against this document.
+
+**Counts are invariant; addresses are not.** PB-D28 (ii) and PB-D29 (v) establish that a step's transaction count follows from its own CREATE and call sequence and does not move with the deployer's nonce or the chain. So phase A does NOT re-derive these. What phase A must do is read `n0` and recompute the projections, per section 3.
+
+**Row 1 is not run** and carries no count. The 87 stubs are reused per PB-D70 (i), so `c1` leaves the arithmetic entirely rather than being carried as history.
+
+**Rows 11 and 12 are new.** Generation 1's table stopped at row 10 because the oracle wiring and the pool seeding were PB3.8 work rather than PB3.5 work, and no single document ever costed the whole deployment. PB-D70 (xiv) puts them inside the refresh, so they are counted here.
+
+**Row 9 is now a broadcast count.** Generation 1 recorded 114 from a `forge script` simulation and said so explicitly. The broadcast then landed 114 transactions at nonces 125 to 238 contiguous, so the figure is confirmed rather than merely projected.
+
+| # | Step | Count | Measured from |
+| --- | --- | --- | --- |
+| 1 | `DeployTestnetStubs` | not run | PB-D70 (i) |
+| 2 | `DeployAureumVault` | 4 | record s1, nonces 90-93 |
+| 3 | `DeployAureumWeightedPoolFactory` | 1 | record s1, nonce 94 |
+| 4 | `DeployAuMM` | 1 | record s1, nonce 95 |
+| 5 | `DeployFeeRoutingHook` | 1 | record s1, nonce 96 |
+| 6 | `DeployDerBodensee` | 1 | record s1, nonce 97 |
+| 7 | `DeployRouter` | 1 | record s1, nonce 98 |
+| 8 | Each pool script, per invocation | 1 | record s7, 25 rows at nonces 99-123, plus s10 |
+| 9 | `DeployStageP.run()` | 114 | record s11, nonces 125-238 |
+| 10 | Router seat | 2 | record s14, nonces 690-691 |
+| 11 | `WireTVLOracleSepolia` | 62 | record s12, nonces 239-300 |
+| 12 | `SeedMiliariumPoolsSepolia` | 389 | record s13, nonces 301-689 |
+
+**The whole refresh is 602 transactions**, as 9 for the base layer, 26 for the pools now that all of them broadcast from the single deployer, 114 for the orchestration, 2 for the Router seat, 62 for the wiring and 389 for the seeding. At the `n0` of 692 read at PB3.13e that spans nonces 692 to 1293, but treat the span as illustrative and the arithmetic as binding: phase A re-reads `n0` immediately before the first send, and any transaction from this EOA in between shifts every number.
+
+**Phase 5 may run before or after rows 11 and 12, and generation 1 ran it after.** Nothing depends on the order. Pool initialization reaches `onAfterInitialize`, which this hook neither implements nor enables — `AureumFeeRoutingHook` sets `shouldCallAfterAddLiquidity` alone — so seeding never reaches the recorder dispatch that `trustedRouter` gates, and an unseated Router costs nothing during seeding. The seat matters for LP adds and removes after initialization, which is why it must be done before the constellation is opened to anyone.
+
