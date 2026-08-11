@@ -93,6 +93,13 @@ contract AureumFeeRoutingHookTest is Test {
         uint256 bptMinted
     );
 
+    event StrandedFeesRecovered(
+        address indexed feeToken,
+        address indexed depositToken,
+        uint256 amountIn,
+        uint256 hops
+    );
+
     // -------------------------------------------------------------------------
     // Setup
     // -------------------------------------------------------------------------
@@ -1093,6 +1100,135 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(zchf.balanceOf(address(hook)), 0);
         assertEq(svZchf.balanceOf(address(hook)), 0);
         assertEq(svZchf.balanceOf(vault), amount);
+    }
+
+    // ---------------------------------------------------------------
+    //          PB-D66 recoverStrandedFees (PB3.10c)
+    // ---------------------------------------------------------------
+
+    /// @dev One-hop route helper. The unit harness cannot follow the entry
+    ///      through `IVault.unlock` (see this file's header note), so these
+    ///      tests cover every guard reachable BEFORE the unlock opens, plus
+    ///      the dispatch payload itself. The end-to-end positive that proves
+    ///      a stranded balance reaches der Bodensee is the PB-D66 rung-d
+    ///      mainnet-fork witness over the real ixEDEL route.
+    function _route(address pool, IERC20 tokenOut, uint256 minOut)
+        internal
+        pure
+        returns (address[] memory pools, IERC20[] memory outs, uint256[] memory mins)
+    {
+        pools = new address[](1);
+        pools[0] = pool;
+        outs = new IERC20[](1);
+        outs[0] = tokenOut;
+        mins = new uint256[](1);
+        mins[0] = minOut;
+    }
+
+    function _seatGovAndStrand(uint256 amount) internal {
+        vm.prank(admin);
+        hook.setGovernanceModule(gov);
+        if (amount != 0) tokenY.mint(address(hook), amount);
+    }
+
+    function test_recoverStrandedFees_revertsWhenModuleNotSet() public {
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 0);
+        vm.expectRevert(IAureumFeeRoutingHook.ModuleNotSet.selector);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsForNonModuleCaller() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 0);
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(IAureumFeeRoutingHook.UnauthorizedCaller.selector, stranger));
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsOnInvalidDepositToken() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(tokenY)), 0);
+        vm.prank(gov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAureumFeeRoutingHook.InvalidDepositToken.selector, address(tokenY))
+        );
+        hook.recoverStrandedFees(IERC20(address(zchf)), IERC20(address(tokenY)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsOnEmptySwapPath() public {
+        _seatGovAndStrand(5e18);
+        address[] memory pools = new address[](0);
+        IERC20[] memory outs = new IERC20[](0);
+        uint256[] memory mins = new uint256[](0);
+        vm.prank(gov);
+        vm.expectRevert(IAureumFeeRoutingHook.EmptySwapPath.selector);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsOnSwapPathLengthMismatch() public {
+        _seatGovAndStrand(5e18);
+        address[] memory pools = new address[](1);
+        pools[0] = poolAb;
+        IERC20[] memory outs = new IERC20[](2);
+        outs[0] = IERC20(address(tokenY));
+        outs[1] = IERC20(address(svZchf));
+        uint256[] memory mins = new uint256[](1);
+        vm.prank(gov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAureumFeeRoutingHook.SwapPathLengthMismatch.selector, 1, 2, 1)
+        );
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsOnTerminalTokenMismatch() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(zchf)), 0);
+        vm.prank(gov);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAureumFeeRoutingHook.TerminalTokenMismatch.selector,
+                address(svZchf),
+                address(zchf)
+            )
+        );
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_revertsOnZeroStrandedBalance() public {
+        _seatGovAndStrand(0);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 0);
+        assertEq(tokenY.balanceOf(address(hook)), 0);
+        vm.prank(gov);
+        vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+    }
+
+    function test_recoverStrandedFees_forwardsRouteIntoUnlockPayload() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 3e18);
+
+        vm.mockCall(vault, abi.encodeWithSelector(IVaultMain.unlock.selector), abi.encode(bytes("")));
+        vm.expectCall(
+            vault,
+            abi.encodeCall(
+                IVaultMain.unlock,
+                (abi.encodeCall(
+                    hook._recoverStrandedFeesUnlocked,
+                    (IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 5e18)
+                ))
+            )
+        );
+        vm.expectEmit(true, true, false, true, address(hook));
+        emit StrandedFeesRecovered(address(tokenY), address(svZchf), 5e18, 1);
+
+        vm.prank(gov);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
     }
 }
 
