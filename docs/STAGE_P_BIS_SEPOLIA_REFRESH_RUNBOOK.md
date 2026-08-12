@@ -120,3 +120,59 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 
 **This sequence is a refresh, and step 1 is not run.** The 87 stubs at nonces 0 to 86 stay deployed and are reused from the `STUB_` block of `.env.sepolia`, so the sequence begins at step 2. Re-broadcasting step 1 would mint a fresh roster from the live nonce upward, orphan the map every later step reads, and consume the nonces all seven address projections derive from, voiding them. This is not a contingency to weigh but the shape of the whole operation per PB-D70 (i): the stub roster surviving is the only reason this is a refresh rather than a from-zero deployment. Their liveness is not assumed either — all 87 were confirmed to hold code and all 14 vaults to resolve their recorded underlying at PB3.13e, recorded at PB-D70 (xvi).
 
+**Step 1 — testnet stubs. NOT RUN.**
+
+- The 87 stubs of generation 1 are reused. Do not invoke `test-stubs/DeployTestnetStubs.s.sol`, and do not append a fresh map to `.env.sepolia` — the `STUB_` block already there is the live one.
+- Confirm rather than assume. All 87 addresses held code and all 14 `StubERC4626` vaults resolved their recorded underlying when read against the chain at PB3.13e, recorded at PB-D70 (xvi). Re-run that check if material time has passed since.
+- The full roster with nonces, kinds and mainnet literals is `docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md`; the committed env-shaped map is `test-stubs/sepolia-stubs.env`, regenerated to live values at PB3.5i15c.
+- Nothing is captured here, and `c1` does not enter the phase A arithmetic at all.
+
+**Step 2 — Aureum Vault.**
+
+- Command: `forge script script/DeployAureumVault.s.sol:DeployAureumVault`
+- Reads: `GOVERNANCE_MULTISIG`, `DER_BODENSEE_POOL`, `FEE_ROUTING_HOOK`, `SALT`, `PAUSE_WINDOW_DURATION`, `BUFFER_PERIOD_DURATION`, `MIN_TRADE_AMOUNT`, `MIN_WRAP_AMOUNT`. The two prediction keys must already hold the section 3 projections.
+- Emits: nothing on stdout. This script logs no address.
+- Capture: none is required, and none should be parsed out of `broadcast/*.json`. All four addresses are projections the operator already computed: the authorizer at nonce N, the fee controller at N+1, the vault factory at N+2, and the Vault as `CREATE3.getDeployed(SALT, factory)`. The script asserts the factory itself at L203-L205; the broadcast confirms the projection rather than revealing it.
+- Set in `.env.sepolia`: `VAULT` and `AUREUM_VAULT`, both to the projected Vault address, and `FEE_CONTROLLER` to the nonce-N+1 projection.
+
+**Step 3 — weighted pool factory.**
+
+- Command: `forge script script/DeployAureumWeightedPoolFactory.s.sol:DeployAureumWeightedPoolFactory`
+- Reads: `AUREUM_VAULT`.
+- Emits: `Aureum WeightedPoolFactory (WPF) deployed at:` followed by the address.
+- Set in `.env.sepolia`: `WEIGHTED_POOL_FACTORY` and `AUREUM_WEIGHTED_POOL_FACTORY`, both to that one address, per PB-D27 (ix). Sepolia deploys the UPSTREAM Balancer factory; the two `create()` parameter lists are selector-identical, so the pool scripts' Aureum-typed cast dispatches against it and executes the upstream body with the factory-level quality gate skipped silently. The script-side gate remains operative, so the admitted set is unchanged.
+- Confirm the logged address equals the projection used to derive der Bodensee in section 3. A divergence here invalidates that derivation and the sequence must stop.
+
+**Step 4 — AuMM.**
+
+- Command: `forge script script/DeployAuMM.s.sol:DeployAuMM`
+- Reads: `GENESIS_BLOCK`, `GOVERNANCE_MULTISIG`.
+- Set `GENESIS_BLOCK` immediately before this step, to the current Sepolia head plus one epoch of blocks per PB-D19, decoupling the emission clock from deploy time. `DeployAuMM.s.sol` L33 reads it with no `block.number` clamp, so the value is taken literally.
+- Emits: `AuMM deployed at:` followed by the address.
+- Set in `.env.sepolia`: `AUMM`.
+
+**Step 5 — fee routing hook.**
+
+- Command: `forge script script/DeployFeeRoutingHook.s.sol:DeployFeeRoutingHook`
+- Reads: `FEE_ROUTING_HOOK`, `VAULT`, `DER_BODENSEE_POOL`, `SV_ZCHF`, `SUSDS`, `AUMM`, `FEE_CONTROLLER`, `GOVERNANCE_MULTISIG`.
+- Emits: `AureumFeeRoutingHook deployed at:` followed by the address.
+- The script asserts the deployed hook equals `FEE_ROUTING_HOOK` and reverts `HookAddressMismatch` otherwise, before the success log.
+- Set in `.env.sepolia`: nothing new. `FEE_ROUTING_HOOK` already holds the projection; confirm the logged address matches it.
+- This step precedes der Bodensee deliberately, per PB-D30. `DER_BODENSEE_POOL` is read here as a projection only — the hook's constructor zero-checks it and then stores it without ever calling it, so der Bodensee needs no code yet, and `DeployDerBodensee` in turn reads no `FEE_ROUTING_HOOK` key at all. Do not restore the older Bodensee-then-hook order: it puts a step that cannot be simulated before the broadcast inside the hook's own nonce projection, which is what made the pre-broadcast count set unobtainable.
+
+**Step 6 — der Bodensee.**
+
+- Command: `forge script script/DeployDerBodensee.s.sol:DeployDerBodensee`
+- Reads: `WEIGHTED_POOL_FACTORY`, `AUMM`, `SV_ZCHF`, `SUSDS`, `GOVERNANCE_MULTISIG`, `BODENSEE_SALT`, `DER_BODENSEE_POOL`, plus the two rate-provider `STUB_` keys from step 1.
+- Emits: `der-Bodensee pool deployed at:` followed by the address.
+- The script asserts the created pool equals `DER_BODENSEE_POOL` and reverts `BodenseeAddressMismatch` otherwise, before the success log.
+- Set in `.env.sepolia`: `BODENSEE_POOL`, to the same address. Do NOT rewrite `DER_BODENSEE_POOL` — it already holds the projection, and the two keys are read by different scripts.
+
+**Step 7 — Router.**
+
+- Command: `forge script script/DeployRouter.s.sol:DeployRouter`
+- Reads: `AUREUM_VAULT`, `WETH_ADDRESS`, `PERMIT2_ADDRESS`. `PERMIT2_ADDRESS` is the canonical cross-chain instance verified present at PB3.1; `WETH_ADDRESS` is the operator-pinned Sepolia value described above.
+- Emits: `Aureum Router deployed at:` followed by the address.
+- Set in `.env.sepolia`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
+
+**Gas budget.** Not a gate this time, and generation 1's own execution replaces the estimate. The deployer holds 5.782928979297694346 SepETH as read at PB3.13e. Generation 1 spent 0.029383870046196392 on the orchestration, 0.00341643207547946 on the oracle wiring, 0.035700732881202711 on the seeding and 0.000102087744842786 on the Router seat — 0.068603122747721349 for everything from phase 4 onward, with the base layer and the 26 pools ahead of it bringing the whole deployment to roughly 0.2 SepETH per PB-D68 (ix). Three consecutive generation-1 broadcasts landed near a third under forge's own figure, so read the printed `Estimated total gas used for script` as a ceiling carrying the `--gas-estimate-multiplier` buffer rather than as a forecast. The 367,079,280-gas fork measurement from `test/fork/StagePRunRehearsal.t.sol` is retained only as a determinism check on the deployment path; live cost is now known from execution and supersedes it for budgeting.
