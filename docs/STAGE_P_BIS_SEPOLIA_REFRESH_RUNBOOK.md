@@ -176,3 +176,56 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 - Set in `.env.sepolia`: `ROUTER`. No script reads this key — the operator needs it for the phase 5 trusted-router seat, which no script performs.
 
 **Gas budget.** Not a gate this time, and generation 1's own execution replaces the estimate. The deployer holds 5.782928979297694346 SepETH as read at PB3.13e. Generation 1 spent 0.029383870046196392 on the orchestration, 0.00341643207547946 on the oracle wiring, 0.035700732881202711 on the seeding and 0.000102087744842786 on the Router seat — 0.068603122747721349 for everything from phase 4 onward, with the base layer and the 26 pools ahead of it bringing the whole deployment to roughly 0.2 SepETH per PB-D68 (ix). Three consecutive generation-1 broadcasts landed near a third under forge's own figure, so read the printed `Estimated total gas used for script` as a ceiling carrying the `--gas-estimate-multiplier` buffer rather than as a forecast. The 367,079,280-gas fork measurement from `test/fork/StagePRunRehearsal.t.sol` is retained only as a determinism check on the deployment path; live cost is now known from execution and supersedes it for budgeting.
+
+## 7. Phase 3 to 6 — pools, orchestration, Router seat, verification
+
+**Phase 3 — the 26 Miliarium pools.**
+
+All 26 are Miliarium Aureum pools. They occupy slots in one flat slot space numbered 1 to 28, and `MiliariumRegistry.slotOf(pool)` returns a single slot number for any of them — there is no second pool class anywhere in the registry, and der Bodensee, the only other pool in the protocol, holds no slot and is not one of them. Every key is `MILIARIUM_POOL_nn` for the pool's slot number, uniformly. The `PILOT_` and `MAJOR_` prefixes that eight of these keys carried until PB-D40 recorded only which stage each pool first landed in, never a class; they survive in completed-stage plans and notes as history, and nothing in the deploy path reads them.
+
+Each pool is its own invocation, in the same form as section 6. Every one of the 26 scripts emits the SAME stdout line — `Miliarium pool deployed at:` — from the shared base at `script/pools/deploy-miliarium-pool.s.sol` L129, with nothing in the line identifying which pool it was. Stdout alone therefore cannot tell the deployments apart. Run one script at a time and record its address before starting the next, or key the capture off `broadcast/<ScriptName>.s.sol/11155111/run-latest.json`, which is named per script and is unambiguous. Do not batch the 26 and reconcile the log afterwards.
+
+The slot each script fills appears nowhere in the script itself. The mapping below comes from `test/fork/StagePRunRehearsal.t.sol` L216-L256 paired with L268-L318, the only place in the repo binding script to key, validated by that fixture running 9/9 fork-green. It is listed in slot order; deployment order is unconstrained, since the pool scripts have no dependency on one another and every base-layer address projection is already fixed before phase 3 begins.
+
+| Slot | Script | `.env.sepolia` key |
+| --- | --- | --- |
+| 01 | `DeployIxHelvetia` | `MILIARIUM_POOL_01` |
+| 02 | `DeployIxAetheron` | `MILIARIUM_POOL_02` |
+| 03 | `DeployIxCasper` | `MILIARIUM_POOL_03` |
+| 05 | `DeployIxEdelweiss` | `MILIARIUM_POOL_05` |
+| 06 | `DeployIxLibertas` | `MILIARIUM_POOL_06` |
+| 08 | `DeployIxBrevis` | `MILIARIUM_POOL_08` |
+| 09 | `DeployIxAltrix` | `MILIARIUM_POOL_09` |
+| 10 | `DeployIxMediox` | `MILIARIUM_POOL_10` |
+| 11 | `DeployIxLongus` | `MILIARIUM_POOL_11` |
+| 12 | `DeployIxStrata` | `MILIARIUM_POOL_12` |
+| 13 | `DeployIxForum` | `MILIARIUM_POOL_13` |
+| 14 | `DeployIxAurebit` | `MILIARIUM_POOL_14` |
+| 15 | `DeployIxRegistrum` | `MILIARIUM_POOL_15` |
+| 16 | `DeployIxDebitum` | `MILIARIUM_POOL_16` |
+| 17 | `DeployIxEquitix` | `MILIARIUM_POOL_17` |
+| 18 | `DeployIxInnovix` | `MILIARIUM_POOL_18` |
+| 19 | `DeployIxGigantus` | `MILIARIUM_POOL_19` |
+| 20 | `DeployIxMagnix` | `MILIARIUM_POOL_20` |
+| 21 | `DeployIxNubix` | `MILIARIUM_POOL_21` |
+| 22 | `DeployIxMoneta` | `MILIARIUM_POOL_22` |
+| 23 | `DeployIxColossix` | `MILIARIUM_POOL_23` |
+| 24 | `DeployIxVitalix` | `MILIARIUM_POOL_24` |
+| 25 | `DeployIxMedicix` | `MILIARIUM_POOL_25` |
+| 26 | `DeployIxMercatura` | `MILIARIUM_POOL_26` |
+| 27 | `DeployIxAurix` | `MILIARIUM_POOL_27` |
+| 28 | `DeployIxMetallum` | `MILIARIUM_POOL_28` |
+
+Slots 04 and 07 are absent by design: ixViatica and ixCambio were descoped to the Stage-O composition-challenge path at PB-D8, so the constellation launches 26 of 28. The gaps are expected and are not missed deployments.
+
+**All 26 broadcast from the canonical deployer.** Generation 1 could not: `BODENSEE_SALT` held the value 2, which collided with ixAetheron's slot-derived salt in the factory's CREATE3 namespace, so slot 02 went out from a second EOA and then, after the rate-provider collision at PB-D47, from a third. Both deviations are retired here by the salt move recorded in section 6, so the nonce sequence stays contiguous and every pool address is re-derivable from `0xA851478dbee97375E784e9b98c0D7D599662bF85` alone. Do not reintroduce a second sender: if `DeploymentFailed()` appears at any pool, stop and re-check the salt rather than switching keys.
+
+Every one of the 26 keys must be in `.env` before phase 4. `DeployStageP` drives Stage I, M and N inside its own process and those read the keys directly, so a single missing key aborts the orchestrator partway through a sequence that has already broadcast.
+
+**Phase 4 — the orchestrator.**
+
+- Command: `forge script script/DeployStageP.s.sol:DeployStageP --slow`, otherwise the section 6 invocation form. `--slow` is mandatory here rather than optional: it confirms each transaction before sending the next, which is what leaves a stalled run a clean confirmed-versus-unsent boundary for `--resume` to recover from. Per PB-D49 (iii).
+- One invocation, one process, composing Stage F through Stage K per PB-D23 (vii). It threads its own intermediate addresses internally, so nothing between Stage F and Stage K needs capturing: `MILIARIUM_REGISTRY`, `TVL_ORACLE`, `EFFICIENCY_ORACLE`, `EMA_SAMPLER`, `CCB_MULTIPLIER`, `SWAP_AND_DEPOSIT`, `VAULT_CLASS_REGISTRY`, `GAUGE_REGISTRY`, `EMISSION_DISTRIBUTOR` and `BODENSEE_CHANNEL` are all set by the orchestrator on itself as it goes.
+- Reads from `.env`: everything phases 1 to 3 wrote, plus `EMERGENCY_MULTISIG`, consumed by `DeployStageK.s.sol` L125 and one of the keys missing from `.env.example`.
+- The run asserts its own post-conditions, including the four-way genesis check and the authorizer migration. A revert here stops the sequence with the base layer already live; it does not unwind.
+- A stall does not end the sequence, and phase 4 is the only phase with a recovery procedure of its own: `--resume` behind a mandatory nonce-reconciliation gate, in section 9. Do not re-invoke phase 4 from the top after a partial run — that redeploys all sixteen CREATEs at new addresses and orphans everything the stalled run already landed.
