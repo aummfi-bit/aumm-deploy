@@ -4,11 +4,11 @@ Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, held in t
 
 **Why this file exists.** `.gitignore` L6 excludes `broadcast/` and L15 excludes `.env.sepolia`, so forge's own run artifacts and the operator environment are both local-only and unversioned. Without this record a lost working tree would leave the chain as the sole source of truth, and the deployment would have to be reconstructed by forensics rather than read.
 
-**This chain carries TWO deployments, and only generation 2 is live.** Generation 1 is the contract set of sections 1, 7, 8, 10 and 11 together with the operations of sections 12, 13 and 14, each of which now carries a GENERATION 1 — ABANDONED banner. All of it was abandoned at PB3.13 per PB-D70, because F-23's corrected fee-routing hook cannot be swapped under a live constellation — the Vault seals `_hooksContracts` at registration, `AureumProtocolFeeController.FEE_ROUTING_HOOK` is immutable, and F-22's accepted residual leaves `setProtocolFeeController` unreachable by design — so everything pointing at the hook had to be redeployed. Only the 87 testnet stubs of section 2 survive, their addresses sealed by nothing on chain, and they are reused unchanged. Sections 3, 4, 5, 6 and 9 carry no banner because they narrate generation 1's execution rather than naming contracts. Two labels predate this split and are not products of it: nonces 87 to 89 in section 1 were already abandoned at PB-D32 for an unrelated EIP-170 reason, and slot 02 in section 8 was already superseded by section 10 at PB-D47. Generation 2 is recorded from section 15 onward and is the answer to any question about live Sepolia state.
+**This chain carries THREE deployments, and none of them is currently protocol-live.** Generation 1 is the contract set of sections 1, 7, 8, 10 and 11 together with the operations of sections 12, 13 and 14; it was abandoned at PB3.13 per PB-D70, because F-23's corrected fee-routing hook cannot be swapped under a live constellation — the Vault seals `_hooksContracts` at registration, `AureumProtocolFeeController.FEE_ROUTING_HOOK` is immutable, and F-22's accepted residual leaves `setProtocolFeeController` unreachable by design — so everything pointing at the hook had to be redeployed. Generation 2 is sections 15 through 19; it was abandoned at PB3.14 per PB-D71, its committed token-underlying map having carried generation 1's AuMM so that der Bodensee indexed under two of its three legs on an oracle with no re-index primitive, and the repair cascade closes over the whole generation through the same walls. Only the 87 testnet stubs of section 2 survive both abandonments, their addresses sealed by nothing on chain, and they are reused unchanged each time. Sections 3, 4, 5, 6 and 9 carry no banner because they narrate execution rather than naming contracts. Two labels predate the first split and are not products of it: nonces 87 to 89 in section 1 were already abandoned at PB-D32 for an unrelated EIP-170 reason, and slot 02 in section 8 was already superseded by section 10 at PB-D47. Generation 3 is recorded from section 20 onward and becomes the answer to any question about live Sepolia state as its broadcasts land; until then every generation-2 contract still holds code and state on chain, none of it protocol-live BY DECISION.
 
 ## 1. Base layer — nonces 87 to 98
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 | Nonce | Contract | Address | Block | Gas used | Transaction |
 | --- | --- | --- | --- | --- | --- |
@@ -107,16 +107,16 @@ Every step was confirmed at a second endpoint and at a later block than inclusio
 ## 6. Related
 
 - Projections confirmed by this record: `docs/STAGE_P_BIS_PHASE_A_RECORD.md` section 7.
-- Per-transaction detail for phase 4: `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`, all 114 rows.
-- Per-transaction detail for the rung-f TVL oracle wiring: `docs/STAGE_P_BIS_TVL_WIRING_LEDGER.md`, all 62 rows.
+- Per-transaction detail for phase 4: `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`, 228 rows across two generations.
+- Per-transaction detail for the TVL oracle wiring: `docs/STAGE_P_BIS_TVL_WIRING_LEDGER.md`, 124 rows across two generations.
 - Per-transaction detail for the Miliarium pool seeding: `docs/STAGE_P_BIS_POOL_SEEDING_LEDGER.md`, all 389 rows.
 - Full stub topology, all 87 contracts with nonces: `docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md`.
-- Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8.
+- Operator procedure: `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` sections 6 and 8 (generation 1, executed history); `docs/STAGE_P_BIS_SEPOLIA_REFRESH_RUNBOOK.md` (generations 2 and 3).
 - Decisions: PB-D19 the genesis offset, PB-D26 the token sort, PB-D27 the go-live architecture, PB-D30 hook before der Bodensee, PB-D32 through PB-D34 the EIP-170 blocker, PB-D35 and PB-D36 environment isolation, PB-D38 the resume branch.
 
 ## 7. Miliarium Aureum pools — nonces 99 to 123
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 Twenty-five of the twenty-six Miliarium Aureum pools are live. Slot 14 `ixAurebit` landed alone at nonce 99 in block 11377740; the remaining twenty-four went out as one sequence at nonces 100 through 123, blocks 11383588 to 11383898. Each is a CREATE3 deployment performed by the weighted-pool factory at `0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F` under the pool's slot-derived salt per E-D20, so the transaction recorded below is the factory `create` CALL sent by the deployer rather than a contract-creation transaction, and the pool address appears in forge's `additionalContracts` rather than in `contractAddress`.
 
@@ -160,7 +160,7 @@ Twenty-five of the twenty-six Miliarium Aureum pools are live. Slot 14 `ixAurebi
 
 ## 8. Slot 02 `ixAetheron` — the second-sender deviation
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 Slot 02 was broadcast from a second EOA, `0xbF7BE08923CB549721CDba6516e0Cc9ae0f68A8e`, rather than from the deployer named at the head of this record. The cause is a CREATE3 namespace collision, not a policy preference: ixAetheron's salt is `bytes32(uint256(2))`, slot-derived per E-D20, and der Bodensee was already created through this same factory by the canonical deployer under `BODENSEE_SALT`, which also holds the value 2. `BasePoolFactory._computeFinalSalt` is `keccak256(abi.encode(msg.sender, block.chainid, salt))`, so an identical sender, chain and salt yield an identical address, and `CREATE3.deploy` onto an occupied salt reverts `DeploymentFailed()`. Changing the sender is what changes the address, because `msg.sender` is hashed into the salt. Measured rather than argued: `getDeploymentAddress(bytes32(uint256(2)))` called with the canonical deployer as `--from` returns `0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798`, which is der Bodensee, live at nonce 97.
 
@@ -186,7 +186,7 @@ This address sits inside the nonce 0 to 86 batch of section 2 and its individual
 
 ## 10. Slot 02 `ixAetheron` redeployed — the third-sender broadcast
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 The replacement anticipated in section 9 is live. `ixAetheron` now carries the recovered `ERC4626RateProvider` on its weETH leg, and is registered, empty and correct.
 
@@ -208,7 +208,7 @@ The replacement anticipated in section 9 is live. `ixAetheron` now carries the r
 
 ## 11. Phase 4 — the Stage F through K orchestration, nonces 125 to 238
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 Phase 4 broadcast on 2026-08-02 and completed in a single invocation. `DeployStageP.run()` composed Stages J, F, G, H, I, M, N, L and K, deploying sixteen contracts and firing ninety-eight wiring calls across 114 transactions, nonces 125 to 238 contiguous, in blocks 11403323 to 11403470. Total gas 27,666,605 at an average 1.057445744 gwei, for 0.029383870046196392 ETH. Every transaction succeeded — the artifact carries 114 receipts against 114 transactions with no status other than success, so the section 8f no-receipts gap never opened and the PB-D49 resume path, provisioned before the send and gated behind a mandatory nonce reconciliation, was never needed.
 
@@ -247,7 +247,7 @@ The full per-transaction ledger, all 114 rows, is `docs/STAGE_P_BIS_PHASE_4_LEDG
 
 ## 12. TVL oracle wiring — PB3.8 rung f, nonces 239 to 300
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 The `TVLOracle` deployed at nonce 126 is populated. `script/WireTVLOracleSepolia.s.sol` broadcast on 2026-08-02 as 62 transactions at nonces 239 to 300 contiguous, in blocks 11404897 to 11404966, for 3,264,803 gas at an average 1.049261769 gwei, or 0.00341643207547946 ETH. Sixty `setTokenUnderlying` calls wrote the entire committed map, after which `addConstellationPool` seated der Bodensee as a constellation venue and `addHopUnderlying` seeded the single PB-D43 (vi) hop intermediate. Every transaction succeeded, 62 receipts against 62 transactions. The run deploys no contract, so this section carries no address table — the sixteen addresses phase 4 produced are in section 11, and the oracle itself is the nonce-126 row there.
 
@@ -263,7 +263,7 @@ The full per-transaction ledger, all 62 rows carrying the token-to-underlying ar
 
 ## 13. Miliarium pool seeding — all 26 pools capitalised, nonces 301 to 689
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 All 26 Miliarium Aureum pools hold balances. `script/SeedMiliariumPoolsSepolia.s.sol` broadcast on 2026-08-02 as 389 transactions at nonces 301 to 689 contiguous, in blocks 11405061 to 11405532, for 33,643,685 gas at an average 1.053155202 gwei, or 0.035700732881202711 ETH. The breakdown is 177 `approve`, 127 `mint`, 59 `deposit` and 26 `initialize` — one initialize per pool, the remainder the PB-D46 funding path, which mints each leg, routes WITH_RATE legs through a real `deposit` rather than a bare mint, and carries every token through the two-step Permit2 allowance before the Router is called. Every transaction succeeded, 389 receipts against 389 transactions. The run deploys no contract, so this section carries no address table.
 
@@ -287,7 +287,7 @@ The full per-transaction ledger, all 389 rows carrying the seeding amounts as ac
 
 ## 14. Phase 5 — the F-09 Router seat, nonces 690 and 691
 
-**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. The live set is generation 2, from section 15 onward.
+**GENERATION 1 — ABANDONED.** Every contract named in this section was abandoned by the generation-2 refresh at PB3.13 per PB-D70 (i). The table and narrative below are unchanged executed history, accurate as of generation 1, and do NOT describe live protocol state. Generation 2, from section 15 onward, was itself abandoned per PB-D71; the live set is generation 3, from section 20 onward.
 
 The canonical Router is seated as a trusted router on the fee-routing hook. Two governor-signed transactions were sent on 2026-08-05 from the deployer EOA, which is also `GOVERNANCE_MULTISIG` on this chain per PB-D23 (iv), for 94,026 gas total, or 0.000102087744842786 ETH. Both succeeded. No script performs this step — `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4) — so both were sent with `cast send` against the deployed hook rather than through a broadcast script.
 
@@ -311,6 +311,8 @@ The router seated is the canonical Balancer V3 `Router` at `0xF0495705D3AFeC43A6
 **What remains.** Phase 6 explorer verification is closed: 50 contracts are verified on Sepolia Etherscan as of 2026-08-07 — the eleven of section 1, the twenty-five of section 7, slot 02 of section 10, and thirteen of the sixteen of section 11 — with three phase-4 contracts and the abandoned set at nonces 87 to 89 deliberately unverified per PB-D67. der Bodensee is registered and unseeded, deferred to PB3.9 behind genesis at block 11477620 per PB-D41. PB3.6 closed the F-22 fix and PB3.7 delivered `deployments/11155111.json`; PB3.9 has not started, and PB3.10 has opened at its PB-D66 lock.
 
 ## 15. GENERATION 2 — base layer, nonces 692 to 700
+
+**GENERATION 2 — ABANDONED.** Every contract named in this section was abandoned by the generation-3 refresh at PB3.14 per PB-D71. The table and narrative below are unchanged executed history, accurate as of generation 2, and do NOT describe live protocol state. The live set is generation 3, from section 20 onward.
 
 The first broadcast of the generation-2 refresh per PB-D70, executed 2026-08-13 under the phase A of `docs/STAGE_P_BIS_PHASE_A_RECORD.md` sections 8 and 9 (`n0 = 692`) and the procedure of `docs/STAGE_P_BIS_SEPOLIA_REFRESH_RUNBOOK.md`. The rung i pre-flight ran first and is recorded here per PB-D70 (xi): all 68 addresses of `.env.sepolia`'s `STUB_` block held code against live Sepolia with zero codeless results, the committed `test-stubs/sepolia-stubs.env` was verbatim-present in the operator file, and the deployer read nonce 692 with balance 5.782928979297694346 SepETH — the fourth consecutive wei-identical reading since 2026-08-11. The `asset()` probes were not repeated, discharged structurally per PB-D70 (xix).
 
@@ -347,6 +349,8 @@ The first broadcast of the generation-2 refresh per PB-D70, executed 2026-08-13 
 **Step 7 closed the base layer, and its gas figure returned to exact twinning.** The canonical byte-unmodified Balancer V3 `Router` deployed at the nonce-700 address the phase B simulation had matched against `cast compute-address` before the send, consuming 5,024,459 gas, byte-identical to nonce 98 — even the printed limit of 6,531,796 reproduced generation 1's to the gas. Both `ROUTER` and `AUREUM_ROUTER` were captured to the one address per PB-D70 (xix), each a replacement of its generation-1 value: the pair is asymmetric, `ROUTER` read by no script and `AUREUM_ROUTER` by the seeding at `script/SeedMiliariumPoolsSepolia.s.sol` L96, so a missed second write would have left generation 1's Router to bind three hundred transactions into that run. Cost 0.0055451944332059 SepETH at 1.1036401 gwei; balance after step 7: 5.735100885141608431 SepETH, reconciled to zero wei. THE BASE LAYER IS COMPLETE: nine transactions at nonces 692 to 700 contiguous, blocks 11482786 to 11483068, 0.047828094156085915 SepETH in total — the seven per-step costs of this section sum to the opening-to-closing balance delta without remainder — every address at its phase A projection or captured from forge's own artifact, and every one sent from the canonical deployer, the property the relocated salt now carries into phase 3, where generation 1 lost it to three senders. What remains is phases 3 through 6 per the refresh runbook — the 26 pools behind the PB-D70 (xx) delete-then-discriminate gate, the orchestration, the Router seat and explorer verification — then the rung f wiring and the rung i2 seeding per PB-D70 (xiv).
 
 ## 16. GENERATION 2 — the 26 Miliarium Aureum pools, nonces 701 to 726
+
+**GENERATION 2 — ABANDONED.** Every contract named in this section was abandoned by the generation-3 refresh at PB3.14 per PB-D71. The table and narrative below are unchanged executed history, accurate as of generation 2, and do NOT describe live protocol state. The live set is generation 3, from section 20 onward.
 
 Every one of the twenty-six pools is live, deployed 2026-08-13 and 2026-08-14 behind the PB-D70 (xx) delete-then-discriminate gate. Each is a CREATE3 deployment performed by the generation-2 weighted-pool factory at `0x58fCdbE48C0e4c448864F75804AE788FAa6B5884` under the pool's slot-derived salt per E-D20, so the transaction recorded below is the factory `create` CALL sent by the deployer and the pool address appears in forge's `additionalContracts` rather than in `contractAddress`. Every row here was generated from those artifacts by a terminal-side generator rather than transcribed, per §8f and the PB-D44 derive-then-assert pattern.
 
@@ -395,6 +399,8 @@ Slots 04 and 07 are absent by design, ixViatica and ixCambio having been descope
 
 ## 17. GENERATION 2 — phase 4, the Stage F through K orchestration, nonces 727 to 840
 
+**GENERATION 2 — ABANDONED.** Every contract named in this section was abandoned by the generation-3 refresh at PB3.14 per PB-D71. The table and narrative below are unchanged executed history, accurate as of generation 2, and do NOT describe live protocol state. The live set is generation 3, from section 20 onward.
+
 Phase 4 broadcast on 2026-08-14 and completed in a single invocation under `--slow`. `DeployStageP.run()` composed Stages J, F, G, H, I, M, N, L and K, deploying sixteen contracts and firing ninety-eight wiring calls across 114 transactions, nonces 727 to 840 contiguous, in blocks 11487716 to 11487876. Total gas 28,705,905 at an average 1.065404127 gwei, for 0.030537398084562686 SepETH. Every transaction succeeded, the artifact carrying 114 receipts against 114 transactions with no status other than success, so the section 8f no-receipts gap never opened and the PB-D49 resume path, provisioned before the send behind a mandatory nonce reconciliation, was never needed.
 
 The full per-transaction ledger, all 114 rows, is the GENERATION 2 section of `docs/STAGE_P_BIS_PHASE_4_LEDGER.md`. The sixteen contracts deployed are below.
@@ -431,6 +437,8 @@ The full per-transaction ledger, all 114 rows, is the GENERATION 2 section of `d
 **What remains at this broadcast.** Runbook phase 5, the F-09 Router seat, has not run: `DeployStageP` makes no `setTrustedRouter` call, structurally, per P-D26 (4), so the seat stands as two governor-signed transactions, `setGovernanceModule` first and one-shot with its admin burned in the same call, then `setTrustedRouter`. Phase 6, explorer verification, is outstanding for these sixteen, and unlike generation 1 it is not blocked: `ETHERSCAN_API_KEY` is present from the start, and all three contracts generation 1 had to exclude are deployed here from the corrected source whose absence caused the exclusion. `TVL_ORACLE` was captured into `.env.sepolia` from the broadcast artifact immediately after the run and discriminated against the generation-1 oracle per PB-D70 (xx), which unblocks the rung-f wiring; the pool seeding follows it.
 
 ## 18. GENERATION 2 — phase 5, the F-09 Router seat, nonces 841 and 842
+
+**GENERATION 2 — ABANDONED.** Every contract named in this section was abandoned by the generation-3 refresh at PB3.14 per PB-D71. The table and narrative below are unchanged executed history, accurate as of generation 2, and do NOT describe live protocol state. The live set is generation 3, from section 20 onward.
 
 The canonical Router is seated as a trusted router on the generation-2 fee-routing hook. Two governor-signed transactions were sent on 2026-08-14 from the deployer EOA, which is also `GOVERNANCE_MULTISIG` on this chain per PB-D23 (iv), for 94,114 gas total, or 0.000100077184196298 SepETH. Both succeeded. No script performs this step, `DeployStageP.s.sol` L255 recording that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4), so both were sent with `cast send` against the deployed hook rather than through a broadcast script.
 
