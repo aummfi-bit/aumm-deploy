@@ -48,10 +48,11 @@ import { SepoliaTokenUnderlyings } from "./config/SepoliaTokenUnderlyings.sol";
  * @dev AuMM is derived from the environment rather than from `SepoliaTokenUnderlyings` per PB-D71: it
  *      is the one address that changes every deployment generation by construction, and a committed
  *      table carrying it is what left generation 2's der Bodensee indexed under two of its three legs.
- *      `run()` rejects both abandoned generations by literal before it writes anything, self-maps the
- *      live value inside the same broadcast, and then refuses to roster der Bodensee unless every leg
- *      `getPoolTokens` reports resolves non-zero. That gate is deliberately post-write: a fresh oracle
- *      is all zeros, so the same assertion in phase one would revert every first run vacuously.
+ *      `run()` self-maps the live value inside the same broadcast, then refuses to roster der Bodensee
+ *      unless every leg `getPoolTokens` reports resolves non-zero — positive and generation-agnostic,
+ *      so ANY wrong `AUMM` value fails there, with no abandoned-address list to grow (PB-D71 (xiii)).
+ *      The gate is deliberately post-write: a fresh oracle is all zeros, so the same assertion in
+ *      phase one would revert every first run vacuously.
  *
  * @dev Env vars required (no defaults — a real broadcast must never silently fall back to zero):
  *
@@ -71,15 +72,6 @@ contract WireTVLOracleSepolia is Script {
     ///         the committed map at `HOP_INDEX`, so a reordering of either fails loudly rather than
     ///         seeding a hop nothing resolves to (PB-D43 (ii), RB-012).
     address internal constant HOP_UNDERLYING = 0xCc72810e4A91D2BDba70B380C9c41327D0E63169;
-
-    /// @notice Abandoned generation-1 AuMM; `run()` rejects this address before any write (PB-D71).
-    address internal constant ABANDONED_AUMM_GEN1 = 0xb8947f2fE2177d36f2f990300106f27c738DFC8D;
-
-    /// @notice Abandoned generation-2 AuMM; `run()` rejects this address before any write (PB-D71).
-    address internal constant ABANDONED_AUMM_GEN2 = 0x0bAA0093A8700A499760541f2c8e11f4cF4039a5;
-
-    /// @notice Thrown when the configured `AUMM` equals an abandoned generation's address.
-    error StaleAuMM(address configured);
 
     /// @notice Thrown when a der Bodensee pool token maps to the zero address after the map writes.
     error UnmappedBodenseeLeg(address token);
@@ -107,7 +99,6 @@ contract WireTVLOracleSepolia is Script {
         if (onChainGovernance != governor) revert NotOracleGovernance(governor, onChainGovernance);
 
         address aumm = vm.envAddress("AUMM");
-        if (aumm == ABANDONED_AUMM_GEN1 || aumm == ABANDONED_AUMM_GEN2) revert StaleAuMM(aumm);
 
         (address[] memory t, address[] memory u) = SepoliaTokenUnderlyings.pairs();
         if (u[HOP_INDEX] != HOP_UNDERLYING) revert HopSeedMismatch(HOP_UNDERLYING, u[HOP_INDEX]);
