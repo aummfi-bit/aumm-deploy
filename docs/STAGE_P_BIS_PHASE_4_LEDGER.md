@@ -2,7 +2,11 @@
 
 Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`.
 
-The complete per-transaction ledger for phase 4, the `DeployStageP` Stage F through K orchestration. Generated from `broadcast/DeployStageP.s.sol/11155111/run-latest.json` rather than transcribed, and regenerating it must reproduce this file byte for byte. `broadcast/` is gitignored, so this is the committed record of what that artifact holds. Deployed addresses, aggregate figures and narrative are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` section 11.
+The complete per-transaction ledger for phase 4, the `DeployStageP` Stage F through K orchestration, across both deployments this chain carries. Each section is generated from `broadcast/DeployStageP.s.sol/11155111/run-latest.json` at the time of its own broadcast rather than transcribed. `broadcast/` is gitignored and holds only the most recent run per script, so this file is the committed record of what that artifact held for generation 1 and holds for generation 2. Deployed addresses, aggregate figures and narrative are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`, section 11 for generation 1 and section 17 for generation 2.
+
+## GENERATION 1 — ABANDONED
+
+Abandoned at PB3.13 per PB-D70 along with every other generation-1 contract, and retained as the record of what was sent. These rows can no longer be regenerated: forge keeps one artifact per script and generation 2 has overwritten it, which is precisely why this file exists.
 
 Transactions 114, receipts 114, every one successful. Nonces 125 to 238, contiguous. Blocks 11403323 to 11403470. Total gas 27,666,605.
 
