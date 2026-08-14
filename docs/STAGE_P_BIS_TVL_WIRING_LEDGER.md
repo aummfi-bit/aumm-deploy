@@ -2,9 +2,13 @@
 
 Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`, who is also `GOVERNANCE_MULTISIG` on Sepolia per PB-D23 (iv) and held the oracle governance at the time of this run.
 
-The complete per-transaction ledger for PB3.8 rung f, the `WireTVLOracleSepolia` run that populated `TVLOracle` at `0xBf78A49b1AB86247198f6660Bf5a0491007E6A64`. Generated from `broadcast/WireTVLOracleSepolia.s.sol/11155111/run-latest.json` rather than transcribed, and regenerating it must reproduce this file byte for byte. `broadcast/` is gitignored, so this is the committed record of what that artifact holds. Narrative and aggregates are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` section 12.
+The complete per-transaction ledger for the `WireTVLOracleSepolia` oracle-wiring runs, across both generations this chain carries. Each section is generated from `broadcast/WireTVLOracleSepolia.s.sol/11155111/run-latest.json` at the time of its own broadcast rather than transcribed. `broadcast/` is gitignored and holds only the most recent run per script, so this file is the committed record of what that artifact held for generation 1 and holds for generation 2. Narrative and aggregates are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`, section 12 for generation 1 and section 19 for generation 2.
 
-The arguments column is the token-to-underlying pair as actually sent, independently checkable against the committed map in `script/config/SepoliaTokenUnderlyings.sol`.
+The arguments column is the token-to-underlying pair as actually sent, independently checkable against `script/config/SepoliaTokenUnderlyings.sol` as that table stood at each run's broadcast. The table is tracked, so each revision is recoverable from git history; PB-D71 removes its index-59 AuMM entry, which both of these runs sent as their sixtieth pair.
+
+## GENERATION 1 — ABANDONED
+
+Abandoned at PB3.13 per PB-D70 along with every other generation-1 contract, and retained as the record of what was sent. This run populated the generation-1 oracle at `0xBf78A49b1AB86247198f6660Bf5a0491007E6A64`. These rows can no longer be regenerated: forge keeps one artifact per script and generation 2 has overwritten it, which is precisely why this file exists.
 
 Transactions 62, receipts 62, every one successful. Nonces 239 to 300, contiguous. Blocks 11404897 to 11404966. Total gas 3,264,803.
 
