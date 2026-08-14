@@ -4,26 +4,33 @@ pragma solidity ^0.8.26;
 
 /**
  * @title SepoliaTokenUnderlyings
- * @notice Live-Sepolia `TVLOracle.tokenToUnderlying` seed map — 60 pairs derived at PB3.8e2.
+ * @notice Live-Sepolia `TVLOracle.tokenToUnderlying` seed map — 59 pairs derived at PB3.8e2,
+ *         the AuMM pair removed at PB3.14c1 per PB-D71.
  *
  * @dev SEPOLIA ONLY per PB-D44 (iv) / RB-010. Every address is a Sepolia stub or Sepolia-deployed
  *      contract and holds no code on mainnet; rung f asserts chain identity before it writes any
  *      entry. Derived against live Sepolia by `test-stubs/DeriveTokenUnderlyings.s.sol` at commit
- *      `d763273` and transcribed verbatim from `test-stubs/pb38e2-derived.log`.
+ *      `d763273` and transcribed verbatim from `test-stubs/pb38e2-derived.log`, minus that log's
+ *      index-59 AuMM pair: AuMM is the one address that changes every deployment generation by
+ *      construction, so it can never live in a committed table — the wiring script derives its
+ *      self-map from the `AUMM` env key at run time and discriminates it against both abandoned
+ *      generations (PB-D71). The log's generation-1 AuMM row stands in that file as derivation
+ *      history, never as a source.
  *
  *      No named constants, unlike the sibling `script/config/GaugeGenesisManifest.sol`: these are
  *      freshly CREATEd stubs whose only identity is the address itself, so any name would be
  *      invented at transcription time (PB-D44 (ii)). The array locals are `t` and `u` so the
- *      assignment block remains a whitespace-only diff against the derivation log (PB-D44 (iii)).
+ *      assignment block remains a whitespace-only diff against the derivation log's surviving
+ *      59 rows (PB-D44 (iii)).
  *
  *      Mapping convention per PB-D42: svZCHF self-maps so it equals the `SVZCHF` immutable (iii);
  *      other WITH_RATE wrappers map share to underlying through a live `asset()` read (iv);
- *      STANDARD and AuMM self-map. 47 entries self-map, 13 resolve away, those 13 pairwise
+ *      STANDARD tokens self-map. 46 entries self-map, 13 resolve away, those 13 pairwise
  *      distinct. Index 0's underlying is the single `addHopUnderlying` seed of PB-D43 (vi).
  */
 library SepoliaTokenUnderlyings {
     /// @notice Number of token-to-underlying pairs in the derived map.
-    uint256 internal constant PAIR_COUNT = 60;
+    uint256 internal constant PAIR_COUNT = 59;
 
     /**
      * @notice The derived pairs, index-aligned, both of length `PAIR_COUNT`.
@@ -153,7 +160,5 @@ library SepoliaTokenUnderlyings {
         u[57] = 0x843a146d1Efdb82A154354f042380A07Bd3A944A;
         t[58] = 0x8De8a94A21120296597552145BA28F81c99A9A5c;
         u[58] = 0x8De8a94A21120296597552145BA28F81c99A9A5c;
-        t[59] = 0xb8947f2fE2177d36f2f990300106f27c738DFC8D;
-        u[59] = 0xb8947f2fE2177d36f2f990300106f27c738DFC8D;
     }
 }
