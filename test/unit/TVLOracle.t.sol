@@ -195,6 +195,54 @@ contract TVLOracleTest is Test {
         assertTrue(oracle.isInGovernanceRoster(pool));
     }
 
+    function test_addConstellationPool_revert_unmappedPoolToken() public {
+        address pool = _addr(0x5001);
+        address token = _addr(0xA1);
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = IERC20(token);
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 1000e18;
+        mockExplorer.setPool(pool, tokens, balances);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.UnmappedPoolToken.selector, token));
+        oracle.addConstellationPool(pool);
+    }
+
+    function test_addConstellationPool_revert_unmappedSecondLeg() public {
+        address pool = _addr(0x5002);
+        address mapped = _addr(0xA2);
+        address unmapped = _addr(0xA3);
+        _mapToken(mapped, mapped);
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = IERC20(mapped);
+        tokens[1] = IERC20(unmapped);
+        uint256[] memory balances = new uint256[](2);
+        balances[0] = 1000e18;
+        balances[1] = 2000e18;
+        mockExplorer.setPool(pool, tokens, balances);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.UnmappedPoolToken.selector, unmapped));
+        oracle.addConstellationPool(pool);
+    }
+
+    function test_addConstellationPool_unmappedThenMapped_succeeds() public {
+        address pool = _addr(0x5003);
+        address token = _addr(0xA4);
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = IERC20(token);
+        uint256[] memory balances = new uint256[](1);
+        balances[0] = 1000e18;
+        mockExplorer.setPool(pool, tokens, balances);
+        vm.prank(GOVERNANCE);
+        vm.expectRevert(abi.encodeWithSelector(TVLOracle.UnmappedPoolToken.selector, token));
+        oracle.addConstellationPool(pool);
+        assertFalse(oracle.isInGovernanceRoster(pool));
+        _mapToken(token, token);
+        vm.prank(GOVERNANCE);
+        oracle.addConstellationPool(pool);
+        assertTrue(oracle.isInGovernanceRoster(pool));
+    }
+
     function test_setTokenUnderlying_revert_notGovernance() public {
         address attacker = _addr(0x9999);
         vm.prank(attacker);
