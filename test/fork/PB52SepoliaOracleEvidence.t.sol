@@ -17,11 +17,13 @@ import {SepoliaTokenUnderlyings} from "../../script/config/SepoliaTokenUnderlyin
 ///         the estimator varies, which is why PB-D52 (viii) prefers this over a live re-read: the two readings
 ///         differ in exactly one thing.
 /// @dev THE ONLY SEPOLIA-FORK TEST IN THE TREE. Every other file under `test/fork/` forks mainnet, so this one
-///      must be invoked file-scoped with `--fork-url sepolia` and never swept into a mainnet run. It also requires
-///      `.env` to be the Sepolia canonical set (`cp .env.sepolia .env`, never the reverse) per PB-D36, since it
-///      reads the base layer through `vm.envAddress`. It lives under `test/fork/` deliberately rather than in a
-///      sibling directory, because D35's unit invocation excludes `test/fork/**` and a new top-level directory
-///      would be swept INTO the unit pass, where it would fail for want of a fork URL.
+///      is invoked file-scoped and never swept into a mainnet run. Its base layer is PINNED to generation-1
+///      literals per PB-D71 (xiv) rather than read from the environment: a fork pinned at block 11410000 is a
+///      photograph, and an env read is a drift channel that broke this fixture when phase A moved the keys to
+///      generation 2. Zero `vm.envAddress` reads remain, and `SEPOLIA_RPC_URL` sits in both canonical env sets,
+///      so the test runs under either PB-D36 posture with no `cp` dance. It lives under `test/fork/` deliberately
+///      rather than in a sibling directory, because D35's unit invocation excludes `test/fork/**` and a new
+///      top-level directory would be swept INTO the unit pass, where it would fail for want of a fork URL.
 ///
 ///      Nothing here re-capitalises a pool, replays a seeding transaction, or writes to the live oracle. The only
 ///      writes are governance calls on the fresh in-process instance, per PB-D52 (viii)'s re-bind-means-its-own-
@@ -34,6 +36,18 @@ contract PB52SepoliaOracleEvidenceTest is Test {
     /// @notice Pinned above 11405532, the last block of the rung-i2 seeding, and below the head at authoring time.
     ///         Pinned rather than floating because the whole point is a reproducible measurement.
     uint256 internal constant FORK_BLOCK = 11410000;
+
+    /// @notice Generation-1 base layer, PINNED per PB-D71 (xiv): this fixture is a photograph of block 11410000,
+    ///         where these were the live addresses, so they are frozen here by design and must never be updated
+    ///         to a later generation. Deployment-record section 1, nonces 93, 94, 95 and 97; svZCHF is the
+    ///         generation-stable stub from the committed map, pinned anyway so no env read survives. The Vault
+    ///         doubles as the explorer argument exactly as production wires it, DeployStageP deriving
+    ///         VAULT_EXPLORER from VAULT.
+    address internal constant GEN1_VAULT = 0x9c7e8F56D12823609C28788d4b80a315CcC5fC80;
+    address internal constant GEN1_WEIGHTED_POOL_FACTORY = 0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F;
+    address internal constant GEN1_AUMM = 0xb8947f2fE2177d36f2f990300106f27c738DFC8D;
+    address internal constant GEN1_BODENSEE = 0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798;
+    address internal constant SVZCHF_STUB = 0x290a0E1dDc7de7e8588Aa1c15974FBd771c82700;
 
     /// @notice ixHelvetia's constellation slot; resolved to an address on chain rather than transcribed.
     uint256 internal constant IX_HELVETIA_SLOT = 1;
@@ -65,11 +79,11 @@ contract PB52SepoliaOracleEvidenceTest is Test {
         governor = makeAddr("pb52EvidenceGovernor");
 
         fixedOracle = new TVLOracle(
-            IVaultExplorer(vm.envAddress("AUREUM_VAULT")),
-            vm.envAddress("BODENSEE_POOL"),
-            vm.envAddress("SV_ZCHF"),
-            vm.envAddress("WEIGHTED_POOL_FACTORY"),
-            vm.envAddress("AUREUM_WEIGHTED_POOL_FACTORY"),
+            IVaultExplorer(GEN1_VAULT),
+            GEN1_BODENSEE,
+            SVZCHF_STUB,
+            GEN1_WEIGHTED_POOL_FACTORY,
+            GEN1_WEIGHTED_POOL_FACTORY,
             governor,
             new address[](0),
             new address[](0)
@@ -81,8 +95,9 @@ contract PB52SepoliaOracleEvidenceTest is Test {
         for (uint256 i = 0; i < t.length; i++) {
             fixedOracle.setTokenUnderlying(t[i], u[i]);
         }
+        fixedOracle.setTokenUnderlying(GEN1_AUMM, GEN1_AUMM);
         fixedOracle.setMiliariumRegistry(registry);
-        fixedOracle.addConstellationPool(vm.envAddress("BODENSEE_POOL"));
+        fixedOracle.addConstellationPool(GEN1_BODENSEE);
         fixedOracle.addHopUnderlying(u[0]);
         vm.stopPrank();
     }
