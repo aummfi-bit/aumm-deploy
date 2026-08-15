@@ -1,14 +1,16 @@
-# Stage P-bis — Sepolia refresh runbook (generation 2)
+# Stage P-bis — Sepolia refresh runbook
 
-**Audience:** the broadcast operator. This document is operational and standalone. The stage reader's account is `docs/STAGE_P_BIS_PLAN.md` PB3.13; the decision record is `docs/STAGE_P_BIS_NOTES.md` PB-D70.
+**Audience:** the broadcast operator. This document is operational and standalone. The stage reader's account is `docs/STAGE_P_BIS_PLAN.md` PB3.13 and PB3.14; the decision record is `docs/STAGE_P_BIS_NOTES.md` PB-D70 and PB-D71.
 
-**This is not the first-deploy runbook.** `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` is the generation-1 procedure as executed history and stays unamended per PB-D70 (x). Nothing here edits it. Where a section below repeats it the text is restated rather than cross-referenced, because an operator mid-broadcast must not be reading two documents.
+**This is not the first-deploy runbook, and it is not frozen.** `docs/STAGE_P_BIS_SEPOLIA_RUNBOOK.md` is the generation-1 procedure as executed history and stays unamended per PB-D70 (x). Nothing here edits it. THIS document is the live refresh procedure, amended in place for each generation rather than forked, because generation 2 never completed it — no seeding, no explorer verification — so there is no executed history here to freeze, and a per-generation sibling would triple the surface for one added dead generation per gate. Where a section below repeats the first-deploy runbook the text is restated rather than cross-referenced, because an operator mid-broadcast must not be reading two documents.
 
 **Chain:** Sepolia, chain id 11155111, per PB-D1.
 
-**Why generation 2 exists.** A corrected fee-routing hook cannot be swapped under a live constellation: the Vault seals `_hooksContracts` at registration, `AureumProtocolFeeController.FEE_ROUTING_HOOK` is immutable, and F-22's accepted residual leaves `setProtocolFeeController` unreachable by design. Everything pointing at the hook therefore redeploys, and the refresh carries five corrections in one batch — the F-23 hook, `recoverStrandedFees`, `GaugeEligibility`'s rail conjunct, the PB-D50-corrected `TVLOracle`, and the F-22 governance stack. Only the 87 testnet stubs survive. PB-D70 (i) and (ii).
+**Why this procedure exists, and why it runs a third time.** Generation 1 was abandoned at PB-D70: a corrected fee-routing hook cannot be swapped under a live constellation, the Vault sealing `_hooksContracts` at registration, `AureumProtocolFeeController.FEE_ROUTING_HOOK` being immutable, and F-22's accepted residual leaving `setProtocolFeeController` unreachable by design, so everything pointing at the hook redeploys. Generation 2 was abandoned at PB-D71 before it finished: its committed token-underlying table had frozen generation 1's AuMM, so der Bodensee indexed under two of its three legs on an oracle with no re-index primitive, and the same cascade closed over the whole generation. Generation 3 carries the PB-D70 five plus the three PB-D71 fixes — AuMM out of the committed table, the wiring script's env derivation and post-write completeness gate, and `addConstellationPool` reverting rather than skipping an unmapped leg. Only the 87 testnet stubs have survived both abandonments; nothing else on chain is protocol-live.
 
-**Status at authoring:** PB3.13 rung g1. Sections 3 onward land at g2 through g6.
+**Discrimination is now against TWO dead generations.** Every gate in this document that compares a captured value against an abandoned one checks generation 1 AND generation 2. The deployment record carries both: generation 1 in sections 1, 7, 10 and 11, generation 2 in sections 15, 16 and 17. A gate naming only one of them is stale and is a defect in this document.
+
+**Status:** PB3.14 rung f, the generation-3 pass. Generation 3 has not broadcast.
 
 ## 0. Safety posture
 
@@ -40,13 +42,14 @@ Six of these were already satisfied before this rung and are listed so the opera
 | # | Item | State | Gate |
 | --- | --- | --- | --- |
 | 1 | `SEPOLIA_RPC_URL` reachable, chain id 11155111 | verified at PB3.1, in continuous use since | — |
-| 2 | Deployer funded | 5.782928979297694346 SepETH read at PB3.13e against roughly 0.2 needed; not a gate this time | before phase 2 |
+| 2 | Deployer funded | 5.564497490174652909 SepETH read at PB3.14d3 against roughly 0.2 needed; not a gate this time | before phase 2 |
 | 3 | `ETHERSCAN_API_KEY` present in both canonical files | provisioned at PB3.5i; generation 1 authored this row ABSENT | before verification |
 | 4 | Canonical Permit2 at `0x000000000022D473030F116dDEE9F6B43aC78BA3` | verified at PB3.1 | — |
 | 5 | `script/config/mainnet-token-decimals.env` merged into `.env.sepolia` | committed at PB3.5b2 | before phase 2 |
 | 6 | `BODENSEE_SALT` outside the 1-28 Miliarium slot space | written at PB3.13f2 into both canonical files | before phase 2 |
-| 7 | All 87 stubs hold code, the 14 vaults resolve their recorded underlying, and the `STUB_` map is present in `.env.sepolia` | verified against the chain at PB3.13e | before phase 2 |
+| 7 | All 87 stubs hold code, the 14 vaults resolve their recorded underlying, and the `STUB_` map is present in `.env.sepolia` | verified against the chain at PB3.13e and unmoved by either abandonment, nothing on chain sealing a stub address | before phase 2 |
 | 8 | `.env` refreshed from `.env.sepolia`, `AUMM_ENV_CHAIN` reading sepolia | operator action at the pre-flight | before phase 2 |
+| 9 | The PB-D71 source fixes are in the working tree | `SepoliaTokenUnderlyings.PAIR_COUNT` reads 59 with no AuMM pair, `WireTVLOracleSepolia` carries `_writeAuMM` and `_assertBodenseeLegsMapped`, and `TVLOracle.addConstellationPool` reverts `UnmappedPoolToken`; landed PB3.14c1 through c3 | before phase 2 |
 
 ## 3. Prediction model
 
@@ -72,6 +75,8 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 4. **Orchestration.** `DeployStageP.run()`, one process, composing Stage F through Stage K and threading its own intermediate addresses internally.
 5. **Router seat.** The F-09 trusted-router seat. No script performs it: `DeployStageP.s.sol` L255 records that the orchestrator makes no `setTrustedRouter` call, structurally, per P-D26 (4). An unseated Router mints BPT but records nothing, so this step is load-bearing rather than cosmetic.
 6. **Verification.** Explorer verification of the deployed set.
+7. **Oracle wiring.** `WireTVLOracleSepolia` — the 59 committed `tokenToUnderlying` pairs plus the env-derived AuMM self-map, then `addConstellationPool` for der Bodensee, then the `addHopUnderlying` seed. Counted at section 5 row 11 and given its operator steps in section 7. Absent from generation 2's phase list, which is how that generation came to wire from ad-hoc commands against a stale committed table.
+8. **Pool seeding.** `SeedMiliariumPoolsSepolia` — capitalises all 26 Miliarium pools. Counted at section 5 row 12 and given its operator steps in section 7.
 
 ## 5. Per-step EOA transaction counts
 
