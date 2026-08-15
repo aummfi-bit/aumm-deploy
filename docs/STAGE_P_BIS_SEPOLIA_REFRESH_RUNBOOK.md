@@ -90,6 +90,10 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 
 **Row 9 is now a broadcast count.** Generation 1 recorded 114 from a `forge script` simulation and said so explicitly. The broadcast then landed 114 transactions at nonces 125 to 238 contiguous, so the figure is confirmed rather than merely projected.
 
+**Eleven of the twelve counts are now confirmed by TWO broadcasts, and the cells below still cite only the first.** Generation 2 re-ran every step except the seeding and reproduced each count exactly: the base layer at record section 15 nonces 692 to 700, the 26 pools at section 16 nonces 701 to 726, the orchestration at section 17 nonces 727 to 840 contiguous, the Router seat at section 18 nonces 841 and 842, and the wiring at section 19 nonces 843 to 904. Two independent deployments agreeing on every figure is stronger evidence for the PB-D28 (ii) invariance claim than the single run it was written against, and it is why phase A still does not re-derive these. Row 12 is the exception and carries single-generation evidence only: generation 2 was abandoned at the wiring and never seeded, so section 13 remains the sole measurement of 389.
+
+**Row 11's composition changes at generation 3 while its total does not.** Generation 2 wrote 60 map entries because its committed table held 60 pairs, one of them the stale AuMM that ended the generation. Generation 3 writes 59 committed pairs plus the env-derived AuMM self-map, which is the same 60 writes, then the roster call and the hop seed for 62. An operator reading `map entries written: 60` at phase 7 is therefore seeing the expected figure under a different and correct composition, not a coincidence to be checked past.
+
 | # | Step | Count | Measured from |
 | --- | --- | --- | --- |
 | 1 | `DeployTestnetStubs` | not run | PB-D70 (i) |
@@ -153,8 +157,10 @@ The base layer stays per-granular per PB-D23 (vii); the Stage F-to-K orchestrati
 - Command: `forge script script/DeployAuMM.s.sol:DeployAuMM`
 - Reads: `GENESIS_BLOCK`, `GOVERNANCE_MULTISIG`.
 - Set `GENESIS_BLOCK` immediately before this step, to the current Sepolia head plus one epoch of blocks per PB-D19, decoupling the emission clock from deploy time. `DeployAuMM.s.sol` L33 reads it with no `block.number` clamp, so the value is taken literally.
+- Before broadcasting, confirm the value differs from BOTH abandoned genesis blocks, generation 1's 11477620 and generation 2's 11583716. A2 deletes the key so an omitted write fails closed at `vm.envAddress`, but a value copied forward from either dead generation is present and wrong, and `DeployAuMM` seals it as an immutable with nothing downstream able to correct it.
 - Emits: `AuMM deployed at:` followed by the address.
-- Set in `.env.sepolia`: `AUMM`.
+- Set in `.env.sepolia`: `AUMM`. Then discriminate the captured value against generation 1's `0xb8947f2fE2177d36f2f990300106f27c738DFC8D` and generation 2's `0x0bAA0093A8700A499760541f2c8e11f4cF4039a5` before proceeding. This check lives here rather than in the wiring script by decision: PB-D71 (xiii) withdrew the script-side blocklist because the post-write completeness gate subsumes it for every wrong value EXCEPT one — a stale `TVL_ORACLE` paired with its own generation's stale `AUMM`, where the gate passes because that oracle's lake genuinely holds that AuMM. The runbook owns that case, and this is where it is owned.
+- `AUMM`'s consumer set widened at PB3.14c2 and now spans three steps rather than two: `DeployFeeRoutingHook` at step 5, `DeployDerBodensee` at step 6, and `WireTVLOracleSepolia` at phase 7, which self-maps it. A wrong value here therefore reaches the oracle as well as the hook.
 
 **Step 5 — fee routing hook.**
 
