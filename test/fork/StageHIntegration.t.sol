@@ -465,6 +465,7 @@ contract StageHTwoHopFallbackTest is StageHIntegrationFixture {
         tvlOracle.setTokenUnderlying(address(svZchf), address(svZchf));
         tvlOracle.setTokenUnderlying(address(susds), usds);
         tvlOracle.setTokenUnderlying(USDC, USDC);
+        tvlOracle.setTokenUnderlying(address(aumm), address(aumm));
 
         address[2] memory addrs;
         addrs[0] = USDC;
