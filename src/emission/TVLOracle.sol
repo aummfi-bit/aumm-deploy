@@ -83,6 +83,9 @@ contract TVLOracle is ITVLOracle {
     /// @notice Reverts when `addConstellationPool` or `addHopUnderlying` is called against an address already in the respective roster membership map.
     error AlreadyAdded(address pool);
 
+    /// @notice Reverts when `addConstellationPool` is handed a pool holding a Vault token with no `tokenToUnderlying` entry — the H-D9 skip flipped fail-closed per PB-D71 (viii), because an unindexed leg is silent and unrepairable in place.
+    error UnmappedPoolToken(address token);
+
     /// @notice Reverts when `setMiliariumRegistry` is called by a non-`registrySetter` caller — covers pre-seal unauthorized callers and all post-seal callers (F-D20 self-zero mechanic).
     error OnlyRegistrySetter();
 
@@ -174,7 +177,7 @@ contract TVLOracle is ITVLOracle {
 
     /**
      * @notice Appends `pool` to the governance leg of the H-D8 constellation roster (`_governanceAddedPools`) — append-only at Stage H.
-     * @dev H-D9 — `_underlyingToPools` reverse-map is indexed at write time. Reads `vaultExplorer.getPoolTokens(pool)` and appends `pool` under each Vault token's mapped `tokenToUnderlying` resolution; tokens with no `tokenToUnderlying` entry (zero-address resolution) are skipped without reverting — deferred indexing via `setTokenUnderlying` at H2a.6. Reverts `ZeroAddress` when `pool == address(0)`, `AlreadyAdded(pool)` on duplicate. Emits `ConstellationPoolAdded(pool)`.
+     * @dev H-D9 as amended by PB-D71 (viii) — `_underlyingToPools` reverse-map is indexed at write time. Reads `vaultExplorer.getPoolTokens(pool)` and appends `pool` under each Vault token's mapped `tokenToUnderlying` resolution; a token resolving to the zero address now reverts `UnmappedPoolToken(token)` rather than being skipped. The skip served H-D9's deferred-indexing model, in which `setTokenUnderlying` at H2a.6 could index a leg after the fact; PB-D45 made map-before-roster mandatory and generation 2 proved the deferral unrecoverable, the reverse map having no removal and no re-index primitive and `AlreadyAdded` barring a second attempt, so a silently unindexed leg is permanent on the deployed contract. Reverting is what a mainnet wiring inherits, including a bare `cast send` that no script mediates. Read-time skip-on-zero in `quoteSvZCHF` and `_venueRatio` is UNCHANGED — this is write-time indexing only. Reverts `ZeroAddress` when `pool == address(0)`, `AlreadyAdded(pool)` on duplicate. Emits `ConstellationPoolAdded(pool)`.
      * @param pool The constellation venue address to append.
      */
     function addConstellationPool(address pool) external onlyGovernance {
@@ -185,9 +188,8 @@ contract TVLOracle is ITVLOracle {
         IERC20[] memory tokens = vaultExplorer.getPoolTokens(pool);
         for (uint256 i = 0; i < tokens.length; i++) {
             address underlying = tokenToUnderlying[address(tokens[i])];
-            if (underlying != address(0)) {
-                _underlyingToPools[underlying].push(pool);
-            }
+            if (underlying == address(0)) revert UnmappedPoolToken(address(tokens[i]));
+            _underlyingToPools[underlying].push(pool);
         }
         emit ConstellationPoolAdded(pool);
     }
