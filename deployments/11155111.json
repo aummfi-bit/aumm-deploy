@@ -1,73 +1,58 @@
 {
   "baseLayer": {
     "AuMM": {
-      "address": "0xb8947f2fE2177d36f2f990300106f27c738DFC8D",
-      "nonce": 95,
+      "address": "0x4EA8488C4b3a65BD29e957b324215B17D984741a",
+      "nonce": 910,
       "status": "live"
     },
     "AureumAuthorizer": {
-      "address": "0x21E5f855B45943d18Fa2A76635A06D024d1f0E3A",
-      "nonce": 90,
+      "address": "0xaA639bDD292d78C2f9963285d0a74213e6E2CF47",
+      "nonce": 905,
       "status": "live"
     },
-    "AureumAuthorizerAbandoned": {
-      "address": "0x655efe2dd8728af106c933cd88a89646d2c7de02",
-      "nonce": 87,
-      "status": "abandoned"
-    },
     "AureumFeeRoutingHook": {
-      "address": "0x954c972170eC131364570658D42F14e833A08588",
-      "nonce": 96,
+      "address": "0xad301242bAc5F686375932De95A1C17c94200Ab8",
+      "nonce": 911,
       "status": "live"
     },
     "AureumProtocolFeeController": {
-      "address": "0xb424796989Ba0Baaaa879Db0C0d1FEf638fEa3ef",
-      "nonce": 91,
+      "address": "0x6df4712cbe3f946634d2a224C5fA02e4E9267aE1",
+      "nonce": 906,
       "status": "live"
-    },
-    "AureumProtocolFeeControllerAbandoned": {
-      "address": "0x985ea467837ee8c2598474e54395db8b0822ce1f",
-      "nonce": 88,
-      "status": "abandoned"
     },
     "AureumVaultFactory": {
-      "address": "0x0321Cc252D09C30E21D59B17f667c2e6e43f2855",
-      "nonce": 92,
+      "address": "0x161dd3f9D82c3b574e32E98Ad6b85736F8a782BD",
+      "nonce": 907,
       "status": "live"
     },
-    "AureumVaultFactoryAbandoned": {
-      "address": "0x6649f7a65b6937f6d2e46d4fb418ffb12079f560",
-      "nonce": 89,
-      "status": "abandoned"
-    },
     "DerBodenseePool": {
-      "address": "0xD258d7670f2F7B86d4cAdcE20eC922FB2A908798",
-      "nonce": 97,
+      "address": "0x7041226C4d87e3491fA3B36a367b7E6BeB6ed309",
+      "nonce": 912,
       "status": "live"
     },
     "Router": {
-      "address": "0xF0495705D3AFeC43A658D8451971c464df2CdF8a",
-      "nonce": 98,
+      "address": "0x5749eF148676Bc7dbe0147b85a5B3c6ce977F73A",
+      "nonce": 913,
       "status": "live"
     },
     "Vault": {
-      "address": "0x9c7e8F56D12823609C28788d4b80a315CcC5fC80",
-      "nonce": 93,
+      "address": "0xD71b3927Df8dd1c9C3b828C2a967E588442C4d7a",
+      "nonce": 908,
       "status": "live"
     },
     "VaultAdmin": {
-      "address": "0xb5e5690cdba0f0c41217cfa361ac424d1e356eb5",
-      "nonce": "via nonce 93 CALL",
+      "address": "0x50bccf3299260c6c92984a46d170407a71d53137",
+      "nonce": "via nonce 908 CALL",
       "status": "live"
     },
     "VaultExtension": {
-      "address": "0xac58bab6a4ad5019d3725eb456531eae96550d44",
-      "nonce": "via nonce 93 CALL",
+      "address": "0x0671d93dd6f55e863b9ec32a37e42f3c72952851",
+      "nonce": "via nonce 908 CALL",
       "status": "live"
     },
     "WeightedPoolFactory": {
-      "address": "0xC60E426294a06Fb95a6C1BB7A06219f794AAde8F",
-      "nonce": 94,
+      "address": "0xe22cA4A48D6A2A3A9862395AB2D8283Aec3b98F2",
+      "nonce": 909,
       "status": "live"
     }
   },
@@ -78,247 +63,241 @@
   ],
   "phase4": {
     "AuMMMinterRouter": {
-      "address": "0x71166f782df23a8f0af8769241c757c08d4998a8",
-      "nonce": 228,
+      "address": "0xeeb694200d562e31c70af9f6a6b6433e8bd468e9",
+      "nonce": 1043,
       "status": "live"
     },
     "AureumGovernance": {
-      "address": "0x2c5fc5953c42b7e0bf1a5062632fcccbc97f0a69",
-      "nonce": 226,
+      "address": "0xf9d44f6e7e8828d0ba16d6da144626843968a218",
+      "nonce": 1041,
       "status": "live"
     },
     "AureumGovernanceAuthorizer": {
-      "address": "0xd25f8510fbbc7fe0daebca3bb995b907211068b7",
-      "nonce": 227,
+      "address": "0x20c9bf9109929474f88eeafb09a699d1e2d16c0c",
+      "nonce": 1042,
       "status": "live"
     },
     "BodenseeBootstrapChannel": {
-      "address": "0x2325a6238ff80e5a4e8d8071ff1e949dcbcfb7cb",
-      "nonce": 141,
+      "address": "0x19a063265c728ecf272cba613eadf98a6c2c5650",
+      "nonce": 956,
       "status": "live"
     },
     "CCBMultiplier": {
-      "address": "0xdbb357259be8dfb17fcbf0503d9bab01e976f735",
-      "nonce": 129,
+      "address": "0xc51357d7eab97dcf1c12cb69c7b49dd29c9ba3ce",
+      "nonce": 944,
       "status": "live"
     },
     "EMASampler": {
-      "address": "0x51f8d9e771e5ec3a33555c15032110d034891b3a",
-      "nonce": 128,
+      "address": "0xdbf7df74e6c99f393dcb639f6e3de2dc84badf6b",
+      "nonce": 943,
       "status": "live"
     },
     "EfficiencyOracle": {
-      "address": "0x1e70661c3f1844c01be204e9df032b12d04110b3",
-      "nonce": 127,
+      "address": "0x65f02cee47765d19ae00894d09a86500b6430546",
+      "nonce": 942,
       "status": "live"
     },
     "EmissionDistributor": {
-      "address": "0x2933bc72f2ea002ece4a2270c7985b72cfd0a695",
-      "nonce": 142,
+      "address": "0x92a666f1b26b89d07b4625e351782ad63429070a",
+      "nonce": 957,
       "status": "live"
     },
     "GaugeEligibility": {
-      "address": "0x9b9304deb0230cab7780a66b184897d30f26cd78",
-      "nonce": 133,
+      "address": "0xaa270e7913d3c628577595b603843c3fe2b560e5",
+      "nonce": 948,
       "status": "live"
     },
     "GaugeRegistry": {
-      "address": "0xd6eee04ca4e27a3e2e395538f907b1dff523d987",
-      "nonce": 134,
+      "address": "0x82f2cbbde217601c8663ff7f473897b9d31a6dd3",
+      "nonce": 949,
       "status": "live"
     },
     "IncendiaryRegistry": {
-      "address": "0xe1304f04c7f9138f8932b71a18be7a7447cc93c1",
-      "nonce": 222,
+      "address": "0x1663d73420f505a4ad1d3ee82de286dfc8a62f7f",
+      "nonce": 1037,
       "status": "live"
     },
     "MiliariumRegistry": {
-      "address": "0xfbe5e161955fb75fa99010dcfc71bbbe6405a511",
-      "nonce": 125,
+      "address": "0xd94f4f5eba5a6f6c740aa4c045b70c1a7d4622e8",
+      "nonce": 940,
       "status": "live"
     },
     "SwapAndDepositToBodensee": {
-      "address": "0x5f716bd785d2990c6d42750091b0f2914c557f25",
-      "nonce": 131,
+      "address": "0x071de83bfe5bdcb3671a12682ae2940be5e3f413",
+      "nonce": 946,
       "status": "live"
     },
     "TVLOracle": {
-      "address": "0xbf78a49b1ab86247198f6660bf5a0491007e6a64",
-      "nonce": 126,
+      "address": "0xfb34437a952445b9bf22f7056376b9d8eead03c4",
+      "nonce": 941,
       "status": "live"
     },
     "VaultClassRegistry": {
-      "address": "0xf6d7a7e633a1bc8b8896b7849bbfa53001854af7",
-      "nonce": 132,
+      "address": "0xdcdd3cdac3d803be93a0788d990ba7eef0f7a1c0",
+      "nonce": 947,
       "status": "live"
     },
     "VotingWeight": {
-      "address": "0x2d2678488e3483f905930571c1b01d5e3a138674",
-      "nonce": 225,
+      "address": "0x4701e0081b603ac142719e998ade3070c21e7dc3",
+      "nonce": 1040,
       "status": "live"
     }
   },
   "pools": {
     "01": {
-      "address": "0xCFEDD49F254291aA67cFD725691Cd1C1Ecfe175f",
+      "address": "0x184d2e16c7d8523675eddf1e84e40f63194f901e",
       "name": "ixHelvetia",
-      "nonce": 100,
+      "nonce": 914,
       "status": "live"
     },
     "02": {
-      "address": "0x45014C1C6720DaD745F2a791521a6723d102aDD8",
+      "address": "0x0bad816f8d5be48ade1098ca3f587e4ff4d86d62",
       "name": "ixAetheron",
-      "nonce": "0, third sender",
+      "nonce": 915,
       "status": "live"
     },
-    "02-superseded": {
-      "address": "0xD259F35a138383Ac8b545F06C5eBADcA3f6a2890",
-      "name": "ixAetheron",
-      "nonce": "0, second sender",
-      "status": "superseded"
-    },
     "03": {
-      "address": "0xad0e87A433700F299Ee41fFd04D1e038521514e0",
+      "address": "0x95562d0c730e32b2f32e36319bb96d939a3b330b",
       "name": "ixCasper",
-      "nonce": 101,
+      "nonce": 916,
       "status": "live"
     },
     "05": {
-      "address": "0x2163d0668383759fa7CF6Da176ECC412c708CbF1",
+      "address": "0x3861a56c8ef64e6afa757e1d6ae985dc4699fb70",
       "name": "ixEdelweiss",
-      "nonce": 102,
+      "nonce": 917,
       "status": "live"
     },
     "06": {
-      "address": "0x78D54464715C7f77f084023918737DC6BfC0E204",
+      "address": "0xe2f25b49f03a92b68732a4849b8c9695197cb146",
       "name": "ixLibertas",
-      "nonce": 103,
+      "nonce": 918,
       "status": "live"
     },
     "08": {
-      "address": "0x6b3419CD3794A43c503be60ed58535C3cFeF3F51",
+      "address": "0x1498c39e5b2529a17d7f9704dd78839f3dc8503d",
       "name": "ixBrevis",
-      "nonce": 104,
+      "nonce": 919,
       "status": "live"
     },
     "09": {
-      "address": "0x378f2563A1731F89F32C05398fB8fDF71bfb451B",
+      "address": "0x3e2c3ee6651ae616dc1b0f4cbeaa25bffa9c7dbd",
       "name": "ixAltrix",
-      "nonce": 105,
+      "nonce": 920,
       "status": "live"
     },
     "10": {
-      "address": "0xc8921e3f691Af718D77339475B4a0AbA25a43eA6",
+      "address": "0xd14b67e7e090991b40587e046e339eae7c81cba9",
       "name": "ixMediox",
-      "nonce": 106,
+      "nonce": 921,
       "status": "live"
     },
     "11": {
-      "address": "0x2fe687F042432446988E67295E0fbbBA98d4C45E",
+      "address": "0x40e3edb7b67c0085087a63a56e98d4539be01acc",
       "name": "ixLongus",
-      "nonce": 107,
+      "nonce": 922,
       "status": "live"
     },
     "12": {
-      "address": "0x79e01791024173C534a1b286d9680864c5E75655",
+      "address": "0x882a5d955bc892709035f413630eb6a0d1abc9c0",
       "name": "ixStrata",
-      "nonce": 108,
+      "nonce": 923,
       "status": "live"
     },
     "13": {
-      "address": "0xfc438921AA48b3BEA513e2bc8e119E820E72C0E8",
+      "address": "0x930fbf39c4a1c6ddec584cf8679c0dedff953514",
       "name": "ixForum",
-      "nonce": 109,
+      "nonce": 924,
       "status": "live"
     },
     "14": {
-      "address": "0x7e7df0d96d8eb360bC973D6c68cDf42a051A2583",
+      "address": "0xbbc184e7b32fee57001e8337d898177037f87ddf",
       "name": "ixAurebit",
-      "nonce": 99,
+      "nonce": 925,
       "status": "live"
     },
     "15": {
-      "address": "0x93871abd6bD3e0625AF82a536B8B2A1E7FbA4f26",
+      "address": "0xe9cce5608c9cfd598f6fd0e0282e3545daad821e",
       "name": "ixRegistrum",
-      "nonce": 110,
+      "nonce": 926,
       "status": "live"
     },
     "16": {
-      "address": "0x6358045D14df6792902266d4BB8E2e567663fD84",
+      "address": "0x065a99c007d3e79a3ee34186a1766b1b9248b368",
       "name": "ixDebitum",
-      "nonce": 111,
+      "nonce": 927,
       "status": "live"
     },
     "17": {
-      "address": "0x891F3D4cEA1A8975071c61229076C8De2205a429",
+      "address": "0x67d20240e5b66ea4f36dd4b1803a8def13dc6106",
       "name": "ixEquitix",
-      "nonce": 112,
+      "nonce": 928,
       "status": "live"
     },
     "18": {
-      "address": "0x4f2E5bF8d91cD64c7FcbC092887AF5D7c9A5eb8e",
+      "address": "0x076c43a01367a59a673b1ff2d310de28fda6b8b7",
       "name": "ixInnovix",
-      "nonce": 113,
+      "nonce": 929,
       "status": "live"
     },
     "19": {
-      "address": "0x97385c238b2E20ED8882553838FCf01F8ddd1fd8",
+      "address": "0x7cb729df906c74a6e6c426460dc760ed5b384e59",
       "name": "ixGigantus",
-      "nonce": 114,
+      "nonce": 930,
       "status": "live"
     },
     "20": {
-      "address": "0xD5dA48b648687F297863cB7eAad20bC25C9f9afc",
+      "address": "0x1f5349272fbac8cfdded7b367783839fd386dc6b",
       "name": "ixMagnix",
-      "nonce": 115,
+      "nonce": 931,
       "status": "live"
     },
     "21": {
-      "address": "0x5cFAc5FD417081F72596d3A99c2D1a17412667b5",
+      "address": "0x20344eaa47af2f6c8fabf147b613a9670d7142c2",
       "name": "ixNubix",
-      "nonce": 116,
+      "nonce": 932,
       "status": "live"
     },
     "22": {
-      "address": "0xF5e338FaEE83096fcD375DBfaD33a42C654830d1",
+      "address": "0x1759f1387edd33095ae942ac2a28bcacac1468b1",
       "name": "ixMoneta",
-      "nonce": 117,
+      "nonce": 933,
       "status": "live"
     },
     "23": {
-      "address": "0x8BBe0A1Fe73CdE710a2Db2E069b040EE888bcE62",
+      "address": "0x98611af02cb8029c37ab0899e63bcde859058276",
       "name": "ixColossix",
-      "nonce": 118,
+      "nonce": 934,
       "status": "live"
     },
     "24": {
-      "address": "0x74A63e807EF64B0C1a5A3BA0Da2508E499f77920",
+      "address": "0xf9724403d0f2c8e4266b611224e218ad3e1f5541",
       "name": "ixVitalix",
-      "nonce": 119,
+      "nonce": 935,
       "status": "live"
     },
     "25": {
-      "address": "0xDE37541c154af244A3F90b669876d3cA194E830a",
+      "address": "0x66a5d9e266dc3d045fa8f7acfee3bde197fb6b82",
       "name": "ixMedicix",
-      "nonce": 120,
+      "nonce": 936,
       "status": "live"
     },
     "26": {
-      "address": "0x1657b73834113aA0f09971ada1B7f3A5f5521DaD",
+      "address": "0xf060ad16a2166dc336961c9748ec5cc3f6072128",
       "name": "ixMercatura",
-      "nonce": 121,
+      "nonce": 937,
       "status": "live"
     },
     "27": {
-      "address": "0x91748a5Fa6F79d0CCCbB62BF4796e2956AB1977E",
+      "address": "0x3096d3aec0314ec1921c938593673f273b6a827c",
       "name": "ixAurix",
-      "nonce": 122,
+      "nonce": 938,
       "status": "live"
     },
     "28": {
-      "address": "0xcEbf3dCa8C20FAe8F57836FCB3EC073c17478faD",
+      "address": "0x105b49613e1b59d27b7e7e7dd8aaa05a9332fc0d",
       "name": "ixMetallum",
-      "nonce": 123,
+      "nonce": 939,
       "status": "live"
     }
   },

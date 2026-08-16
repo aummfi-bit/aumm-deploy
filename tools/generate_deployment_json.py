@@ -16,28 +16,28 @@ RECORD = "docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md"
 LEDGER = "docs/STAGE_P_BIS_STUB_TOPOLOGY_LEDGER.md"
 OUT = "deployments/11155111.json"
 
-# Section-1 Contract cells are prose; map nonce -> canonical key stem.
+# Section-20 Contract cells are prose; map nonce -> canonical key stem.
 BASE_LAYER_KEYS = {
-    87: "AureumAuthorizer",
-    88: "AureumProtocolFeeController",
-    89: "AureumVaultFactory",
-    90: "AureumAuthorizer",
-    91: "AureumProtocolFeeController",
-    92: "AureumVaultFactory",
-    93: "Vault",
-    94: "WeightedPoolFactory",
-    95: "AuMM",
-    96: "AureumFeeRoutingHook",
-    97: "DerBodenseePool",
-    98: "Router",
+    905: "AureumAuthorizer",
+    906: "AureumProtocolFeeController",
+    907: "AureumVaultFactory",
+    908: "Vault",
+    909: "WeightedPoolFactory",
+    910: "AuMM",
+    911: "AureumFeeRoutingHook",
+    912: "DerBodenseePool",
+    913: "Router",
 }
 
-ABANDONED_NONCES = {87, 88, 89}
+# Generation 3 orphaned nothing. The PB-D32 EIP-170 trio belonged to generation 1's
+# nonces 87 to 89 and is unreachable from this generation's sections, so the set is
+# empty rather than deleted, which keeps the abandoned-key branch structurally live.
+ABANDONED_NONCES: set = set()
 
-# Section 1 carries a second table for the three contracts the nonce-93 CALL created
-# beside the Vault, keyed by contract name rather than by deployer nonce (PB-D67 (v)).
-# The CREATE3 proxy is listed so an unexpected fourth row still raises, and maps to
-# None because it carries no source and no protocol role.
+# Section 20 carries a second table for the three contracts the nonce-908 CALL created
+# beside the Vault, keyed by contract name rather than by deployer nonce (PB-D67 (v);
+# the generation-3 sibling table landed at PB3.14h1). The CREATE3 proxy is listed so an
+# unexpected fourth row still raises, and maps to None: no source, no protocol role.
 VAULT_SIBLING_KEYS = {
     "VaultAdmin": "VaultAdmin",
     "VaultExtension": "VaultExtension",
@@ -112,16 +112,16 @@ def expect_count(name: str, actual: int, expected: int) -> None:
 
 
 def parse_base_layer(record_text: str) -> dict:
-    rows = table_rows(section_body(record_text, 1))
+    rows = table_rows(section_body(record_text, 20))
     nonce_rows = [cells for cells in rows if isinstance(parse_nonce(cells[0]), int)]
     sibling_rows = [cells for cells in rows if not isinstance(parse_nonce(cells[0]), int)]
-    expect_count("section 1 nonce rows", len(nonce_rows), 12)
-    expect_count("section 1 vault-sibling rows", len(sibling_rows), 3)
+    expect_count("section 20 nonce rows", len(nonce_rows), 9)
+    expect_count("section 20 vault-sibling rows", len(sibling_rows), 3)
     base_layer = {}
     for cells in nonce_rows:
         nonce = parse_nonce(cells[0])
         if nonce not in BASE_LAYER_KEYS:
-            raise ValueError(f"section 1 nonce {nonce!r} missing from BASE_LAYER_KEYS")
+            raise ValueError(f"section 20 nonce {nonce!r} missing from BASE_LAYER_KEYS")
         stem = BASE_LAYER_KEYS[nonce]
         if nonce in ABANDONED_NONCES:
             key = stem + "Abandoned"
@@ -137,13 +137,13 @@ def parse_base_layer(record_text: str) -> dict:
     for cells in sibling_rows:
         name = unwrap(cells[0])
         if name not in VAULT_SIBLING_KEYS:
-            raise ValueError(f"section 1 sibling {name!r} missing from VAULT_SIBLING_KEYS")
+            raise ValueError(f"section 20 sibling {name!r} missing from VAULT_SIBLING_KEYS")
         key = VAULT_SIBLING_KEYS[name]
         if key is None:
             continue
         base_layer[key] = {
             "address": unwrap(cells[1]),
-            "nonce": "via nonce 93 CALL",
+            "nonce": "via nonce 908 CALL",
             "status": "live",
         }
     return base_layer
@@ -165,31 +165,24 @@ def parse_pool_row(cells, status: str) -> tuple:
 
 
 def parse_pools(record_text: str) -> dict:
-    rows7 = table_rows(section_body(record_text, 7))
-    rows8 = table_rows(section_body(record_text, 8))
-    rows10 = table_rows(section_body(record_text, 10))
-    expect_count("section 7 rows", len(rows7), 25)
-    expect_count("section 8 rows", len(rows8), 1)
-    expect_count("section 10 rows", len(rows10), 1)
+    rows = table_rows(section_body(record_text, 21))
+    expect_count("section 21 rows", len(rows), 26)
 
+    # Generation 3 seated all 26 pools in one section from the canonical deployer, so
+    # there is no salt-collision split and no superseded slot. Generation 1 needed
+    # sections 7, 8 and 10 because PB-D39 forced slot 02 onto a second and then a third
+    # sender; the relocated BODENSEE_SALT retired that, and section 21 is contiguous.
     pools = {}
-    for cells in rows7:
+    for cells in rows:
         slot, entry = parse_pool_row(cells, "live")
         pools[slot] = entry
-
-    # Live slot 02 from section 10, then superseded section 8 under a distinct key.
-    slot10, entry10 = parse_pool_row(rows10[0], "live")
-    pools[slot10] = entry10
-
-    slot8, entry8 = parse_pool_row(rows8[0], "superseded")
-    pools[f"{slot8}-superseded"] = entry8
 
     return pools
 
 
 def parse_phase4(record_text: str) -> dict:
-    rows = table_rows(section_body(record_text, 11))
-    expect_count("section 11 rows", len(rows), 16)
+    rows = table_rows(section_body(record_text, 22))
+    expect_count("section 22 rows", len(rows), 16)
     phase4 = {}
     for cells in rows:
         key = unwrap(cells[1])
@@ -232,11 +225,10 @@ def main() -> int:
     phase4 = parse_phase4(record_text)
     stubs = parse_stubs(ledger_text)
 
-    # 53 = PB-D65's measured 51 plus the two contracts the nonce-93 CALL created beside
-    # the Vault, which no committed artifact named until PB-D67 (v). The 51 was never
-    # wrong; it counted what the record then held. VaultAdmin and VaultExtension are
-    # live protocol contracts by every test that matters, so they enter the total
-    # rather than sitting outside it as a special case.
+    # 53 holds across both generations but is reached differently. Generation 1 was 14
+    # base-layer entries less the PB-D32 abandoned trio, 27 pools less the superseded
+    # slot 02, and 16 from phase 4. Generation 3 is 11, 26 and 16 with nothing excluded,
+    # which is why ABANDONED_NONCES is empty and pools carries no superseded key.
     live_total = live_count(base_layer) + live_count(pools) + live_count(phase4)
     expect_count("live protocol total", live_total, 53)
 
