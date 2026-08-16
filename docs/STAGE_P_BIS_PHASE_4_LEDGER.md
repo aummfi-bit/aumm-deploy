@@ -2,7 +2,7 @@
 
 Chain 11155111. Deployer `0xA851478dbee97375E784e9b98c0D7D599662bF85`.
 
-The complete per-transaction ledger for phase 4, the `DeployStageP` Stage F through K orchestration, across both deployments this chain carries. Each section is generated from `broadcast/DeployStageP.s.sol/11155111/run-latest.json` at the time of its own broadcast rather than transcribed. `broadcast/` is gitignored and holds only the most recent run per script, so this file is the committed record of what that artifact held for generation 1 and holds for generation 2. Deployed addresses, aggregate figures and narrative are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`, section 11 for generation 1 and section 17 for generation 2.
+The complete per-transaction ledger for phase 4, the `DeployStageP` Stage F through K orchestration, across all three deployments this chain carries. Each section is generated from `broadcast/DeployStageP.s.sol/11155111/run-latest.json` at the time of its own broadcast rather than transcribed. `broadcast/` is gitignored and holds only the most recent run per script, so this file is the committed record of what that artifact held at each generation in turn, and the earlier sections cannot be regenerated. Deployed addresses, aggregate figures and narrative are in `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`, section 11 for generation 1, section 17 for generation 2, and section 22 for generation 3.
 
 ## GENERATION 1 — ABANDONED
 
@@ -127,7 +127,9 @@ Transactions 114, receipts 114, every one successful. Nonces 125 to 238, contigu
 | 237 | CALL | — | `setAuthorizer(address)` | `0x9c7e8f56d12823609c28788d4b80a315ccc5fc80` | 11403469 | 38,274 | `0x6271e3ee61ed091b2aad8c3be1682ab5c802d8faf3260a7cdbdcb5e285f180e0` |
 | 238 | CALL | `VaultClassRegistry` | `setGovernanceContract(address)` | `0xf6d7a7e633a1bc8b8896b7849bbfa53001854af7` | 11403470 | 44,043 | `0xcae94c9dafefac6f8515276093d81d8a3fd9574eac876071107cce1259d0a962` |
 
-## GENERATION 2 — LIVE
+## GENERATION 2 — ABANDONED
+
+Abandoned at PB3.14 per PB-D71, before the generation ever finished: its committed token-underlying map had frozen generation 1's AuMM, so der Bodensee indexed under two of its three legs on an oracle with no re-index primitive. These 114 transactions all succeeded and none of them is the defect; what they wired is simply no longer live. Retained as the record of what was sent.
 
 Transactions 114, receipts 114, every one successful. Nonces 727 to 840, contiguous. Blocks 11487716 to 11487876. Total gas 28,705,905.
 
