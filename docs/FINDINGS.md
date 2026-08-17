@@ -266,7 +266,7 @@ The spec implies the following major Aureum-owned contract groups, none of which
 | **Fee router** | Swap fee tokens to sUSDS/svZCHF; one-sided deposit into der Bodensee. Either inside the existing fee controller or as a separate contract (F1 / OQ-1) | 0-1 new contracts depending on F1 resolution |
 | **Pool deployment** | der Bodensee Pool (three-token weighted, fixed 40/30/30, 0.75% fee); 28 Miliarium pools (mostly 52/16/32 with non-standard shapes in slots 01, 02, 05, 06, 07, 11) | Deployment scripts + per-pool config; the pools themselves are unmodified Balancer V3 weighted pools |
 | **Registry** | Miliarium Aureum registry of 28 slots with status (Active / Warning / Disqualified / Composition-Challenge) | 1 contract |
-| **Incendiary Boost** | F-2 priority skim, epoch-locked claims, 14-day duration, deposit-anything mechanic (also depends on swap-to-stablecoin from F1) | 1 contract |
+| **Incendiary Boost** | F-2 priority skim, FCFS walk-forward placement under one aggregate 15%-per-epoch cap, additive stacking, deposit-any-amount mechanic (also depends on swap-to-stablecoin from F1) | 1 contract |
 | **Time / epoch math** | Block ranges for protocol months, bi-weekly epoch boundaries, halving block calculation | 1 library |
 
 Appendix xxxvi's estimate of ~4,500 lines of new Solidity for audit scope is consistent with this list.
@@ -345,7 +345,7 @@ To avoid bloating this document with line-by-line contract specs, here's the hig
 | Gauge registry + eligibility (F-10, anti-gaming) | `src/gauge/` | Vault, time/epoch, AuMM emissions |
 | Governance voting (F-9 dampening, 20% quorum, 14-day qualification, 6-month on-ramp) | `src/governance/` | AuMT, time/epoch, AuMM (for proposal deposits via fee router) |
 | Fee router (swap-to-stablecoin + one-sided deposit) | `src/fee_router/` (new folder) | Vault, der Bodensee Pool, Aequilibrium routing |
-| Incendiary Boost (F-2 priority skim, 14-day epoch lock) | `src/incendiary/` | Fee router (uses same swap path), emission distributor |
+| Incendiary Boost (F-2 priority skim, aggregate 15%-per-epoch cap, walk-forward placement) | `src/incendiary/` | Fee router (uses same swap path), emission distributor |
 | Miliarium Aureum 28-slot registry | `src/registry/` | Gauge registry |
 | der Bodensee Pool deployment (script + config) | `script/pools/` | Vault, AuMM, sUSDS, svZCHF |
 | 28 Miliarium pool deployments (scripts + configs) | `script/pools/` | Vault, ixEDEL, svZCHF, theme tokens |
