@@ -1,5 +1,7 @@
 # Foundry
 out/
+# PB-D34 vault compiler profile output; required by DeployAureumVault. Regenerate: FOUNDRY_PROFILE=vault forge build
+out-vault/
 cache/
 broadcast/
 artifacts/
@@ -9,9 +11,12 @@ artifacts/
 # Individual lib/ contents are managed by git submodules.
 
 # Environment
+# .env.* covers every chain overlay and any hand-made backup, since PB-D36's
+# copy-and-refresh model makes stray copies easy to produce; the committed
+# template is the sole exception and must stay visible.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Python venv (for slither, added in Stage B)
 .venv/
