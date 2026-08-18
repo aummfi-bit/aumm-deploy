@@ -35,6 +35,7 @@ ROSTER = {
     "EmissionDistributor": "out/EmissionDistributor.sol/EmissionDistributor.json",
     "GaugeEligibility": "out/GaugeEligibility.sol/GaugeEligibility.json",
     "GaugeRegistry": "out/GaugeRegistry.sol/GaugeRegistry.json",
+    "IERC4626": "out/IERC4626.sol/IERC4626.json",
     "MiliariumRegistry": "out/MiliariumRegistry.sol/MiliariumRegistry.json",
     "Router": "out/Router.sol/Router.json",
     "TVLOracle": "out/TVLOracle.sol/TVLOracle.json",
@@ -43,7 +44,7 @@ ROSTER = {
     "WeightedPool": "out/WeightedPool.sol/WeightedPool.json",
 }
 
-EXPECTED_ROSTER_SIZE = 15
+EXPECTED_ROSTER_SIZE = 16
 
 # PB-D74 (iii). No out-vault/ artifact ships, so this records the fact the
 # provenance requirement exists to preserve rather than leaving it unstated.
