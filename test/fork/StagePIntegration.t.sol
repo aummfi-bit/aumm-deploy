@@ -6,6 +6,7 @@ import { Test } from "forge-std/Test.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
+import { AureumGovernanceAuthorizer } from "../../src/governance/AureumGovernanceAuthorizer.sol";
 import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
@@ -989,5 +990,31 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         vm.prank(lp);
         d.claim(pilotPools[0], lp);
         assertGt(aumm.balanceOf(lp), 0); // mint survives the halving-boundary straddle
+    }
+
+    /// @notice P1 C.4 — the 12-month emergency window binds one authorizer INSTANCE, not the
+    ///         protocol. A 2/3 vote installs a freshly-constructed `AureumGovernanceAuthorizer`
+    ///         carrying its own new `EMERGENCY_WINDOW_END_BLOCK` and an arbitrary emergency
+    ///         address, because `_executeProposal` performs NO execute-time sanity check on the
+    ///         candidate — the only gate is a propose-time `code.length != 0`. Repeatable before
+    ///         each window closes, so "no authority thereafter, ever" is false from step 7 on.
+    function test_P1_C4_voteInstallsFreshEmergencyWindowForArbitraryAddress() public {
+        address voter = makeAddr("p1_c4_voter");
+        _seatVoter(voter);
+        AureumGovernance gov = orchestrator.governance();
+        address attackerEOA = makeAddr("p1_c4_attackerEOA");
+        AureumGovernanceAuthorizer attacker =
+            new AureumGovernanceAuthorizer(address(gov), attackerEOA, address(vault));
+        assertGt(attacker.EMERGENCY_WINDOW_END_BLOCK(), block.number, "candidate carries a live window");
+        assertNotEq(address(vault.getAuthorizer()), address(attacker), "premise: not already seated");
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeVaultAuthorizerChange(address(attacker), svZchf);
+        vm.stopPrank();
+        _runProposal(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed), "executed");
+        assertEq(address(vault.getAuthorizer()), address(attacker), "arbitrary authorizer installed by vote");
+        assertEq(attacker.EMERGENCY_MULTISIG(), attackerEOA, "arbitrary emergency address now seated");
     }
 }
