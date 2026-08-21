@@ -353,4 +353,21 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         vm.prank(donor);
         helper.donate(svZchf, FEE_SVZCHF);
     }
+
+    /// @notice P1 A.3 — `donate` asserts an EXACT reserve delta, but the Vault re-derives the raw
+    ///         credited amount by rounding: upscale floors, downscale ceils. That round-trip is
+    ///         exact only while the rate is at or above par. One wei below par is enough to lose a
+    ///         wei on an amount that is not a clean multiple, and `:424-427` then reverts
+    ///         `ReserveDeltaMismatch`, bricking all six `propose*` entrypoints. The sibling hook was
+    ///         moved to a strict rise at PB-D68 (xvii); that fix was never backported here.
+    function test_P1_A3_belowParRateBricksDonate() public {
+        address donor = address(uint160(uint256(keccak256("donorA3"))));
+        helper.addAuthorizedDonator(donor);
+        uint256 amount = FEE_SVZCHF + 1;
+        deal(address(svZchf), address(helper), amount, true);
+        vm.mockCall(SV_ZCHF_RATE_PROVIDER, abi.encodeWithSignature("getRate()"), abi.encode(uint256(1e18 - 1)));
+        vm.expectPartialRevert(SwapAndDepositToBodensee.ReserveDeltaMismatch.selector);
+        vm.prank(donor);
+        helper.donate(svZchf, amount);
+    }
 }
