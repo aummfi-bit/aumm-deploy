@@ -323,4 +323,34 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         // real Vault, while `_currentReserve` keeps seeing frozen `balancesRaw`, so step-8 yields `ReserveDeltaMismatch`.
         vm.clearMockedCalls();
     }
+
+    /// @notice P1 A.2 — Mallory, holding 1 wei of svZCHF and no role, permanently bricks the
+    ///         `swapAndDeposit` rail that `GaugeRegistry.activateGauge` and
+    ///         `VaultClassRegistry.proposeVaultClass` both funnel through. The callback moves
+    ///         exactly `amount`, so the stray wei survives to the tail assertion at `:351-354`.
+    function test_P1_A2_strayWeiBricksSwapAndDeposit() public {
+        deal(address(svZchf), address(helper), FEE_SVZCHF, true);
+        address mallory = address(uint160(uint256(keccak256("mallory"))));
+        deal(address(svZchf), mallory, 1, true);
+        vm.prank(mallory);
+        svZchf.transfer(address(helper), 1);
+        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.HelperBalanceNonZero.selector, uint256(1)));
+        helper.swapAndDeposit(svZchf, FEE_SVZCHF);
+    }
+
+    /// @notice P1 A.2 — the same wei bricks the `donate` rail, which every one of the six
+    ///         `AureumGovernance.propose*` entrypoints funnels through via `_createProposal`.
+    ///         Tail assertion at `:381-384`; identical shape to `swapAndDeposit`.
+    function test_P1_A2_strayWeiBricksDonate() public {
+        address donor = address(uint160(uint256(keccak256("donor"))));
+        helper.addAuthorizedDonator(donor);
+        deal(address(svZchf), address(helper), FEE_SVZCHF, true);
+        address mallory = address(uint160(uint256(keccak256("mallory"))));
+        deal(address(svZchf), mallory, 1, true);
+        vm.prank(mallory);
+        svZchf.transfer(address(helper), 1);
+        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.HelperBalanceNonZero.selector, uint256(1)));
+        vm.prank(donor);
+        helper.donate(svZchf, FEE_SVZCHF);
+    }
 }
