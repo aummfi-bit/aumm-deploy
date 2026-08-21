@@ -11,6 +11,7 @@ import { VotingWeight } from "../../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
 import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
+import { SwapAndDepositToBodensee } from "../../src/gauge/SwapAndDepositToBodensee.sol";
 
 /**
  * @title StageKIntegrationFixture
@@ -247,5 +248,25 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
         vm.expectPartialRevert(IVaultErrors.PoolPaused.selector);
         vm.prank(proposer);
         gov.proposeVaultUnpause(svZchf);
+    }
+
+    /// @notice P1 A.4 — the `donateAuthorizer` key shuts down every `propose*` entry in one
+    ///         transaction and makes it permanent in a second. Step 1 removes governance from the
+    ///         allowlist (`:306`); step 2 sets the authorizer to an address nobody controls
+    ///         (`:286`, validated only against zero), freezing the allowlist forever. There is no
+    ///         redeployment path: `AureumGovernance.BODENSEE_CHANNEL` is immutable.
+    function test_P1_A4_donateAuthorizerPermanentlyBricksGovernance() public {
+        address proposer = address(uint160(uint256(keccak256("proposerA4"))));
+        deal(address(svZchf), proposer, 1_000e18, true);
+        vm.prank(proposer);
+        svZchf.approve(address(gov), 1_000e18);
+        swapAndDeposit.removeAuthorizedDonator(address(gov));
+        vm.expectPartialRevert(SwapAndDepositToBodensee.OnlyAuthorizedDonator.selector);
+        vm.prank(proposer);
+        gov.proposeVaultUnpause(svZchf);
+        address dead = address(0x00000000000000000000000000000000DeaDBeef);
+        swapAndDeposit.setDonateAuthorizer(dead);
+        vm.expectPartialRevert(SwapAndDepositToBodensee.OnlyDonateAuthorizer.selector);
+        swapAndDeposit.addAuthorizedDonator(address(gov));
     }
 }
