@@ -663,3 +663,23 @@ All 53 targets are verified on Sepolia Etherscan as of 2026-08-16. This phase br
 **`quoteSvZCHF` of AuMM still returns zero, and that remains liquidity rather than structure.** AuMM's only indexed venue is der Bodensee, which this phase does not seed, so the quote has no depth to walk and will not until PB3.9. The discriminator against generation 2's permanent zero is unchanged and still passes — `tokenToUnderlying` of AuMM returns the self-map written at nonce 1115.
 
 **Cost reconciles to zero wei, and the refresh is complete.** The deployer's balance moved from 5.347229288812638127 to 5.316662104309836821 SepETH, a delta of 30,567,184,502,801,306 wei against the run's own printed total of the same figure, and the nonce reads 1448, which is 1118 plus 330 exactly. All eight runbook phases have now executed on generation 3 — the base layer, the 26 pools, the Stage F through K orchestration, the Router seat, explorer verification, the oracle wiring and this seeding — at nonces 905 to 1447 unbroken, every transaction from the canonical deployer with no second sender anywhere.
+
+## 27. PP2 — operator key rotation; zero generation-3 seats moved (2026-08-21)
+
+Not a protocol broadcast. One SepETH transfer from the generation-3 deployer, then a keystore split and an env-file write. PP-D8 (iii) evaluated FALSE under PP-D21 (b): generation 3 is retired at the generation-4 refresh after the exit gate, so rotating its authority seats onto an EOA that generation 4 will not use is wasted work on a constellation being replaced. **Zero seats moved.** The four emission `setGovernanceContract`s, `setDonateAuthorizer` and `setAdmissionAuthority` stay on `0xA851478dbee97375E784e9b98c0D7D599662bF85`. The four seats that cannot rotate at all — `pauseManager` on all 27 pools, the hook's `governanceModule`, `_incendiaryAdmin`, `CCBMultiplier.registrySetter` — are C.1 and C.7; generation 4 is the fix. Section 20's deployer row is therefore still the live generation-3 principal.
+
+The transfer funded the new EOA so the leaked key no longer holds the bulk of the SepETH, and so a generation-4 refresh has a signer. Dust of 0.25 SepETH stays on the old EOA because it remains `GOVERNANCE_MULTISIG` and `pauseManager` until generation 4 retires those seats; a gasless key holds an emergency lever it cannot pull.
+
+| Field | Value |
+| --- | --- |
+| From (old EOA / `aumm-sepolia`) | `0xA851478dbee97375E784e9b98c0D7D599662bF85` |
+| To (new EOA / `aumm-sepolia-gen4`) | `0xbc52e83BfAa56997575EaBa8d33Fc2D47c6eFF4D` |
+| Value | `5066662104309836821` wei |
+| Dust left on from | `249978558770344000` wei (0.25 ether minus 21000 gas at 1021010936 wei) |
+| Pre-send from-balance | `5316662104309836821` wei |
+| Block | 11536209 |
+| Gas used | 21000 |
+| Transaction | `0xc8d41523ea42182d9bc50c512dc725601f304f3297684ffee33e045d79954d89` |
+| Status | 1 |
+
+The previously published next nonce of the old EOA was 1448; this send consumed one nonce of that EOA and that figure is stale by this transaction. It is not re-read here. Keystore account `aumm-sepolia` is unchanged (still the old EOA). New account `aumm-sepolia-gen4` holds the funded key. `DEPLOYER_PRIVATE_KEY` in `.env`, `.env.sepolia` and `.env.mainnet` derives to the new address; `ETHERSCAN_API_KEY` in the same three files is a new key, the old one revoked. `4b589bc` is no longer a valid object in this repository; `~/aumm-env-backup-20260818-145359` is deleted. Full command log: `docs/STAGE_P_PRIME_NOTES.md` §PP2.
