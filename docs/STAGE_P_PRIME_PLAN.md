@@ -2,7 +2,7 @@
 
 > **Status:** Stage P-prime OPEN — entry freeze locked (PP-D1—PP-D9 plus PP-D20 / PP-D21 / PP-D38 / PP-D39); PP2 (Workstream 0) executed 2026-08-21, residual CLOSED. Four sequenced workstreams per PP-D3: **(0)** operator security → **(A)** adjudication → **(B)** the patch cycle → **(C)** non-code findings → the seam-1 re-run exit gate. Companion to `STAGE_P_PRIME_NOTES.md` (the design-decision log, created at PP1.1); this file is the sub-step sequence + the Completion Log.
 >
-> **Last update:** 2026-08-21 — PP2 executed (keys rotated, PP2.3 skipped on chain, `4b589bc` pruned, backup deleted). Next: PP3.1 (`docs/STAGE_P_PRIME_QUEUE.md`). Regression baseline carried from P-bis: 1005 Part-A unit green, fork suites file-scoped per D35/D36.
+> **Last update:** 2026-08-21 — PP2 executed (keys rotated, PP2.3 skipped on chain, `4b589bc` pruned, backup deleted), then PP2.5 restored the PB-D36 (ix) keystore-only posture by emptying the three `DEPLOYER_PRIVATE_KEY` slots. Next: PP3.1 (`docs/STAGE_P_PRIME_QUEUE.md`). Regression baseline carried from P-bis: 1005 Part-A unit green, fork suites file-scoped per D35/D36.
 >
 > **Mode:** Opus high entry (§13 stage table) — every adjudication, every patch audit, every NOTES lock is an Opus beat; Sonnet only for read-back verdicts, commit drafts and Completion-Log rows.
 >
@@ -32,7 +32,7 @@ Three things distinguish this stage from P-bis's workstream A. First, the input 
 | Artifact | Workstream | Sub-step | Purpose |
 | --- | --- | --- | --- |
 | `docs/STAGE_P_PRIME_NOTES.md` — PP-D locks | — | PP1.1 | rationale for every decision in this file's table; the entry freeze |
-| rotated deployer key + Etherscan key; purged `4b589bc`; deleted env backup | 0 | PP2.1—PP2.4 | CLOSED 2026-08-21; residual `CLAUDE.md:450` called open is closed; PP2.3 skipped on chain |
+| rotated deployer key + Etherscan key; purged `4b589bc`; deleted env backup; keystore-only env posture | 0 | PP2.1—PP2.5 | CLOSED 2026-08-21; the residual `CLAUDE.md` §11 called open is closed; PP2.3 skipped on chain |
 | `docs/STAGE_P_PRIME_QUEUE.md` — the adjudication queue | A | PP3.3 | finding → root cause → verdict → fix intent → ordering constraints → done-criteria → F-NN; the patch cycle runs per-rung off this file without re-deriving judgment |
 | `test/whitehat/P1_*.t.sol` reproduction PoCs (one per root cause that reproduces) | A | PP3.2 | independent reproduction of each exploit path before its verdict; inverted to regressions in B |
 | whitehat ledger rows F-24 onward | A | PP3.4 | one row per distinct root cause (PP-D5), each naming every audit file it closes |
@@ -284,7 +284,8 @@ Mirror of `STAGE_P_PRIME_NOTES.md` (created at PP1.1; nothing is LOCKED until th
 - **PP2.2** — DONE 2026-08-21. New `ETHERSCAN_API_KEY` in all three env files (`keylen=34`); old key revoked in the dashboard.
 - **PP2.3** — DONE as skip. Documentation only; NO on-chain authority write. PP-D8 (iii)'s condition evaluates FALSE under PP-D21 (b), generation 3 being retired at the generation-4 refresh, so ZERO seats move: the rotatable seats (the four emission `setGovernanceContract`s, `setDonateAuthorizer`, `setAdmissionAuthority`) stay on the old EOA, and the four immutable seats (`pauseManager` ×27, `governanceModule`, `_incendiaryAdmin`, `registrySetter`) cannot move at all — that is C.1 and C.7 of the defect list, and generation 4 is the fix, not a rotation. `docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md` section 27 records the SKIP and its reason.
 - **PP2.4** — DONE 2026-08-21. `git reflog expire --expire=now --all && git gc --prune=now --aggressive` from the `stage-p-prime` main worktree; `4b589bc` is no longer a valid object. `--all -S` does not walk the reflog, so the load-bearing proof is `git grep` against `4b589bc` (hit list of env files, then invalid-object after prune), not a variable-name `-S`. Backup `pk=0` on every file (deployer key was never in env — keystore posture); leaked searchable value was `ETHERSCAN_API_KEY`. `~/aumm-env-backup-20260818-145359` deleted after the prune. Command log in NOTES §PP2.
-- Checkpoint: `CLAUDE.md` §11 names the 2026-08-21 rotation; the residual is CLOSED.
+- **PP2.5** — DONE 2026-08-21. The three `DEPLOYER_PRIVATE_KEY` slots emptied, restoring the PB-D36 (ix) keystore-only posture: PP2.1 had written the rotated key into all three env files at `keylen=66`, moving a secret out of an encrypted keystore into three plaintext files, `.env.mainnet` among them. Gated on `cast wallet address --account aumm-sepolia-gen4` deriving the funded address BEFORE any file was touched; purity proven per file by `shasum -a 256` over the file with that line excluded, identical across the edit; `pk_len=0` on all three after. Zero consumers: `git grep DEPLOYER_PRIVATE_KEY -- script/ test/ tools/ foundry.toml` returns nothing. PB-D36 (ix) needs no amendment, its empty-slot text being true again. Command log in NOTES §PP2.5.
+- Checkpoint: `CLAUDE.md` §11 names the 2026-08-21 rotation and the generation-4 signer `--account aumm-sepolia-gen4`; the residual is CLOSED; the three env key slots read empty.
 
 ### PP3 — Workstream A: adjudication
 - **PP3.1** — `docs/STAGE_P_PRIME_QUEUE.md` (create): 53 rows (51 root causes + 2 composites) in the §"Collapsed defect list" order, columns `RC | audit files | post-review severity | reproduction PoC | verdict | fix intent | ordering constraints (PP-D) | redeploy unit | done-criteria | F-NN`; `verdict`, `PoC` and `F-NN` empty at creation. One §8e.1.
@@ -332,3 +333,4 @@ PP6 is the stage's proof in the sense P10's fork validation was P's: the claim "
 | --- | --- | --- |
 | PP1.2 | `—` | docs/STAGE_P_PRIME_PLAN.md — plan + PP1—PP7 roadmap + Decisions + Completion Log — this commit |
 | PP2.1—PP2.4 | `—` | Workstream 0 executed 2026-08-21: keys rotated, PP2.3 skipped on chain, `4b589bc` pruned, backup deleted; NOTES §PP2 + deployment-record §27 + this file + `CLAUDE.md` §11 |
+| PP2.5a—PP2.5c | `—` | Keystore-only posture restored 2026-08-21: the three `DEPLOYER_PRIVATE_KEY` slots emptied per PB-D36 (ix). NOTES §PP2.5 at `5462411`; deployment-record §27 + `CLAUDE.md` §11 at `59da734`; this file this commit |
