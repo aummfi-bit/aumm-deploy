@@ -258,6 +258,25 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
         assertEq(bootstrapChannel.totalDistributed(), expected, "totalDistributed");
     }
 
+    /// @notice P1 E.1 — Mallory, holding 1 wei of AuMM and no role, permanently bricks
+    ///         `distribute()`, the only path that moves the F-0 bootstrap tranche into der
+    ///         Bodensee. The callback moves exactly `amount`, so the stray wei survives to the
+    ///         absolute-residual assertion at `:276-277` and reverts `HelperBalanceNonZero(1)`.
+    ///         Same shape as A.2 one contract over; PP-D11 groups the fix with it.
+    function test_P1_E1_strayWeiBricksDistribute() public {
+        uint256 g = aumm.GENESIS_BLOCK();
+        vm.roll(g + 1_000);
+        bootstrapChannel.accrue();
+        assertGt(bootstrapChannel.pendingAccrual(), 0, "precondition: tranche accrued");
+        address mallory = address(uint160(uint256(keccak256("malloryE1"))));
+        deal(address(aumm), mallory, 1);
+        vm.prank(mallory);
+        IERC20(address(aumm)).transfer(address(bootstrapChannel), 1);
+        vm.expectPartialRevert(BodenseeBootstrapChannel.HelperBalanceNonZero.selector);
+        vm.prank(GOVERNANCE_MULTISIG);
+        bootstrapChannel.distribute();
+    }
+
     // H-D39 — NotGovernance sad-path: non-governance caller is rejected even when pendingAccrual > 0
     function test_RevertWhen_DistributeCalledByNonGovernance() public {
         uint256 g = aumm.GENESIS_BLOCK();
