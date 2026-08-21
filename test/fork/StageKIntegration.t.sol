@@ -10,6 +10,7 @@ import { MiliariumRegistry } from "../../src/registry/MiliariumRegistry.sol";
 import { VotingWeight } from "../../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
+import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 
 /**
  * @title StageKIntegrationFixture
@@ -229,5 +230,22 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
         assertEq(realRegistry.slotOf(candidate), slot, "candidate bound to slot 5");
         assertTrue(!gaugeRegistry.isGaugeApproved(oldPool), "ixEdelweiss gauge revoked");
         assertTrue(gaugeRegistry.isGaugeApproved(candidate), "candidate gauge active");
+    }
+
+    /// @notice P1 A.1 — pausing der Bodensee bricks every `propose*` entry, including
+    ///         `proposeVaultUnpause`, the one proposal type that exists to exit a pause.
+    ///         `_createProposal` welds the bond to a live Vault `addLiquidity` on der Bodensee
+    ///         (`AureumGovernance.sol:211-214`), so the pool's own pause bit halts proposal
+    ///         creation. The exit is inside the door it opens. PP-D29 orders G.1 after this.
+    function test_P1_A1_pausedBodenseeBricksProposeVaultUnpause() public {
+        address proposer = address(uint160(uint256(keccak256("proposerA1"))));
+        deal(address(svZchf), proposer, 1_000e18, true);
+        vm.prank(proposer);
+        svZchf.approve(address(gov), 1_000e18);
+        vm.prank(GOVERNANCE_MULTISIG);
+        vault.pausePool(bodenseePool);
+        vm.expectPartialRevert(IVaultErrors.PoolPaused.selector);
+        vm.prank(proposer);
+        gov.proposeVaultUnpause(svZchf);
     }
 }
