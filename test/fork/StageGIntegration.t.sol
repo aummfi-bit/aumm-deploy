@@ -29,6 +29,9 @@ import { DeployAureumVault } from "../../script/DeployAureumVault.s.sol";
 import { DeployIxHelvetia } from "../../script/pools/DeployIxHelvetia.s.sol";
 import { DeployIxEdelweiss } from "../../script/pools/DeployIxEdelweiss.s.sol";
 import { DeployIxAurebit } from "../../script/pools/DeployIxAurebit.s.sol";
+import { ERC4626RateProvider } from "../../src/rate_provider/ERC4626RateProvider.sol";
+import { IxAetheronConfig } from "../../script/pools/configs/02_ixAetheron.s.sol";
+import { DeployIxAetheron } from "../../script/pools/DeployIxAetheron.s.sol";
 import { SwapAndDepositToBodensee } from "../../src/gauge/SwapAndDepositToBodensee.sol";
 import { VaultClassRegistry } from "../../src/gauge/VaultClassRegistry.sol";
 import { IVaultClassRegistry } from "../../src/gauge/IVaultClassRegistry.sol";
@@ -168,6 +171,16 @@ abstract contract StageGIntegrationFixture is Test {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("GOVERNANCE_MULTISIG", vm.toString(GOVERNANCE_MULTISIG));
 
+        // N-D7: the sfrxETH and wOETH yield cores are Aureum-deployed ERC4626RateProviders with no
+        // mainnet address, so their two env keys are seated here — in setUp, alongside the writes
+        // above, never in a case body — and must precede any DeployIxAetheron().run(). Placed after
+        // the awpf assert so no startNonce prediction (L98-108) shifts.
+        ERC4626RateProvider sfrxEthRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.SFRXETH));
+        ERC4626RateProvider wOethRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.WOETH));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("SFRXETH_RATE_PROVIDER", vm.toString(address(sfrxEthRp)));
+        /// forge-lint: disable-next-line(unsafe-cheatcode)
+        vm.setEnv("WOETH_RATE_PROVIDER", vm.toString(address(wOethRp)));
         pilotPools[0] = new DeployIxHelvetia().run();
         IERC20[] memory tokens0 = vault.getPoolTokens(pilotPools[0]);
         uint256[] memory amts0 = new uint256[](2);
