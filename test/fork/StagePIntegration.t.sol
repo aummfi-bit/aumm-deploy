@@ -8,6 +8,7 @@ import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
 import { AureumGovernanceAuthorizer } from "../../src/governance/AureumGovernanceAuthorizer.sol";
 import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
+import { GaugeEligibility } from "../../src/gauge/GaugeEligibility.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
 
@@ -1156,5 +1157,110 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
         assertTrue(govAllowed, "E.3 - governance authorized; the barrier is the missing path");
         assertEq(controller.getGlobalProtocolYieldFeePercentage(), 0, "E.3 - still zero after every attempt");
+    }
+
+    /// @dev C.6 veto-leg candidate — RAIL-LESS by construction: [sfrxETH 0.6, wOETH 0.4], neither
+    ///      svZCHF nor sUSDS, so AureumFeeRoutingHook.onRegister writes poolBodenseeDepositToken
+    ///      = address(0) and the PB-D69 conjunct stays live for the flag to move. Both are
+    ///      GaugeGenesisManifest-admitted classes (indices 6 and 7), so the CQG's 0.52e18
+    ///      admitted-4626 numerator is met at 100%; both carry a rate provider, so awpf's
+    ///      MIN_ERC4626_WEIGHT (52e16) is met at 100%. Those are different predicates and this
+    ///      pair clears each independently. sfrxETH (0xac3E) < wOETH (0xDcEe) on mainnet, so that
+    ///      order is the sorted one; swapping them reverts TokensNotSorted. Rate providers are
+    ///      constructed here rather than recovered from env: setUp's instances are locals, and a
+    ///      test must not write the process env (RB-023).
+    function _buildRailLessCandidate() internal returns (address candidate) {
+        ERC4626RateProvider sfrxEthRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.SFRXETH));
+        ERC4626RateProvider wOethRp = new ERC4626RateProvider(IERC4626(IxAetheronConfig.WOETH));
+        TokenConfig[] memory tokens = new TokenConfig[](2);
+        tokens[0] = TokenConfig({
+            token: IERC20(IxAetheronConfig.SFRXETH),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(address(sfrxEthRp)),
+            paysYieldFees: true
+        });
+        tokens[1] = TokenConfig({
+            token: IERC20(IxAetheronConfig.WOETH),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(address(wOethRp)),
+            paysYieldFees: true
+        });
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        candidate = awpf.create(
+            "P1 C6 Rail-less Candidate",
+            "C6CAND",
+            tokens,
+            weights,
+            PoolRoleAccounts({ pauseManager: address(0), swapFeeManager: address(0), poolCreator: address(0) }),
+            0.0075e18,
+            address(hook),
+            false,
+            false,
+            keccak256("p1_c6_railless_candidate")
+        );
+    }
+
+    /// @notice P1 C.6 veto leg — `admissionAuthority` annuls a CompositionChallenge that already
+    ///         passed, and the proposer's non-refundable bond is burned.
+    /// @dev Reproduction PoC for C.6's THIRD audit file,
+    ///      `admission-authority-vetoes-passed-composition-proposal` (M), completing rung 8
+    ///      alongside the StageG grant and rotation legs. `recoveryPathAdmitted` is the ONLY
+    ///      input to the composition gate a third party can falsify between propose and execute;
+    ///      every other input is immutable or written once at pool registration. The revert at
+    ///      beat 4 is the INNER `NoFeeRailAndNotAdmitted`, not `CompositionQualityGateFailed`:
+    ///      `GaugeRegistry.meetsCompositionQualityGate` is a bare pass-through (`:244-246`) with
+    ///      no try/catch, so eligibility's revert propagates and governance's
+    ///      `if (!...) revert CompositionQualityGateFailed` at `:429` never evaluates. That outer
+    ///      error is the sub-0.52 return-false path, which this candidate never takes.
+    ///      `_seatVoter` runs BEFORE propose: seating after would snapshot ahead of the poke and
+    ///      `getPastVotes(snapshotBlock)` would read zero.
+    function test_P1_C6_admissionAuthorityAnnulsPassedCompositionChallenge() public {
+        address voter = makeAddr("p1_c6_veto_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        GaugeEligibility elig = GaugeEligibility(gr.gaugeEligibility());
+        address oldPool = orchestrator.miliariumRegistry().poolAtSlot(5);
+
+        // (1) A rail-less candidate: the conjunct is live, so the flag is load-bearing.
+        address candidate = _buildRailLessCandidate();
+        assertEq(hook.poolBodenseeDepositToken(candidate), address(0), "premise - candidate is rail-less");
+
+        // (2) The attestation is the ONLY thing that lets it clear the gate.
+        vm.prank(address(orchestrator));
+        elig.setRecoveryPathAdmitted(candidate, true);
+        assertTrue(gr.meetsCompositionQualityGate(candidate), "admitted - gate passes at propose time");
+
+        // (3) Propose slot 5, carry the vote to the executable block, stop BEFORE execute.
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeCompositionChallenge(5, candidate, svZchf);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(voter), 0, "bond pulled and donated before the proposal record exists");
+        _runProposalToQueued(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Queued), "passed 2/3 and queued");
+
+        // (4) One untimelocked call by a non-participant annuls the passed vote.
+        vm.prank(address(orchestrator));
+        elig.setRecoveryPathAdmitted(candidate, false);
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, candidate));
+        gov.execute(id);
+        assertEq(
+            uint256(gov.state(id)),
+            uint256(AureumGovernance.ProposalState.Queued),
+            "C.6 - execute reverted, the executed flag rolled back, proposal still Queued and retryable"
+        );
+
+        // (5) Invisible until execute, terminal once the grace window closes.
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.eta + AureumTime.BLOCKS_PER_EPOCH);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Expired), "C.6 - grace expired, no path back");
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.GracePeriodExpired.selector, id));
+        gov.execute(id);
+        assertEq(svZchf.balanceOf(voter), 0, "C.6 - bond gone, no refund path in AureumGovernance");
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), oldPool, "C.6 - slot unchanged; the passed vote was annulled");
     }
 }
