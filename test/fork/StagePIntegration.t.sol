@@ -588,11 +588,15 @@ abstract contract StagePIntegrationFixture is Test {
         orchestrator.votingWeight().poke(voter);
     }
 
-    /// @dev P-D39 shared proposal lifecycle — the StageO _voteQueueReachEta shape de-mocked, plus
-    ///      execute: roll past the F-06 snapshot, vote FOR (single poked voter, so quorum and any
-    ///      supermajority are trivially met), roll past endBlock, queue, roll to eta, execute.
+    /// @dev P-D39 shared proposal lifecycle UP TO the executable block — the StageO
+    ///      _voteQueueReachEta shape de-mocked: roll past the F-06 snapshot, vote FOR (single
+    ///      poked voter, so quorum and any supermajority are trivially met), roll past endBlock,
+    ///      queue, roll to eta. Stops WITHOUT executing, so a case can mutate state inside the
+    ///      grace window before `execute` — C.6's veto leg flips `recoveryPathAdmitted` here, and
+    ///      G.2 holds a second challenge in flight on the same slot. The eta roll stays INSIDE
+    ///      this helper, so the composed `_runProposal` below keeps its pre-split timing exactly.
     ///      gov handle cached BEFORE the prank (P-D38).
-    function _runProposal(uint256 id, address voter) internal {
+    function _runProposalToQueued(uint256 id, address voter) internal {
         AureumGovernance gov = orchestrator.governance();
         AureumGovernance.Proposal memory pv = gov.getProposal(id);
         vm.roll(pv.snapshotBlock + 1);
@@ -602,6 +606,14 @@ abstract contract StagePIntegrationFixture is Test {
         gov.queue(id);
         AureumGovernance.Proposal memory pq = gov.getProposal(id);
         vm.roll(pq.eta);
+    }
+
+    /// @dev P-D39 full lifecycle, unchanged in behaviour: `_runProposalToQueued` plus `execute`.
+    ///      Same rolls in the same order, same block on entry to `execute`, so all five existing
+    ///      call sites are untouched. gov handle cached BEFORE the inner prank (P-D38).
+    function _runProposal(uint256 id, address voter) internal {
+        AureumGovernance gov = orchestrator.governance();
+        _runProposalToQueued(id, voter);
         gov.execute(id);
     }
 }
