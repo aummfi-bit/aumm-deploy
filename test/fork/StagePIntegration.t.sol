@@ -1345,4 +1345,106 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
             "G.3 - slot unchanged; a passed 2/3 supermajority defeated for 100 svZCHF"
         );
     }
+
+    /// @dev G.2 second candidate — identical shape to `_buildCompositionCandidate`, distinct salt
+    ///      and symbol so both can exist in one test. Railed and CQG-clean; no initialization is
+    ///      needed because `registerGaugeFromComposition` is onlyGovernance and never runs
+    ///      `evaluateEligibility`, and the composition gate omits the TVL floor.
+    function _buildCompositionCandidateB() internal returns (address candidate) {
+        TokenConfig[] memory tokens = new TokenConfig[](2);
+        tokens[0] = TokenConfig({
+            token: IERC20(address(susds)),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        tokens[1] = TokenConfig({
+            token: svZchf,
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        candidate = awpf.create(
+            "P1 G2 Candidate B",
+            "G2CANDB",
+            tokens,
+            weights,
+            PoolRoleAccounts({ pauseManager: address(0), swapFeeManager: address(0), poolCreator: address(0) }),
+            0.0075e18,
+            address(hook),
+            false,
+            false,
+            keccak256("p1_g2_candidate_b")
+        );
+    }
+
+    /// @notice P1 G.2 — a composition challenge is a mandate against a SLOT, not against the pool
+    ///         the electorate voted to remove, so the second of two concurrent challenges revokes
+    ///         the winner of the first.
+    /// @dev Reproduction PoC for seam-1 root cause G.2 (Medium), fix-sequence rung 9.
+    ///      `proposeCompositionChallenge` stores the slot index and passes `address(0)` as
+    ///      `targetPool`, so nothing records which occupant the vote was against; `_executeProposal`
+    ///      then re-resolves `SLOT_REGISTRY.poolAtSlot(p.slot)` at EXECUTE time and terminally
+    ///      revokes whoever is sitting there (`AureumGovernance.sol:428-433`). `_createProposal`
+    ///      has no per-slot dedup, so two challenges on one slot both open. Both are proposed
+    ///      here against the SAME incumbent and both pass; executing them in order seats A and
+    ///      then revokes A on behalf of voters who never saw A on the ballot. The plan records
+    ///      the realistic path as an honest double-proposal accident, not an attack, which is why
+    ///      both proposals are honest and neither proposer is adversarial. Driven inline rather
+    ///      than through `_runProposalToQueued`: both proposals share one schedule, so a second
+    ///      call would roll backward to a snapshot already passed.
+    function test_P1_G2_secondSlotChallengeRevokesTheWinnerOfTheFirst() public {
+        address voter = makeAddr("p1_g2_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        address incumbent = orchestrator.miliariumRegistry().poolAtSlot(5);
+        assertTrue(incumbent != address(0), "premise - slot 5 is occupied");
+
+        address candidateA = _buildCompositionCandidate();
+        address candidateB = _buildCompositionCandidateB();
+        assertTrue(candidateA != candidateB, "premise - two distinct candidates");
+        assertTrue(gr.meetsCompositionQualityGate(candidateA), "premise - A clears the gate");
+        assertTrue(gr.meetsCompositionQualityGate(candidateB), "premise - B clears the gate");
+
+        // Two honest challenges on the SAME slot, opened in the same block against the SAME
+        // incumbent. Nothing dedups them, and neither records the occupant it targets.
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT * 2);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT * 2);
+        uint256 idA = gov.proposeCompositionChallenge(5, candidateA, svZchf);
+        uint256 idB = gov.proposeCompositionChallenge(5, candidateB, svZchf);
+        vm.stopPrank();
+        assertTrue(idA != idB, "two live proposals on one slot");
+
+        // One shared schedule: vote both, queue both, then execute in order.
+        AureumGovernance.Proposal memory pa = gov.getProposal(idA);
+        vm.roll(pa.snapshotBlock + 1);
+        vm.startPrank(voter);
+        gov.castVote(idA, true);
+        gov.castVote(idB, true);
+        vm.stopPrank();
+        vm.roll(pa.endBlock + 1);
+        gov.queue(idA);
+        gov.queue(idB);
+        AureumGovernance.Proposal memory qa = gov.getProposal(idA);
+        vm.roll(qa.eta);
+
+        // First challenge executes as its voters intended: the incumbent is replaced by A.
+        gov.execute(idA);
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidateA, "A seated by its own challenge");
+        assertTrue(gr.gaugeStatus(incumbent) == IGaugeRegistry.GaugeStatus.Revoked, "incumbent revoked as voted");
+        assertTrue(gr.gaugeStatus(candidateA) == IGaugeRegistry.GaugeStatus.Active, "A gauged from composition");
+
+        // Second challenge re-resolves the victim at execute and takes A instead of the incumbent.
+        gov.execute(idB);
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidateB, "B seated");
+        assertTrue(
+            gr.gaugeStatus(candidateA) == IGaugeRegistry.GaugeStatus.Revoked,
+            "G.2 - A was terminally revoked by a mandate its voters cast against the incumbent"
+        );
+    }
 }
