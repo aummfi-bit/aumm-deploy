@@ -284,6 +284,12 @@ contract StageNIxAetheronAdmissionTest is StageNIntegrationFixture {
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
         gaugeEligibility.evaluateEligibility(ixAetheron);
         assertTrue(gaugeEligibility.isEligible(ixAetheron), "latch survives revocation");
+        // C.6 real-pool pin: the attestation is withdrawn, yet the latch every emission consumer
+        // reads is untouched. StageG's test_P1_C6_admissionGrantSurvivesRevocationAsALiveGauge
+        // shows this on a gauge activated BY the admission; ixAetheron here is founding-seeded via
+        // seedFoundingPool, which never called evaluateEligibility, so this pins the demotion half
+        // only — against the protocol's real rail-less pool.
+        assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "C.6 - revocation does not demote the live gauge");
     }
 }
 
