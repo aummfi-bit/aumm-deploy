@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { ForkEnvGuard } from "./ForkEnvGuard.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
 import { AureumGovernance } from "../../src/governance/AureumGovernance.sol";
@@ -342,6 +343,10 @@ abstract contract StagePIntegrationFixture is Test {
         vm.setEnv("MILIARIUM_POOL_27", vm.toString(stageNPools[16]));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MILIARIUM_POOL_28", vm.toString(stageNPools[17]));
+        string[] memory forkEnvKeys = new string[](2);
+        forkEnvKeys[0] = "SUSDS";
+        forkEnvKeys[1] = "SV_ZCHF";
+        ForkEnvGuard.assertMainnetEnv(forkEnvKeys);
 
         // --- Orchestrate: DeployStageP runs J→F→G→H→setEmissionsRecorder→I→M→N→(seedFoundingPool×3 + setGovernanceContract)→L→K, then asserts the four post-conditions in-run ---
         orchestrator.deploy();
