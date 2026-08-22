@@ -21,6 +21,7 @@ import {
     PoolRoleAccounts,
     AddLiquidityParams,
     AddLiquidityKind,
+    PoolConfig,
     SwapKind,
     VaultSwapParams
 } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
@@ -1077,5 +1078,70 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         //     into the ledger that (1)-(3) prove undrainable.
         vm.prank(attacker);
         controller.collectAggregateFees(pool);
+    }
+
+    /**
+     * @notice E.3 — the constitution's 10% ERC-4626 yield skim is 0% in code.
+     *         `_globalProtocolYieldFeePercentage` (`:105`) has no constructor
+     *         write and no script write anywhere in the repo; its sole write
+     *         site is the `authenticate`-gated setter at `:645`, which post-K is
+     *         authorized only to `AureumGovernance` — a contract with no
+     *         `propose*` arm that reaches the controller, per
+     *         `test_P1_E2_protocolFeeWithdrawalUnreachablePostHandoff`. Every
+     *         pool is therefore stamped 0% aggregate yield at registration.
+     * @dev Reproduction PoC for seam-1 root cause E.3 (Medium). The ASYMMETRY is
+     *      the finding: the swap global is pinned to
+     *      `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE` in the constructor
+     *      (`AureumProtocolFeeController.sol:259`) and its setter is `pure`,
+     *      reverting `SplitIsImmutable` (`:638`), while the yield global is
+     *      written nowhere and its setter is merely gated. This case does NOT
+     *      switch the skim on: PP-D13 requires A.3's strict rise and E.4's debit
+     *      before any non-zero yield fee, and enabling it here would brick the
+     *      donation path rather than evidence E.3. The probe value is `10e16`,
+     *      the constitution's own figure — chosen because `withValidYieldFee`
+     *      runs BEFORE `authenticate`, so an out-of-range value would revert on
+     *      precision and never reach the gate this case is asserting.
+     */
+    function test_P1_E3_globalYieldFeeIsZeroAndItsOnlyWriteSiteIsUnreachable() public {
+        AureumGovernance gov = orchestrator.governance();
+        address attacker = makeAddr("e3_attacker");
+        uint256 constitutionalSkim = 10e16;
+
+        // (1) Never initialised.
+        assertEq(controller.getGlobalProtocolYieldFeePercentage(), 0, "E.3 - yield global is zero");
+
+        // (2) The contrast: the swap global IS constructor-pinned, so (1) is an
+        //     omission, not a protocol-wide fees-off posture.
+        assertEq(
+            controller.getGlobalProtocolSwapFeePercentage(),
+            50e16,
+            "E.3 - swap global pinned at construction"
+        );
+
+        // (3) Consequence: every live pool carries a zero aggregate yield fee.
+        for (uint256 i = 0; i < pilotPools.length; ++i) {
+            PoolConfig memory cfg = vault.getPoolConfig(pilotPools[i]);
+            assertEq(cfg.aggregateYieldFeePercentage, 0, "E.3 - pool stamped 0% aggregate yield");
+        }
+
+        // (4) The sole write site is unreachable. 10e16 clears withValidYieldFee
+        //     so the revert proves the authenticate gate, not the range check.
+        address[3] memory blocked = [attacker, address(orchestrator), EMERGENCY_MULTISIG];
+        for (uint256 i = 0; i < blocked.length; ++i) {
+            vm.prank(blocked[i]);
+            vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+            controller.setGlobalProtocolYieldFeePercentage(constitutionalSkim);
+        }
+
+        // ... and governance holds the action yet has no arm that emits it.
+        bool govAllowed = AureumGovernanceAuthorizer(address(vault.getAuthorizer())).canPerform(
+            controller.getActionId(
+                AureumProtocolFeeController.setGlobalProtocolYieldFeePercentage.selector
+            ),
+            address(gov),
+            address(controller)
+        );
+        assertTrue(govAllowed, "E.3 - governance authorized; the barrier is the missing path");
+        assertEq(controller.getGlobalProtocolYieldFeePercentage(), 0, "E.3 - still zero after every attempt");
     }
 }
