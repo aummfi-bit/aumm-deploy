@@ -1200,3 +1200,88 @@ contract StageGRegistryGovernanceHandoffTest is StageGIntegrationFixture {
         assertTrue(gaugeRegistry.gaugeStatus(poolForNewGovAttempt) == IGaugeRegistry.GaugeStatus.Active);
     }
 }
+
+/// @notice P1 C.6 — the `admissionAuthority` surface: a grant that outlives its own revocation,
+///         and a rotation that bricks the map in one transaction.
+/// @dev Reproduction PoC for seam-1 root cause C.6 (Medium), covering two of its three audit files:
+///      `admission-authority-grants-permanent-emission-entitlement` (M) and
+///      `admission-authority-rotation-is-a-one-transaction-brick` (L). The third,
+///      `admission-authority-vetoes-passed-composition-proposal` (M), needs a full
+///      propose/vote/queue/execute cycle and is DEFERRED behind the `_seatVoter` relocation.
+///      PP-D26 records that the grant and veto FIXES are antagonistic — a standing re-check helps
+///      the grant leg and worsens the veto leg — but that is a fix constraint, not a reproduction
+///      one: the capabilities are independent and each is shown here on its own terms.
+///      ixAetheron is deployed test-local rather than in `setUp` so the other 38 cases are untaxed;
+///      the two N-D7 rate-provider env keys `setUp` seats at PP3.2p are what let `run()` resolve.
+contract StageGC6AdmissionAuthorityTest is StageGIntegrationFixture {
+    function test_P1_C6_admissionGrantSurvivesRevocationAsALiveGauge() public {
+        address ixAetheron = new DeployIxAetheron().run();
+
+        // Premise. No liquidity is needed: the gate reads pool config and takes TVL from
+        // mockTVLOracle via _makePoolEligible, which is why StageN clears it uninitialised too.
+        assertEq(hook.poolBodenseeDepositToken(ixAetheron), address(0), "premise - rail-less");
+        assertFalse(gaugeEligibility.recoveryPathAdmitted(ixAetheron), "premise - unadmitted");
+        assertTrue(
+            gaugeRegistry.gaugeStatus(ixAetheron) == IGaugeRegistry.GaugeStatus.None,
+            "premise - not yet gauged, unlike StageN's founding-seeded copy"
+        );
+        _makePoolEligible(ixAetheron, 50_000e18);
+
+        // Unadmitted, the PB-D69 conjunct bars activation.
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
+        gaugeEligibility.evaluateEligibility(ixAetheron);
+
+        // The one privileged call. This fixture holds admissionAuthority, so no prank is needed.
+        gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, true);
+
+        // Anyone may then activate, paying only the anti-spam fee.
+        address caller = makeAddr("c6_activator");
+        uint256 fee = gaugeRegistry.ANTI_SPAM_FEE();
+        deal(address(svZchf), caller, fee);
+        vm.startPrank(caller);
+        svZchf.approve(address(gaugeRegistry), fee);
+        gaugeRegistry.activateGauge(ixAetheron);
+        vm.stopPrank();
+        assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "activated on the strength of the admission");
+
+        // The authority revokes its own attestation.
+        gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, false);
+
+        // It bars a LATER evaluation ...
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
+        gaugeEligibility.evaluateEligibility(ixAetheron);
+
+        // ... and demotes nothing. isGaugeApproved is the latch every consumer reads
+        // (EmissionDistributor.recordScore, VotingWeight, IncendiaryRegistry, advanceTournament),
+        // so a pool routing nothing to der Bodensee keeps its emission share until an 18-day
+        // GaugeChallenge removes it. GaugeEligibility.sol:81 claims the opposite.
+        assertTrue(
+            gaugeRegistry.isGaugeApproved(ixAetheron),
+            "C.6 - revoking the admission does not demote the live gauge"
+        );
+        assertTrue(
+            gaugeRegistry.gaugeStatus(ixAetheron) == IGaugeRegistry.GaugeStatus.Active,
+            "C.6 - still Active after the attestation was withdrawn"
+        );
+    }
+
+    function test_P1_C6_singleStepRotationBricksTheAdmissionMap() public {
+        // Any destination with no path back to the setters does this; the zero-address check at
+        // :256 catches exactly one of the infinitely many unusable values.
+        address deadEnd = address(uint160(1));
+        assertEq(gaugeEligibility.admissionAuthority(), address(this), "premise - this fixture holds the authority");
+
+        gaugeEligibility.setAdmissionAuthority(deadEnd);
+        assertEq(gaugeEligibility.admissionAuthority(), deadEnd, "rotation lands in ONE transaction, no handshake");
+
+        // Both surfaces are now unreachable by the prior holder, and nothing reaches them from
+        // deadEnd either. AureumGovernance cannot help: _executeProposal dispatches a fixed
+        // six-value enum with no target and no calldata member. This is the dead map the design
+        // rationale at :78 and :252 names as the reason NOT to make the slot one-shot.
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, address(this)));
+        gaugeEligibility.setRecoveryPathAdmitted(pilotPools[0], true);
+
+        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, address(this)));
+        gaugeEligibility.setAdmissionAuthority(address(this));
+    }
+}
