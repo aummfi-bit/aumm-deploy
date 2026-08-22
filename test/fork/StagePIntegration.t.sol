@@ -14,6 +14,7 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 import {
     TokenConfig,
     TokenType,
@@ -1016,5 +1017,65 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Executed), "executed");
         assertEq(address(vault.getAuthorizer()), address(attacker), "arbitrary authorizer installed by vote");
         assertEq(attacker.EMERGENCY_MULTISIG(), attackerEOA, "arbitrary emergency address now seated");
+    }
+
+    /**
+     * @notice E.2 — post-K, the controller's `withdrawProtocolFees` /
+     *         `withdrawProtocolFeesForToken` are `authenticate`-gated to the
+     *         Vault's migrated authorizer, which grants the action only to
+     *         `AureumGovernance` (the contract) and a narrow, time-boxed
+     *         emergency role. No external account can withdraw, and the sole
+     *         authorized principal — governance — has no `propose*` entrypoint
+     *         and no `_executeProposal` arm that emits a controller call, so the
+     *         swept protocol-fee ledger has no designed drain while the
+     *         permissionless `collectAggregateFees` keeps filling it.
+     * @dev Reproduction PoC for seam-1 root cause E.2 (Medium; High → M per G36
+     *      correction 3 — unreachable to governance, reachable only as a
+     *      `VaultAuthorizerChange` payload, which is C.4 and is reproduced
+     *      separately, NOT re-driven here). The swap-leg FILL the finding names
+     *      is the rail-less ixAetheron skip (`AureumFeeRoutingHook.sol:375`),
+     *      not a railed pilot swap: `onAfterSwap` forwards the swap leg to the
+     *      hook and never credits `_protocolFeeAmounts` (D17 invariant 1), and
+     *      ixAetheron is bind-only uninitialized in this fixture, so this rung
+     *      asserts unreachability plus permissionless collect rather than a
+     *      manufactured `> 0`. Governance is live (see
+     *      `test_legC3_feeChangeExecutesThroughMigratedAuthorizer`); it simply
+     *      has no arm for the controller.
+     */
+    function test_P1_E2_protocolFeeWithdrawalUnreachablePostHandoff() public {
+        AureumGovernance gov = orchestrator.governance();
+        address pool = pilotPools[0];
+        address attacker = makeAddr("e2_attacker");
+
+        bytes32 withdrawActionId =
+            controller.getActionId(AureumProtocolFeeController.withdrawProtocolFees.selector);
+
+        // (1) No external account is the authority. authenticate runs before
+        //     the recipient pin, so a well-formed recipient cannot mask the
+        //     gate; each principal reverts SenderNotAllowed.
+        address[3] memory blocked = [attacker, address(orchestrator), EMERGENCY_MULTISIG];
+        for (uint256 i = 0; i < blocked.length; ++i) {
+            vm.prank(blocked[i]);
+            vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+            controller.withdrawProtocolFees(pool, address(hook));
+        }
+
+        // (2) The barrier is NOT the authorizer: governance holds the action.
+        bool govAllowed = AureumGovernanceAuthorizer(address(vault.getAuthorizer()))
+            .canPerform(withdrawActionId, address(gov), address(controller));
+        assertTrue(govAllowed, "E.2 - governance is authorized; the barrier is the missing path");
+
+        // (3) ... yet governance has no path to fire it. Its six proposal types
+        //     (GaugeChallenge, CompositionChallenge, FeeChange, VaultAuthorizer-
+        //     Change, VaultUnpause, VaultRecoveryDisable) and their six
+        //     _executeProposal arms touch the Vault and pools only; none
+        //     constructs a controller call, so (2)'s authorization is
+        //     unreachable in production. Structural, per the NatSpec above; not
+        //     driven by a prank, which would be a non-existent path.
+
+        // (4, lean) The credit side stays permissionless: any EOA sweeps fees
+        //     into the ledger that (1)-(3) prove undrainable.
+        vm.prank(attacker);
+        controller.collectAggregateFees(pool);
     }
 }
