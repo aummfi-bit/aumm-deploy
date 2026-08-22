@@ -502,6 +502,108 @@ abstract contract StagePIntegrationFixture is Test {
         (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(bodenseePool);
         return balancesRaw[idx];
     }
+
+    /// @dev Recorded LP for the next liquidity op. The hook resolves the LP via
+    ///      IRouterSender(router).getSender(); this fixture IS the router (it
+    ///      calls Vault.addLiquidity directly inside unlock), so getSender()
+    ///      returns _lpSender. Decoupled from the BPT recipient (address(this)).
+    address internal _lpSender;
+
+    /// @notice IRouterSender shim — the hook calls this on every add/remove.
+    function getSender() external view returns (address) {
+        return _lpSender;
+    }
+
+    /// @dev One-sided UNBALANCED add of `fractionBps`/10000 of token[0]'s current
+    ///      pool balance, recording the deposit for `lp`. Mirrors StageG
+    ///      _initializePool (deal -> unlock -> settle) with addLiquidity in place
+    ///      of initialize.
+    function _depositOneSided(address pool, address lp, uint256 fractionBps)
+        internal
+        returns (uint256 bptOut)
+    {
+        _lpSender = lp;
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(pool);
+        uint256[] memory amountsIn = new uint256[](tokens.length);
+        amountsIn[0] = (balancesRaw[0] * fractionBps) / 10_000;
+        deal(address(tokens[0]), address(this), amountsIn[0]);
+        bytes memory result = vault.unlock(abi.encodeCall(this._depositCallback, (pool, amountsIn)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _depositCallback(address pool, uint256[] memory amountsIn)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, bptOut, ) = vault.addLiquidity(
+            AddLiquidityParams({
+                pool: pool,
+                to: address(this),
+                maxAmountsIn: amountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.UNBALANCED,
+                userData: ""
+            })
+        );
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsIn[i] > 0) {
+                tokens[i].transfer(address(vault), amountsIn[i]);
+                vault.settle(tokens[i], amountsIn[i]);
+            }
+        }
+    }
+
+    function _matureStack(address lp) internal returns (uint256 bptOut) {
+        // P-D36 (4) governance token-map seed
+        vm.startPrank(address(orchestrator));
+        orchestrator.tvlOracle().setTokenUnderlying(address(svZchf), address(svZchf));
+        orchestrator.tvlOracle().setTokenUnderlying(address(susds), address(susds));
+        vm.stopPrank();
+        // StageKIntegration L172 pattern — balanceOf(lp) == userLP for F-17
+        bptOut = _depositOneSided(pilotPools[0], lp, 100);
+        IERC20(pilotPools[0]).transfer(lp, bptOut);
+        // EMA seed
+        orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        // EMA_MATURITY_BLOCKS (60 days, F-04)
+        vm.roll(block.number + 432_000);
+        // freshness refresh (F-05)
+        orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        // F-5 score > 0 in bootstrap via the Miliarium f5Total/28 branch
+        orchestrator.emissionDistributor().recordScore(pilotPools[0]);
+    }
+
+    /// @dev K-D6d proposal bond, shared by Legs C1/C2/C3 (AureumGovernance.PROPOSAL_DEPOSIT_SVZCHF is internal, so re-declared here).
+    uint256 internal constant PROPOSAL_DEPOSIT = 1_000e18;
+
+    /// @dev P-D39 voter seating — the REAL _matureStack (no StageO _qualifyVoter mock), then an
+    ///      immediate poke while the EMA is fresh (F-05): the checkpoint written here is what
+    ///      castVote's getPastVotes(snapshotBlock) read finds later (F-06 freeze survives the
+    ///      proposal roll). Chained getter is safe here — poke is permissionless, no prank in
+    ///      flight (P-D38 concerns pranked calls only).
+    function _seatVoter(address voter) internal {
+        _matureStack(voter);
+        orchestrator.votingWeight().poke(voter);
+    }
+
+    /// @dev P-D39 shared proposal lifecycle — the StageO _voteQueueReachEta shape de-mocked, plus
+    ///      execute: roll past the F-06 snapshot, vote FOR (single poked voter, so quorum and any
+    ///      supermajority are trivially met), roll past endBlock, queue, roll to eta, execute.
+    ///      gov handle cached BEFORE the prank (P-D38).
+    function _runProposal(uint256 id, address voter) internal {
+        AureumGovernance gov = orchestrator.governance();
+        AureumGovernance.Proposal memory pv = gov.getProposal(id);
+        vm.roll(pv.snapshotBlock + 1);
+        vm.prank(voter);
+        gov.castVote(id, true);
+        vm.roll(pv.endBlock + 1);
+        gov.queue(id);
+        AureumGovernance.Proposal memory pq = gov.getProposal(id);
+        vm.roll(pq.eta);
+        gov.execute(id);
+    }
 }
 
 /**
@@ -600,59 +702,6 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         hook.setTrustedRouter(address(this), true);
     }
 
-    /// @dev Recorded LP for the next liquidity op. The hook resolves the LP via
-    ///      IRouterSender(router).getSender(); this fixture IS the router (it
-    ///      calls Vault.addLiquidity directly inside unlock), so getSender()
-    ///      returns _lpSender. Decoupled from the BPT recipient (address(this)).
-    address internal _lpSender;
-
-    /// @notice IRouterSender shim — the hook calls this on every add/remove.
-    function getSender() external view returns (address) {
-        return _lpSender;
-    }
-
-    /// @dev One-sided UNBALANCED add of `fractionBps`/10000 of token[0]'s current
-    ///      pool balance, recording the deposit for `lp`. Mirrors StageG
-    ///      _initializePool (deal -> unlock -> settle) with addLiquidity in place
-    ///      of initialize.
-    function _depositOneSided(address pool, address lp, uint256 fractionBps)
-        internal
-        returns (uint256 bptOut)
-    {
-        _lpSender = lp;
-        IERC20[] memory tokens = vault.getPoolTokens(pool);
-        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(pool);
-        uint256[] memory amountsIn = new uint256[](tokens.length);
-        amountsIn[0] = (balancesRaw[0] * fractionBps) / 10_000;
-        deal(address(tokens[0]), address(this), amountsIn[0]);
-        bytes memory result = vault.unlock(abi.encodeCall(this._depositCallback, (pool, amountsIn)));
-        bptOut = abi.decode(result, (uint256));
-    }
-
-    function _depositCallback(address pool, uint256[] memory amountsIn)
-        external
-        returns (uint256 bptOut)
-    {
-        require(msg.sender == address(vault), "onlyVault");
-        IERC20[] memory tokens = vault.getPoolTokens(pool);
-        (, bptOut, ) = vault.addLiquidity(
-            AddLiquidityParams({
-                pool: pool,
-                to: address(this),
-                maxAmountsIn: amountsIn,
-                minBptAmountOut: 0,
-                kind: AddLiquidityKind.UNBALANCED,
-                userData: ""
-            })
-        );
-        for (uint256 i = 0; i < tokens.length; ++i) {
-            if (amountsIn[i] > 0) {
-                tokens[i].transfer(address(vault), amountsIn[i]);
-                vault.settle(tokens[i], amountsIn[i]);
-            }
-        }
-    }
-
     // Transcribed from PilotPools.t.sol L325-L355 per P-D36/CLAUDE.md L330 — two-arg deal per E10; plain transfer, no SafeERC20.
     function _performSwap(address pool, IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn)
         internal
@@ -684,25 +733,6 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         vault.settle(tokenIn, inUsed);
         vault.sendTo(tokenOut, address(this), outRcvd);
         amountOut = outRcvd;
-    }
-
-    function _matureStack(address lp) internal returns (uint256 bptOut) {
-        // P-D36 (4) governance token-map seed
-        vm.startPrank(address(orchestrator));
-        orchestrator.tvlOracle().setTokenUnderlying(address(svZchf), address(svZchf));
-        orchestrator.tvlOracle().setTokenUnderlying(address(susds), address(susds));
-        vm.stopPrank();
-        // StageKIntegration L172 pattern — balanceOf(lp) == userLP for F-17
-        bptOut = _depositOneSided(pilotPools[0], lp, 100);
-        IERC20(pilotPools[0]).transfer(lp, bptOut);
-        // EMA seed
-        orchestrator.emaSampler().updateEMA(pilotPools[0]);
-        // EMA_MATURITY_BLOCKS (60 days, F-04)
-        vm.roll(block.number + 432_000);
-        // freshness refresh (F-05)
-        orchestrator.emaSampler().updateEMA(pilotPools[0]);
-        // F-5 score > 0 in bootstrap via the Miliarium f5Total/28 branch
-        orchestrator.emissionDistributor().recordScore(pilotPools[0]);
     }
 
     function test_setUp_harnessSeated() public view {
@@ -774,37 +804,8 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
 
     // --- P10.3c (P-D39): the three AureumGovernance proposal-type legs ---
 
-    /// @dev K-D6d proposal bond, shared by Legs C1/C2/C3 (AureumGovernance.PROPOSAL_DEPOSIT_SVZCHF is internal, so re-declared here).
-    uint256 internal constant PROPOSAL_DEPOSIT = 1_000e18;
     /// @dev Leg C3 target fee — inside [SWAP_FEE_MIN 1e14, SWAP_FEE_MAX 3e15] and != pilot 01's 2e14 create fee (E-D22), so the change is observable.
     uint256 internal constant NEW_FEE = 2e15;
-
-    /// @dev P-D39 voter seating — the REAL _matureStack (no StageO _qualifyVoter mock), then an
-    ///      immediate poke while the EMA is fresh (F-05): the checkpoint written here is what
-    ///      castVote's getPastVotes(snapshotBlock) read finds later (F-06 freeze survives the
-    ///      proposal roll). Chained getter is safe here — poke is permissionless, no prank in
-    ///      flight (P-D38 concerns pranked calls only).
-    function _seatVoter(address voter) internal {
-        _matureStack(voter);
-        orchestrator.votingWeight().poke(voter);
-    }
-
-    /// @dev P-D39 shared proposal lifecycle — the StageO _voteQueueReachEta shape de-mocked, plus
-    ///      execute: roll past the F-06 snapshot, vote FOR (single poked voter, so quorum and any
-    ///      supermajority are trivially met), roll past endBlock, queue, roll to eta, execute.
-    ///      gov handle cached BEFORE the prank (P-D38).
-    function _runProposal(uint256 id, address voter) internal {
-        AureumGovernance gov = orchestrator.governance();
-        AureumGovernance.Proposal memory pv = gov.getProposal(id);
-        vm.roll(pv.snapshotBlock + 1);
-        vm.prank(voter);
-        gov.castVote(id, true);
-        vm.roll(pv.endBlock + 1);
-        gov.queue(id);
-        AureumGovernance.Proposal memory pq = gov.getProposal(id);
-        vm.roll(pq.eta);
-        gov.execute(id);
-    }
 
     /// @notice P-D39 Leg C3 — fee change propose → vote → queue → execute: the DYNAMIC
     ///         authorizer-migration witness. _executeProposal routes VAULT.setStaticSwapFeePercentage
