@@ -826,4 +826,53 @@ contract AureumFeeRoutingHookForkTest is Test {
         emit log_named_uint("skewCost / feeRider", skewCost / feeRider);
         assertGt(skewCost, feeRider);
     }
+
+    /**
+     * @notice E.4 — `routeYieldFeeToHook` spends the controller's tokens without
+     *         debiting `_protocolFeeAmounts[pool][token]`, and without bounding
+     *         `amount` by the pool's credit.
+     * @dev Reproduction PoC for seam-1 root cause E.4 (Low). Both clauses are
+     *      asserted on the already-railed `tradingPool` path that
+     *      `test_Fork_RouteYieldFeeToHookEntryPoint` (L568-L607) proves reachable
+     *      through the real `authenticate` chain — capability, not conduct
+     *      (PP-D41). The `deal` is not a scaffold gap but the finding itself: a
+     *      controller balance that no pool's credit backs is exactly what an
+     *      unbounded spend draws on. Contrast `_withdrawProtocolFees`
+     *      (`src/vault/AureumProtocolFeeController.sol:791-798`), which zeroes
+     *      the ledger entry and transfers exactly that amount.
+     */
+    function test_P1_E4_routeYieldFeeToHookSpendsWithoutDebitingLedger() public {
+        _initializeBodensee();
+        uint256 amount = 100e18;
+
+        // Permissionless collect first, so the ledger read below is post-collect
+        // truth rather than a stale zero.
+        controller.collectAggregateFees(tradingPool);
+
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(tradingPool, svZchf);
+        uint256[] memory creditBefore = controller.getProtocolFeeAmounts(tradingPool);
+
+        // Clause two: the routed amount is not bounded by the pool's credit.
+        assertLt(creditBefore[idx], amount, "E.4 - amount exceeds the pool's entire svZCHF credit");
+
+        deal(address(svZchf), address(controller), amount, true);
+        uint256 controllerBalanceBefore = svZchf.balanceOf(address(controller));
+
+        vm.prank(GOVERNANCE_MULTISIG);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
+
+        // The tokens left the controller's commingled balance ...
+        assertEq(
+            svZchf.balanceOf(address(controller)),
+            controllerBalanceBefore - amount,
+            "E.4 - amount left the controller's commingled balance"
+        );
+
+        // ... and clause one: no ledger entry moved.
+        uint256[] memory creditAfter = controller.getProtocolFeeAmounts(tradingPool);
+        assertEq(creditAfter.length, creditBefore.length, "E.4 - token count stable");
+        for (uint256 i = 0; i < creditAfter.length; ++i) {
+            assertEq(creditAfter[i], creditBefore[i], "E.4 - protocol fee ledger not debited");
+        }
+    }
 }
