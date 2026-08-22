@@ -1263,4 +1263,86 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(svZchf.balanceOf(voter), 0, "C.6 - bond gone, no refund path in AureumGovernance");
         assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), oldPool, "C.6 - slot unchanged; the passed vote was annulled");
     }
+
+    /// @notice P1 G.3 — a candidate is pre-poisoned by a permissionless `activateGauge`, and the
+    ///         poisoning is permanent because no writer returns a gauge status to `None`.
+    /// @dev Reproduction PoC for seam-1 root cause G.3 (High), fix-sequence rung 9.
+    ///      `GaugeRegistry.activateGauge` is permissionless for the 100 svZCHF anti-spam fee,
+    ///      `proposeCompositionChallenge` never reads the candidate's gauge status (`:239-245`
+    ///      checks only the composition quality gate), and `registerGaugeFromComposition` reverts
+    ///      `AlreadyGauged` on an `Active` pool (`GaugeRegistry.sol:168-171`). So any credible
+    ///      candidate becomes permanently unseatable the moment it carries the hook and clears
+    ///      the TVL floor, possibly years before anyone proposes it. The poisoning is driven
+    ///      BEFORE the proposal here because that is the finding's shape: propose-blindness is
+    ///      the first half, the execute revert the second. PP-D9 ties a `GaugeChallenge`
+    ///      execute-time `slotOf == 0` re-check to G.3's FIX; that is a fix constraint and does
+    ///      not bind this reproduction. The candidate is the railed C1 shape, initialized so the
+    ///      real TVLOracle values it: `_constellationRatio(svZCHF)` returns 1e18, so the svZCHF
+    ///      leg alone clears `TVL_FLOOR_SVZCHF` even if sUSDS resolves no venue.
+    function test_P1_G3_permissionlessActivationPermanentlyBricksCompositionChallenge() public {
+        address voter = makeAddr("p1_g3_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        GaugeEligibility elig = GaugeEligibility(gr.gaugeEligibility());
+        address oldPool = orchestrator.miliariumRegistry().poolAtSlot(5);
+
+        // A credible candidate: railed, CQG-clean, funded past the eligibility TVL floor that
+        // activateGauge enforces and the composition gate omits.
+        address candidate = _buildCompositionCandidate();
+        IERC20[] memory tokens = vault.getPoolTokens(candidate);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = 30_000e18;
+        amountsIn[1] = 20_000e18;
+        _initializePool(candidate, tokens, amountsIn);
+        assertGe(
+            orchestrator.tvlOracle().tvl(candidate),
+            elig.TVL_FLOOR_SVZCHF(),
+            "premise - candidate clears the eligibility TVL floor"
+        );
+        assertTrue(gr.meetsCompositionQualityGate(candidate), "premise - composition gate passes");
+        assertTrue(gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.None, "premise - not yet gauged");
+
+        // (1) The poisoning. Anyone, for the anti-spam fee: no governance, no admission, no vote.
+        address attacker = makeAddr("p1_g3_attacker");
+        uint256 fee = gr.ANTI_SPAM_FEE();
+        deal(address(svZchf), attacker, fee);
+        vm.startPrank(attacker);
+        svZchf.approve(address(gr), fee);
+        gr.activateGauge(candidate);
+        vm.stopPrank();
+        assertTrue(
+            gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active,
+            "G.3 - candidate pre-poisoned by one permissionless 100 svZCHF call"
+        );
+
+        // (2) Propose is blind to gauge status, so the challenge is accepted and the bond burns.
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
+        uint256 id = gov.proposeCompositionChallenge(5, candidate, svZchf);
+        vm.stopPrank();
+        assertEq(svZchf.balanceOf(voter), 0, "G.3 - bond donated at propose; no cancel and no refund path");
+
+        // (3) The vote passes, and execute reverts on the poisoning.
+        _runProposalToQueued(id, voter);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Queued), "passed 2/3 and queued");
+        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, candidate));
+        gov.execute(id);
+
+        // (4) Permanent: no writer returns a status to None, so every retry hits the same revert
+        //     and the proposal ages out of its grace window.
+        assertTrue(
+            gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active,
+            "G.3 - still Active; nothing returns a gauge to None"
+        );
+        AureumGovernance.Proposal memory p = gov.getProposal(id);
+        vm.roll(p.eta + AureumTime.BLOCKS_PER_EPOCH);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Expired), "G.3 - grace expired");
+        assertEq(
+            orchestrator.miliariumRegistry().poolAtSlot(5),
+            oldPool,
+            "G.3 - slot unchanged; a passed 2/3 supermajority defeated for 100 svZCHF"
+        );
+    }
 }
