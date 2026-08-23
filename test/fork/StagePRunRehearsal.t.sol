@@ -112,7 +112,10 @@ contract StagePRunRehearsalTest is Test {
     address[18] internal stageNPools;
 
     function setUp() public {
-        // RB-023 clause 3, chain-only: this fixture republishes SV_ZCHF and SUSDS as in-process
+        // RB-023 clause 3, chain-only: `_replayStubs()` below republishes SV_ZCHF and SUSDS as
+        // in-process stubs per PB-D25 (ii), so those stubs carry code and a token-address check
+        // would pass while attesting the opposite of the truth. The marker is the half that IS
+        // true: this fixture forks mainnet and must fail closed on a Sepolia-marked working copy.
         ForkEnvGuard.assertChain("mainnet");
 
         // PB3.5f1 (PB-D27 (vii)(1)) -- brackets the whole deployment spine so the SepETH target
