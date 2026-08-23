@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { ForkEnvGuard } from "./ForkEnvGuard.sol";
 import { console2 } from "forge-std/console2.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -111,6 +112,9 @@ contract StagePRunRehearsalTest is Test {
     address[18] internal stageNPools;
 
     function setUp() public {
+        // RB-023 clause 3, chain-only: this fixture republishes SV_ZCHF and SUSDS as in-process
+        ForkEnvGuard.assertChain("mainnet");
+
         // PB3.5f1 (PB-D27 (vii)(1)) -- brackets the whole deployment spine so the SepETH target
         //                              is a measured number rather than an estimate.
         uint256 gasAtStart = gasleft();
