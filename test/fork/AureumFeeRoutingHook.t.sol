@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { ForkEnvGuard } from "./ForkEnvGuard.sol";
 import { Vm } from "forge-std/Vm.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -84,6 +85,11 @@ contract AureumFeeRoutingHookForkTest is Test {
     function setUp() public {
         svZchf = IERC20(vm.envAddress("SV_ZCHF"));
         susds = IERC4626(vm.envAddress("SUSDS"));
+        string[] memory forkEnvKeys = new string[](2);
+        forkEnvKeys[0] = "SUSDS";
+        forkEnvKeys[1] = "SV_ZCHF";
+        ForkEnvGuard.assertMainnetEnv(forkEnvKeys);
+
 
         uint64 startNonce = vm.getNonce(address(this));
         address vaultScriptAddr = vm.computeCreateAddress(address(this), startNonce + 0);
