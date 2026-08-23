@@ -98,6 +98,10 @@ abstract contract StageGIntegrationFixture is Test {
     function setUp() public virtual {
         svZchf = IERC20(vm.envAddress("SV_ZCHF"));
         susds = IERC4626(vm.envAddress("SUSDS"));
+        string[] memory forkEnvKeys = new string[](2);
+        forkEnvKeys[0] = "SUSDS";
+        forkEnvKeys[1] = "SV_ZCHF";
+        ForkEnvGuard.assertMainnetEnv(forkEnvKeys);
 
         uint64 startNonce = vm.getNonce(address(this));
         address vaultScriptAddr = vm.computeCreateAddress(address(this), startNonce + 0);
@@ -162,11 +166,6 @@ abstract contract StageGIntegrationFixture is Test {
 
         awpf = new AureumWeightedPoolFactory(IVault(address(vault)), PAUSE_WINDOW_DURATION, FACTORY_VERSION, POOL_VERSION);
         assert(address(awpf) == awpfAddr);
-
-        string[] memory forkEnvKeys = new string[](2);
-        forkEnvKeys[0] = "SUSDS";
-        forkEnvKeys[1] = "SV_ZCHF";
-        ForkEnvGuard.assertMainnetEnv(forkEnvKeys);
 
         _initializeBodensee();
 
