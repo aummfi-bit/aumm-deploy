@@ -539,10 +539,11 @@ Loop grep-and-confirm per §6 / §8e; all git mutations in user's terminal; Curs
   - **D35** — never `forge test --fork-url` unfiltered (rate-limit hang); split-form: `--no-match-path "test/fork/**"` for unit, `--match-path "test/fork/**"` for fork.
   - **D36** — `vm.setEnv` races between parallel fork-test contracts; run fork suites with `--threads 1` (permanent posture per PB-D13; RB-006 holds the deferred parameterization).
   - **E10** — forge-std `deal(adjust=true)` reverts on dynamic-supply tokens (Reserve DTFs); drop the third argument.
-  - **F10** — the optimizer hoists `block.number` out of `vm.roll` loops; thread an explicit local counter.
+  - **F10** — the optimizer hoists `block.number` out of `vm.roll` loops; thread an explicit local counter. F15 is the crossing case, where the read sits outside the loop entirely.
   - **F11** — pasted terminal output auto-links TLD-suffix tokens; trust `shasum` / `grep -c "http"` over rendered text; unchanged shasum + "no edit needed" means stop.
   - **F12/F13** — signed-delta arithmetic: compute `int256`, explicit signed-add helper, clamp before casting back to `uint256`; applies to test-side chains too (SafeCast + `_applySignedDelta`).
   - **F14** — after a structural test-file rewrite, "compilation skipped" + a contract missing from `forge test --list` means `forge clean && forge build`.
+  - **F15** — F10's crossing sibling: a `block.number` snapshot taken BEFORE a `vm.roll` and consumed AFTER it is sunk forward to the post-roll value, LOOP OR NOT — `via_ir` treats the read as pure and models no dependency on the cheatcode, so F10's loop-carried counter has no jurisdiction over a local the loop never touches syntactically. Never cache `block.number` or `block.timestamp` across a `vm.roll` / `vm.warp` boundary; read the before-value from contract state, or pin it to a compile-time `constant` and roll TO that constant rather than FROM a live read — the constant is REQUIRED where the operation under test clears the state that records it. Full recipe: `docs/STAGE_F_NOTES.md` F15.
   - **G10/G14** — compile-probe any solc language-feature or data-location claim at the pinned config before a NOTES closure lands; constructor params are always `memory`.
   - **G15** — close-of-family Must match enumerates all scaffold NatSpec promises; an unlanded "X lands at N+k" promise is a blocker.
   - **G16** — interface-touching fix scope: `grep -rn "is I<InterfaceName>" src/ test/ script/` first; name every inheritor.
