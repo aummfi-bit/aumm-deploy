@@ -142,3 +142,21 @@ The 2026-08-18 residual is CLOSED. Measured, not derived. No private key and no 
 - **PB20** (`STAGE_P_BIS_NOTES.md`) — the parent reach rule; its remedy, a paired positive control, does not resolve this variant.
 - **PB18** (`STAGE_P_BIS_NOTES.md`) — the measure-do-not-predict sibling, whose subject is counts rather than reach.
 - **PP3.2by-retry, PP3.2co, PP3.2ct, PP3.2dc** — the four occurrences, all harmless, all resolved by reading the saved file.
+
+## PP12 — a `-r` grep handed explicit file arguments does not recurse, and its short result does not look truncated
+
+**Caught at PP3.2do, 2026-08-25, one rung before the wrong number would have entered the queue as fact.** The H.1 pre-flight needed the size of the spec-side fee divergence, and the sweep was a `grep -rn` for the two fee literals over `*.md`, run from the `aumm-site` clone root and piped through `head -12`. It returned 8 matches across 5 files, and that figure was about to become the queue cell's edit-surface estimate. The true figure is 17 occurrences across 11 files. The `-r` was inert: the shell had already expanded `*.md` into an explicit list of root-level files, and grep does not descend into directories it was never handed. The nine hits inside `dist/aumm-skill/`, a GENERATED mirror of the same spec documents, were invisible — and that mirror is what an AI consumer loads, so a fix sized from the 8-figure would have corrected the sources and left the artifact people actually read still saying 0.03%.
+
+**Why the result did not look wrong.** The usual tell for a truncated sweep is output ending exactly at the limit. Here `head -12` returned 8 lines, which reads as a complete result with room to spare; the narrowing happened upstream of `head`, in the file set, where nothing announces itself. A sweep over too small a universe returns a well-formed, plausible, internally consistent answer.
+
+**Why neither PB20 nor PB18 already covers it.** PB20 governs the PATTERN's reach on a target — a zero that could never have matched. Here the pattern was correct and the count non-zero; what failed was the TARGET SET's extent. PB18 says a count is a prediction until a tool produces it, but a tool did produce this one and ran correctly, over a smaller universe than intended. Neither parent catches a measurement whose denominator is wrong.
+
+**The second trap in the same command.** The corrected form must quote its pattern: `--include=*.md` unquoted is glob-expanded by zsh before grep ever sees it and dies on `no matches found`, which is at least a loud failure. `grep -r --include='*.md' .` is the form that works, taking a DIRECTORY argument and never a glob.
+
+**Generalization.** A measurement's universe is part of the measurement, so report the denominator beside the numerator. Pair every tree sweep with its file count, `grep -rl` piped to `wc -l` alongside the occurrence count, because an unexpectedly small file count is the only symptom a silently narrowed universe produces. Never hand `-r` a shell glob.
+
+**Cross-references:**
+
+- **PB20** (`STAGE_P_BIS_NOTES.md`) — the parent reach rule, whose subject is a pattern's reach on a target rather than the target set's own extent.
+- **PB18** (`STAGE_P_BIS_NOTES.md`) — measure rather than predict; here the tool ran and was still wrong, because the universe was.
+- **PP3.2do** — the rung where it surfaced and was corrected before the figure was recorded; that queue cell and the PP3.2dq §11 obligation both carry 17 across 11 files.
