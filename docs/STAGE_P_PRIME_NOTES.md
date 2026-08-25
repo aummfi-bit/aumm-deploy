@@ -126,3 +126,19 @@ The 2026-08-18 residual is CLOSED. Measured, not derived. No private key and no 
 - **F15** (`STAGE_F_NOTES.md` L600) — the same reachability failure one rung earlier: a recipe that existed and carried the governing rule, but could not be found from the file a cold session actually reads.
 - **`test/fork/StageGIntegration.t.sol` L218—L226** — the mock and its stated rationale.
 - **PP3.2by** — the sub-step where the misattachment surfaced; reverted rather than patched, and re-authored against the correct fixture.
+
+## PP11 — a zero-hit sentinel is unsatisfiable against any term the drafter's own `Must match` requires to appear in prose
+
+**Caught repeatedly across 2026-08-24, never once costing a fix cycle and never once earning its place.** The §8e.1 USER VERIFY block routinely pairs a zero-expectation with a positive control per PB20. The recurring miss is narrower: the drafter writes a `Must match` bullet REQUIRING some term to appear in a comment or NatSpec, then writes a USER VERIFY line expecting `grep -c` on that same term to read zero. The save is correct, the grep is correct, and the prediction is impossible. It fired on `getSender` at PP3.2by-retry, on `EmissionDistributor` at PP3.2co, on `VotingWeight` at PP3.2ct, and on `AuMTAlreadyBound` at PP3.2dc — four times in one session, each time resolved by reading the file and confirming the hit was the very sentence the prompt had demanded.
+
+**Why PB20 does not already cover it.** PB20 says a zero-hit sentinel proves nothing until the pattern's REACH on the target is measured, and prescribes pairing every zero-expectation with a known-positive control. Both halves were being followed. The reach failure here is not in the target file's pre-existing content but in the payload the drafter is about to commission — the prompt and the sentinel are written in the same breath, and the sentinel is checked against the file as it exists rather than as it is about to exist. Adding a positive control does not help: the zero still reads as one or two and still looks like a defect.
+
+**The fix, demonstrated mid-session.** Sentinel the CODE form, not the bare term. `grep -c 'vm.mockCall(\|vm.etch('` with the opening parenthesis reads zero on a file whose comment discusses `vm.mockCall` in prose, where the bare pattern reads one; the same trick distinguishes `function getSender` from a NatSpec mention of `getSender()`. Where no code form exists — a reserved done-criteria case name, say — the correct move is to keep the zero-hit sentinel and NOT require the term anywhere in the payload, which is what the reserved-name sentinels do correctly throughout the stage. Either discipline works; writing both a requirement and a zero-expectation for the same string does not.
+
+**Generalization.** Before writing a zero-expectation into a USER VERIFY block, grep the DRAFTED PROMPT for the same pattern. If the prompt requires the term, either narrow the sentinel to a form only code can produce, or drop the requirement. This is the drafting-time twin of PB18: PB18 says measure the payload rather than predicting its counts; PP11 says the payload includes the prose you are about to commission.
+
+**Cross-references:**
+
+- **PB20** (`STAGE_P_BIS_NOTES.md`) — the parent reach rule; its remedy, a paired positive control, does not resolve this variant.
+- **PB18** (`STAGE_P_BIS_NOTES.md`) — the measure-do-not-predict sibling, whose subject is counts rather than reach.
+- **PP3.2by-retry, PP3.2co, PP3.2ct, PP3.2dc** — the four occurrences, all harmless, all resolved by reading the saved file.
