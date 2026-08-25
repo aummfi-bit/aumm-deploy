@@ -144,4 +144,78 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
         assertEq(vault.getPoolRoleAccounts(majorPools[0]).pauseManager, address(orchestrator));
         assertEq(vault.getPoolRoleAccounts(stageNPools[0]).pauseManager, address(orchestrator));
     }
+
+    /**
+     * @notice Reproduction of seam-1 root cause C.2's stranding face — after dissolution the
+     *         authority is real and exercisable, but its new holder has no code path that can
+     *         emit the call, so onboarding a new pool becomes permanently impossible.
+     * @dev NOT reproduced here: the seventeen-function breadth of the rotation; GaugeRegistry
+     *      and MiliariumRegistry `setGovernanceContract` already welded to v1 at Stage K;
+     *      `revokeVaultClass` sealed behind its one-shot; the G23 result that seizing a slot
+     *      is destructive rather than extractive because a composition winner binds no
+     *      recorder; and the unfillability of slots 04 and 07. This row's done-criteria is a
+     *      NOTES clause plus a re-gate of this very file rather than a path-and-case artifact,
+     *      so PP-D42's case-name bind does not apply to it.
+     */
+    function test_P1_C2_theRotatedAuthorityIsRealButItsHolderHasNoCodePathToEmitIt() public {
+        address gov = _executeDissolutionRotation();
+        IEmissionDistributor ed = orchestrator.emissionDistributor();
+
+        assertEq(
+            ed.governance(),
+            gov,
+            "authority genuinely transferred; this is not a broken slot"
+        );
+
+        // AureumGovernance._executeProposal at L425-L445 is six explicit else-if branches over
+        // three immutable targets (the Vault, the slot registry and the gauge registry), with
+        // NO target member and NO calldata member on the Proposal struct, so no proposal of any
+        // type can name an arbitrary callee. The rotated authority is therefore held by a
+        // contract with no expressible way to use it — the permitted-but-reachable-by-no-caller
+        // class this row is named for. Sibling test_freeze_loadBearingFamilyRevertsForMultisig
+        // proves the OTHER half (the multisig lost the same functions), so between the two the
+        // functions are stranded rather than transferred. One-shotness of setAuMTContractForPool
+        // is C.8's face (test/whitehat/P1_C8.t.sol, AuMTAlreadyBound on a second bind), not re-derived here.
+
+        address unboundPool = makeAddr("p1_c2_unbound_for_authority");
+        address aumt = makeAddr("p1_c2_aumt_for_authority");
+        assertEq(ed.auMTContractByPool(unboundPool), address(0), "fresh pool starts unbound");
+
+        vm.prank(gov);
+        ed.setAuMTContractForPool(unboundPool, aumt);
+        assertEq(
+            ed.auMTContractByPool(unboundPool),
+            aumt,
+            "function works for whoever can call it; the defect is that nothing can"
+        );
+    }
+
+    /// @notice After dissolution, an unbound pool can never record a position because the only bind path has no reachable caller.
+    function test_P1_C2_noNewPoolCanEverBeOnboardedAfterDissolution() public {
+        address gov = _executeDissolutionRotation();
+        IEmissionDistributor ed = orchestrator.emissionDistributor();
+
+        address unboundPool = makeAddr("p1_c2_unbound_for_onboarding");
+        address wouldBeAuMT = makeAddr("p1_c2_would_be_aumt");
+        address lp = makeAddr("p1_c2_lp");
+
+        vm.prank(wouldBeAuMT);
+        vm.expectRevert(
+            abi.encodeWithSelector(IEmissionDistributor.NotAuMTContract.selector, unboundPool, wouldBeAuMT)
+        );
+        ed.recordDeposit(unboundPool, lp, 1e18);
+
+        // setAuMTContractForPool is the only way to bind a recorder for a new pool and is
+        // one-shot per pool (C.8 already pins AuMTAlreadyBound on rebind). After dissolution the
+        // rotated holder CAN still call it under a prank, but no proposal type can cause that
+        // call to be made — so pool onboarding stops permanently.
+        address aumt = makeAddr("p1_c2_aumt_for_onboarding");
+        vm.prank(gov);
+        ed.setAuMTContractForPool(unboundPool, aumt);
+        assertEq(
+            ed.auMTContractByPool(unboundPool),
+            aumt,
+            "only bind path works under prank; no proposal type can emit setAuMTContractForPool"
+        );
+    }
 }
