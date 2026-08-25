@@ -1530,4 +1530,104 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
             "D.5 - the kill is permanent per proposal; recovery heals only future snapshots"
         );
     }
+
+    // -------------------------------------------------------------------------
+    // C.5 — permanent self-service protocol-fee exemption (High face)
+    // -------------------------------------------------------------------------
+
+    /// @notice Reproduction of seam-1 root cause C.5's HIGH face: pauseManager pauses, anyone
+    ///         enables recovery mode while paused, unpause clears the pause but not the bit, swaps
+    ///         continue and the protocol's half of the swap-fee split never accrues. Faces NOT
+    ///         reproduced: the pauseVault() variant handing any address 27 permanent bits whose
+    ///         exit grant dies with the entry grant at twelve months, and the Low-downgraded
+    ///         pool-role-accounts face where no admission gate reads getPoolRoleAccounts so an
+    ///         outsider-created pool can carry a permanent swapFeeManager. The row's yield-fee
+    ///         angle is MOOT for Aureum — PoolDataLib L49-L51 gates yield fees on recovery mode
+    ///         but E.3 established the aggregate yield fee is permanently zero, so the swap-fee
+    ///         gate at Vault.sol L1061 carries the whole High face.
+    function test_P1_C5_threeCallsOptAPoolOutOfTheProtocolFeeSplitPermanently() public {
+        address pool = pilotPools[0];
+
+        // Control: healthy pool donates the protocol half into der Bodensee (mirrors L783-L793).
+        uint256 reserveBeforeControl = _bodenseeReserve(svZchf);
+        uint256 amountOutControl = _performSwap(pool, IERC20(address(susds)), svZchf, 1e18);
+        assertGt(amountOutControl, 0, "control swap produced output");
+        assertGt(
+            _bodenseeReserve(svZchf),
+            reserveBeforeControl,
+            "control - protocol half reaches der Bodensee on a healthy pool"
+        );
+        uint256 controlDelta = _bodenseeReserve(svZchf) - reserveBeforeControl;
+
+        // Three-call sequence: pause (pauseManager) -> enableRecoveryMode (permissionless while
+        // paused per VaultAdmin L349-L352) -> unpause (pauseManager). The bit survives unpause.
+        vm.prank(address(orchestrator));
+        vault.pausePool(pool);
+        vault.enableRecoveryMode(pool);
+        vm.prank(address(orchestrator));
+        vault.unpausePool(pool);
+
+        // Second swap: still trades, but aggregate swap fees are not charged in recovery mode
+        // (Vault.sol L1059-L1061) while the total swap fee is still computed for off-chain
+        // reporting, so the exemption is invisible to anything reading reported fees.
+        uint256 reserveBeforeExempt = _bodenseeReserve(svZchf);
+        emit log_named_uint("hook svZCHF balance before recovery-mode swap", svZchf.balanceOf(address(hook)));
+        emit log_named_uint("hook sUSDS balance before recovery-mode swap", susds.balanceOf(address(hook)));
+        uint256 amountOutExempt = _performSwap(pool, IERC20(address(susds)), svZchf, 1e18);
+        uint256 recoveryDelta = _bodenseeReserve(svZchf) - reserveBeforeExempt;
+        emit log_named_uint("controlDelta Bodensee reserve rise (healthy)", controlDelta);
+        emit log_named_uint("recoveryDelta Bodensee reserve rise (recovery mode)", recoveryDelta);
+        assertGt(amountOutExempt, 0, "pool is still trading after the three-call sequence");
+        // Exact flatness is the wrong shape here: the hook does not compute its own fee but
+        // collects the Vault's already-charged aggregate through collectSwapAggregateFeesForHook
+        // at AureumFeeRoutingHook.sol L381-L383, so recovery mode starves the path at its source.
+        // Measured on this fixture the control rise is 24963783544357 and the recovery-mode rise
+        // is 2483268481, a ratio of about 10053 to 1; the hook held ZERO svZCHF and ZERO sUSDS
+        // immediately before the recovery-mode swap, as the emitted logs show, so the residual is
+        // NOT swept hook dust; and the residual's source is NOT established by this test. The
+        // claim under test is that the protocol half stopped, evidenced by the collapse in
+        // magnitude; attaching an unverified cause to a correct measurement is the failure lesson
+        // PB22 names.
+        assertGt(controlDelta, 0, "protocol half reaches der Bodensee on a healthy pool");
+        assertTrue(
+            recoveryDelta * 1000 < controlDelta,
+            "protocol half stopped flowing in recovery mode per Vault.sol L1059-L1061; recovery-mode rise is over three orders of magnitude below the control"
+        );
+    }
+
+    /// @notice The recovery bit survives unpause and disqualifies nothing on the Aureum side.
+    function test_P1_C5_theRecoveryBitSurvivesUnpauseAndDisqualifiesNothing() public {
+        // Absence result verified by grep and not re-derived here: recovery mode appears in
+        // Aureum source only in AureumGovernanceAuthorizer's action IDs and at
+        // AureumGovernance.sol L443's disableRecoveryMode exit call; nothing in src/gauge/ or
+        // src/emission/ reads isPoolInRecoveryMode, which is why eligibility and scoring are
+        // blind to it.
+        address pool = pilotPools[0];
+        address lp = makeAddr("p1_c5_lp");
+
+        // Score the pool while healthy so recordScore after the bit is set has a live EMA path.
+        _matureStack(lp);
+
+        vm.prank(address(orchestrator));
+        vault.pausePool(pool);
+        vault.enableRecoveryMode(pool);
+        vm.prank(address(orchestrator));
+        vault.unpausePool(pool);
+
+        assertTrue(
+            vault.isPoolInRecoveryMode(pool),
+            "recovery bit survives unpausePool; it does not clear and has no expiry"
+        );
+        assertTrue(
+            orchestrator.gaugeRegistry().isGaugeApproved(pool),
+            "no Aureum contract reads the recovery bit; gauge approval is unchanged"
+        );
+
+        orchestrator.emissionDistributor().recordScore(pool);
+        assertGt(
+            orchestrator.emissionDistributor().poolScore(pool),
+            0,
+            "no Aureum contract reads the recovery bit; recordScore still writes a nonzero poolScore"
+        );
+    }
 }
