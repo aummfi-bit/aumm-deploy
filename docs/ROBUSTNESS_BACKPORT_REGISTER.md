@@ -4,6 +4,8 @@
 >
 > **Process.** Items enter at status `Open` via audit (planned or opportunistic); move to `Scoped` once the §8e.1-shape change is sized; `In-flight` once a sub-step is authored; `Closed` once the commit lands. Closure rows record the commit hash + a one-line delta describing what attack / error class was removed.
 >
+> **Citations.** A row anchors to SYMBOLS — `Contract.functionName`, an error name, a constant — never to line numbers alone. Line numbers were the original convention and they rot in silence: RB-017 landed 2026-08-05 at `494ed68`, the two files it cites took EIGHT further commits by 2026-08-11, and by the end of that week all four of its citations pointed at unrelated code while its "exactly three proposal types" had become six at F-22 — with nothing anywhere flagging either, because a stale line number is still a valid line number. A symbol survives every edit that does not rename it, and a rename surfaces on the next `grep`. Where a line genuinely helps locate something inside a long body it rides AFTER the symbol as a convenience and is read as approximate, never as the anchor. Rows written before this rule keep their line citations until the stage that next touches their file re-verifies them, and for `src/` that stage is PP4.
+>
 > **Out of scope.** Architecture decisions (fee split, factory pattern, authorizer model, vault isolation), spec-level token / pool selections, and emission-curve constants. These are sealed at their respective stage decisions and only reopen via explicit chat-level discussion.
 
 ## Register
