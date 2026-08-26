@@ -416,10 +416,29 @@ contract EmissionDistributor is IEmissionDistributor {
 
         address registry = incendiaryRegistry;
         if (registry != address(0)) {
-            uint256 boostDue = IIncendiaryRegistry(registry).boostIntegral(pool, poolBoostCursor[pool] + 1, block.number);
+            // PP-D44 (F.1). The floor is REQUIRED, not defensive: an unbound pool's cursor reads
+            // zero, so `_lpTrancheIntegral` would walk from block 1 into `_bootstrapApSum`'s
+            // `from - anchorStart` subtraction, which underflows for any `from < GENESIS_BLOCK`.
+            // `eraIndex` is NOT the failure site — it guards pre-genesis and returns era 0.
+            // Raising the bound cannot change honest delivery: `boostIntegral` resolves both 1 and
+            // `GENESIS_BLOCK + 1` to epoch 0, and epoch 0 carries no bucket because `buyBoost`
+            // reverts until year 1 ends, around epoch 26.
+            uint256 boostFrom = poolBoostCursor[pool] + 1;
+            uint256 genesisFloor = GENESIS_BLOCK + 1;
+            if (boostFrom < genesisFloor) {
+                boostFrom = genesisFloor;
+            }
+            uint256 boostDue = IIncendiaryRegistry(registry).boostIntegral(pool, boostFrom, block.number);
             if (boostDue > 0) {
+                // The canonical 15%-per-epoch cap of `10_constitution.md` §xxix L135, ENFORCED here
+                // rather than trusted from the registry that reported `boostDue`. Excess is
+                // discarded and never banked, the cursor below advancing unconditionally.
+                uint256 boostCap = (BOOST_CAP_BPS * _lpTrancheIntegral(boostFrom, block.number)) / 10_000;
+                if (boostDue > boostCap) {
+                    boostDue = boostCap;
+                }
                 uint256 boostLP = poolTotalLP[pool];
-                if (boostLP > 0) {
+                if (boostDue > 0 && boostLP > 0) {
                     poolAccRewardPerLP[pool] += boostDue.divDown(boostLP);
                 }
             }
