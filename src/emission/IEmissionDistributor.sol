@@ -76,6 +76,12 @@ interface IEmissionDistributor {
     /// @param newRegistry The new `incendiaryRegistry` address (zero address permitted).
     event IncendiaryRegistrySet(address indexed oldRegistry, address indexed newRegistry);
 
+    /// @notice Emitted when governance ARMS a rebind of the `incendiaryRegistry` slot — the first half of the PP-D44 two-step.
+    /// @dev PP-D44 (F.1). `proposeIncendiaryRegistry` stores the pending address together with the proposing block and emits this; `acceptIncendiaryRegistry` commits at a strictly later block and emits `IncendiaryRegistrySet`, whose shape is unchanged. This event exists so the armed address is WATCHABLE rather than only pollable through the `pendingIncendiaryRegistry` getter, which is the visibility the two-step buys. Zero remains a legal proposal per the H-D29 deprecation valve and routes through both steps with no fast path.
+    /// @param newRegistry The proposed `incendiaryRegistry` address (zero address permitted).
+    /// @param proposedAtBlock The `block.number` at which the proposal was armed; `acceptIncendiaryRegistry` requires `block.number` strictly greater.
+    event IncendiaryRegistryProposed(address indexed newRegistry, uint256 proposedAtBlock);
+
     /// @notice Emitted once when governance binds the AuMMMinterRouter via `setMintRouter` (K-D7 wiring at K7).
     /// @dev Per K-D7 one-shot mint-router binding — single-indexed-router shape mirrors `MinterSet` (AuMM C-D11) and the `setMintRouter` precedent on `BodenseeBootstrapChannel`. The router holds AuMM's C-D11 minter slot; `claim` forwards mints through `mintRouter.mintFor`.
     /// @param router The bound AuMMMinterRouter address.
@@ -120,6 +126,24 @@ interface IEmissionDistributor {
     /// @notice Thrown in `claim` when the mint router has not yet been bound.
     /// @dev Per K-D7 — `claim` reverts until governance calls `setMintRouter`; replaces the H-D7 `NotMinter` revert posture (AuMM is deployed minterless; the router receives the C-D11 slot at K7).
     error MintRouterNotSet();
+
+    /// @notice Thrown when an address that must carry code does not.
+    /// @dev PP-D44 (F.1) seating control — applied to `proposeIncendiaryRegistry`'s non-zero proposals and to `setAuMTContractForPool`'s recorder, per C.8's every-seating rule. Zero is exempt at the registry because the H-D29 deprecation valve makes it a legal value; the recorder has no such exemption and its `ZeroAddress` guard fires first.
+    /// @param target The address whose `code.length` was zero.
+    error NotAContract(address target);
+
+    /// @notice Thrown when `acceptIncendiaryRegistry` is called with no proposal armed.
+    /// @dev PP-D44 (F.1). `pendingIncendiaryRegistryBlock == 0` is the no-proposal sentinel rather than a zero `pendingIncendiaryRegistry`, because zero is itself a legal proposal under the H-D29 valve; block 0 is unreachable as a proposing block on any live chain.
+    error NoPendingRegistryProposal();
+
+    /// @notice Thrown when `acceptIncendiaryRegistry` is called in the same block its proposal was armed.
+    /// @dev PP-D44 (F.1). The accept requires `block.number` strictly greater than the proposing block, which is what makes the seat-and-drain sequence non-atomic. The gap is one block and no more.
+    error RegistryProposalNotRipe();
+
+    /// @notice Thrown when `setAuMTContractForPool` is invoked for a pool the Vault does not recognise.
+    /// @dev PP-D44 (F.1). `IVault(vault).isPoolRegistered(pool)` closes the unvalidated-`pool` face the F.1 PoC exploits to seat a recorder for a fabricated pool. Real Vault API, declared at `IVaultExtension.sol:127` and reaching `IVault` through the inheritance list at `IVault.sol:13`.
+    /// @param pool The address that is not a registered Balancer V3 pool.
+    error PoolNotRegistered(address pool);
 
     /// @notice Permissionlessly records the current F-5 score for `pool` and updates `totalScore`.
     /// @dev Sequence per H-D17: (a) revert `NotApproved(pool)` if gauge revoked; (b) run `_accrueGlobal`
