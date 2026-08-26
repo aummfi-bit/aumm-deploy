@@ -55,6 +55,11 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice A pool's TVL EMA must have been refreshed within EMA_STALENESS_BLOCKS (14 days, one epoch) to contribute to the F-5 emission score — F-05/F-10 anti-stale-seed floor: EMA_MATURITY_BLOCKS gates seed age, this gates seed freshness, so a single ancient seed never scores a long-dormant pool.
     uint256 internal constant EMA_STALENESS_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
 
+    /* ---------- Incendiary boost cap (PP-D44 / F.1) ---------- */
+
+    /// @notice Aggregate Incendiary boost cap in basis points, 1,500 = 15% of an epoch's emission integral — the immutable at `10_constitution.md` §xxix L135, which §xxviii L97 states as the shared 15%-per-epoch cap on claims skimmed from the LP emission tranche before the CCB splits the remainder. DUPLICATED here rather than read from `IncendiaryRegistry.BOOST_CAP_BPS` at `IncendiaryRegistry.sol:50`, deliberately and per PP-D44: reading the cap from the contract the clamp exists to bound would reintroduce exactly the trust the clamp removes. The two sides agree by construction rather than by call, both using the plain-integer BPS convention of L-D4 / L-D20 rather than `divDown`, a basis-point figure being a rational fraction and not a FixedPoint scalar.
+    uint256 internal constant BOOST_CAP_BPS = 1_500;
+
     /* ---------- Global accumulator (H-D15) ---------- */
 
     /// @notice Global FixedPoint 18-decimal accumulator per H-D15 — `accRewardPerScoreUnit += (rate * Δblocks).divDown(totalScore)` advances at `_accrueGlobal`.
@@ -123,6 +128,14 @@ contract EmissionDistributor is IEmissionDistributor {
 
     /// @notice Governance-settable Stage L Incendiary registry address per H-D29 — `address(0)` at deploy (pre-Stage-L posture and deprecation safety valve); read inside `_phaseAwareBody`'s continuous-leg sub-interval body of `_lpTrancheIntegral` per H-D29; `address(0)` short-circuits the F-7 Step 1 skim subtraction returning `rate × n` (zero skim); semantics mirror H-D10 `feeRecorder` / `emissionsRecorder` recorder-slot precedent (governance-settable, `address(0)` clears).
     address public incendiaryRegistry;
+
+    /* ---------- Pending Incendiary registry — the PP-D44 two-step ---------- */
+
+    /// @notice The address armed by `proposeIncendiaryRegistry` and committed by `acceptIncendiaryRegistry` per PP-D44. Zero is a LEGAL armed value, being the H-D29 deprecation valve, which is precisely why this slot cannot serve as the no-proposal sentinel and `pendingIncendiaryRegistryBlock` does instead.
+    address public pendingIncendiaryRegistry;
+
+    /// @notice The `block.number` at which the pending proposal was armed, and the no-proposal SENTINEL at zero per PP-D44 — `acceptIncendiaryRegistry` reverts `NoPendingRegistryProposal` while this reads zero, and `RegistryProposalNotRipe` until `block.number` is strictly greater, which is what makes the seat-and-drain sequence non-atomic. Block 0 is unreachable as a proposing block on any live chain, so the sentinel cannot collide with a real proposal.
+    uint256 public pendingIncendiaryRegistryBlock;
 
     /* ---------- Boost-delivery cursor (L-D25) ---------- */
 
