@@ -1714,11 +1714,11 @@ contract EmissionDistributorTest is Test {
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), GENESIS_BLOCK_ + 1),
-            abi.encode(uint256(1e18))
+            abi.encode(uint256(1e16))
         );
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 0);
-        assertEq(distributor.poolAccRewardPerLP(POOL_A), 1e16);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 1e14);
         assertEq(distributor.poolBoostCursor(POOL_A), GENESIS_BLOCK_ + 1);
         // L-D15 — boost delivery makes NO recordEmissions push
         assertEq(effOracle.callsLength(), 0);
@@ -1783,18 +1783,18 @@ contract EmissionDistributorTest is Test {
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, uint256(1), b1),
-            abi.encode(uint256(1e18))
+            abi.encode(uint256(1e16))
         );
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 0);
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.boostIntegral.selector, POOL_A, b1 + 1, b2),
-            abi.encode(uint256(2e18))
+            abi.encode(uint256(2e16))
         );
         vm.roll(b2);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 0);
-        assertEq(distributor.poolAccRewardPerLP(POOL_A), 3e16);
+        assertEq(distributor.poolAccRewardPerLP(POOL_A), 3e14);
     }
 }
