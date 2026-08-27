@@ -394,10 +394,12 @@ contract SwapAndDepositToBodensee {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice G-D12 nine-step `_vault.unlock` callback: settle, DONATION add-liquidity, reserve delta, event.
+     * @notice G-D12 `_vault.unlock` callback: DONATION add-liquidity, then settle the Vault's actual debit, reserve rise, event.
      * @dev `external` for `abi.encodeCall` from the Vault; `OnlyVault` restricts `msg.sender` to `_vault`.
+     *      Add runs before settle per PP-D45 and PB-D68 (xix); returns the amount actually consumed so the
+     *      caller can thread it into its own residual check.
      */
-    function _swapAndDepositCallback(IERC20 payToken, uint256 amount) external {
+    function _swapAndDepositCallback(IERC20 payToken, uint256 amount) external returns (uint256 consumed) {
         if (msg.sender != address(_vault)) {
             revert OnlyVault(msg.sender);
         }
@@ -409,11 +411,9 @@ contract SwapAndDepositToBodensee {
         }
         uint8 idx = payToken == _svZchf ? _svZchfIndex : _sUsdsIndex;
         uint256 preReserve = _currentReserve(idx);
-        payToken.safeTransfer(address(_vault), amount);
-        _vault.settle(payToken, amount);
         uint256[] memory maxAmountsIn = new uint256[](3);
         maxAmountsIn[idx] = amount;
-        (, uint256 bptOut, ) = _vault.addLiquidity(
+        (uint256[] memory amountsIn, uint256 bptOut, ) = _vault.addLiquidity(
             AddLiquidityParams({
                 pool: _bodensee,
                 to: address(this),
@@ -431,6 +431,12 @@ contract SwapAndDepositToBodensee {
         if (postReserve <= preReserve) {
             revert ReserveDidNotRise(preReserve, postReserve);
         }
+        // PB-D68 (xix) — settle what the Vault actually charged, not what was offered; the remainder stays on the helper as dust, consumed by the caller's own residual accounting per PP-D45.
+        consumed = amountsIn[idx];
+        payToken.safeTransfer(address(_vault), consumed);
+        // settle returns credit equal to consumed by construction; bounded fee-token loop. See D8 NOTES F12/F15.
+        // slither-disable-next-line unused-return,calls-loop
+        _vault.settle(payToken, consumed);
         emit FeeRoutedToBodensee(_ORIGINAL_CALLER_SLOT.asAddress().tload(), payToken, amount);
     }
 
