@@ -15,7 +15,7 @@ pragma solidity ^0.8.26;
 ///      interface stub as a forward-dependency only — no concrete implementation under `src/incendiary/`
 ///      until Stage L. The distributor defaults `incendiaryRegistry = address(0)` per H-D29 so the F-7
 ///      continuous-leg sub-interval body returns `rate × n` (zero skim) until governance calls
-///      `setIncendiaryRegistry(deployedRegistry)` after Stage L deployment. F-7 canonical spec at
+///      `proposeIncendiaryRegistry(deployedRegistry)` and then `acceptIncendiaryRegistry()` after Stage L deployment. F-7 canonical spec at
 ///      `aummfi-bit/aumm-site/11_formulas.md` F-7 — "Incendiary_total = Σ active Incendiary Boost claims this
 ///      block" — Step 1 per-block discipline; the `BLOCKS_PER_EPOCH` step-sampling per H-D3 applies to F-7
 ///      Step 2 CCB-weighted POOL share assignment, NOT to Step 1 Incendiary skim per H-D29 scope clarification.

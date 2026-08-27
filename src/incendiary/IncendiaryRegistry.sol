@@ -25,8 +25,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 ///      walk-forward places the entitlement into per-(epoch,pool) additive buckets under the L-D6
 ///      15%-of-epoch aggregate cap (L-D7). `integratedSkim` and `boostIntegral` are L-D23 direct
 ///      epoch-walk views over those buckets; Stage L storage is final at L2.1b (the three mappings
-///      + `RailEMA`, no cumulative cache). Until governance calls `setIncendiaryRegistry`, the
-///      distributor defaults to `address(0)` (zero skim) per H-D29.
+///      + `RailEMA`, no cumulative cache). Until governance calls `proposeIncendiaryRegistry` and then
+///      `acceptIncendiaryRegistry`, the distributor defaults to `address(0)` (zero skim) per H-D29.
 contract IncendiaryRegistry is IIncendiaryRegistry {
     using FixedPoint for uint256;
     using ScalingHelpers for uint256;
