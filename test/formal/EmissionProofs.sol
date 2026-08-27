@@ -408,15 +408,16 @@ contract EmissionProofs is Test {
 
         (bool ok, ) = address(dist).call(
             abi.encodeCall(
-                EmissionDistributor.setIncendiaryRegistry,
-                (address(0xC0DE))
+                EmissionDistributor.proposeIncendiaryRegistry,
+                (address(aumm))
             )
         );
         assert(!ok);
 
         vm.prank(newGov);
-        dist.setIncendiaryRegistry(address(0xC0DE));
-        assert(dist.incendiaryRegistry() == address(0xC0DE));
+        dist.proposeIncendiaryRegistry(address(aumm));
+        assert(dist.pendingIncendiaryRegistry() == address(aumm));
+        assert(dist.pendingIncendiaryRegistryBlock() == block.number);
     }
 
     /// P-ED4 auth gate plus the H-D29 zero-permitted deprecation valve
