@@ -69,6 +69,7 @@ contract P1_F1_Test is Test {
     MockMiliariumRegistry internal miliReg;
     EmissionDistributor internal distributor;
     AuMMMinterRouter internal router;
+    MockRegisteredVault internal vaultMock;
 
     function setUp() public {
         aumm = new AuMM(GENESIS_BLOCK_, address(this));
@@ -77,6 +78,7 @@ contract P1_F1_Test is Test {
         mult = new MockCCBMultiplier();
         effOracle = new MockEfficiencyOracle();
         miliReg = new MockMiliariumRegistry();
+        vaultMock = new MockRegisteredVault();
 
         distributor = new EmissionDistributor(
             IAuMM(address(aumm)),
@@ -87,7 +89,7 @@ contract P1_F1_Test is Test {
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
             GOV,
-            address(new MockRegisteredVault())
+            address(vaultMock)
         );
         router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
 
@@ -146,5 +148,28 @@ contract P1_F1_Test is Test {
         uint256 minted = aumm.balanceOf(ATTACKER);
         assertLt(minted, huge / 1_000, "clamped far below the remaining supply");
         assertLt(aumm.totalSupply(), aumm.MAX_SUPPLY(), "supply is never pinned at the cap");
+    }
+
+    /// @notice `setAuMTContractForPool` refuses a pool the Vault does not recognise, which is the
+    ///         seating-side half of F.1: the PoC's step 1 seats a recorder for a FABRICATED pool.
+    /// @dev    PP-D44 (F.1). The default-true `MockRegisteredVault` is what lets the other forty
+    ///         call sites in the tree pass untouched, so the negative case is driven by marking one
+    ///         pool unregistered — the single reason `setPoolRegistered` exists on that mock. The
+    ///         positive control runs FIRST and deliberately reuses `address(evil)`, the very pool
+    ///         the regression above seats, so a passing revert cannot be an artefact of an address
+    ///         the mock would have rejected anyway.
+    function test_setAuMTContractForPoolRequiresRegisteredPool() public {
+        address evil = address(new EvilRegistry(1e18));
+
+        vm.prank(GOV);
+        distributor.setAuMTContractForPool(evil, ATTACKER);
+        assertEq(distributor.auMTContractByPool(evil), ATTACKER, "control: a registered pool binds");
+
+        address unknown = address(new EvilRegistry(1e18));
+        vaultMock.setPoolRegistered(unknown, false);
+
+        vm.prank(GOV);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.PoolNotRegistered.selector, unknown));
+        distributor.setAuMTContractForPool(unknown, ATTACKER);
     }
 }
