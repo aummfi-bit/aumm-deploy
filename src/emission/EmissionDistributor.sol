@@ -230,11 +230,12 @@ contract EmissionDistributor is IEmissionDistributor {
     /**
      * @notice Binds the AuMT recorder for `pool` per I-D9 — one-shot per pool, `onlyGovernance`-gated.
      * @dev I-D9 per-pool recorder mapping — `setAuMTContractForPool`-pivoting `auMTContractByPool` mapping; one-shot per pool, no rebinding support (deliberate departure from H-D16 mutable). `ZeroAddress` guard mandatory-non-zero rationale: mirrors `setGovernanceContract` H-D14 (non-zero recipient is the load-bearing handoff invariant); H-D16 zero-address deprecation safety valve removed because asymmetric rebind between hook `auMTByPool` and distributor `auMTContractByPool` would break per-pool topology. `AuMTAlreadyBound(pool)` one-shot rationale: mirrors H-D5 hook `setAuMTForPool` per I-D5 (one-shot binding prevents topology divergence). Emits `AuMTContractBound(pool, newAuMTContract)`.
-     * @param pool The Balancer V3 pool address to bind the recorder for.
+     * @param pool The Balancer V3 pool address to bind the recorder for. Reverts `PoolNotRegistered(pool)` unless the Vault reports it registered, per PP-D44 (F.1).
      * @param newAuMTContract The Stage I AuMT contract address for `pool`. Reverts `ZeroAddress` on zero input; reverts `AuMTAlreadyBound(pool)` if already bound.
      */
     function setAuMTContractForPool(address pool, address newAuMTContract) external override onlyGovernance {
         if (newAuMTContract == address(0)) revert ZeroAddress();
+        if (!IVault(vault).isPoolRegistered(pool)) revert PoolNotRegistered(pool);
         if (auMTContractByPool[pool] != address(0)) revert AuMTAlreadyBound(pool);
         auMTContractByPool[pool] = newAuMTContract;
         emit AuMTContractBound(pool, newAuMTContract);
