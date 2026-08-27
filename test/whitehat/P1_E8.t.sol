@@ -128,7 +128,10 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
 
     function _establishLiveBoostState() internal {
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(boostRegistry));
+        distributor.proposeIncendiaryRegistry(address(boostRegistry));
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
 
         ema.setTVLEMA(pool, 100e18);
         mult.setMultiplier(pool, 1e18);
@@ -155,7 +158,10 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
         assertGt(cursorWhileBound, 0, "precondition: cursor is known-current while bound");
 
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(0));
+        distributor.proposeIncendiaryRegistry(address(0));
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
         assertEq(distributor.incendiaryRegistry(), address(0), "incendiary registry is unbound");
 
         vm.roll(UNBOUND_MID_BLOCK);
@@ -183,12 +189,18 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
         assertGt(frozenCursor, 0, "precondition: cursor is known-current while bound");
 
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(0));
+        distributor.proposeIncendiaryRegistry(address(0));
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
 
-        vm.roll(UNBOUND_END_BLOCK);
+        vm.roll(UNBOUND_END_BLOCK - 1);
 
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(boostRegistry));
+        distributor.proposeIncendiaryRegistry(address(boostRegistry));
+        vm.roll(UNBOUND_END_BLOCK);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
 
         uint256 accBefore = distributor.poolAccRewardPerLP(pool);
         vm.prank(AUMT);
