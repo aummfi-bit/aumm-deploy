@@ -296,7 +296,7 @@ contract EmissionProofs is Test {
 
     // -------------------------------------------------------------------------
     // P-ED* -- EmissionDistributor governance locks (setMintRouter /
-    // setAuMTContractForPool / setGovernanceContract / setIncendiaryRegistry).
+    // setAuMTContractForPool / setGovernanceContract / proposeIncendiaryRegistry / acceptIncendiaryRegistry).
     // ALL FOUR distributor locks are slot-flag or modifier gates on nonzero
     // principals, so every post-bind rejection is caller-universal with NO
     // EVM-sender axiom (governance is nonzero by construction; contrast the
@@ -420,9 +420,12 @@ contract EmissionProofs is Test {
         assert(dist.pendingIncendiaryRegistryBlock() == block.number);
     }
 
-    /// P-ED4 auth gate plus the H-D29 zero-permitted deprecation valve
-    /// witnessed positively (deliberate asymmetry with the ZeroAddress-
-    /// guarded setters).
+    /// P-ED4 auth gate on both halves of the PP-D44 two-step registry rebind;
+    /// H-D29 zero-permitted deprecation valve witnessed positively through
+    /// propose-then-accept with no fast path (deliberate asymmetry with the
+    /// ZeroAddress-guarded setters). `reg` stays symbolic on the propose auth
+    /// leg because `onlyGovernance` runs before the body's code.length gate;
+    /// positive legs use concrete `address(aumm)`.
     function prove_distributor_setIncendiaryRegistry_gateAndClear(
         address caller,
         address reg
@@ -431,14 +434,25 @@ contract EmissionProofs is Test {
 
         vm.prank(caller);
         (bool ok, ) = address(dist).call(
-            abi.encodeCall(EmissionDistributor.setIncendiaryRegistry, (reg))
+            abi.encodeCall(EmissionDistributor.proposeIncendiaryRegistry, (reg))
         );
         assert(!ok);
 
-        dist.setIncendiaryRegistry(reg);
-        assert(dist.incendiaryRegistry() == reg);
+        dist.proposeIncendiaryRegistry(address(aumm));
+        vm.roll(block.number + 1);
 
-        dist.setIncendiaryRegistry(address(0));
+        vm.prank(caller);
+        (ok, ) = address(dist).call(
+            abi.encodeWithSelector(EmissionDistributor.acceptIncendiaryRegistry.selector)
+        );
+        assert(!ok);
+
+        dist.acceptIncendiaryRegistry();
+        assert(dist.incendiaryRegistry() == address(aumm));
+
+        dist.proposeIncendiaryRegistry(address(0));
+        vm.roll(block.number + 1);
+        dist.acceptIncendiaryRegistry();
         assert(dist.incendiaryRegistry() == address(0));
     }
 
