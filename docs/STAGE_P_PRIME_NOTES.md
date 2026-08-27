@@ -161,6 +161,22 @@ The 2026-08-18 residual is CLOSED. Measured, not derived. No private key and no 
 - **PB18** (`STAGE_P_BIS_NOTES.md`) — measure rather than predict; here the tool ran and was still wrong, because the universe was.
 - **PP3.2do** — the rung where it surfaced and was corrected before the figure was recorded; that queue cell and the PP3.2dq §11 obligation both carry 17 across 11 files.
 
+## PP13 — measuring the payload does not discharge measuring the file it lands in
+
+**Caught across PP4.1, 2026-08-26 to 2026-08-27, in roughly a dozen verify blocks, none of which failed a save.** PB18 was followed throughout: every payload went through `wc -l` and `grep -o` before handoff, and every payload count was right. What was wrong, repeatedly, was the number DERIVED from that measurement about the file the payload lands in. PP4.1c12 is the clean instance — BLOCK A was measured as content, then the file total was predicted as `150 + 15` for a block that is 23 lines, giving 167 against a true 175. The save was correct; the expectation was not.
+
+**The same shape in four other costumes.** An anchor cited at its PRE-INSERT position when inserting necessarily shifts it (PP4.1b put `---` at L274; it had moved to L275). An occurrence count asserted from the drafter's reading of the NEW text alone when the term already lived elsewhere in the file (`FORTY-ONE` predicted 1, measured 2, the earlier amendment already carrying it). A count asserted for a form the code does not actually contain (`address vault_` predicted 2, measured 1, because the guard reads `vault_ == address(0)` and holds no such substring). And a roster recalled rather than counted (`revert ZeroAddress();` predicted 9, measured 11, three other guarded setters forgotten).
+
+**Why PB18 does not already cover it, and why that let the habit survive.** PB18 governs the PAYLOAD — the text about to be inserted, measured before handoff. Every miss above was a claim about the FILE: its totals after the insert, its existing occurrences, its anchors' positions once shifted. Two different universes, and measuring the first feels like diligence for the second. The command WAS run, the number it produced WAS correct, and it answered a different question than the verify block asked.
+
+**The rule.** A `Must match` or USER VERIFY number about the SAVED FILE is a prediction until measured against that file. For a pure insertion the cheapest instrument is `git diff --stat`, whose insertion count is independent of the drafter's arithmetic; for an existing-occurrence claim it is one `grep -c` on disk BEFORE the expectation is written; for an anchor's position it is the observation that everything below an insert has moved. Where a number genuinely cannot be measured in advance, label it DERIVED in the chat text so a mismatch reads as a bad prediction rather than a bad save.
+
+**Cross-references:**
+
+- **PB18** (`STAGE_P_BIS_NOTES.md`) — the payload half of the same discipline; this is its file-state complement, not a restatement of it.
+- **PP4.1c12** — the clean instance: payload measured, file total derived, 167 against 175.
+- **PP4.1b / PP4.1c4b / PP4.1c11-pre** — the shifted anchor, the substring form the code does not contain, and the term already living elsewhere.
+
 ## PP3.3 — Family A verdicts (A.2 and A.3 locked; A.1 and A.4 deferred)
 
 **Locked.** Both rows exit **Fix**, and neither severity moves.
