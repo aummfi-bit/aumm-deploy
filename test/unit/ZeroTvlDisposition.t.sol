@@ -15,6 +15,7 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 import {AuMMMinterRouter} from "src/token/AuMMMinterRouter.sol";
 import {MockEMASampler} from "test/unit/VotingWeight.t.sol";
 import {MockAuMM, MockBpt, MockGaugeRegistry, MockCCBMultiplier, MockEfficiencyOracle, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Minimal settable TVL oracle for the drain-decay leg. Not declared `is ITVLOracle` —
 ///         EMASampler only calls tvl(), and the ITVLOracle cast at construction dispatches by
@@ -82,7 +83,8 @@ contract ZeroTvlDispositionTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         effOracle.setEmissionsRecorder(address(distributor));
@@ -251,7 +253,8 @@ contract ZeroTvlDustCaptureTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));

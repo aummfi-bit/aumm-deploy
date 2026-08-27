@@ -19,6 +19,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "./EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Unit tests for the EmissionDistributor `effectiveQualBlock` qualification clock (I4.3 / I-D14) — fresh-start on first deposit, deposit-weighted-average top-up, reset on any withdrawal, and the per-pool recorder hook-gate (I-D9). Reuses the `EmissionDistributor.t.sol` mock harness; `setUp` mirrors `EmissionDistributorTest` with `POOL_A` bound to `AUMT_REC`.
 contract RecorderClockTest is Test {
@@ -53,7 +54,8 @@ contract RecorderClockTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
         aumm.setMinter(address(distributor));
         effOracle.setEmissionsRecorder(address(distributor));

@@ -21,6 +21,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "./EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Real-AuMM integration test family per H-D36 — 4-test cohort exercising mock/real setMinter parity + halving.
 /// @dev C-D11 two-flag-lock wired via `new AuMM(GENESIS_BLOCK_, address(this))` so this contract is the constructor
@@ -59,7 +60,8 @@ contract AuMMDistributorIntegrationTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
         router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
         aumm.setMinter(address(router));
