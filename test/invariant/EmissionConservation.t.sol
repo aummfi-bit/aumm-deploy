@@ -24,6 +24,7 @@ import {
     MockMiliariumRegistry
 } from "../unit/EmissionDistributor.t.sol";
 import {MockVault} from "../unit/BodenseeBootstrapChannel.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Fuzz-action driver for the INV-2 harness (P-D20). Bound as the distributor's per-pool AuMT recorder
 ///         (so `deposit` / `withdraw` pass `onlyAuMTContract`) and pranks GOV for `channelDistribute`. All amounts
@@ -130,7 +131,8 @@ contract EmissionConservationInvariant is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         vault = new MockVault();

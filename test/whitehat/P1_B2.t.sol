@@ -15,6 +15,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 import {MockBpt, MockCCBMultiplier, MockEfficiencyOracle} from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @title P1 B.2 — closed position keeps a full voting checkpoint
 /// @notice Reproduction PoC for seam-1 root cause B.2 (High). `recordWithdrawal` writes only
@@ -68,7 +69,8 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            address(this)
+            address(this),
+            address(new MockRegisteredVault())
         );
 
         vw = new VotingWeight(

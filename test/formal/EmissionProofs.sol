@@ -17,6 +17,7 @@ import {ICCBMultiplier} from "src/ccb/ICCBMultiplier.sol";
 import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Minimal Vault stub with a settable getPoolTokens return, so the
 ///         BodenseeBootstrapChannel constructor can resolve the AuMM index.
@@ -89,7 +90,8 @@ contract EmissionProofs is Test {
             IEfficiencyOracle(address(0xA555)),
             IMiliariumRegistry(address(0xA666)),
             GENESIS,
-            address(this)
+            address(this),
+            address(new MockRegisteredVault())
         );
         // Mock supplies only getPoolTokens for the constructor aumm-index
         // lookup; aumm's minter stays UNBOUND (accrue reads blockEmissionRate,

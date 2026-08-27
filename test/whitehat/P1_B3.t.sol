@@ -15,6 +15,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 import {MockBpt, MockCCBMultiplier, MockEfficiencyOracle} from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @title P1 B.3 — share denominator omits unrecorded seed
 /// @notice Reproduction PoC for seam-1 root cause B.3 (High). Covers the seed-omission face only;
@@ -75,7 +76,8 @@ contract P1_B3_ShareDenominatorOmitsUnrecordedSeedTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            address(this)
+            address(this),
+            address(new MockRegisteredVault())
         );
 
         vw = new VotingWeight(
