@@ -242,19 +242,34 @@ contract EmissionDistributor is IEmissionDistributor {
     }
 
     /**
-     * @notice Rebinds the `incendiaryRegistry` slot per H-D29 — `onlyGovernance`-gated.
-     * @dev Zero address is acceptable per H-D29 deprecation safety valve — mirrors H-D10 recorder-slot zero-permitted precedent (deliberate asymmetry with H-D14 `setGovernanceContract` mandatory-non-zero). Body sequence: cache `oldRegistry = incendiaryRegistry` → write `incendiaryRegistry = newRegistry` → emit `IncendiaryRegistrySet(oldRegistry, newRegistry)`. When `incendiaryRegistry == address(0)` the `_phaseAwareBody` continuous-leg sub-interval body of `_lpTrancheIntegral` short-circuits the F-7 Step 1 skim subtraction, returning `rate × n` per H-D29 (H5.1c). Stage L deployment hand-off: governance calls this setter once post-Stage-L deploy with the deployed `IIncendiaryRegistry` registry address; H10 deployment script defaults the slot to `address(0)`.
-     * @param newRegistry The new Stage L Incendiary registry address. Zero address permitted as H-D29 deprecation safety valve.
+     * @notice Arms a rebind of the `incendiaryRegistry` slot per PP-D44 (F.1) — first half of the two-step; `onlyGovernance`-gated.
+     * @dev PP-D44 (F.1) replaces the prior atomic governance rebind with a propose/accept pair separated by at least one block per `10_constitution.md` §xxix L135 (no delay constant — the gap is the strict block inequality itself). Non-zero proposals require `newRegistry.code.length > 0` or revert `NotAContract(newRegistry)`; `address(0)` skips the code check per the H-D29 deprecation safety valve — zero remains a legal proposal routed through both steps with no fast path. Body sequence: `code.length` gate (non-zero only) → write `pendingIncendiaryRegistry` and `pendingIncendiaryRegistryBlock = block.number` → emit `IncendiaryRegistryProposed`. Re-arming overwrites an existing proposal unconditionally and restamps the block, restarting the one-block clock. Commitment happens only in `acceptIncendiaryRegistry` at a strictly later block, emitting the unchanged `IncendiaryRegistrySet(old, new)` shape per §xxviii L97.
+     * @param newRegistry The proposed Stage L Incendiary registry address. Zero address permitted as H-D29 deprecation safety valve.
      */
-    function setIncendiaryRegistry(address newRegistry) external onlyGovernance {
+    function proposeIncendiaryRegistry(address newRegistry) external onlyGovernance {
+        if (newRegistry != address(0) && newRegistry.code.length == 0) revert NotAContract(newRegistry);
+        pendingIncendiaryRegistry = newRegistry;
+        pendingIncendiaryRegistryBlock = block.number;
+        emit IncendiaryRegistryProposed(newRegistry, block.number);
+    }
+
+    /**
+     * @notice Commits the armed `incendiaryRegistry` rebind per PP-D44 (F.1) — second half of the two-step; `onlyGovernance`-gated.
+     * @dev PP-D44 (F.1) second step. Reverts `NoPendingRegistryProposal` when `pendingIncendiaryRegistryBlock == 0` (the no-proposal sentinel — zero pending address is legal and cannot serve as sentinel). Reverts `RegistryProposalNotRipe` when `block.number <= pendingIncendiaryRegistryBlock` — bare strict inequality, no added constant, per §xxix (no delay row). Body sequence: cache `oldRegistry = incendiaryRegistry` → commit `pendingIncendiaryRegistry` into `incendiaryRegistry` → zero both pending slots (consuming the proposal) → emit `IncendiaryRegistrySet(oldRegistry, committed)`. When committed address is zero, `_phaseAwareBody`'s continuous-leg sub-interval of `_lpTrancheIntegral` short-circuits the F-7 Step 1 skim subtraction, returning `rate × n` per H-D29. Stage L deployment hand-off: governance calls `proposeIncendiaryRegistry` then `acceptIncendiaryRegistry` in consecutive blocks post-Stage-L deploy; constructor defaults slot to `address(0)`.
+     */
+    function acceptIncendiaryRegistry() external onlyGovernance {
+        if (pendingIncendiaryRegistryBlock == 0) revert NoPendingRegistryProposal();
+        if (block.number <= pendingIncendiaryRegistryBlock) revert RegistryProposalNotRipe();
         address oldRegistry = incendiaryRegistry;
-        incendiaryRegistry = newRegistry;
-        emit IncendiaryRegistrySet(oldRegistry, newRegistry);
+        incendiaryRegistry = pendingIncendiaryRegistry;
+        pendingIncendiaryRegistry = address(0);
+        pendingIncendiaryRegistryBlock = 0;
+        emit IncendiaryRegistrySet(oldRegistry, incendiaryRegistry);
     }
 
     /**
      * @notice One-shot binding of the AuMMMinterRouter per K-D7 — wires the mint path for `claim`.
-     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input and `MintRouterAlreadySet` if already bound; emits `MintRouterBound(router_)`. Mirrors the I-D9 `setAuMTContractForPool` one-shot / H-D5 hook setter precedent and the concrete-only `setIncendiaryRegistry` declaration posture (no interface getter). Executes at K7 step (2) while `governance` still points at the deploy-side authority, before the `setGovernanceContract` handoff per the K-D7 wiring order.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input and `MintRouterAlreadySet` if already bound; emits `MintRouterBound(router_)`. Mirrors the I-D9 `setAuMTContractForPool` one-shot / H-D5 hook setter precedent and the concrete-only `proposeIncendiaryRegistry` / `acceptIncendiaryRegistry` declaration posture (no interface getter). Executes at K7 step (2) while `governance` still points at the deploy-side authority, before the `setGovernanceContract` handoff per the K-D7 wiring order.
      * @param router_ The AuMMMinterRouter address — holds AuMM's C-D11 minter slot via `aumm.setMinter(router_)` at K7.
      */
     function setMintRouter(address router_) external onlyGovernance {
