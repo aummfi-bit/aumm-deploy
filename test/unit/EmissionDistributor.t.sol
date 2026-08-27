@@ -296,7 +296,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -311,7 +312,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -326,7 +328,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -341,7 +344,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -356,7 +360,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(0)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -371,7 +376,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(0)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
     }
 
@@ -386,7 +392,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            address(0)
+            address(0),
+            address(vaultMock)
         );
     }
 
