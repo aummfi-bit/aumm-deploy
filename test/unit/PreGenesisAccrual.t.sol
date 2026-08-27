@@ -19,6 +19,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "./EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @title  PreGenesisAccrualHarness
 /// @notice Adds a mutating exposer for `_accrueGlobal` on top of the H-D34 view-only harness.
@@ -33,7 +34,8 @@ contract PreGenesisAccrualHarness is EmissionDistributorHarness {
         IEfficiencyOracle efficiencyOracle_,
         IMiliariumRegistry miliariumRegistry_,
         uint256 genesisBlock_,
-        address initialGovernance_
+        address initialGovernance_,
+        address vault_
     )
         EmissionDistributorHarness(
             aumm_,
@@ -43,7 +45,8 @@ contract PreGenesisAccrualHarness is EmissionDistributorHarness {
             efficiencyOracle_,
             miliariumRegistry_,
             genesisBlock_,
-            initialGovernance_
+            initialGovernance_,
+            vault_
         )
     {}
 
@@ -78,7 +81,8 @@ contract PreGenesisAccrualTest is Test {
             IEfficiencyOracle(address(new MockEfficiencyOracle())),
             IMiliariumRegistry(address(new MockMiliariumRegistry())),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
     }
 
