@@ -329,34 +329,33 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         vm.clearMockedCalls();
     }
 
-    /// @notice P1 A.2 — Mallory, holding 1 wei of svZCHF and no role, permanently bricks the
-    ///         `swapAndDeposit` rail that `GaugeRegistry.activateGauge` and
-    ///         `VaultClassRegistry.proposeVaultClass` both funnel through. The callback moves
-    ///         exactly `amount`, so the stray wei survives to the tail assertion at `:351-354`.
-    function test_P1_A2_strayWeiBricksSwapAndDeposit() public {
-        deal(address(svZchf), address(helper), FEE_SVZCHF, true);
-        address mallory = address(uint160(uint256(keccak256("mallory"))));
-        deal(address(svZchf), mallory, 1, true);
-        vm.prank(mallory);
-        svZchf.transfer(address(helper), 1);
-        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.HelperBalanceNonZero.selector, uint256(1)));
-        helper.swapAndDeposit(svZchf, FEE_SVZCHF);
-    }
-
-    /// @notice P1 A.2 — the same wei bricks the `donate` rail, which every one of the six
-    ///         `AureumGovernance.propose*` entrypoints funnels through via `_createProposal`.
-    ///         Tail assertion at `:381-384`; identical shape to `swapAndDeposit`.
-    function test_P1_A2_strayWeiBricksDonate() public {
-        address donor = address(uint160(uint256(keccak256("donor"))));
+    /// @notice P1 A.2 done-criteria (PP-D45) — a stray wei on either rail no longer bricks either entry.
+    /// @dev    The absolute residual check became an entry-snapshot delta: callers PUSH `amount` before
+    ///         invoking, so the tolerated baseline is `entryBalance - amount` and a pre-existing residual
+    ///         survives untouched. Each leg asserts the stray is STILL EXACTLY ONE WEI afterwards, which is
+    ///         the load-bearing half — a success assertion alone would pass against a vacuous guard, whereas
+    ///         an exact surviving residual proves the call consumed precisely `amount` and no more.
+    ///         Covers both rails and both entries: svZCHF through `swapAndDeposit`, sUSDS through `donate`.
+    function test_P1_A2_strayWeiDoesNotBrickEitherRail() public {
+        IERC20 susdsErc = IERC20(address(susds));
+        address mallory = address(uint160(uint256(keccak256("malloryA2fix"))));
+        address donor = address(uint160(uint256(keccak256("donorA2fix"))));
         helper.addAuthorizedDonator(donor);
+
         deal(address(svZchf), address(helper), FEE_SVZCHF, true);
-        address mallory = address(uint160(uint256(keccak256("mallory"))));
         deal(address(svZchf), mallory, 1, true);
         vm.prank(mallory);
         svZchf.transfer(address(helper), 1);
-        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.HelperBalanceNonZero.selector, uint256(1)));
+        helper.swapAndDeposit(svZchf, FEE_SVZCHF);
+        assertEq(svZchf.balanceOf(address(helper)), 1, "svZCHF stray survives and the fee is consumed exactly");
+
+        deal(address(susds), address(helper), FEE_SUSDS, true);
+        deal(address(susds), mallory, 1, true);
+        vm.prank(mallory);
+        susdsErc.transfer(address(helper), 1);
         vm.prank(donor);
-        helper.donate(svZchf, FEE_SVZCHF);
+        helper.donate(susdsErc, FEE_SUSDS);
+        assertEq(susdsErc.balanceOf(address(helper)), 1, "sUSDS stray survives and the fee is consumed exactly");
     }
 
     /// @notice P1 A.3 — `donate` asserts an EXACT reserve delta, but the Vault re-derives the raw
