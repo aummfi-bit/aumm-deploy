@@ -56,6 +56,8 @@ contract DeployStageLForkTest is StageIIntegrationFixture {
 
         deployScript = new DeployStageL();
         registry = deployScript.deploy(address(this));
+        vm.roll(block.number + 1);
+        deployScript.acceptRegistry(address(this));
     }
 
     function test_DeployStageL_wiringState() public view {
@@ -68,7 +70,7 @@ contract DeployStageLForkTest is StageIIntegrationFixture {
         assertEq(address(registry.GAUGE_REGISTRY()), address(gaugeRegistry));
         assertEq(registry.GENESIS_BLOCK(), aumm.GENESIS_BLOCK());
         assertTrue(swapAndDeposit.authorizedDonators(address(registry)), "script addAuthorizedDonator wired the registry");
-        assertEq(emissionDistributor.incendiaryRegistry(), address(registry), "script setIncendiaryRegistry wired the registry");
+        assertEq(emissionDistributor.incendiaryRegistry(), address(registry), "script propose-then-accept wired the registry");
     }
 
     function test_DeployStageL_buyBoost_smoke() public {

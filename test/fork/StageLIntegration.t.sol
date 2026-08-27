@@ -13,7 +13,7 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
 /**
  * @title StageLIntegrationFixture
  * @notice Stage L Incendiary-boost fork-test base — extends the Stage I emission stack with the live IncendiaryRegistry producer, the L-D25 boost-delivery leg armed on the EmissionDistributor, and the K-D7 claim → mint path, all against the real der Bodensee venue.
- * @dev Inherits StageIIntegrationFixture (vault + AuMM + der Bodensee + 3 pilots + hook + gaugeRegistry + emissionDistributor + bootstrapChannel + the _depositOneSided / _withdrawProportional helpers). StageK is deliberately NOT inherited — it hands gaugeRegistry governance to the on-chain Governance contract, but Stage L needs that governance to stay address(this) so the fixture can seedFoundingPool directly (L-D27). setUp adds, all authorised as address(this): seedFoundingPool(pilot) for the buyBoost L-D10 gate; the L-D16 8-arg IncendiaryRegistry deploy against the real venue; addAuthorizedDonator(registry) (L-D2 deposit tail); setIncendiaryRegistry(registry) (arms the L-D25 leg); and the K-D7 mint path — AuMMMinterRouter deploy + aumm.setMinter(router) one-shot + emissionDistributor.setMintRouter(router) (L8.6 is the first fork test to wire mint). EMA matured on the real venue per L-D18/L-D19: roll past Year 1, seed the svZCHF rail, roll past the 60-day EMA_MATURITY_BLOCKS so buyBoost's L-D3 phase gate and _maturePrice gate are both open. Anchors: L-D27, L-D2 / L-D10 / L-D16 / L-D25, K-D7, H13 (fixture-inheritance precedent).
+ * @dev Inherits StageIIntegrationFixture (vault + AuMM + der Bodensee + 3 pilots + hook + gaugeRegistry + emissionDistributor + bootstrapChannel + the _depositOneSided / _withdrawProportional helpers). StageK is deliberately NOT inherited — it hands gaugeRegistry governance to the on-chain Governance contract, but Stage L needs that governance to stay address(this) so the fixture can seedFoundingPool directly (L-D27). setUp adds, all authorised as address(this): seedFoundingPool(pilot) for the buyBoost L-D10 gate; the L-D16 8-arg IncendiaryRegistry deploy against the real venue; addAuthorizedDonator(registry) (L-D2 deposit tail); proposeIncendiaryRegistry(registry) then acceptIncendiaryRegistry() (arms the L-D25 leg); and the K-D7 mint path — AuMMMinterRouter deploy + aumm.setMinter(router) one-shot + emissionDistributor.setMintRouter(router) (L8.6 is the first fork test to wire mint). EMA matured on the real venue per L-D18/L-D19: roll past Year 1, seed the svZCHF rail, roll past the 60-day EMA_MATURITY_BLOCKS so buyBoost's L-D3 phase gate and _maturePrice gate are both open. Anchors: L-D27, L-D2 / L-D10 / L-D16 / L-D25, K-D7, H13 (fixture-inheritance precedent).
  */
 abstract contract StageLIntegrationFixture is StageIIntegrationFixture {
     IncendiaryRegistry internal registry;
@@ -39,7 +39,9 @@ abstract contract StageLIntegrationFixture is StageIIntegrationFixture {
 
         // Admit the registry to the donate channel (L-D2 deposit tail) + arm the distributor's L-D25 delivery leg.
         swapAndDeposit.addAuthorizedDonator(address(registry));
-        emissionDistributor.setIncendiaryRegistry(address(registry));
+        emissionDistributor.proposeIncendiaryRegistry(address(registry));
+        vm.roll(block.number + 1);
+        emissionDistributor.acceptIncendiaryRegistry();
 
         // K-D7 mint path — L8.6 is the first fork test to exercise claim → mint.
         mintRouter = new AuMMMinterRouter(IAuMM(address(aumm)), address(bootstrapChannel), address(emissionDistributor));
