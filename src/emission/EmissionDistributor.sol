@@ -15,6 +15,7 @@ import {CCBScore} from "../ccb/CCBScore.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
 import {IIncendiaryRegistry} from "../incendiary/IIncendiaryRegistry.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
 /// @title EmissionDistributor — Aureum Stage H pool-scoped emission distributor per H-D4—H-D5 + H-D15—H-D23
 /// @notice Two-tier MasterChef / Synthetix accumulator topology: global `accRewardPerScoreUnit` plus per-pool `poolAccDebt` lazy-settle per H-D15. Permissionless `recordScore(pool)` writes the F-5 absolute score per H-D17 with F12 signed-delta `totalScore` middleware per H-D19. AuMT recorder (Stage I) drives `recordDeposit` / `recordWithdrawal`; user-facing `claim(pool, to)` is the sole mint entry per H-D20, routed through `mintRouter.mintFor` per K-D7.
@@ -46,6 +47,9 @@ contract EmissionDistributor is IEmissionDistributor {
 
     /// @notice Stage H genesis block — anchors halving math via `IAuMM.blockEmissionRate(block_)` per H-D21; same constructor-parameter precedent as `BodenseeBootstrapChannel` L36.
     uint256 public immutable GENESIS_BLOCK;
+
+    /// @notice Balancer V3 Vault — read by `setAuMTContractForPool` for the PP-D44 (F.1) `isPoolRegistered(pool)` gate. Mirrors `GaugeEligibility`'s `address public immutable vault` shape rather than holding a typed `IVault`, following that contract's own precedent; `isPoolRegistered` is real Vault API, declared on `IVaultExtension` and reaching `IVault` through its inheritance list. Set once at deploy; no setter.
+    address public immutable vault;
 
     /* ---------- F-10 EMA gate constants (mirror VotingWeight F-04/F-05) ---------- */
 
@@ -149,8 +153,8 @@ contract EmissionDistributor is IEmissionDistributor {
     /* ---------- Constructor ---------- */
 
     /**
-     * @notice Wires the 7 core immutables + initial governance slot and anchors `lastAccrualBlock` for the H-D22 EmissionDistributor.
-     * @dev ZeroAddress guards apply to the 7 address-bearing params; `genesisBlock_` accepts any `uint256` value (deploy-time correctness is governance's responsibility — same pattern as `BodenseeBootstrapChannel` / `EfficiencyOracle`). `lastAccrualBlock` initialized to `genesisBlock_` per H-D21 so the first `_accrueGlobal()` call computes from block `genesisBlock_ + 1` when `totalScore > 0` (otherwise the H-D15 empty-`totalScore` guard short-circuits and resets `lastAccrualBlock` to `block.number`). `auMTContractByPool` defaults to all-zero mapping per I-D9 pre-binding posture — `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(pool, msg.sender)` for any unbound pool until governance calls `setAuMTContractForPool(pool, auMT)` post-deploy (Stage I deploy step). Deploy prerequisite per K-D7 (supersedes the H-D7 direct-minter handoff): governance binds `setMintRouter(router)` and `aumm.setMinter(router)` fires at K7 before any `claim(...)` invocation; `claim` reverts `MintRouterNotSet` until the router is bound. Deploy prerequisite per H-D23: `_efficiencyOracle.setEmissionsRecorder(address(this))` must be called by EfficiencyOracle governance before the first `recordScore(pool)` settle pushes; pre-handoff calls revert from `onlyEmissionsRecorder` — distributor does not catch (deploy correctness is governance's responsibility). No constructor emit for `GovernanceTransferred` — mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel pattern where the initial governance slot is set silently.
+     * @notice Wires the 8 core immutables + initial governance slot and anchors `lastAccrualBlock` for the H-D22 EmissionDistributor.
+     * @dev ZeroAddress guards apply to the 8 address-bearing params; `genesisBlock_` accepts any `uint256` value (deploy-time correctness is governance's responsibility — same pattern as `BodenseeBootstrapChannel` / `EfficiencyOracle`). `lastAccrualBlock` initialized to `genesisBlock_` per H-D21 so the first `_accrueGlobal()` call computes from block `genesisBlock_ + 1` when `totalScore > 0` (otherwise the H-D15 empty-`totalScore` guard short-circuits and resets `lastAccrualBlock` to `block.number`). `auMTContractByPool` defaults to all-zero mapping per I-D9 pre-binding posture — `recordDeposit` / `recordWithdrawal` revert `NotAuMTContract(pool, msg.sender)` for any unbound pool until governance calls `setAuMTContractForPool(pool, auMT)` post-deploy (Stage I deploy step). Deploy prerequisite per K-D7 (supersedes the H-D7 direct-minter handoff): governance binds `setMintRouter(router)` and `aumm.setMinter(router)` fires at K7 before any `claim(...)` invocation; `claim` reverts `MintRouterNotSet` until the router is bound. Deploy prerequisite per H-D23: `_efficiencyOracle.setEmissionsRecorder(address(this))` must be called by EfficiencyOracle governance before the first `recordScore(pool)` settle pushes; pre-handoff calls revert from `onlyEmissionsRecorder` — distributor does not catch (deploy correctness is governance's responsibility). No constructor emit for `GovernanceTransferred` — mirrors TVLOracle / EfficiencyOracle / BodenseeBootstrapChannel pattern where the initial governance slot is set silently.
      * @param aumm_ AuMM token — consumed for `blockEmissionRate(block_)` reads in `_lpTrancheEmission` per H-D21; the K-D7 mint path routes `claim` through `mintRouter.mintFor`, not `AuMM.mint` directly. Reverts `ZeroAddress` on zero input.
      * @param gaugeRegistry_ Stage G GaugeRegistry — gates `recordScore` via `isGaugeApproved(pool)` per H-D5 / H-D17 (a). Reverts `ZeroAddress` on zero input.
      * @param emaSampler_ Stage F EMASampler — read-only TVL_EMA source for F-5 score per H-D17 (c); never invokes `updateEMA` (F-D22 write/read separation). Reverts `ZeroAddress` on zero input.
@@ -159,6 +163,7 @@ contract EmissionDistributor is IEmissionDistributor {
      * @param miliariumRegistry_ Stage J / pre-Stage-J placeholder IMiliariumRegistry — gates the `recordScore` reshape branch via `isMiliarium(pool)` per H-D33; pre-Stage-J stub returns `isMiliarium = false` for all pools so all pools follow the non-Miliarium reshape branch per H-D31. Reverts `ZeroAddress` on zero input.
      * @param genesisBlock_ Stage H genesis block — anchors halving math via `IAuMM.blockEmissionRate(block_)` per H-D21; also seeds `lastAccrualBlock`. Same precedent as `BodenseeBootstrapChannel` / `EfficiencyOracle` / `AuMM.sol` `GENESIS_BLOCK`; no zero-check (uint256, accepts any value).
      * @param initialGovernance_ Initial governance authority — Stage A—K Authorizer Safe at deploy; rebound at Stage K via `setGovernanceContract` per H-D14. Reverts `ZeroAddress` on zero input.
+     * @param vault_ Balancer V3 Vault — consumed by `setAuMTContractForPool` for the PP-D44 (F.1) `isPoolRegistered(pool)` gate, which closes the unvalidated-`pool` face the F.1 PoC exploits to seat a recorder for a fabricated pool. Mirrors the `GaugeEligibility` immutable-vault shape. Reverts `ZeroAddress` on zero input.
      */
     constructor(
         IAuMM aumm_,
@@ -168,7 +173,8 @@ contract EmissionDistributor is IEmissionDistributor {
         IEfficiencyOracle efficiencyOracle_,
         IMiliariumRegistry miliariumRegistry_,
         uint256 genesisBlock_,
-        address initialGovernance_
+        address initialGovernance_,
+        address vault_
     ) {
         if (address(aumm_) == address(0)) revert ZeroAddress();
         if (address(gaugeRegistry_) == address(0)) revert ZeroAddress();
@@ -177,6 +183,7 @@ contract EmissionDistributor is IEmissionDistributor {
         if (address(efficiencyOracle_) == address(0)) revert ZeroAddress();
         if (address(miliariumRegistry_) == address(0)) revert ZeroAddress();
         if (initialGovernance_ == address(0)) revert ZeroAddress();
+        if (vault_ == address(0)) revert ZeroAddress();
 
         AuMM = aumm_;
         _gaugeRegistry = gaugeRegistry_;
@@ -187,6 +194,7 @@ contract EmissionDistributor is IEmissionDistributor {
         GENESIS_BLOCK = genesisBlock_;
         governance = initialGovernance_;
         lastAccrualBlock = genesisBlock_;
+        vault = vault_;
     }
 
     /* ---------- Modifiers ---------- */
