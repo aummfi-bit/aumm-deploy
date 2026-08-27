@@ -16,6 +16,7 @@ import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
 import {IIncendiaryRegistry} from "../../src/incendiary/IIncendiaryRegistry.sol";
 import {AureumTime} from "../../src/lib/AureumTime.sol";
 import {EmissionDistributorHarness} from "./harness/EmissionDistributorHarness.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 contract MockAuMM is ERC20, IAuMM {
     address private _minter;
@@ -228,6 +229,7 @@ contract EmissionDistributorTest is Test {
     MockCCBMultiplier internal mult;
     MockEfficiencyOracle internal effOracle;
     MockMiliariumRegistry internal miliReg;
+    MockRegisteredVault internal vaultMock;
     EmissionDistributorHarness internal distributor;
     AuMMMinterRouter internal router;
 
@@ -238,6 +240,7 @@ contract EmissionDistributorTest is Test {
         mult = new MockCCBMultiplier();
         effOracle = new MockEfficiencyOracle();
         miliReg = new MockMiliariumRegistry();
+        vaultMock = new MockRegisteredVault();
         distributor = new EmissionDistributorHarness(
             IAuMM(address(aumm)),
             IGaugeRegistry(address(gauges)),
@@ -246,7 +249,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
         router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
         aumm.setMinter(address(router));
