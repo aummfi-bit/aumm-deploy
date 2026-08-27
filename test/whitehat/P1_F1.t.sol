@@ -99,9 +99,17 @@ contract P1_F1_Test is Test {
         vm.roll(GENESIS_BLOCK_);
     }
 
-    /// @notice The audit's four-call sequence, all sendable in one block, mints the entire
-    ///         remaining supply to the attacker from the governance key with zero capital.
-    function test_F1_governanceKeyMintsRemainingSupplyWithZeroCapital() public {
+    /// @notice REGRESSION (PP-D44 / F.1). The audit's four-call sequence still executes, but the
+    ///         clamp bounds what it can deliver: the governance key can no longer mint the remaining
+    ///         supply, with an empty emitting window or a real one.
+    /// @dev    Inverted from the PP3.2 reproduction per the part-4 gate. All four calls still SUCCEED
+    ///         — the seating controls that would refuse them are separate remedies on their own rungs
+    ///         — so what this pins is the consumer-side clamp alone: `boostDue` bounded by
+    ///         `BOOST_CAP_BPS` of `_lpTrancheIntegral` over the same interval, per
+    ///         `10_constitution.md` §xxix L135. Phase 1 claims at `GENESIS_BLOCK_` itself, where the
+    ///         cap window is empty and nothing is admitted; phase 2 rolls forward so the window is
+    ///         real, proving the bound comes from the CAP and not merely from zero elapsed blocks.
+    function test_F1_governanceKeyCannotMintRemainingSupplyWithZeroCapital() public {
         uint256 huge = aumm.MAX_SUPPLY() - aumm.totalSupply();
         assertGt(huge, 0, "precondition: headroom under the cap exists");
         assertEq(aumm.balanceOf(ATTACKER), 0, "precondition: attacker holds nothing");
@@ -124,7 +132,19 @@ contract P1_F1_Test is Test {
         vm.prank(ATTACKER);
         distributor.claim(address(evil), ATTACKER);
 
-        assertEq(aumm.balanceOf(ATTACKER), huge, "attacker minted the entire remaining supply");
-        assertEq(aumm.totalSupply(), aumm.MAX_SUPPLY(), "supply is now pinned at the cap");
+        // Phase 1. setUp rolls to GENESIS_BLOCK_ exactly, so the cap window [GENESIS_BLOCK_ + 1,
+        // block.number] is empty, `_lpTrancheIntegral` returns 0 and the clamp admits nothing.
+        assertEq(aumm.balanceOf(ATTACKER), 0, "empty cap window admits nothing");
+
+        // Phase 2. With a real emitting window the stream is admitted but BOUNDED, which is the
+        // property the clamp exists for. The bound is asserted as a coarse fraction rather than a
+        // wei-exact figure so it cannot break on F-0 bootstrap interpolation.
+        vm.roll(GENESIS_BLOCK_ + 100);
+        vm.prank(ATTACKER);
+        distributor.claim(address(evil), ATTACKER);
+
+        uint256 minted = aumm.balanceOf(ATTACKER);
+        assertLt(minted, huge / 1_000, "clamped far below the remaining supply");
+        assertLt(aumm.totalSupply(), aumm.MAX_SUPPLY(), "supply is never pinned at the cap");
     }
 }
