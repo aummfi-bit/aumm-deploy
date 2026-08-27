@@ -1469,6 +1469,23 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
     }
 
+    /* ---------- PP-D44 two-step registry binding helper ---------- */
+
+    /// @notice Binds `incendiaryRegistry` through the propose/accept two-step for tests that use bare address literals.
+    /// @dev These tests bind bare literals rather than deployed registries, so a byte is etched to satisfy the PP-D44
+    ///      code.length gate; zero is exempt from that gate per the H-D29 valve but still routes through BOTH steps
+    ///      with no fast path; the one-block advance is what the accept requires.
+    function _bindIncendiaryRegistry(address registry) internal {
+        if (registry != address(0) && registry.code.length == 0) {
+            vm.etch(registry, hex"00");
+        }
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(registry);
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+    }
+
     function test_ExtLpTrancheIntegral_NonZeroRegistry_ZeroSkim_RateTimesN() public {
         // registry deployed but returns 0 skim — result still rate * n
         aumm.setRate(1e18);
@@ -1476,8 +1493,7 @@ contract EmissionDistributorTest is Test {
         uint256 to_      = 5_000_009;
         uint256 n        = to_ - from_ + 1;
         address registry = address(0xBEEF);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
@@ -1494,8 +1510,7 @@ contract EmissionDistributorTest is Test {
         uint256 n        = to_ - from_ + 1;
         uint256 skim     = 3e17;
         address registry = address(0xBEEF);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
@@ -1510,8 +1525,7 @@ contract EmissionDistributorTest is Test {
         uint256 from_    = 5_000_000;
         uint256 to_      = 5_000_009;
         address registry = address(0xBEEF);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.mockCallRevert(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
@@ -1527,10 +1541,8 @@ contract EmissionDistributorTest is Test {
         uint256 from_ = 5_000_000;
         uint256 to_   = 5_000_009;
         uint256 n     = to_ - from_ + 1;
-        vm.startPrank(GOV);
-        distributor.setIncendiaryRegistry(address(0xBEEF));
-        distributor.setIncendiaryRegistry(address(0));
-        vm.stopPrank();
+        _bindIncendiaryRegistry(address(0xBEEF));
+        _bindIncendiaryRegistry(address(0));
         assertEq(distributor.extLpTrancheIntegral(from_, to_), 1e18 * n);
     }
 
@@ -1590,8 +1602,7 @@ contract EmissionDistributorTest is Test {
         uint256 n     = to_ - from_ + 1;
         uint256 skim  = 2e17;
         address registry = address(0xBEEF);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.mockCall(
             registry,
             abi.encodeWithSelector(IIncendiaryRegistry.integratedSkim.selector, from_, to_),
