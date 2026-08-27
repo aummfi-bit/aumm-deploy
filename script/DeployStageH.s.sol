@@ -178,7 +178,8 @@ contract DeployStageH is Script {
             efficiencyOracle,
             miliariumRegistry,
             genesisBlock,
-            deployer
+            deployer,
+            address(vault)
         );
 
         // -- 4. Governance handoff to GOVERNANCE_MULTISIG ----------------------

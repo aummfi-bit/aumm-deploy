@@ -85,7 +85,8 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
             efficiencyOracle,
             miliariumRegistry,
             aumm.GENESIS_BLOCK(),
-            address(this)
+            address(this),
+            address(vault)
         );
 
         efficiencyOracle.setEmissionsRecorder(address(emissionDistributor)); // H-D23 — distributor pushes recordEmissions; oracle must whitelist
