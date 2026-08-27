@@ -1656,19 +1656,33 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.incendiaryRegistry(), address(0));
     }
 
-    /// @notice Confirms `setIncendiaryRegistry` writes the new address to the incendiaryRegistry slot.
-    function test_SetIncendiaryRegistry_UpdatesSlot() public {
+    /// @notice Confirms `acceptIncendiaryRegistry` commits the proposed address to `incendiaryRegistry` and clears both pending slots per PP-D44 (F.1).
+    /// @dev Supersedes the prior single-transaction slot-write witness — the commit is now the accept half only, and both pending fields must read zero afterward.
+    function test_AcceptIncendiaryRegistry_UpdatesSlot() public {
+        vm.etch(address(0xBEEF), hex"00");
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(0xBEEF));
+        distributor.proposeIncendiaryRegistry(address(0xBEEF));
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
         assertEq(distributor.incendiaryRegistry(), address(0xBEEF));
+        assertEq(distributor.pendingIncendiaryRegistry(), address(0), "accept consumes its proposal");
+        assertEq(distributor.pendingIncendiaryRegistryBlock(), 0, "ripeness stamp is cleared");
     }
 
-    /// @notice Confirms `setIncendiaryRegistry` emits `IncendiaryRegistrySet` with old and new address as indexed topics.
-    function test_SetIncendiaryRegistry_EmitsIncendiaryRegistrySet() public {
+    /// @notice Confirms the PP-D44 two-step emits `IncendiaryRegistryProposed` on propose then `IncendiaryRegistrySet` on accept — supersedes the prior single-transaction emit witness.
+    /// @dev `IncendiaryRegistryProposed` carries one indexed topic plus a non-indexed block number; `IncendiaryRegistrySet` carries two indexed topics and no data. `block.number` is read inline in the expected propose emit, not cached across the roll boundary.
+    function test_IncendiaryRegistryTwoStep_EmitsProposedThenSet() public {
+        vm.etch(address(0xBEEF), hex"00");
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.IncendiaryRegistryProposed(address(0xBEEF), block.number);
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(address(0xBEEF));
+        vm.roll(block.number + 1);
         vm.expectEmit(true, true, false, false);
         emit IEmissionDistributor.IncendiaryRegistrySet(address(0), address(0xBEEF));
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(0xBEEF));
+        distributor.acceptIncendiaryRegistry();
     }
 
     /* ---------- setMintRouter one-shot + claim MintRouterNotSet guard (K-D7) ---------- */
