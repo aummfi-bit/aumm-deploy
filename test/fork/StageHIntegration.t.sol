@@ -259,23 +259,42 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
         assertEq(bootstrapChannel.totalDistributed(), expected, "totalDistributed");
     }
 
-    /// @notice P1 E.1 — Mallory, holding 1 wei of AuMM and no role, permanently bricks
-    ///         `distribute()`, the only path that moves the F-0 bootstrap tranche into der
-    ///         Bodensee. The callback moves exactly `amount`, so the stray wei survives to the
-    ///         absolute-residual assertion at `:276-277` and reverts `HelperBalanceNonZero(1)`.
+    /// @notice P1 E.1 done-criteria (PP-D45) — a stray wei of AuMM no longer bricks `distribute()`.
+    /// @dev    The absolute residual check became a delta against a snapshot taken BEFORE `mintFor`,
+    ///         which is the only route by which AuMM reaches this contract, so the pre-mint balance is
+    ///         exactly the pre-existing residual. Mallory's wei is tolerated rather than fatal, and the
+    ///         F-0 bootstrap tranche — up to 1,073,100 AuMM, 5.11% of the cap — stays reachable.
+    ///         The stray is asserted to survive at EXACTLY one wei, which is the load-bearing half: a
+    ///         bare success assertion would pass against a guard that checked nothing, whereas an exactly
+    ///         surviving stray proves the mint-and-donate consumed precisely `amount` and no more.
     ///         Same shape as A.2 one contract over; PP-D11 groups the fix with it.
-    function test_P1_E1_strayWeiBricksDistribute() public {
+    function test_P1_E1_strayWeiDoesNotBrickDistribute() public {
         uint256 g = aumm.GENESIS_BLOCK();
         vm.roll(g + 1_000);
         bootstrapChannel.accrue();
-        assertGt(bootstrapChannel.pendingAccrual(), 0, "precondition: tranche accrued");
+        uint256 pending = bootstrapChannel.pendingAccrual();
+        assertGt(pending, 0, "precondition: tranche accrued");
+        uint256 distributedBefore = bootstrapChannel.totalDistributed();
+
         address mallory = address(uint160(uint256(keccak256("malloryE1"))));
         deal(address(aumm), mallory, 1);
         vm.prank(mallory);
         IERC20(address(aumm)).transfer(address(bootstrapChannel), 1);
-        vm.expectPartialRevert(BodenseeBootstrapChannel.HelperBalanceNonZero.selector);
+
         vm.prank(GOVERNANCE_MULTISIG);
         bootstrapChannel.distribute();
+
+        assertEq(
+            IERC20(address(aumm)).balanceOf(address(bootstrapChannel)),
+            1,
+            "stray survives and the tranche is consumed exactly"
+        );
+        assertEq(bootstrapChannel.pendingAccrual(), 0, "pending accrual flushed");
+        assertEq(
+            bootstrapChannel.totalDistributed() - distributedBefore,
+            pending,
+            "the full tranche was distributed"
+        );
     }
 
     // H-D39 — NotGovernance sad-path: non-governance caller is rejected even when pendingAccrual > 0
