@@ -51,6 +51,8 @@ creates
   address governance := initialGovernance_
   mapping(address => address) auMTContractByPool := []
   address incendiaryRegistry := 0
+  address pendingIncendiaryRegistry := 0
+  uint256 pendingIncendiaryRegistryBlock := 0
   mapping(address => uint256) poolBoostCursor := []
   address mintRouter := 0
 
@@ -77,13 +79,37 @@ iff
 updates
   auMTContractByPool := auMTContractByPool[pool => newAuMTContract]
 
-// H-D29 re-settable valve: governance-only; zero is permitted (deprecation
-// valve -- the deliberate asymmetry against the guarded setters above).
-transition setIncendiaryRegistry(address newRegistry)
-iff
-  CALLER == governance
-updates
-  incendiaryRegistry := newRegistry
+// ---------------------------------------------------------------------------
+// proposeIncendiaryRegistry(address) / acceptIncendiaryRegistry() -- RESIDUAL
+// (firm-side per PB-D17(ii)). PP-D44 (F.1) replaced the H-D29 single-step
+// valve with a two-step rebind; the single-step transition is gone.
+//
+// Not modelled as transitions: propose stores block.number and accept compares
+// against it (environment), and propose's non-zero branch reads
+// newRegistry.code.length (an external code query) -- both outside the
+// single-contract fragment witnessed in the v0.2.0 pass-tests. The behavioural
+// contract, stated for the firm's model, with B := block.number:
+//
+//   propose : CALLER == governance. newRegistry != 0 requires code.length > 0,
+//             else revert NotAContract; newRegistry == 0 skips that check, so
+//             the H-D29 deprecation valve survives as a legal proposal. Sets
+//             pendingIncendiaryRegistry := newRegistry and
+//             pendingIncendiaryRegistryBlock := B, overwriting any armed
+//             proposal and restarting the clock.
+//   accept  : CALLER == governance. pendingIncendiaryRegistryBlock == 0
+//             reverts NoPendingRegistryProposal -- the block stamp is the
+//             sentinel, because a zero pending ADDRESS is legal.
+//             B <= pendingIncendiaryRegistryBlock reverts
+//             RegistryProposalNotRipe (bare strict inequality; no delay
+//             constant, section xxix carrying no delay row). Commits
+//             incendiaryRegistry := pendingIncendiaryRegistry then zeroes both
+//             pending slots, so a proposal is single-use.
+//   gap     : one block, no more -- seat-and-drain cannot be atomic, and the
+//             armed address is publicly readable between the two calls.
+//
+// Local pins: P-ED4 (prove_distributor_incendiaryRegistryTwoStep_gateAndClear)
+// and test/whitehat/P1_F1.t.sol, test_setIncendiaryRegistryRequiresCodeAndTwoStep.
+// ---------------------------------------------------------------------------
 
 // K-D7 one-shot mint-sink bind (the L411 no-admin-redirect core): governance-
 // only, non-zero, slot-flag sealed -- once bound, no caller re-points it.
