@@ -153,7 +153,7 @@ formal/act/bodensee_bootstrap_channel.act (PB2.12e4b).
 | P-ED1 | distributor setMintRouter: one-shot, governance-gated, zero-rejected | prove_distributor_setMintRouter_onlyGovernance, prove_distributor_mintRouter_setOnce, prove_distributor_setMintRouter_rejectZero | PROVED |
 | P-ED2 | per-pool AuMT bind: one-shot per pool, pool-independent, zero-rejected | prove_distributor_auMT_setOncePerPool, prove_distributor_auMT_poolIndependence, prove_distributor_auMT_rejectZero | PROVED |
 | P-ED3 | distributor governance rotation: two-phase, old authority locked out, new authority live | prove_distributor_governanceRotation | PROVED |
-| P-ED4 | incendiary-registry gate plus the H-D29 zero-permitted deprecation valve | prove_distributor_setIncendiaryRegistry_gateAndClear | PROVED |
+| P-ED4 | incendiary-registry auth gate on both two-step halves; H-D29 zero-permitted deprecation valve through propose-then-accept | prove_distributor_incendiaryRegistryTwoStep_gateAndClear | PROVED |
 | P-BC1 | channel setMintRouter: one-shot, governance-gated, zero-rejected | prove_channel_setMintRouter_onlyGovernance, prove_channel_setMintRouter_setOnce, prove_channel_setMintRouter_rejectZero | PROVED |
 | P-BC2 | channel governance rotation: two-phase, zero-rejected | prove_channel_governanceRotation, prove_channel_setGovernanceContract_rejectZero | PROVED |
 | P-BC3 | accrue structural guards: same-block re-accrue is idempotent (empty interval); pre-genesis no-op; the post-window clamp collapses to the constant month10End | prove_channel_accrue_emptyIntervalIdempotent, prove_channel_accrue_preGenesisNoOp, prove_channel_accrue_postWindowClamp | PROVED |

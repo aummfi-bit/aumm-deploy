@@ -426,7 +426,7 @@ contract EmissionProofs is Test {
     /// ZeroAddress-guarded setters). `reg` stays symbolic on the propose auth
     /// leg because `onlyGovernance` runs before the body's code.length gate;
     /// positive legs use concrete `address(aumm)`.
-    function prove_distributor_setIncendiaryRegistry_gateAndClear(
+    function prove_distributor_incendiaryRegistryTwoStep_gateAndClear(
         address caller,
         address reg
     ) public {
