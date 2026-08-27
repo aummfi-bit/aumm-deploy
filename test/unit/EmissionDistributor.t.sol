@@ -1628,19 +1628,31 @@ contract EmissionDistributorTest is Test {
         assertEq(lpIntegral + aLegSum + bLegSum, 1e18 * n);
     }
 
-    /* ---------- setIncendiaryRegistry governance setter tests (H5 / H-D29) ---------- */
+    /* ---------- proposeIncendiaryRegistry / acceptIncendiaryRegistry governance setter tests (H5 / H-D29 / PP-D44) ---------- */
 
-    /// @notice Reverts `NotGovernance` when `setIncendiaryRegistry` is called by a non-governance address — confirms the setter is onlyGovernance-gated.
-    function test_RevertWhen_SetIncendiaryRegistryCallerNotGovernance() public {
+    /// @notice Reverts `NotGovernance` when a non-governance address calls either half of the PP-D44 two-step — confirms both `proposeIncendiaryRegistry` and `acceptIncendiaryRegistry` are onlyGovernance-gated.
+    /// @dev `onlyGovernance` runs ahead of the code.length gate, which is why a codeless literal remains the correct probe argument — no `vm.etch` required.
+    function test_RevertWhen_IncendiaryRegistryTwoStepCallerNotGovernance() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
-        distributor.setIncendiaryRegistry(address(0x1234));
+        distributor.proposeIncendiaryRegistry(address(0x1234));
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        distributor.acceptIncendiaryRegistry();
     }
 
-    /// @notice Confirms `setIncendiaryRegistry(address(0))` is accepted — zero is the H-D29 deliberate deprecation safety valve, asymmetric to `setGovernanceContract`.
-    function test_SetIncendiaryRegistry_AcceptsZeroAddress() public {
+    /// @notice Confirms the two-step commits `address(0)` as the H-D29 deliberate deprecation safety valve — asymmetric to `setGovernanceContract`.
+    /// @dev The prior one-step version asserted zero against a slot that was already zero and therefore could not fail; `_bindIncendiaryRegistry` supplies SETUP only while the subject of the test stays explicit.
+    function test_AcceptIncendiaryRegistry_AcceptsZeroAddress() public {
+        _bindIncendiaryRegistry(address(0xBEEF));
+        assertEq(distributor.incendiaryRegistry(), address(0xBEEF), "precondition: non-zero registry seated first");
+
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(0));
+        distributor.proposeIncendiaryRegistry(address(0));
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
         assertEq(distributor.incendiaryRegistry(), address(0));
     }
 
