@@ -17,6 +17,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyTVLOracle} from "test/unit/EfficiencyOracle.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Reproduction PoC for seam-1 root cause E.7b (Medium). `advanceTournament` passes
 ///         the registry's whole active set into `computeEpochSnapshot` with a per-pool external
@@ -116,7 +117,8 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         vm.prank(GOV);

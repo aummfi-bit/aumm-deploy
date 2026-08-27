@@ -17,6 +17,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 import {MockAuMM, MockBpt, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyTVLOracle} from "test/unit/EfficiencyOracle.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Reproduction PoC for seam-1 root cause E.9 (Medium). `EmissionDistributor.sol` L396
 ///         pushes `recordEmissions` un-caught inside `_settlePool`, so repointing or clearing the
@@ -84,7 +85,8 @@ contract P1_E9_EmissionsRecorderIsAProtocolWideKillSwitchTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         vm.prank(GOV);

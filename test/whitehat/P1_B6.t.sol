@@ -34,6 +34,7 @@ import {
     MockMiliariumRegistry
 } from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @dev Matches the IRouterSender surface the hook calls; sender is settable so one
 ///      instance can name different holders across a test.
@@ -147,7 +148,8 @@ contract P1_B6_TrustedRouterNamesAnyHolderThroughGetSenderTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         pool = new MockBpt();

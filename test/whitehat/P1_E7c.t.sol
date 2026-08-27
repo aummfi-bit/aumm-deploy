@@ -14,6 +14,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Minimal gauge-registry double for E.7c: only the two views `recordScore` reads.
 contract CappedGaugeRegistry {
@@ -80,7 +81,8 @@ contract P1_E7c_CapLatchedAgainstACallerChosenDenominatorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         gauges.setApproved(MOVER, true);

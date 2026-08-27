@@ -17,6 +17,7 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 
 import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice F-16 end-to-end PoC (P-D17) — the emission-cap tournament SEAM: a flash-spiked TVL seed
 ///         inflates a fee-less pool's F-5 score toward a dominant emission share, but the REAL gauge
@@ -81,7 +82,8 @@ contract F16_EmissionCapTournamentTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         // 20 synthetic gauges; efficiency DESCENDING with index so pools[0] is most efficient (uncapped,

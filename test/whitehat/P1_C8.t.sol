@@ -25,6 +25,7 @@ import {MockFeeController} from "test/mocks/MockFeeController.sol";
 
 import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @dev Seats permanently because setEmissionRecorder guards non-zero only and never probes the interface.
 contract RevertingRecorder {
@@ -139,7 +140,8 @@ contract P1_C8_IrreversibleBindingsAreGuardedOnlyAgainstZeroTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         vm.roll(GENESIS_BLOCK);
