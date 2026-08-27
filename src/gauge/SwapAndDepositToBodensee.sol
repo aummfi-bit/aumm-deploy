@@ -115,6 +115,9 @@ contract SwapAndDepositToBodensee {
     /// @notice `postReserve != preReserve + amount`.
     error ReserveDeltaMismatch(uint256 expected, uint256 actual);
 
+    /// @notice Strict rise on DONATION per PP-D45 — replaces exact-delta check; DONATION round-trips raw through scaled18 so consumed amount is not exactly predictable.
+    error ReserveDidNotRise(uint256 preReserve, uint256 postReserve);
+
     /// @notice helper balance != 0 after callback (resolves the `HelperBalanceNonZero(...)` ellipsis above).
     error HelperBalanceNonZero(uint256 residual);
 
@@ -336,6 +339,8 @@ contract SwapAndDepositToBodensee {
         if (amount != required) {
             revert IncorrectAmount(amount, required);
         }
+        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - amount`.
+        uint256 entryBalance = payToken.balanceOf(address(this));
         if (_EXECUTING_SLOT.asBoolean().tload()) {
             revert ReentrancyGuard();
         }
@@ -348,10 +353,9 @@ contract SwapAndDepositToBodensee {
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
+        uint256 expectedResidual = entryBalance - amount;
         uint256 residual = payToken.balanceOf(address(this));
-        if (residual != 0) {
-            revert HelperBalanceNonZero(residual);
-        }
+        if (residual > expectedResidual) revert HelperBalanceNonZero(residual - expectedResidual);
     }
 
     /**
@@ -366,6 +370,8 @@ contract SwapAndDepositToBodensee {
         if (amount == 0) {
             revert ZeroAmount();
         }
+        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - amount`.
+        uint256 entryBalance = payToken.balanceOf(address(this));
         if (_EXECUTING_SLOT.asBoolean().tload()) {
             revert ReentrancyGuard();
         }
@@ -378,10 +384,9 @@ contract SwapAndDepositToBodensee {
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
+        uint256 expectedResidual = entryBalance - amount;
         uint256 residual = payToken.balanceOf(address(this));
-        if (residual != 0) {
-            revert HelperBalanceNonZero(residual);
-        }
+        if (residual > expectedResidual) revert HelperBalanceNonZero(residual - expectedResidual);
     }
 
     // -------------------------------------------------------------------------
@@ -422,8 +427,9 @@ contract SwapAndDepositToBodensee {
             revert BptMintedOnDonation(bptOut);
         }
         uint256 postReserve = _currentReserve(idx);
-        if (postReserve != preReserve + amount) {
-            revert ReserveDeltaMismatch(preReserve + amount, postReserve);
+        // PP-D45 — DONATION branch round-trips raw through scaled18 so consumed amount is not exactly predictable; strict rise replaces exact equality.
+        if (postReserve <= preReserve) {
+            revert ReserveDidNotRise(preReserve, postReserve);
         }
         emit FeeRoutedToBodensee(_ORIGINAL_CALLER_SLOT.asAddress().tload(), payToken, amount);
     }
