@@ -339,7 +339,7 @@ contract SwapAndDepositToBodensee {
         if (amount != required) {
             revert IncorrectAmount(amount, required);
         }
-        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - amount`.
+        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - consumed`, where `consumed` is what the Vault actually charged and is returned by the callback — the offered amount is not the charged amount once a rate rounds.
         uint256 entryBalance = payToken.balanceOf(address(this));
         if (_EXECUTING_SLOT.asBoolean().tload()) {
             revert ReentrancyGuard();
@@ -348,12 +348,13 @@ contract SwapAndDepositToBodensee {
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(payToken));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(amount);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(msg.sender);
-        _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
+        bytes memory result = _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
         _EXECUTING_SLOT.asBoolean().tstore(false);
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
-        uint256 expectedResidual = entryBalance - amount;
+        uint256 consumed = abi.decode(result, (uint256));
+        uint256 expectedResidual = entryBalance - consumed;
         uint256 residual = payToken.balanceOf(address(this));
         if (residual > expectedResidual) revert HelperBalanceNonZero(residual - expectedResidual);
     }
@@ -370,7 +371,7 @@ contract SwapAndDepositToBodensee {
         if (amount == 0) {
             revert ZeroAmount();
         }
-        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - amount`.
+        // PP-D45 — callers PUSH `amount` before invoking; entry balance already includes it, tolerated baseline is `entryBalance - consumed`, where `consumed` is what the Vault actually charged and is returned by the callback — the offered amount is not the charged amount once a rate rounds.
         uint256 entryBalance = payToken.balanceOf(address(this));
         if (_EXECUTING_SLOT.asBoolean().tload()) {
             revert ReentrancyGuard();
@@ -379,12 +380,13 @@ contract SwapAndDepositToBodensee {
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(payToken));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(amount);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(msg.sender);
-        _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
+        bytes memory result = _vault.unlock(abi.encodeCall(this._swapAndDepositCallback, (payToken, amount)));
         _EXECUTING_SLOT.asBoolean().tstore(false);
         _PENDING_PAY_TOKEN_SLOT.asAddress().tstore(address(0));
         _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
-        uint256 expectedResidual = entryBalance - amount;
+        uint256 consumed = abi.decode(result, (uint256));
+        uint256 expectedResidual = entryBalance - consumed;
         uint256 residual = payToken.balanceOf(address(this));
         if (residual > expectedResidual) revert HelperBalanceNonZero(residual - expectedResidual);
     }
