@@ -280,7 +280,7 @@ contract EmissionDistributorTest is Test {
     }
 
     function _freshUnboundDistributor() internal returns (EmissionDistributor) {
-        return new EmissionDistributor(IAuMM(address(aumm)), IGaugeRegistry(address(gauges)), IEMASampler(address(ema)), ICCBMultiplier(address(mult)), IEfficiencyOracle(address(effOracle)), IMiliariumRegistry(address(miliReg)), GENESIS_BLOCK_, GOV);
+        return new EmissionDistributor(IAuMM(address(aumm)), IGaugeRegistry(address(gauges)), IEMASampler(address(ema)), ICCBMultiplier(address(mult)), IEfficiencyOracle(address(effOracle)), IMiliariumRegistry(address(miliReg)), GENESIS_BLOCK_, GOV, address(vaultMock));
     }
 
     /* ---------- Constructor tests (H-D14 / H-D16 / H-D21 / H-D22) ---------- */
@@ -397,6 +397,25 @@ contract EmissionDistributorTest is Test {
         );
     }
 
+    /// @notice Reverts `ZeroAddress` when the vault constructor parameter is zero.
+    /// @dev PP-D44 (F.1) — the eighth guard, landing with the ninth parameter. Its seven siblings
+    ///      above cover the pre-existing address params; without this case the one guard the F.1
+    ///      remediation actually introduced would be the only constructor guard with no test.
+    function test_RevertWhen_ConstructedWithZeroVault() public {
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        new EmissionDistributor(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK_,
+            GOV,
+            address(0)
+        );
+    }
+
     /// @notice Asserts the setUp-deployed distributor wires all seven immutables to the mock dependencies and genesis block constant.
     function test_Constructor_WiresImmutables() public {
         assertEq(address(distributor.AuMM()), address(aumm));
@@ -465,7 +484,8 @@ contract EmissionDistributorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(vaultMock)
         );
         assertEq(freshDistributor.auMTContractByPool(POOL_A), address(0));
     }
