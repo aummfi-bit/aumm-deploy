@@ -181,6 +181,36 @@ contract P1_F1_Test is Test {
         distributor.setAuMTContractForPool(unknown, ATTACKER);
     }
 
+    /// @notice F.1's PRIMARY done-criteria per PP-D44 (F.1) and PP3.3g — the incendiary registry seating controls.
+    /// @dev    The code gate alone does NOT stop the F.1 sequence, because `EvilRegistry` is a deployed contract and passes it; the two-step is the load-bearing control — seat-and-drain cannot be atomic and the armed address is publicly readable in between. Pins four properties: the code gate, the no-proposal sentinel, the ripeness gate, and a proposal that commits exactly once. Canon per PP-D43: `10_constitution.md` §xxviii L97 and §xxix L135 — no new delay constant, the gap being the contract-side strict block inequality.
+    function test_setIncendiaryRegistryRequiresCodeAndTwoStep() public {
+        EvilRegistry evil = new EvilRegistry(1e18);
+
+        vm.prank(GOV);
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotAContract.selector, ATTACKER));
+        distributor.proposeIncendiaryRegistry(ATTACKER);
+
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.NoPendingRegistryProposal.selector);
+        distributor.acceptIncendiaryRegistry();
+
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(address(evil));
+        assertEq(distributor.pendingIncendiaryRegistry(), address(evil), "armed address is publicly readable");
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.RegistryProposalNotRipe.selector);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), address(0), "nothing commits inside the arming block");
+
+        vm.roll(block.number + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), address(evil));
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.NoPendingRegistryProposal.selector);
+        distributor.acceptIncendiaryRegistry();
+    }
+
     /// @notice The clamp delivers EXACTLY `BOOST_CAP_BPS` of the LP tranche integral over the same
     ///         interval, no more, against a registry reporting the entire supply.
     /// @dev    PP-D44 (F.1), the wei-exact half of the bound. The regression above asserts only a
