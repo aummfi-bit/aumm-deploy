@@ -1745,8 +1745,7 @@ contract EmissionDistributorTest is Test {
         address registry = address(0xBEEF);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.roll(GENESIS_BLOCK_ + 1);
         vm.mockCall(
             registry,
@@ -1763,8 +1762,7 @@ contract EmissionDistributorTest is Test {
 
     function test_BoostDelivery_ZeroLPStranded_CursorStillAdvances() public {
         address registry = address(0xBEEF);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.roll(GENESIS_BLOCK_ + 1);
         vm.mockCall(
             registry,
@@ -1793,8 +1791,7 @@ contract EmissionDistributorTest is Test {
         address registry = address(0xBEEF);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.roll(GENESIS_BLOCK_ + 1);
         vm.mockCall(
             registry,
@@ -1814,8 +1811,7 @@ contract EmissionDistributorTest is Test {
         uint256 b2 = GENESIS_BLOCK_ + 10;
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
-        vm.prank(GOV);
-        distributor.setIncendiaryRegistry(registry);
+        _bindIncendiaryRegistry(registry);
         vm.roll(b1);
         vm.mockCall(
             registry,
