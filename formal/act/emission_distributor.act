@@ -26,7 +26,7 @@
 
 contract EmissionDistributor
 
-constructor(address aumm_, address gaugeRegistry_, address emaSampler_, address ccbMultiplier_, address efficiencyOracle_, address miliariumRegistry_, uint256 genesisBlock_, address initialGovernance_)
+constructor(address aumm_, address gaugeRegistry_, address emaSampler_, address ccbMultiplier_, address efficiencyOracle_, address miliariumRegistry_, uint256 genesisBlock_, address initialGovernance_, address vault_)
 
 iff
   aumm_ != 0
@@ -36,6 +36,7 @@ iff
   efficiencyOracle_ != 0
   miliariumRegistry_ != 0
   initialGovernance_ != 0
+  vault_ != 0
 
 creates
   uint256 accRewardPerScoreUnit := 0
