@@ -304,7 +304,7 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         assertEq(susdsErc.balanceOf(address(helper)), 0, "helper sUSDS residue not zero");
     }
 
-    function testReserveDeltaMismatchUnderMockedReserves() public {
+    function testReserveDidNotRiseUnderMockedReserves() public {
         deal(address(svZchf), address(helper), FEE_SVZCHF, true);
 
         (
@@ -320,12 +320,12 @@ contract SwapAndDepositToBodenseeForkTest is Test {
             abi.encode(tokens, tokenInfo, balancesRaw, balancesScaled18)
         );
 
-        // Foundry's vm.expectRevert(bytes4) requires exact revert-data match (selector + encoded params); use abi.encodeWithSelector with both expected and actual values per the helper's ReserveDeltaMismatch(expected, actual) signature.
-        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.ReserveDeltaMismatch.selector, INIT_SEED + FEE_SVZCHF, INIT_SEED));
+        // Foundry's vm.expectRevert(bytes4) requires exact revert-data match (selector + encoded params); use abi.encodeWithSelector with both expected preReserve and postReserve per the helper's ReserveDidNotRise(preReserve, postReserve) signature.
+        vm.expectRevert(abi.encodeWithSelector(SwapAndDepositToBodensee.ReserveDidNotRise.selector, INIT_SEED, INIT_SEED));
         helper.swapAndDeposit(svZchf, FEE_SVZCHF);
 
         // PLAN L185 "mock transfer" is approximated by mocking `getPoolTokenInfo`: transfer/settle/addLiquidity hit the
-        // real Vault, while `_currentReserve` keeps seeing frozen `balancesRaw`, so step-8 yields `ReserveDeltaMismatch`.
+        // real Vault, while `_currentReserve` keeps seeing frozen `balancesRaw`, so step-8 yields `ReserveDidNotRise`.
         vm.clearMockedCalls();
     }
 
@@ -358,20 +358,42 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         assertEq(susdsErc.balanceOf(address(helper)), 1, "sUSDS stray survives and the fee is consumed exactly");
     }
 
-    /// @notice P1 A.3 — `donate` asserts an EXACT reserve delta, but the Vault re-derives the raw
-    ///         credited amount by rounding: upscale floors, downscale ceils. That round-trip is
-    ///         exact only while the rate is at or above par. One wei below par is enough to lose a
-    ///         wei on an amount that is not a clean multiple, and `:424-427` then reverts
-    ///         `ReserveDeltaMismatch`, bricking all six `propose*` entrypoints. The sibling hook was
-    ///         moved to a strict rise at PB-D68 (xvii); that fix was never backported here.
-    function test_P1_A3_belowParRateBricksDonate() public {
+    /// @notice P1 A.3 done-criteria (PP-D45) — a below-par rate no longer bricks `donate`.
+    /// @dev    The Vault re-derives the credited raw amount by rounding, upscale flooring and downscale
+    ///         ceiling, so one wei below par loses a wei on an amount that is not a clean multiple. The
+    ///         old exact-delta check rejected exactly that and bricked all six `propose*` entrypoints.
+    ///         The strict rise accepts it: the reserve MUST grow, but need not grow by the full `amount`.
+    ///         The assertions pin both halves — the rise is real, and it is strictly SHORT of `amount`,
+    ///         which is what makes this the case the exact form could not pass. Mirrors the form the
+    ///         sibling hook has carried since PB-D68 (xvii).
+    function test_P1_A3_belowParRateDoesNotBrickDonate() public {
         address donor = address(uint160(uint256(keccak256("donorA3"))));
         helper.addAuthorizedDonator(donor);
         uint256 amount = FEE_SVZCHF + 1;
         deal(address(svZchf), address(helper), amount, true);
+
+        (IERC20[] memory tokensPre, , uint256[] memory balancesRawPre, ) = vault.getPoolTokenInfo(bodenseePool);
+        uint256 svZchfIdx;
+        bool found;
+        for (uint256 i = 0; i < tokensPre.length; ++i) {
+            if (tokensPre[i] == svZchf) {
+                svZchfIdx = i;
+                found = true;
+                break;
+            }
+        }
+        assertTrue(found, "svZCHF not in Bodensee");
+        uint256 preReserve = balancesRawPre[svZchfIdx];
+
         vm.mockCall(SV_ZCHF_RATE_PROVIDER, abi.encodeWithSignature("getRate()"), abi.encode(uint256(1e18 - 1)));
-        vm.expectPartialRevert(SwapAndDepositToBodensee.ReserveDeltaMismatch.selector);
         vm.prank(donor);
         helper.donate(svZchf, amount);
+        vm.clearMockedCalls();
+
+        (, , uint256[] memory balancesRawPost, ) = vault.getPoolTokenInfo(bodenseePool);
+        uint256 postReserve = balancesRawPost[svZchfIdx];
+        assertGt(postReserve, preReserve, "reserve did not rise");
+        assertLt(postReserve - preReserve, amount, "delta is short of amount, which the exact form rejected");
+        assertEq(svZchf.balanceOf(address(helper)), 0, "helper svZCHF residue not zero");
     }
 }
