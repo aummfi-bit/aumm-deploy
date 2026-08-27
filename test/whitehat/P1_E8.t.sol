@@ -16,6 +16,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 import {MockAuMM, MockBpt, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Honest boost counterparty: returns rate * inclusive window width, so a longer window
 ///         bills proportionally more. The over-mint under E.8 arises against this honest shape,
@@ -110,7 +111,8 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         boostRegistry = new LinearBoostRegistry(BOOST_RATE);

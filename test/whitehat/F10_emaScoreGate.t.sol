@@ -11,6 +11,7 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler} from "test/unit/VotingWeight.t.sol";
 import {MockAuMM, MockGaugeRegistry, MockCCBMultiplier, MockEfficiencyOracle, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice F-10 fix regression (WM.3) — EmissionDistributor.recordScore now gates the TVL EMA read through
 ///         _gatedTvlEMA: an unseeded, immature (< EMA_MATURITY_BLOCKS / 60 days), or stale (last refreshed
@@ -52,7 +53,8 @@ contract F10_EmaScoreGateTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         effOracle.setEmissionsRecorder(address(distributor));

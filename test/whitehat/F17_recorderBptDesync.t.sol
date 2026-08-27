@@ -26,6 +26,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @dev Router whose getSender() returns a fixed LP — mirrors F09's SpoofRouter.
 contract StubRouter {
@@ -87,7 +88,8 @@ contract F17_RecorderBptDesyncTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
         mintRouter = new AuMMMinterRouter(IAuMM(address(aumm)), makeAddr("channel"), address(distributor));
         aumm.setMinter(address(mintRouter));

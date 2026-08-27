@@ -17,6 +17,7 @@ import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 
 import {MockAuMM, MockBpt, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from "test/unit/EmissionDistributor.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice Reproduction PoC for seam-1 root cause E.5 (Medium). The gauge gate at
 ///         `EmissionDistributor.sol` L473 blocks correction as well as abuse: once a pool is
@@ -81,7 +82,8 @@ contract P1_E5_RevokedPoolScoreWeldedIntoTotalScoreTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         revokedPool = address(new MockBpt());
