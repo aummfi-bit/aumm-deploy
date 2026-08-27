@@ -256,7 +256,7 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
 
     /**
      * @notice Governance-gated outer half of H-D12 — mints `pendingAccrual` via `mintRouter.mintFor` (K-D7), then invokes `_vault.unlock(abi.encodeCall(this._distributeCallback, (amount)))` so the callback performs the one-sided `AddLiquidityKind.DONATION` into der Bodensee per H-D14.
-     * @dev H-D11 mint-at-distribute lock — mint timing belongs in `distribute()`, never in `accrue()`. H-D14 `onlyGovernance` gate — mint authority is the scarce resource; permissionless `distribute()` would let any caller force-flush at a self-chosen price window. K-D7 wiring — channel mints via `mintRouter.mintFor(address(this), amount)`, reverting `MintRouterNotSet` until the one-shot `setMintRouter` binds the `AuMMMinterRouter`; the router holds AuMM's minter slot via `aumm.setMinter(router)` at K7, superseding the H-D7 `IAuMM.setMinter(address(this))` posture. 3-transient-slot reentrancy + payload pattern mirrors G-D11 with `_PENDING_PAY_TOKEN_SLOT` omitted (AuMM is immutable pay token). Structural template is `src/gauge/SwapAndDepositToBodensee.sol` L328—L355 (`swapAndDeposit`) with substitutions — no `payToken` slot write, `mintRouter.mintFor(address(this), amount)` (guarded by `MintRouterNotSet`) precedes the reentrancy check, `IERC20(address(AuMM)).balanceOf(address(this))` for the residual read (IAuMM lacks the `using SafeERC20 for IERC20` binding so the cast is required), residual check uses the already-declared `HelperBalanceNonZero(residual)` error.
+     * @dev H-D11 mint-at-distribute lock — mint timing belongs in `distribute()`, never in `accrue()`. H-D14 `onlyGovernance` gate — mint authority is the scarce resource; permissionless `distribute()` would let any caller force-flush at a self-chosen price window. K-D7 wiring — channel mints via `mintRouter.mintFor(address(this), amount)`, reverting `MintRouterNotSet` until the one-shot `setMintRouter` binds the `AuMMMinterRouter`; the router holds AuMM's minter slot via `aumm.setMinter(router)` at K7, superseding the H-D7 `IAuMM.setMinter(address(this))` posture. 3-transient-slot reentrancy + payload pattern mirrors G-D11 with `_PENDING_PAY_TOKEN_SLOT` omitted (AuMM is immutable pay token). Structural template is `src/gauge/SwapAndDepositToBodensee.sol` L328—L355 (`swapAndDeposit`) with substitutions — no `payToken` slot write, `mintRouter.mintFor(address(this), amount)` (guarded by `MintRouterNotSet`) precedes the reentrancy check, `IERC20(address(AuMM)).balanceOf(address(this))` for the residual read (IAuMM lacks the `using SafeERC20 for IERC20` binding so the cast is required), residual check uses the already-declared `HelperBalanceNonZero(residual)` error. The residual check is a delta against a pre-mint snapshot rather than an absolute zero, so a stray AuMM transfer — or any LP's `claim(pool, channel)` — no longer bricks every future `distribute()` permanently.
      */
     function distribute() external override onlyGovernance {
         uint256 amount = pendingAccrual;
@@ -264,6 +264,8 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         pendingAccrual = 0;
         totalDistributed += amount;
         if (address(mintRouter) == address(0)) revert MintRouterNotSet();
+        // PP-D45 — the snapshot precedes the mint because `mintFor` transiently adds `amount` to the very balance under test; a post-mint snapshot would measure nothing. AuMM reaches this contract by NO other route, so the pre-mint balance is exactly the pre-existing residual.
+        uint256 entryBalance = IERC20(address(AuMM)).balanceOf(address(this));
         mintRouter.mintFor(address(this), amount);
         if (_EXECUTING_SLOT.asBoolean().tload()) revert ReentrancyGuard();
         _EXECUTING_SLOT.asBoolean().tstore(true);
@@ -274,7 +276,7 @@ contract BodenseeBootstrapChannel is IBodenseeBootstrapChannel {
         _PENDING_AMOUNT_SLOT.asUint256().tstore(0);
         _ORIGINAL_CALLER_SLOT.asAddress().tstore(address(0));
         uint256 residual = IERC20(address(AuMM)).balanceOf(address(this));
-        if (residual != 0) revert HelperBalanceNonZero(residual);
+        if (residual > entryBalance) revert HelperBalanceNonZero(residual);
     }
 
     /* ---------- Vault callback (H-D12) ---------- */
