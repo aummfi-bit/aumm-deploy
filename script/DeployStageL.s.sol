@@ -14,11 +14,12 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /**
  * @title DeployStageL
  * @notice Deploys the Stage L Incendiary Boost producer and wires both gates in a
- *         single multisig-authored broadcast — `new IncendiaryRegistry(...)` plus
+ *         multisig-authored broadcast — `new IncendiaryRegistry(...)` plus
  *         donate-channel authorization and distributor registry binding:
  *
- *           1. channel.addAuthorizedDonator(registry)     — L-D2 deposit tail (G-D21)
- *           2. distributor.setIncendiaryRegistry(registry)  — L-D25 boost-delivery leg
+ *           1. channel.addAuthorizedDonator(registry)                  — L-D2 deposit tail (G-D21)
+ *           2. distributor.proposeIncendiaryRegistry(registry)         — L-D25 boost-delivery leg (PP-D44 propose)
+ *           3. distributor.acceptIncendiaryRegistry()                    — L-D25 commit (PP-D44 accept; second invocation)
  *
  * @dev L-D28 — wiring authority is GOVERNANCE_MULTISIG only; there is no deployer→multisig
  *      handoff. Post-Stage-K both gates remain multisig-held: `channel.donateAuthorizer()`
@@ -36,6 +37,13 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  *      (`test/fork/DeployStageL.t.sol`, L9.2) exercises the `deploy(governor)` entry, which
  *      applies the multisig identity via `vm.startPrank` so the gated calls succeed without a
  *      live broadcast.
+ *
+ * @dev PP-D44 two-step execution — `forge script` executes an entry at a single `block.number`, so
+ *      `acceptIncendiaryRegistry` cannot share an invocation with `proposeIncendiaryRegistry`. Production
+ *      therefore runs this script twice: first `run()` (or the propose half), then a second invocation
+ *      targeting `runAcceptRegistry()` at a strictly later block. Per PP-D44 (F.1); canon at
+ *      `10_constitution.md` §xxviii L97 and §xxix L135 — no new delay constant, the gap being the
+ *      contract-side strict block inequality.
  *
  * @dev Fail-fast preconditions — `_deployAndWire` asserts both gates before any binding call,
  *      so a run against a mis-staged chain reverts with a named diagnostic instead of
@@ -59,7 +67,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  *        SV_ZCHF               address  — svZCHF rail (ctor arg 5)
  *        SUSDS                 address  — sUSDS rail (ctor arg 6)
  *        GAUGE_REGISTRY        address  — IGaugeRegistry (ctor arg 7)
- *        EMISSION_DISTRIBUTOR  address  — setIncendiaryRegistry target
+ *        EMISSION_DISTRIBUTOR  address  — proposeIncendiaryRegistry / acceptIncendiaryRegistry target
  */
 contract DeployStageL is Script {
     /// @notice Reverts when `distributor.governance() != governor` at the start of
@@ -95,6 +103,25 @@ contract DeployStageL is Script {
         return registry;
     }
 
+    /// @notice `forge script` entry for the PP-D44 accept half — broadcasts
+    ///         `acceptIncendiaryRegistry` as the GOVERNANCE_MULTISIG read from env.
+    /// @dev Second invocation only; must run at a block strictly after the propose half per PP-D44 (F.1).
+    function runAcceptRegistry() external {
+        address governor = vm.envAddress("GOVERNANCE_MULTISIG");
+        vm.startBroadcast(governor);
+        _acceptBinding(governor);
+        vm.stopBroadcast();
+    }
+
+    /// @notice Testable accept entry — applies the GOVERNANCE_MULTISIG identity via
+    ///         `vm.startPrank(governor)` so the gated accept call succeeds from a fork test
+    ///         without a live broadcast. Must be invoked at a block strictly after the propose half.
+    function acceptRegistry(address governor) external {
+        vm.startPrank(governor);
+        _acceptBinding(governor);
+        vm.stopPrank();
+    }
+
     /// @dev Fail-fast both gates, deploy `IncendiaryRegistry`, wire donate authorization + distributor binding.
     function _deployAndWire(address governor) internal returns (IncendiaryRegistry) {
         SwapAndDepositToBodensee channel = SwapAndDepositToBodensee(vm.envAddress("SWAP_AND_DEPOSIT"));
@@ -115,8 +142,17 @@ contract DeployStageL is Script {
             aumm.GENESIS_BLOCK()
         );
         channel.addAuthorizedDonator(address(registry));
-        distributor.setIncendiaryRegistry(address(registry));
+        distributor.proposeIncendiaryRegistry(address(registry));
         incendiaryRegistry = registry;
         return registry;
+    }
+
+    /// @dev Fail-fast governance gate, then commit the pending Incendiary registry binding per PP-D44 (F.1).
+    function _acceptBinding(address governor) internal {
+        EmissionDistributor distributor = EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR"));
+
+        if (distributor.governance() != governor) revert DistributorGovernanceNotMultisig(distributor.governance());
+
+        distributor.acceptIncendiaryRegistry();
     }
 }
