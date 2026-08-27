@@ -52,6 +52,14 @@ P-M2 gauge-registry mirror trio. The g4 index commit touches only
 formal/RESULTS.md -- zero harness or Solidity deltas -- so the attestation
 binds this tree's harness set bit-for-bit.
 
+DIVERGED as of PP4.1 (Stage P-prime): the attestation above no longer binds
+this tree. The P-ED3 and P-ED4 harnesses were rewritten at commits 77f98b8
+and 18f27ef, when PP-D44 (F.1) replaced the single-step incendiary-registry
+setter with a propose/accept two-step, so both are marked
+PENDING-REATTESTATION below. PP-D37 defers the bundle re-run to the end of
+the P-prime patch cycle; until it runs, the 55/55 figure above describes
+commit 9c109b1 and not this tree.
+
 Solver and flag notes:
 
 - --max-iterations 10: raised at PB2.12e1. Multi-call proofs re-visit the
@@ -84,6 +92,10 @@ Solver and flag notes:
 ## 4. Status vocabulary (PB-D17(iv))
 
 - PROVED -- hevm symbolic proof, PASS under the canonical invocation.
+- PENDING-REATTESTATION -- the harness was rewritten after the last attested
+  run, so no PASS binds it at this tree. Distinct from a failure: the property
+  is stated and the harness compiles, but the bundle has not been re-run.
+  PP-D37 defers the re-run to the end of the P-prime patch cycle.
 - BOUNDED-WITH-NAMED-RESIDUAL -- property stated and witnessed concretely;
   the general symbolic query exhausts both resident solvers; routed firm-side
   with the local pins named.
@@ -152,8 +164,8 @@ formal/act/bodensee_bootstrap_channel.act (PB2.12e4b).
 | P-R2 | the 21M cap survives composition through the router | prove_router_capHoldsThroughRouter | PROVED |
 | P-ED1 | distributor setMintRouter: one-shot, governance-gated, zero-rejected | prove_distributor_setMintRouter_onlyGovernance, prove_distributor_mintRouter_setOnce, prove_distributor_setMintRouter_rejectZero | PROVED |
 | P-ED2 | per-pool AuMT bind: one-shot per pool, pool-independent, zero-rejected | prove_distributor_auMT_setOncePerPool, prove_distributor_auMT_poolIndependence, prove_distributor_auMT_rejectZero | PROVED |
-| P-ED3 | distributor governance rotation: two-phase, old authority locked out, new authority live | prove_distributor_governanceRotation | PROVED |
-| P-ED4 | incendiary-registry auth gate on both two-step halves; H-D29 zero-permitted deprecation valve through propose-then-accept | prove_distributor_incendiaryRegistryTwoStep_gateAndClear | PROVED |
+| P-ED3 | distributor governance rotation: two-phase, old authority locked out, new authority live | prove_distributor_governanceRotation | PENDING-REATTESTATION |
+| P-ED4 | incendiary-registry auth gate on both two-step halves; H-D29 zero-permitted deprecation valve through propose-then-accept | prove_distributor_incendiaryRegistryTwoStep_gateAndClear | PENDING-REATTESTATION |
 | P-BC1 | channel setMintRouter: one-shot, governance-gated, zero-rejected | prove_channel_setMintRouter_onlyGovernance, prove_channel_setMintRouter_setOnce, prove_channel_setMintRouter_rejectZero | PROVED |
 | P-BC2 | channel governance rotation: two-phase, zero-rejected | prove_channel_governanceRotation, prove_channel_setGovernanceContract_rejectZero | PROVED |
 | P-BC3 | accrue structural guards: same-block re-accrue is idempotent (empty interval); pre-genesis no-op; the post-window clamp collapses to the constant month10End | prove_channel_accrue_emptyIntervalIdempotent, prove_channel_accrue_preGenesisNoOp, prove_channel_accrue_postWindowClamp | PROVED |
