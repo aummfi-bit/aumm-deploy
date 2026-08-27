@@ -187,7 +187,7 @@ formal/act/aureum_authorizer.act (PB2.12f2).
 | ccb_multiplier.act | creates; setMiliariumRegistry (the F-D20 lock), getMultiplier view | updateMultiplier (cross-contract) |
 | aumm.act | creates + invariants (totalSupply at most 21_000_000e18, inductive; minter != 0 implies minterAdmin == 0); setMinter, mint | blockEmissionRate (dialect: the >> halving) |
 | aumm_minter_router.act | constructor guard only -- no storage fragment | mintFor (two-principal allowlist + cross-contract forward) |
-| emission_distributor.act | creates + invariants (governance != 0, lifetime); setGovernanceContract, setAuMTContractForPool, setIncendiaryRegistry, setMintRouter | the accrual/settle/score/claim engine, headline H-D26 |
+| emission_distributor.act | creates + invariants (governance != 0, lifetime); setGovernanceContract, setAuMTContractForPool, setMintRouter | the incendiary two-step (block-number read + code size); the accrual/settle/score/claim engine, headline H-D26 |
 | bodensee_bootstrap_channel.act | creates + invariants (governance != 0, lifetime); setGovernanceContract, setMintRouter | accrue(); distribute() (the H-D12 seam); constructor roster-lookup flag |
 | aureum_governance_authorizer.act | constructor iff only; zero transitions | canPerform (environment read) |
 | aureum_authorizer.act | creates; canPerform fully modelled | none |
@@ -215,6 +215,12 @@ fragment:
   blockEmissionRate x elapsed blocks. Pins: the P6.5 640k-call invariant
   harness; the H5.4 arithmetic-identity tests; the EmissionDistributor unit
   suite; the P-D18 sync forfeit-delta rule.
+- The incendiary two-step (emission_distributor.act) -- propose stores
+  block.number and accept compares against it; propose's non-zero branch
+  additionally reads the code size at the proposed address. PP-D44 (F.1)
+  replaced the H-D29 single-step valve, and the transition is retired from
+  the spec. Pins: P-ED4 against bytecode; the F.1 whitehat suite's
+  two-step done-criteria case.
 - accrue() and distribute() (bodensee_bootstrap_channel.act) -- distribute()
   is the H-D12 Vault-DONATION seam; accrue() is stated as a residual
   behavioural contract (clamp / rate / AP-sum / post, on the P-D19/F-18
