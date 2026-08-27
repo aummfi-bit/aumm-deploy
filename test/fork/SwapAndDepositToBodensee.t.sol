@@ -365,7 +365,10 @@ contract SwapAndDepositToBodenseeForkTest is Test {
     ///         The strict rise accepts it: the reserve MUST grow, but need not grow by the full `amount`.
     ///         The assertions pin both halves — the rise is real, and it is strictly SHORT of `amount`,
     ///         which is what makes this the case the exact form could not pass. Mirrors the form the
-    ///         sibling hook has carried since PB-D68 (xvii).
+    ///         sibling hook has carried since PB-D68 (xvii). The helper now retains the unconsumed
+    ///         rounding remainder as dust, because the callback settles what the Vault actually charged
+    ///         rather than what was offered (PB-D68 (xix)), and the closing identity is what proves nothing
+    ///         was lost: the offered amount is either in the reserve or still on the helper.
     function test_P1_A3_belowParRateDoesNotBrickDonate() public {
         address donor = address(uint160(uint256(keccak256("donorA3"))));
         helper.addAuthorizedDonator(donor);
@@ -394,6 +397,8 @@ contract SwapAndDepositToBodenseeForkTest is Test {
         uint256 postReserve = balancesRawPost[svZchfIdx];
         assertGt(postReserve, preReserve, "reserve did not rise");
         assertLt(postReserve - preReserve, amount, "delta is short of amount, which the exact form rejected");
-        assertEq(svZchf.balanceOf(address(helper)), 0, "helper svZCHF residue not zero");
+        uint256 residue = svZchf.balanceOf(address(helper));
+        assertGt(residue, 0, "below-par rounding strands dust, which the exact-delta form reverted on");
+        assertEq(postReserve - preReserve + residue, amount, "offered amount fully accounted: reserve rise plus dust");
     }
 }
