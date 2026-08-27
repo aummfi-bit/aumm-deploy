@@ -20,6 +20,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @title P1 B.5 — permissionless syncPosition times a self-desynced clock reset
 /// @notice Reproduction PoC for seam-1 root cause B.5 (Medium). A stranger chooses WHEN
@@ -68,7 +69,8 @@ contract P1_B5_PermissionlessClockResetTest is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK,
-            gov
+            gov,
+            address(new MockRegisteredVault())
         );
 
         vw = new VotingWeight(

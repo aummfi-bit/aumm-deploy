@@ -19,6 +19,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "../unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice The three-faced attacker contract from the F.1 audit issue
 ///         (`setincendiaryregistry-is-an-unbounded-mint-oracle`). Its `boostIntegral`
@@ -85,7 +86,8 @@ contract P1_F1_Test is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
         router = new AuMMMinterRouter(IAuMM(address(aumm)), DUMMY_CHANNEL, address(distributor));
 

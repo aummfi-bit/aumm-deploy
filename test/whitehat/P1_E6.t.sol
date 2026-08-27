@@ -17,6 +17,7 @@ import {
     MockEfficiencyOracle,
     MockMiliariumRegistry
 } from "../unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice PP3.2 reproduction PoC for root cause E.6 — `_accrueGlobal`'s `totalScore == 0` branch
 ///         advances `lastAccrualBlock` WITHOUT integrating, so any window in which every pool's
@@ -56,7 +57,8 @@ contract P1_E6_Test is Test {
             IEfficiencyOracle(address(effOracle)),
             IMiliariumRegistry(address(miliReg)),
             GENESIS_BLOCK_,
-            GOV
+            GOV,
+            address(new MockRegisteredVault())
         );
 
         effOracle.setEmissionsRecorder(address(distributor));
