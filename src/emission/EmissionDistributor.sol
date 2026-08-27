@@ -424,24 +424,26 @@ contract EmissionDistributor is IEmissionDistributor {
 
         address registry = incendiaryRegistry;
         if (registry != address(0)) {
-            // PP-D44 (F.1). The floor is REQUIRED, not defensive: an unbound pool's cursor reads
-            // zero, so `_lpTrancheIntegral` would walk from block 1 into `_bootstrapApSum`'s
-            // `from - anchorStart` subtraction, which underflows for any `from < GENESIS_BLOCK`.
-            // `eraIndex` is NOT the failure site — it guards pre-genesis and returns era 0.
-            // Raising the bound cannot change honest delivery: `boostIntegral` resolves both 1 and
-            // `GENESIS_BLOCK + 1` to epoch 0, and epoch 0 carries no bucket because `buyBoost`
-            // reverts until year 1 ends, around epoch 26.
             uint256 boostFrom = poolBoostCursor[pool] + 1;
-            uint256 genesisFloor = GENESIS_BLOCK + 1;
-            if (boostFrom < genesisFloor) {
-                boostFrom = genesisFloor;
-            }
             uint256 boostDue = IIncendiaryRegistry(registry).boostIntegral(pool, boostFrom, block.number);
             if (boostDue > 0) {
-                // The canonical 15%-per-epoch cap of `10_constitution.md` §xxix L135, ENFORCED here
-                // rather than trusted from the registry that reported `boostDue`. Excess is
-                // discarded and never banked, the cursor below advancing unconditionally.
-                uint256 boostCap = (BOOST_CAP_BPS * _lpTrancheIntegral(boostFrom, block.number)) / 10_000;
+                // PP-D44 (F.1). The canonical 15%-per-epoch cap of `10_constitution.md` §xxix L135,
+                // ENFORCED here rather than trusted from the registry that reported `boostDue`.
+                // Excess is discarded and never banked, the cursor below advancing unconditionally,
+                // which is also what bounds E.8's backlog face.
+                //
+                // The floor applies to the CAP WINDOW ONLY and deliberately not to `boostFrom`.
+                // `_lpTrancheIntegral` walks `_bootstrapApSum`, whose `from - anchorStart`
+                // underflows for any `from < GENESIS_BLOCK`, so the cap needs it; `boostIntegral`
+                // tolerates `from = 1` and receives it on a cold cursor by design. Flooring the
+                // shared variable changed that call's arguments for no gain in the bound, which
+                // the BoostDelivery suite caught at PP4.1c5d4.
+                uint256 capFrom = boostFrom;
+                uint256 genesisFloor = GENESIS_BLOCK + 1;
+                if (capFrom < genesisFloor) {
+                    capFrom = genesisFloor;
+                }
+                uint256 boostCap = (BOOST_CAP_BPS * _lpTrancheIntegral(capFrom, block.number)) / 10_000;
                 if (boostDue > boostCap) {
                     boostDue = boostCap;
                 }
