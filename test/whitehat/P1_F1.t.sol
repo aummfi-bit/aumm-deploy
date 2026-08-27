@@ -20,6 +20,7 @@ import {
     MockMiliariumRegistry
 } from "../unit/EmissionDistributor.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
+import {EmissionDistributorHarness} from "../unit/harness/EmissionDistributorHarness.sol";
 
 /// @notice The three-faced attacker contract from the F.1 audit issue
 ///         (`setincendiaryregistry-is-an-unbounded-mint-oracle`). Its `boostIntegral`
@@ -171,5 +172,54 @@ contract P1_F1_Test is Test {
         vm.prank(GOV);
         vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.PoolNotRegistered.selector, unknown));
         distributor.setAuMTContractForPool(unknown, ATTACKER);
+    }
+
+    /// @notice The clamp delivers EXACTLY `BOOST_CAP_BPS` of the LP tranche integral over the same
+    ///         interval, no more, against a registry reporting the entire supply.
+    /// @dev    PP-D44 (F.1), the wei-exact half of the bound. The regression above asserts only a
+    ///         coarse fraction so it cannot break on F-0 bootstrap interpolation; this one reads the
+    ///         expected cap from the CONTRACT'S OWN integral via the harness exposer, so the
+    ///         assertion is exact without re-deriving `_bootstrapApSum` in the test. A harness is
+    ///         constructed here rather than reusing `distributor` because `_lpTrancheIntegral` is
+    ///         internal and only `EmissionDistributorHarness` exposes it. No mint router and no
+    ///         oracle wiring are needed: the evil pool is never scored, so `poolAllocation` is zero,
+    ///         `_settlePool` skips the `recordEmissions` push and `_accrueGlobal` short-circuits on
+    ///         an empty `totalScore`. The boost leg runs regardless, which is the whole finding.
+    function test_boostClampedToLpTrancheFraction() public {
+        EmissionDistributorHarness h = new EmissionDistributorHarness(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(gauges)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK_,
+            GOV,
+            address(vaultMock)
+        );
+        EvilRegistry evil = new EvilRegistry(aumm.MAX_SUPPLY());
+
+        vm.prank(GOV);
+        h.setAuMTContractForPool(address(evil), ATTACKER);
+        vm.prank(ATTACKER);
+        h.recordDeposit(address(evil), ATTACKER, 1e18);
+        vm.prank(GOV);
+        h.setIncendiaryRegistry(address(evil));
+
+        // Settle once at genesis so the cursor is anchored and the cap window below is well defined.
+        vm.prank(ATTACKER);
+        h.recordWithdrawal(address(evil), ATTACKER, 0);
+        assertEq(h.poolAccRewardPerLP(address(evil)), 0, "empty cap window admits nothing");
+
+        uint256 capFrom = h.poolBoostCursor(address(evil)) + 1;
+        vm.roll(GENESIS_BLOCK_ + 100);
+        uint256 expectedCap = (1_500 * h.extLpTrancheIntegral(capFrom, block.number)) / 10_000;
+        assertGt(expectedCap, 0, "precondition: the window emits something to cap");
+
+        vm.prank(ATTACKER);
+        h.recordWithdrawal(address(evil), ATTACKER, 0);
+
+        // boostLP is exactly 1e18, so divDown is the identity and the accumulator IS the cap.
+        assertEq(h.poolAccRewardPerLP(address(evil)), expectedCap, "delivered is exactly the cap");
     }
 }
