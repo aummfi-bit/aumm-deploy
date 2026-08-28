@@ -290,8 +290,14 @@ contract ZeroTvlDustCaptureTest is Test {
         distributor.recordDeposit(POOL, DUST_USER, 1);
 
         // Leg 1 — capture while the (now stale) score persists: one epoch of accrual.
+        // TWO claims per PP-D47: the leg spans EMA_STALENESS + 1 blocks because the staleness
+        // gate is a strict >, while one accrual releases at most MAX_ACCRUAL_SPAN_BLOCKS, which
+        // is that same BLOCKS_PER_EPOCH. The first call drains the epoch and the second the one
+        // remaining block; the tranche captured is unchanged and only the call count moved.
         uint256 t1 = startBlock + EMA_STALENESS + 1;
         vm.roll(t1);
+        vm.prank(DUST_USER);
+        distributor.claim(POOL, DUST_USER);
         vm.prank(DUST_USER);
         distributor.claim(POOL, DUST_USER);
         uint256 leg1 = aumm.balanceOf(DUST_USER);
