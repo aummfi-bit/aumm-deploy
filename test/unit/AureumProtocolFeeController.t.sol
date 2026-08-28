@@ -329,10 +329,7 @@ contract AureumProtocolFeeControllerTest is Test {
     ) public {
         vm.assume(wrongRecipient != FEE_ROUTING_HOOK_PLACEHOLDER);
 
-        // The authenticate modifier resolves first (calling the real authorizer
-        // via the mocked Vault), and we want that check to pass so the fuzzer
-        // reaches the Aureum recipient check. Prank as the governance multisig.
-        vm.prank(multisig);
+        // PP-D48 (ii) removed the gate; the recipient check is the first thing that runs, so no prank is needed to reach it.
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -351,7 +348,7 @@ contract AureumProtocolFeeControllerTest is Test {
     ) public {
         vm.assume(wrongRecipient != FEE_ROUTING_HOOK_PLACEHOLDER);
 
-        vm.prank(multisig);
+        // PP-D48 (ii) removed the gate; the recipient check is the first thing that runs, so no prank is needed to reach it.
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -449,13 +446,13 @@ contract AureumProtocolFeeControllerTest is Test {
         controller.setProtocolYieldFeePercentage(pool, pct);
     }
 
-    // ─── Positive-path tests — authenticate + InvalidRecipient bypass ─────
+    // ─── Positive-path tests — permissionless withdrawal + InvalidRecipient pin ─
 
     function test_derBodenseePool_returnsConstructorArgument() public view {
         assertEq(controller.DER_BODENSEE_POOL(), DER_BODENSEE_POOL_PLACEHOLDER);
     }
 
-    function test_withdrawProtocolFees_succeedsForGovernanceOnEmptyPool() public {
+    function test_withdrawProtocolFees_succeedsForAnyCallerOnEmptyPool() public {
         address pool = makeAddr("pool");
 
         // Mock getPoolTokens(pool) to return an empty array. The loop in
@@ -464,11 +461,10 @@ contract AureumProtocolFeeControllerTest is Test {
         IERC20[] memory emptyTokens = new IERC20[](0);
         _mockGetPoolTokens(pool, emptyTokens);
 
-        vm.prank(multisig);
         controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
-    function test_withdrawProtocolFees_succeedsForGovernanceOnOneTokenPoolZeroBalance() public {
+    function test_withdrawProtocolFees_succeedsForAnyCallerOnOneTokenPoolZeroBalance() public {
         address pool = makeAddr("pool");
         IERC20 token = IERC20(makeAddr("token"));
 
@@ -481,11 +477,10 @@ contract AureumProtocolFeeControllerTest is Test {
         oneTokenArray[0] = token;
         _mockGetPoolTokens(pool, oneTokenArray);
 
-        vm.prank(multisig);
         controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
     }
 
-    function test_withdrawProtocolFeesForToken_succeedsForGovernanceWithZeroBalance() public {
+    function test_withdrawProtocolFeesForToken_succeedsForAnyCallerWithZeroBalance() public {
         address pool = makeAddr("pool");
         IERC20 token = IERC20(makeAddr("token"));
 
@@ -496,7 +491,6 @@ contract AureumProtocolFeeControllerTest is Test {
         // _withdrawProtocolFees reads the zero balance and short-circuits.
         _mockGetPoolTokenCountAndIndexOfToken(pool, token, 0, 0);
 
-        vm.prank(multisig);
         controller.withdrawProtocolFeesForToken(pool, FEE_ROUTING_HOOK_PLACEHOLDER, token);
     }
 
@@ -526,8 +520,7 @@ contract AureumProtocolFeeControllerTest is Test {
         // 5. Record logs to verify the event and recipient after the call.
         vm.recordLogs();
 
-        // 6. Call from governance with recipient == FEE_ROUTING_HOOK (B10 target per D-D7).
-        vm.prank(multisig);
+        // 6. Call with recipient == FEE_ROUTING_HOOK (B10 target per D-D7).
         controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
 
         // 7. Verify storage was zeroed (controller zeros before transferring).
