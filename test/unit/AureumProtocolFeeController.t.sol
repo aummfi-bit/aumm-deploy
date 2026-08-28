@@ -134,6 +134,17 @@ contract AureumProtocolFeeControllerTest is Test {
             FEE_ROUTING_HOOK_PLACEHOLDER
         );
 
+        // PP-D48 clause (v): `routeYieldFeeToHook` and `setYieldRouteKeeper` both read
+        // the hook's `governanceModule` as their authority, so the codeless placeholder
+        // must answer that getter — otherwise every route reverts on a call to a
+        // non-contract address before the gate can decide anything. Seating `multisig`
+        // keeps every pre-existing route test valid through the Safe-fallback leg.
+        vm.mockCall(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeWithSelector(IAureumFeeRoutingHook.governanceModule.selector),
+            abi.encode(multisig)
+        );
+
         // Deploy the invariant handler and register it as the fuzz target.
         handler = new AureumProtocolFeeControllerHandler(controller, multisig);
         targetContract(address(handler));
@@ -1018,13 +1029,23 @@ contract AureumProtocolFeeControllerTest is Test {
         vm.store(address(controller), _protocolFeeAmountsSlot(pool, token), bytes32(amount));
     }
 
-    function test_routeYieldFeeToHook_revertsForNonGovernance(address notGovernance) public {
-        vm.assume(notGovernance != multisig);
+    function test_routeYieldFeeToHook_revertsForNonKeeperNonSafe(address notAdmissible) public {
+        vm.assume(notAdmissible != multisig);
+        // address(0) is excluded because with no keeper seated the slot is zero, so a
+        // pranked zero sender would match it. `msg.sender` is never zero on chain, which
+        // is why the contract carries no explicit guard for it.
+        vm.assume(notAdmissible != address(0));
         address pool = makeAddr("pool");
         IERC20 token = IERC20(makeAddr("token"));
-        // authenticate resolves before the body, so no roll, seed or mocks are needed.
-        vm.prank(notGovernance);
-        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+        // The caller check runs BEFORE the throttle, so an inadmissible caller sees
+        // NotYieldRouteKeeper rather than RouteThrottled, and needs no roll or seed.
+        vm.prank(notAdmissible);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                AureumProtocolFeeController.NotYieldRouteKeeper.selector,
+                notAdmissible
+            )
+        );
         controller.routeYieldFeeToHook(pool, token, 0);
     }
 
