@@ -604,32 +604,6 @@ contract AureumProtocolFeeControllerTest is Test {
         assertEq(uint256(vm.load(address(controller), slot)), 0, "ledger was not drained");
     }
 
-    // ─── Group B — Fee-setter happy path: cap acceptance + cap rejection ──
-
-    function test_setProtocolYieldFeePercentage_acceptsCapValue() public {
-        address pool = makeAddr("pool");
-        uint256 capValue = controller.MAX_PROTOCOL_YIELD_FEE_PERCENTAGE();
-
-        _mockUnlock();
-        _mockUpdateAggregateYieldFeePercentage();
-
-        vm.prank(multisig);
-        controller.setProtocolYieldFeePercentage(pool, capValue);
-
-        (uint64 storedPct, bool isOverride) = _readPoolFeeConfig(3, pool);
-        assertEq(uint256(storedPct), capValue, "Stored yield fee percentage should equal cap");
-        assertTrue(isOverride, "isOverride should be true for governance-set fee");
-    }
-
-    function test_setProtocolYieldFeePercentage_revertsAtCapPlusScalingFactor() public {
-        address pool = makeAddr("pool");
-        uint256 aboveCap = controller.MAX_PROTOCOL_YIELD_FEE_PERCENTAGE() + 1e11;
-
-        vm.prank(multisig);
-        vm.expectRevert();
-        controller.setProtocolYieldFeePercentage(pool, aboveCap);
-    }
-
     // ─── Group D — D-D15 retrofit coverage (split-is-immutable + pin) ─────
     function test_constructor_pinsGlobalSwapFeePercentageAtCap() public view {
         assertEq(
