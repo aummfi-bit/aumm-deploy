@@ -6,7 +6,6 @@ import { Vm } from "forge-std/Vm.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { IVaultAdmin } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultAdmin.sol";
 import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
@@ -434,18 +433,6 @@ contract AureumProtocolFeeControllerTest is Test {
         controller.setProtocolSwapFeePercentage(pool, pct);
     }
 
-    function test_setProtocolYieldFeePercentage_revertsForNonGovernance(
-        address notGovernance,
-        address pool,
-        uint256 pct
-    ) public {
-        vm.assume(notGovernance != multisig);
-
-        vm.prank(notGovernance);
-        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-        controller.setProtocolYieldFeePercentage(pool, pct);
-    }
-
     // ─── Positive-path tests — permissionless withdrawal + InvalidRecipient pin ─
 
     function test_derBodenseePool_returnsConstructorArgument() public view {
@@ -630,6 +617,35 @@ contract AureumProtocolFeeControllerTest is Test {
         vm.prank(multisig);
         vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
         controller.setProtocolSwapFeePercentage(pool, pct);
+    }
+    function test_setGlobalProtocolYieldFeePercentage_revertsForGovernance(uint256 pct) public {
+        vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+        controller.setGlobalProtocolYieldFeePercentage(pct);
+    }
+    function test_setGlobalProtocolYieldFeePercentage_revertsForNonGovernance(
+        address caller,
+        uint256 pct
+    ) public {
+        vm.assume(caller != multisig);
+        vm.prank(caller);
+        vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+        controller.setGlobalProtocolYieldFeePercentage(pct);
+    }
+    function test_setProtocolYieldFeePercentage_revertsForGovernance(address pool, uint256 pct) public {
+        vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+        controller.setProtocolYieldFeePercentage(pool, pct);
+    }
+    function test_setProtocolYieldFeePercentage_revertsForNonGovernance(
+        address caller,
+        address pool,
+        uint256 pct
+    ) public {
+        vm.assume(caller != multisig);
+        vm.prank(caller);
+        vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+        controller.setProtocolYieldFeePercentage(pool, pct);
     }
     function test_registerPool_pinsSwapFeeEvenWhenExempt(address pool, address poolCreator) public {
         vm.assume(pool != address(0));
