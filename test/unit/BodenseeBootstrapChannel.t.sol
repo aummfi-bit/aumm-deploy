@@ -472,15 +472,30 @@ contract BodenseeBootstrapChannelTest is Test {
         assertEq(channel.totalDistributed(), expectedAmount, "totalDistributed");
     }
 
-    function test_Distribute_RevertWhen_HelperBalanceNonZero() public {
+    /// @dev PP-D45 (E.1) — the residual check is a delta against a snapshot taken BEFORE `mintFor`, not an
+    ///      absolute zero, so AuMM sitting on the channel beforehand is tolerated rather than fatal. It
+    ///      previously reverted `HelperBalanceNonZero` and bricked every future `distribute()`. The residual
+    ///      is asserted to survive UNCHANGED, which is the load-bearing half: a bare success assertion would
+    ///      pass against a guard that checked nothing, whereas an exactly surviving residual proves the
+    ///      mint-and-donate consumed precisely `amount`.
+    function test_Distribute_ToleratesPreExistingResidual() public {
         _rollTo(GENESIS_BLOCK_ + 1_000);
         channel.accrue();
         vault.enableBumpReserveOnDonation();
         uint256 residual = 50e18;
+        uint256 expectedAmount = channel.pendingAccrual();
         deal(address(aumm), address(channel), residual);
-        vm.expectRevert(abi.encodeWithSelector(BodenseeBootstrapChannel.HelperBalanceNonZero.selector, residual));
+
         vm.prank(GOV);
         channel.distribute();
+
+        assertEq(
+            IERC20(address(aumm)).balanceOf(address(channel)),
+            residual,
+            "pre-existing residual survives untouched"
+        );
+        assertEq(channel.pendingAccrual(), 0, "pendingAccrual cleared");
+        assertEq(channel.totalDistributed(), expectedAmount, "totalDistributed");
     }
 
     function test_Distribute_RevertWhen_Reentrant() public {
