@@ -763,6 +763,30 @@ contract AureumProtocolFeeController is
         _withdrawProtocolFees(pool, recipient, token);
     }
 
+    /// @notice Seat or rotate the scheduled principal permitted to drive
+    ///         `routeYieldFeeToHook` alongside the hook's governance Safe.
+    /// @dev PP-D48 clause (v), decisions (b) and (c). Gated on the hook's
+    ///      `governanceModule` Safe rather than on `authenticate`, and that is
+    ///      not a stylistic choice: `authenticate` resolving to an
+    ///      inexpressible `AureumGovernance` IS the defect E.2 reports, so an
+    ///      `authenticate`-gated keeper setter would be unreachable for exactly
+    ///      the same reason and the keeper could never be rotated once seated.
+    ///      A zero `governanceModule` fails CLOSED — nobody may seat a keeper
+    ///      before the hook's one-shot `setGovernanceModule` has fired.
+    ///      `newKeeper == address(0)` is PERMITTED and disables the keeper leg
+    ///      without stranding the skim, since the Safe remains admissible at
+    ///      `routeYieldFeeToHook`; this mirrors the H-D29 zero valve rather
+    ///      than inventing a new one.
+    /// @param newKeeper The address to seat, or `address(0)` to disable the leg.
+    function setYieldRouteKeeper(address newKeeper) external {
+        address authority = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).governanceModule();
+        if (authority == address(0) || msg.sender != authority) {
+            revert NotKeeperAuthority(msg.sender);
+        }
+        emit YieldRouteKeeperChanged(yieldRouteKeeper, newKeeper);
+        yieldRouteKeeper = newKeeper;
+    }
+
     /// @notice Route collected ERC-4626 yield fees for `pool` into the
     ///         AureumFeeRoutingHook pipeline (OQ-20 Option A / D4.6).
     /// @dev Governance-gated (`authenticate`); PP-D48 clause (v) KEEPS that gate
