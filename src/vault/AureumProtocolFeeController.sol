@@ -745,42 +745,57 @@ contract AureumProtocolFeeController is
 
     /// @notice Route collected ERC-4626 yield fees for `pool` into the
     ///         AureumFeeRoutingHook pipeline (OQ-20 Option A / D4.6).
-    /// @dev Governance-gated (`authenticate`). Approves the hook for `amount`,
-    ///      then calls `routeYieldFee`; the hook pulls via `safeTransferFrom`,
-    ///      preserving the leg asymmetry (B10 `safeTransfer` vs yield
-    ///      `safeTransferFrom`, OQ-20). Pool/amount validation stays hook-side
-    ///      (caller-pin, ZeroAddress, InvalidPool(DER_BODENSEE), ZeroAmount).
+    /// @dev Governance-gated (`authenticate`); PP-D48 clause (v) KEEPS that gate
+    ///      because `04_tokenomics.md` L155 specifies routing into der Bodensee
+    ///      as governance-gated at most once per epoch, and records the caller's
+    ///      post-K unreachability as a REACHABILITY defect to be closed by
+    ///      retargeting the principal rather than by deleting the gate.
+    ///      E.4 (PP-D48 (i)): the routed amount is no longer a parameter. It is
+    ///      READ from `_protocolFeeAmounts[pool][token]` and ZEROED before the
+    ///      hook is approved, so the ledger is debited by exactly what leaves,
+    ///      mirroring `_withdrawProtocolFees` below. The prior form approved and
+    ///      let the hook pull a caller-supplied `amount` out of the controller's
+    ///      COMMINGLED balance with no debit and no bound against the pool's own
+    ///      credit, so one pool's route could spend another pool's fees.
+    ///      `minBptAmountOut` is likewise gone, passed as 0: PB-D68 (xiv) makes
+    ///      the der-Bodensee leg a DONATION returning zero BPT that reverts
+    ///      `BptFloorUnavailableOnDonation` on any non-zero floor, so the only
+    ///      satisfiable value was 0 and exposing it was a footgun.
+    ///      The hook pulls via `safeTransferFrom`, preserving the leg asymmetry
+    ///      (B10 `safeTransfer` vs yield `safeTransferFrom`, OQ-20). Remaining
+    ///      validation stays hook-side (caller-pin, ZeroAddress,
+    ///      InvalidPool(DER_BODENSEE), ZeroAmount — the last now firing when a
+    ///      pool holds no credit rather than on a caller's zero argument).
     ///      The per-pool `BLOCKS_PER_EPOCH` throttle (OQ-21) stamps only after a
     ///      successful route, so a reverting hook call does not burn the pool's
     ///      epoch — including bound-tripped reverts per PB-D9. Observability is
     ///      the hook's `YieldFeeRouted` event.
     /// @param pool The source pool whose collected yield fees are routed.
     /// @param token The yield-fee token to route.
-    /// @param amount Amount of `token` to route.
     /// @param minDepositTokenOut Minimum deposit-token output of the internal
     ///        conversion swap, EXACT_IN semantics, enforced only when the swap
     ///        leg runs and inert on the rate-exact ZCHF-to-svZCHF ERC-4626 fast
     ///        path and the same-token no-op.
-    /// @param minBptAmountOut Minimum BPT minted by the one-sided der-Bodensee
-    ///        add, enforced on every route.
-    /// @return bptMinted BPT minted to this controller by the hook.
+    /// @return bptMinted BPT minted to this controller by the hook — ZERO on
+    ///         every route since PB-D68 (xiv), retained as the hook interface's
+    ///         return rather than dropped here.
     function routeYieldFeeToHook(
         address pool,
         IERC20 token,
-        uint256 amount,
-        uint256 minDepositTokenOut,
-        uint256 minBptAmountOut
+        uint256 minDepositTokenOut
     ) external authenticate returns (uint256 bptMinted) {
         if (block.number < _lastRouteBlock[pool] + AureumTime.BLOCKS_PER_EPOCH) {
             revert RouteThrottled();
         }
+        uint256 amount = _protocolFeeAmounts[pool][token];
+        _protocolFeeAmounts[pool][token] = 0;
         token.forceApprove(FEE_ROUTING_HOOK, amount);
         bptMinted = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).routeYieldFee(
             pool,
             token,
             amount,
             minDepositTokenOut,
-            minBptAmountOut
+            0
         );
         _lastRouteBlock[pool] = block.number;
     }
