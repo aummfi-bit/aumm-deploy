@@ -140,15 +140,6 @@ contract AureumProtocolFeeController is
         _;
     }
 
-    // Validate the yield fee percentage against the maximum.
-    modifier withValidYieldFee(uint256 newYieldFeePercentage) {
-        if (newYieldFeePercentage > MAX_PROTOCOL_YIELD_FEE_PERCENTAGE) {
-            revert ProtocolYieldFeePercentageTooHigh();
-        }
-        _ensureValidPrecision(newYieldFeePercentage);
-        _;
-    }
-
     modifier withValidPoolCreatorFee(uint256 newPoolCreatorFeePercentage) {
         if (newPoolCreatorFeePercentage > MAX_CREATOR_FEE_PERCENTAGE) {
             revert PoolCreatorFeePercentageTooHigh();
