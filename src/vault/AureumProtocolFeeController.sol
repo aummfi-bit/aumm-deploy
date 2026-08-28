@@ -279,15 +279,25 @@ contract AureumProtocolFeeController is
 
     /**
      * @dev Copy and zero out the `aggregateFeeAmounts` collected in the Vault accounting, supplying credit
-     * for each token. Then have the Vault transfer tokens to this contract, debiting each token for the amount
-     * transferred so that the transaction settles when the hook returns.
+     * for each token. The YIELD leg is credited to `_protocolFeeAmounts`; the SWAP leg is FORWARDED straight
+     * to the fee-routing hook through `_receiveAggregateFeesSwapForward`, exactly as the hook's own
+     * `collectAggregateFeesHookSwapForward` path does. E.2 (PP-D48 (iii)): before this, the permissionless
+     * keeper entry credited BOTH legs into a single ledger slot per (pool, token), which no consumer can
+     * split apart again — so `routeYieldFeeToHook`, which since E.4 routes the whole credit, would have
+     * carried STANDARD swap dust through a function whose name and whose canonical clause
+     * (`10_constitution.md` §xxix L150) are about yield alone. The ledger is now yield-only and the two
+     * collect paths agree on what each leg means.
      */
     // Rationale: hook executes inside Vault unlock context; Vault reentrancy
     // lock held throughout the external calls and subsequent event emissions.
-    // slither-disable-next-line reentrancy-events
+    // The swap-forward return is deliberately discarded: this keeper entry reports
+    // nothing back to a caller, unlike the hook's own forward entry which decodes it.
+    // slither-disable-next-line reentrancy-events,unused-return
     function collectAggregateFeesHook(address pool) external onlyVault {
         (uint256[] memory totalSwapFees, uint256[] memory totalYieldFees) = _vault.collectAggregateFees(pool);
-        _receiveAggregateFees(pool, totalSwapFees, totalYieldFees);
+        _receiveAggregateFees(pool, ProtocolFeeType.YIELD, totalYieldFees);
+        (IERC20[] memory poolTokens, ) = _getPoolTokensAndCount(pool);
+        _receiveAggregateFeesSwapForward(pool, poolTokens, totalSwapFees);
     }
 
     /**
