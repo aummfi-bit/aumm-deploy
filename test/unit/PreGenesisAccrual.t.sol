@@ -95,17 +95,20 @@ contract PreGenesisAccrualTest is Test {
         assertEq(distributor.totalScore(), 0, "totalScore is not zero at deploy");
     }
 
-    /// @notice PB-D19 (v) pin (1): a pre-genesis `_accrueGlobal` touch takes the H-D15 empty-totalScore
-    ///         short-circuit — it snaps lastAccrualBlock to the current block and accrues nothing, so
-    ///         the inverted window is never evaluated and no schedule time is burned inside the pad.
-    function test_preGenesis_accrueGlobalIsNoOpAndResetsAnchor() public {
+    /// @notice PB-D19 (v) pin (1), INVERTED at PP-D47: a pre-genesis `_accrueGlobal` touch now takes the
+    ///         WIDENED empty-interval short-circuit rather than the empty-`totalScore` one — `block.number
+    ///         <= lastAccrualBlock` returns before either branch that writes, so the anchor HOLDS at genesis
+    ///         instead of snapping backwards. The inverted window is now unreachable BY CONSTRUCTION rather
+    ///         than because the zero-score guard happened to fire first, which is what PB-D19 (v) actually
+    ///         wanted; the cursor is monotone, so no touch at any pre-genesis block can move it at all.
+    function test_preGenesis_accrueGlobalIsNoOpAndHoldsAnchor() public {
         vm.roll(DEPLOY_BLOCK + GENESIS_OFFSET / 2);
         assertLt(block.number, GENESIS_BLOCK_, "roll escaped the pre-genesis pad");
 
         distributor.extAccrueGlobal();
 
-        assertEq(distributor.lastAccrualBlock(), block.number, "anchor did not snap to the current block");
-        assertLt(distributor.lastAccrualBlock(), GENESIS_BLOCK_, "anchor is still ahead of genesis");
+        assertEq(distributor.lastAccrualBlock(), GENESIS_BLOCK_, "anchor did not hold at genesis");
+        assertGt(distributor.lastAccrualBlock(), block.number, "anchor was dragged below genesis");
         assertEq(distributor.accRewardPerScoreUnit(), 0, "emission accrued before genesis");
     }
 
