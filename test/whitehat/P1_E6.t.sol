@@ -69,9 +69,14 @@ contract P1_E6_Test is Test {
         vm.roll(GENESIS_BLOCK_);
     }
 
-    /// @notice The forfeiture: with every score self-cleared, a permissionless `claim` advances the
-    ///         accrual cursor across an un-integrated window and the accumulator never moves.
-    function test_E6_zeroTotalScoreWindowIsBurnedByOneClaim() public {
+    /// @notice The fix (PP-D47 / E.6): with every score self-cleared AFTER a completed accrual, a
+    ///         permissionless `claim` no longer advances the cursor. The window stays PENDING and the next
+    ///         accrual carrying live scores integrates it in full, so nothing is forfeited and no caller can
+    ///         book the loss at a moment of their choosing. The recovery leg deliberately takes TWO
+    ///         `recordScore` calls, which is not incidental: `_accrueGlobal` runs at step 2 and the score
+    ///         write at step 10, so the score-restoring call still observes `totalScore == 0` and holds,
+    ///         and the drain lands on the call after it. That ordering is why PP-D47 forks on cold start.
+    function test_zeroTotalScoreWindowDoesNotForfeit() public {
         ema.setTVLEMA(POOL, 1_000e18);
         distributor.recordScore(POOL);
         assertGt(distributor.totalScore(), 0, "precondition: a scored pool exists");
@@ -83,11 +88,21 @@ contract P1_E6_Test is Test {
         distributor.recordScore(POOL);
         assertEq(distributor.totalScore(), 0, "score self-cleared to zero");
         uint256 cursorBefore = distributor.lastAccrualBlock();
+
         vm.roll(block.number + 10_000);
         vm.prank(MALLORY);
         distributor.claim(POOL, MALLORY);
-        assertEq(distributor.lastAccrualBlock(), block.number, "cursor advanced across the window");
-        assertGt(distributor.lastAccrualBlock(), cursorBefore + 9_999, "cursor skipped 10,000 blocks");
-        assertEq(distributor.accRewardPerScoreUnit(), accAfterHealthyAccrual, "nothing was integrated");
+
+        assertEq(distributor.lastAccrualBlock(), cursorBefore, "cursor moved across the pending window");
+        assertLt(distributor.lastAccrualBlock(), block.number, "cursor was not held behind the current block");
+        assertEq(distributor.accRewardPerScoreUnit(), accAfterHealthyAccrual, "accumulator moved with no live score");
+
+        ema.setTVLEMA(POOL, 1_000e18);
+        distributor.recordScore(POOL);
+        assertEq(distributor.lastAccrualBlock(), cursorBefore, "the score-restoring call drained early");
+
+        distributor.recordScore(POOL);
+        assertEq(distributor.lastAccrualBlock(), block.number, "cursor did not catch up once scores returned");
+        assertGt(distributor.accRewardPerScoreUnit(), accAfterHealthyAccrual, "the pending window was never integrated");
     }
 }
