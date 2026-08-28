@@ -119,11 +119,11 @@ contract AureumProtocolFeeControllerTest is Test {
         // controller functions.
         mockVault = makeAddr("mockVault");
 
-        // Wire the mock Vault's getAuthorizer() response before any test runs.
-        // Every governance-gated test will hit SingletonAuthentication's
-        // authenticate modifier, which calls getVault().getAuthorizer() ->
-        // canPerform(...). This mock makes the first hop return the real
-        // Aureum authorizer we just deployed.
+        // Wire the mock Vault's getAuthorizer() response before any test runs. As of
+        // PP4.6t2a no controller entry is authenticate-gated, so this no longer feeds a
+        // gate: it serves only test_setUp_constructorWiringAndGetAuthorizerMockResolve,
+        // which asserts the wiring itself. Whether that scaffolding still earns its place
+        // is a question for the post-gate hygiene sweep, not for this rung.
         _mockGetAuthorizer(address(authorizer));
 
         // Deploy the controller with the mock Vault, the Stage B Bodensee
@@ -385,20 +385,6 @@ contract AureumProtocolFeeControllerTest is Test {
         controller.collectAggregateFeesHook(pool);
     }
 
-    // authenticate modifier on governance-gated protocol fee setters
-
-    function test_setProtocolSwapFeePercentage_revertsForNonGovernance(
-        address notGovernance,
-        address pool,
-        uint256 pct
-    ) public {
-        vm.assume(notGovernance != multisig);
-
-        vm.prank(notGovernance);
-        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
-        controller.setProtocolSwapFeePercentage(pool, pct);
-    }
-
     // ─── Positive-path tests — permissionless withdrawal + InvalidRecipient pin ─
 
     function test_derBodenseePool_returnsConstructorArgument() public view {
@@ -581,6 +567,16 @@ contract AureumProtocolFeeControllerTest is Test {
     }
     function test_setProtocolSwapFeePercentage_revertsForGovernance(address pool, uint256 pct) public {
         vm.prank(multisig);
+        vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
+        controller.setProtocolSwapFeePercentage(pool, pct);
+    }
+    function test_setProtocolSwapFeePercentage_revertsForNonGovernance(
+        address caller,
+        address pool,
+        uint256 pct
+    ) public {
+        vm.assume(caller != multisig);
+        vm.prank(caller);
         vm.expectRevert(AureumProtocolFeeController.SplitIsImmutable.selector);
         controller.setProtocolSwapFeePercentage(pool, pct);
     }
