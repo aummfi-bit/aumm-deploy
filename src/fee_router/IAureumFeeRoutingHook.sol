@@ -317,4 +317,13 @@ interface IAureumFeeRoutingHook {
     ///         `onRegister` and read by `GaugeEligibility` as the first
     ///         disjunct of the PB-D69 no-fees-no-emissions conjunct.
     function poolBodenseeDepositToken(address pool) external view returns (address);
+
+    /// @notice The Stage-K governance module seated on the hook — the Safe that
+    ///         holds `routeGovernanceDeposit` and `recoverStrandedFees`. Exposed
+    ///         on the interface per the PB-D69 (xiii) precedent so
+    ///         `AureumProtocolFeeController` can read it as the rotation
+    ///         authority for `yieldRouteKeeper` (PP-D48 clause (v)) without
+    ///         depending on the concrete hook type. `address(0)` before the
+    ///         one-shot `setGovernanceModule` fires.
+    function governanceModule() external view returns (address);
 }

@@ -108,7 +108,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @dev Stage K's governance module does not exist at hook deploy
     ///      time, so this cannot be a constructor immutable. One-shot
     ///      setter mirrors AuMM.setMinter per C-D11.
-    address public governanceModule;
+    address public override governanceModule;
 
     /// @notice The Aureum Incendiary module — sanctioned caller for
     ///         routeIncendiaryDeposit. address(0) until set via
