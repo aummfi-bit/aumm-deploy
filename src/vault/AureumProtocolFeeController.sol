@@ -609,7 +609,11 @@ contract AureumProtocolFeeController is
     ///      regardless of the `protocolFeeExempt` flag. This closes the hole where a
     ///      factory passing `protocolFeeExempt = true` would set the pool's swap-fee
     ///      to 0 and bypass the 50/50 split. The yield-fee side still honors the
-    ///      exempt flag — Bodensee yield collection is gated separately by D-D9.
+    ///      exempt flag AND additionally pins der Bodensee to 0 by address per PP-D48 (iv):
+    ///      `protocolFeeExempt` is a factory-supplied registration parameter with no setter
+    ///      anywhere in `src/` or `script/`, so trusting a factory to pass it is not a code
+    ///      guarantee, and D-D9 gates Bodensee yield COLLECTION at `collectAggregateFees`
+    ///      without touching this registration stamp.
     function registerPool(
         address pool,
         address poolCreator,
@@ -621,7 +625,12 @@ contract AureumProtocolFeeController is
         // D-D15: swap-fee is pinned to the global (50e16) unconditionally; the exempt
         // flag is ignored for the swap side. Yield side still honors the exempt flag.
         aggregateSwapFeePercentage = _globalProtocolSwapFeePercentage;
-        aggregateYieldFeePercentage = protocolFeeExempt ? 0 : _globalProtocolYieldFeePercentage;
+        // PP-D48 (iv): der Bodensee is excluded by ADDRESS as well as by the exempt flag.
+        // D-D9 blocks its yield collection; this closes the registration stamp that D-D9
+        // does not reach.
+        aggregateYieldFeePercentage = (protocolFeeExempt || pool == DER_BODENSEE_POOL)
+            ? 0
+            : _globalProtocolYieldFeePercentage;
 
         // `isOverride` is true if the pool is protocol fee exempt; otherwise, default to false.
         // If exempt, this pool cannot be updated to the current global percentage permissionlessly.
