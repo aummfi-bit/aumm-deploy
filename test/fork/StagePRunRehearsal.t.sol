@@ -334,6 +334,9 @@ contract StagePRunRehearsalTest is Test {
         // entries under nested governor broadcasts (proven at PB3.4d1), and fires the four
         // post-conditions in-run at the future genesis. ---
         orchestrator.run();
+        // PP-D46 — `run()` ARMS the incendiary registry and stops, because `DeployStageL.run()` only proposes under the PP-D44 two-step, so the production procedure is TWO invocations and the rehearsal drives both; this is the PRODUCTION entry, not the testable twin, which is the whole point of rehearsing it.
+        vm.roll(block.number + 1);
+        orchestrator.runAcceptRegistry();
 
         // --- PB-D25 (iii) Router leg: DEPLOY ONLY. The hook's governanceModule stays unset here, so
         // the post-condition (3) at-rest baseline survives; seating is per-test via _seatRouter. ---
@@ -564,6 +567,15 @@ contract StagePRunRehearsalTest is Test {
             address(orchestrator.ccbMultiplier().gaugeRegistry()) != address(orchestrator),
             "CCB seal still points at the deploy-time placeholder"
         );
+    }
+
+    /// @notice The spine alone leaves `incendiaryRegistry` at zero; the assertion holds only because `setUp`
+    ///         drives the second invocation. This is the only coverage `DeployStageP.runAcceptRegistry()`
+    ///         has, since the integration fixture drives the testable twin instead.
+    function test_postCondition_incendiaryRegistryBoundAfterAccept() public view {
+        address bound = orchestrator.emissionDistributor().incendiaryRegistry();
+        address deployed = address(orchestrator.incendiaryRegistry());
+        assertEq(bound, deployed, "L-D25 boost leg bound by the accept invocation");
     }
 
     /// @notice The authorizer migration — re-asserted against the pre-run baseline: run() checks only
