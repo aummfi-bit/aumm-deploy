@@ -11,6 +11,7 @@ import { IVaultAdmin } from "@balancer-labs/v3-interfaces/contracts/vault/IVault
 import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 import { IVaultExtension } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
 import { IVaultMain } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultMain.sol";
+import { FEE_SCALING_FACTOR } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IAureumProtocolFeeControllerHookExtension } from "../../src/fee_router/IAureumProtocolFeeControllerHookExtension.sol";
 
 import { AureumAuthorizer } from "../../src/vault/AureumAuthorizer.sol";
@@ -652,6 +653,53 @@ contract AureumProtocolFeeControllerTest is Test {
         (uint256 storedYieldPct, bool yieldIsOverride) = controller.getPoolProtocolYieldFeeInfo(pool);
         assertEq(storedYieldPct, controller.CONSTITUTIONAL_YIELD_FEE_PERCENTAGE());
         assertFalse(yieldIsOverride);
+    }
+    /// @dev PP-D48 (vii): the pin test the swap side has had since D-D15. It covers all
+    ///      three claims the amendment makes about the pinned value — that the constructor
+    ///      writes it, that it is the constitutional 10 percent, and that it is admissible,
+    ///      sitting within the Vault ceiling and on the FEE_SCALING_FACTOR grid. That last
+    ///      check has no other home: `withValidYieldFee` enforced precision for the setters
+    ///      and was deleted with them, so nothing in the contract now validates the constant.
+    function test_constructor_pinsGlobalYieldFeePercentageAtConstitutionalSkim() public view {
+        uint256 skim = controller.CONSTITUTIONAL_YIELD_FEE_PERCENTAGE();
+        assertEq(
+            controller.getGlobalProtocolYieldFeePercentage(),
+            skim,
+            "Global protocol yield-fee percentage should be pinned to the constitutional skim"
+        );
+        assertEq(skim, 10e16, "Skim should be the constitutional 10 percent");
+        assertLe(
+            skim,
+            controller.MAX_PROTOCOL_YIELD_FEE_PERCENTAGE(),
+            "Skim should sit within the Vault ceiling"
+        );
+        assertEq(skim % FEE_SCALING_FACTOR, 0, "Skim should be free of Vault precision loss");
+    }
+    /// @dev PP-D48 (iv): der Bodensee registers at zero yield with protocolFeeExempt FALSE,
+    ///      so the zero comes from the address pin and not from the flag. This is the exact
+    ///      case test_registerPool_pinsSwapFeeWhenNotExempt now excludes by assume, and it
+    ///      has no coverage anywhere else.
+    function test_registerPool_zeroesYieldForDerBodenseeEvenWhenNotExempt(address poolCreator) public {
+        vm.prank(mockVault);
+        (uint256 aggregateSwapFee, uint256 aggregateYieldFee) =
+            controller.registerPool(DER_BODENSEE_POOL_PLACEHOLDER, poolCreator, false);
+        assertEq(aggregateSwapFee, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
+        assertEq(aggregateYieldFee, 0, "Bodensee should register at zero yield");
+        (uint256 storedYieldPct, bool yieldIsOverride) =
+            controller.getPoolProtocolYieldFeeInfo(DER_BODENSEE_POOL_PLACEHOLDER);
+        assertEq(storedYieldPct, 0, "Bodensee yield stamp should be zero");
+        // isOverride mirrors protocolFeeExempt and is therefore FALSE here, so this zero is
+        // not protected by the override flag. That is what makes the next test load-bearing.
+        assertFalse(yieldIsOverride);
+    }
+    /// @dev RB-029 regression pin. updateProtocolYieldFeePercentage is permissionless and
+    ///      resyncs any non-override pool to the global, so it would write the skim straight
+    ///      back over der Bodensee's registration zero. The only thing stopping it is a guard
+    ///      on a DIFFERENT function: withLatestFees calls collectAggregateFees, which D-D9
+    ///      reverts for this pool. Neither function states that dependency, so this pins it.
+    function test_updateProtocolYieldFeePercentage_revertsForDerBodensee() public {
+        vm.expectRevert(AureumProtocolFeeController.BodenseeYieldCollectionDisabled.selector);
+        controller.updateProtocolYieldFeePercentage(DER_BODENSEE_POOL_PLACEHOLDER);
     }
     // ─── Group C — Invariants ─────────────────────────────────────────────
 
