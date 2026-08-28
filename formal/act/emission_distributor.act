@@ -134,10 +134,13 @@ updates
 // firm's model, with B := block.number:
 //
 //   accrue : H-D15 two-tier MasterChef topology. _accrueGlobal advances
-//            accRewardPerScoreUnit by lpTrancheIntegral(last + 1, B) divided
-//            (floor, 1e18 scale) by totalScore, after two short-circuits --
-//            B == lastAccrualBlock returns; totalScore == 0 re-anchors
-//            lastAccrualBlock and returns. Successive calls tile the block
+//            accRewardPerScoreUnit by lpTrancheIntegral(last + 1, to) divided
+//            (floor, 1e18 scale) by totalScore, where to := min(B, last +
+//            MAX_ACCRUAL_SPAN_BLOCKS) per PP-D47, after two short-circuits --
+//            B <= lastAccrualBlock returns; totalScore == 0 re-anchors
+//            lastAccrualBlock ONLY at cold start, detected by
+//            accRewardPerScoreUnit == 0, and otherwise HOLDS it so the
+//            window stays pending. Successive calls tile the block
 //            timeline exactly once each (no gaps, no double-count).
 //   H-D26  : the conservation identity, the firm's headline sweep target:
 //            LP_integral(from, to) + the Bodensee AP sum + the Incendiary skim

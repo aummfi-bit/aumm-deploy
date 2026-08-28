@@ -8,9 +8,11 @@ pragma solidity ^0.8.26;
 ///         of active Incendiary Boost claims over a block interval.
 /// @dev Per H-D29 — interval-form `integratedSkim(from, to)` returns the pre-integrated F-7 Step 1 sum over
 ///      `[from, to]` inclusive. Interval form (rather than per-block `claimsAt(block)`) shifts the
-///      O(deltaBlocks) iteration responsibility to the registry — the canonical Stage L implementation ships
-///      bucket-cached cumulative sums internally so `integratedSkim` itself stays O(1) regardless of interval
-///      size, eliminating an unbounded-gas vector against the distributor's `_lpTrancheIntegral`. Symmetric
+///      O(deltaBlocks) iteration responsibility to the registry — the canonical Stage L implementation walks
+///      ONE BUCKET PER EPOCH overlapped (the L-D23 direct epoch walk, which SUPERSEDED the L-D9
+///      crystallize-cache model this comment previously described as O(1) and which never shipped), so the
+///      unbounded-gas vector against the distributor's `_lpTrancheIntegral` is closed on the DISTRIBUTOR
+///      side instead, by PP-D47's `MAX_ACCRUAL_SPAN_BLOCKS` clamp of one epoch per accrual. Symmetric
 ///      composition with `_lpTrancheIntegral`'s `(from, to) → uint256` shape per H-D26. Stage H ships this
 ///      interface stub as a forward-dependency only — no concrete implementation under `src/incendiary/`
 ///      until Stage L. The distributor defaults `incendiaryRegistry = address(0)` per H-D29 so the F-7
