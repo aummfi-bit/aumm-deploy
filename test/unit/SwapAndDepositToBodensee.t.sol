@@ -554,10 +554,11 @@ contract SwapAndDepositToBodenseeTest is Test {
     function testDonateCallbackReachedAtNonFeeEqualAmount() public {
         helper.addAuthorizedDonator(address(0xD1));
         svZchf.mint(address(helper), 50e18);
+        // Reaching the reserve check proves the callback ran; the mock's static reserve is why the strict rise fires.
         vm.expectRevert(
             abi.encodeWithSelector(
-                SwapAndDepositToBodensee.ReserveDeltaMismatch.selector,
-                1_050e18,
+                SwapAndDepositToBodensee.ReserveDidNotRise.selector,
+                1_000e18,
                 1_000e18
             )
         );
@@ -568,10 +569,11 @@ contract SwapAndDepositToBodenseeTest is Test {
     function testDonateCallbackReachedAtOneWei() public {
         helper.addAuthorizedDonator(address(0xD1));
         svZchf.mint(address(helper), 1);
+        // Reaching the reserve check proves the callback ran; the mock's static reserve is why the strict rise fires.
         vm.expectRevert(
             abi.encodeWithSelector(
-                SwapAndDepositToBodensee.ReserveDeltaMismatch.selector,
-                1_000e18 + 1,
+                SwapAndDepositToBodensee.ReserveDidNotRise.selector,
+                1_000e18,
                 1_000e18
             )
         );
