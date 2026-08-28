@@ -1046,12 +1046,18 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     /**
      * @notice E.2 FIXED (PP-D48 (ii)/(iii)) — permissionless `collectAggregateFees` now
      *         forwards the swap leg straight to `FEE_ROUTING_HOOK` and never credits
-     *         `_protocolFeeAmounts`.
+     *         `_protocolFeeAmounts`. PP-D48 clause (ii) also ungated both withdrawal
+     *         entries while keeping the `FEE_ROUTING_HOOK` recipient pin.
      * @dev Done-criteria case for seam-1 root cause E.2 (F-57) under PP-D48 clauses (ii)
      *      and (iii). The rail-less candidate is the fill because `AureumFeeRoutingHook.onAfterSwap`
      *      returns early at `:375` when `poolBodenseeDepositToken` is zero, so the hot path
      *      cannot sweep it. The yield leg reads zero here because no rate can move inside the
-     *      test's own block, NOT because the global yield fee is zero.
+     *      test's own block, NOT because the global yield fee is zero. Clause (ii) ungated both
+     *      withdrawal entries while preserving the recipient pin; the drain beats below assert
+     *      REACHABILITY, not moved value, because clause (iii) made the ledger yield-only and
+     *      the global yield fee stays zero until E.3, so `_withdrawProtocolFees` takes its
+     *      `amountToWithdraw > 0` guard at `:866` and transfers nothing. The unchanged hook
+     *      balances are what make that a claim rather than a bare absence of revert.
      */
     function test_swapLegFeesReachTheHook() public {
         address candidate = _buildRailLessCandidate();
@@ -1094,6 +1100,41 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         for (uint256 i = 0; i < ledger.length; ++i) {
             assertEq(ledger[i], 0, "E.2 - no swap-leg credit in yield ledger");
         }
+
+        assertEq(controller.FEE_ROUTING_HOOK(), address(hook), "E.2 - recipient pin is the live hook");
+
+        uint256[] memory hookAfterCollect = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            hookAfterCollect[i] = tokens[i].balanceOf(address(hook));
+        }
+
+        address[3] memory drainers = [collector, address(orchestrator), EMERGENCY_MULTISIG];
+        for (uint256 i = 0; i < drainers.length; ++i) {
+            vm.prank(drainers[i]);
+            controller.withdrawProtocolFees(candidate, address(hook));
+        }
+
+        vm.prank(collector);
+        controller.withdrawProtocolFeesForToken(candidate, address(hook), tokens[0]);
+
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            assertEq(
+                tokens[i].balanceOf(address(hook)),
+                hookAfterCollect[i],
+                "E.2 - withdrawal did not move hook balances"
+            );
+        }
+
+        // No prank: the recipient check is now the first gate, with no authenticate ahead of it.
+        address badRecipient = makeAddr("e2_bad_recipient");
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.InvalidRecipient.selector, address(hook), badRecipient)
+        );
+        controller.withdrawProtocolFees(candidate, badRecipient);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.InvalidRecipient.selector, address(hook), badRecipient)
+        );
+        controller.withdrawProtocolFeesForToken(candidate, badRecipient, tokens[0]);
     }
 
     /**
