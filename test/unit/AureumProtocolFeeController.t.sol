@@ -199,31 +199,12 @@ contract AureumProtocolFeeControllerTest is Test {
         );
     }
 
-    function _mockUnlock() internal {
-        // The withLatestFees modifier calls collectAggregateFees which calls _vault.unlock.
-        // Mock unlock to return empty bytes so the modifier completes without the real
-        // callback chain firing.
-        vm.mockCall(
-            mockVault,
-            abi.encodeWithSelector(IVaultMain.unlock.selector),
-            abi.encode(bytes(""))
-        );
-    }
-
     function _mockUpdateAggregateSwapFeePercentage() internal {
         // _updatePoolSwapFeePercentage calls _vault.updateAggregateSwapFeePercentage(pool, pct).
         // Selector-only mock: matches any pool/pct combination, returns no data.
         vm.mockCall(
             mockVault,
             abi.encodeWithSelector(IVaultAdmin.updateAggregateSwapFeePercentage.selector),
-            ""
-        );
-    }
-
-    function _mockUpdateAggregateYieldFeePercentage() internal {
-        vm.mockCall(
-            mockVault,
-            abi.encodeWithSelector(IVaultAdmin.updateAggregateYieldFeePercentage.selector),
             ""
         );
     }
@@ -265,22 +246,6 @@ contract AureumProtocolFeeControllerTest is Test {
     function _protocolFeeAmountsSlot(address pool, IERC20 token) private pure returns (bytes32) {
         bytes32 outerSlot = keccak256(abi.encode(pool, uint256(7)));
         return keccak256(abi.encode(token, outerSlot));
-    }
-
-    // Read the PoolFeeConfig struct for a given pool from the given base slot.
-    // Slot layout (forge inspect confirmed):
-    //   slot 2 = _poolProtocolSwapFeePercentages
-    //   slot 3 = _poolProtocolYieldFeePercentages
-    // Struct packing: uint64 feePercentage (bits 0–63), bool isOverride (bit 64).
-    function _readPoolFeeConfig(
-        uint256 baseSlot,
-        address pool
-    ) private view returns (uint64 feePercentage, bool isOverride) {
-        bytes32 slot = keccak256(abi.encode(pool, baseSlot));
-        uint256 packed = uint256(vm.load(address(controller), slot));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        feePercentage = uint64(packed);
-        isOverride = ((packed >> 64) & 1) == 1;
     }
 
     // ─── Smoke test ────────────────────────────────────────────────────────
