@@ -161,4 +161,49 @@ contract P1_E6_Test is Test {
         distributor.recordScore(POOL);
         assertEq(distributor.lastAccrualBlock(), block.number, "third call did not finish the backlog");
     }
+
+    /// @notice The two-sided conservation identity PP-D47's fix intent requires: over a held window plus its
+    ///         drain, the accumulator's growth times the live score equals `_lpTrancheIntegral` over exactly
+    ///         the drained range — forfeiture would fail it low, double-counting would fail it high. The
+    ///         oracle is the contract's OWN integral read through the harness, so the test re-derives no
+    ///         schedule arithmetic; only the 18-decimal scaling is restated, as `(x * 1e18) / y`, which is
+    ///         `FixedPoint.divDown` verbatim per its source, keeping the expectation independent of the
+    ///         library the accumulator uses. The closing re-call is the other side: once drained, the same
+    ///         window must credit nothing further.
+    function test_heldWindowIsCreditedInFullOnDrain() public {
+        ema.setTVLEMA(POOL, 1_000e18);
+        distributor.recordScore(POOL);
+        vm.roll(block.number + 1_000);
+        distributor.recordScore(POOL);
+        uint256 accBeforeLapse = distributor.accRewardPerScoreUnit();
+        assertGt(accBeforeLapse, 0, "control: an accrual completed before the lapse");
+
+        ema.setTVLEMA(POOL, 0);
+        distributor.recordScore(POOL);
+        uint256 heldCursor = distributor.lastAccrualBlock();
+        assertEq(distributor.totalScore(), 0, "score did not self-clear");
+
+        vm.roll(block.number + 10_000);
+        ema.setTVLEMA(POOL, 1_000e18);
+        distributor.recordScore(POOL);
+        assertEq(distributor.lastAccrualBlock(), heldCursor, "the score-restoring call drained early");
+        assertEq(distributor.accRewardPerScoreUnit(), accBeforeLapse, "the score-restoring call moved the accumulator");
+
+        uint256 denominator = distributor.totalScore();
+        uint256 windowIntegral = distributor.extLpTrancheIntegral(heldCursor + 1, block.number);
+        assertGt(windowIntegral, 0, "the held window integrates to nothing");
+
+        distributor.recordScore(POOL);
+
+        assertEq(distributor.lastAccrualBlock(), block.number, "the drain did not reach the current block");
+        assertEq(
+            distributor.accRewardPerScoreUnit() - accBeforeLapse,
+            (windowIntegral * 1e18) / denominator,
+            "the credited amount is not the integral over the held window"
+        );
+
+        uint256 accAfterDrain = distributor.accRewardPerScoreUnit();
+        distributor.recordScore(POOL);
+        assertEq(distributor.accRewardPerScoreUnit(), accAfterDrain, "the drained window was credited twice");
+    }
 }
