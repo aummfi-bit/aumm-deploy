@@ -554,6 +554,56 @@ contract AureumProtocolFeeControllerTest is Test {
         assertTrue(foundEvent, "ProtocolFeesWithdrawn event was not emitted");
     }
 
+    /// @dev PP-D48 (ii): the caller is fuzzed and holds no role, so permissionlessness is
+    ///      asserted nominally rather than resting on address(this) being incidentally unprivileged.
+    function test_withdrawProtocolFees_anyCallerDrainsNonZeroCreditToHook(address caller) public {
+        vm.assume(caller != address(0));
+        vm.assume(caller != address(vm));
+
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        uint256 feeAmount = 777e18;
+
+        IERC20[] memory tokens = new IERC20[](1);
+        tokens[0] = token;
+        _mockGetPoolTokens(pool, tokens);
+
+        bytes32 slot = _protocolFeeAmountsSlot(pool, token);
+        vm.store(address(controller), slot, bytes32(feeAmount));
+        assertEq(uint256(vm.load(address(controller), slot)), feeAmount, "seed did not land");
+
+        _mockSafeTransfer(token);
+
+        vm.prank(caller);
+        controller.withdrawProtocolFees(pool, FEE_ROUTING_HOOK_PLACEHOLDER);
+
+        assertEq(uint256(vm.load(address(controller), slot)), 0, "ledger was not drained");
+    }
+
+    /// @dev PP-D48 (ii): this is the only nonzero-transfer coverage the
+    ///      withdrawProtocolFeesForToken entry has anywhere.
+    function test_withdrawProtocolFeesForToken_anyCallerDrainsNonZeroCreditToHook(address caller) public {
+        vm.assume(caller != address(0));
+        vm.assume(caller != address(vm));
+
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        uint256 feeAmount = 777e18;
+
+        _mockGetPoolTokenCountAndIndexOfToken(pool, token, 0, 0);
+
+        bytes32 slot = _protocolFeeAmountsSlot(pool, token);
+        vm.store(address(controller), slot, bytes32(feeAmount));
+        assertEq(uint256(vm.load(address(controller), slot)), feeAmount, "seed did not land");
+
+        _mockSafeTransfer(token);
+
+        vm.prank(caller);
+        controller.withdrawProtocolFeesForToken(pool, FEE_ROUTING_HOOK_PLACEHOLDER, token);
+
+        assertEq(uint256(vm.load(address(controller), slot)), 0, "ledger was not drained");
+    }
+
     // ─── Group B — Fee-setter happy path: cap acceptance + cap rejection ──
 
     function test_setProtocolYieldFeePercentage_acceptsCapValue() public {
