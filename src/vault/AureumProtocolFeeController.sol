@@ -300,32 +300,6 @@ contract AureumProtocolFeeController is
         _receiveAggregateFeesSwapForward(pool, poolTokens, totalSwapFees);
     }
 
-    /**
-     * @notice Settle fee credits from the Vault.
-     * @dev This must be called after calling `collectAggregateFees` in the Vault. Note that since charging protocol
-     * fees (i.e., distributing tokens between pool and fee balances) occurs in the Vault, but fee collection
-     * happens in the ProtocolFeeController, the swap fees reported here may encompass multiple operations. The Vault
-     * differentiates between swap and yield fees (since they can have different percentage values); the Controller
-     * combines swap and yield fees, then allocates the total between the protocol and pool creator.
-     *
-     * @param pool The address of the pool on which the swap fees were charged
-     * @param swapFeeAmounts An array with the total swap fees collected, sorted in token registration order
-     * @param yieldFeeAmounts An array with the total yield fees collected, sorted in token registration order
-     */
-    // Rationale: upstream Balancer V3 fee-collection pattern. The Vault holds
-    // its reentrancy lock during sendTo() because this code path executes
-    // inside an unlock() context. No reentrant observer can act on emitted
-    // events within the same transaction.
-    // slither-disable-next-line reentrancy-no-eth,reentrancy-events
-    function _receiveAggregateFees(
-        address pool,
-        uint256[] memory swapFeeAmounts,
-        uint256[] memory yieldFeeAmounts
-    ) internal {
-        _receiveAggregateFees(pool, ProtocolFeeType.SWAP, swapFeeAmounts);
-        _receiveAggregateFees(pool, ProtocolFeeType.YIELD, yieldFeeAmounts);
-    }
-
     // AUREUM NOTE: Identical to upstream ProtocolFeeController.sol L203-259.
     // Aureum short-circuit: _poolCreatorSwapFeePercentages[pool] and
     // _poolCreatorYieldFeePercentages[pool] are always zero (their setters
