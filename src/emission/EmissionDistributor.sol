@@ -64,6 +64,11 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Aggregate Incendiary boost cap in basis points, 1,500 = 15% of an epoch's emission integral — the immutable at `10_constitution.md` §xxix L135, which §xxviii L97 states as the shared 15%-per-epoch cap on claims skimmed from the LP emission tranche before the CCB splits the remainder. DUPLICATED here rather than read from `IncendiaryRegistry.BOOST_CAP_BPS` at `IncendiaryRegistry.sol:50`, deliberately and per PP-D44: reading the cap from the contract the clamp exists to bound would reintroduce exactly the trust the clamp removes. The two sides agree by construction rather than by call, both using the plain-integer BPS convention of L-D4 / L-D20 rather than `divDown`, a basis-point figure being a rational fraction and not a FixedPoint scalar.
     uint256 internal constant BOOST_CAP_BPS = 1_500;
 
+    /* ---------- Accrual span bound (PP-D47 / E.6) ---------- */
+
+    /// @notice Maximum block span a single `_accrueGlobal` call may integrate and release — one epoch, 100,800 blocks or 14 days, per PP-D47. The bound serves TWO purposes and both are load-bearing. It caps per-call GAS, because `_lpTrancheIntegral` walks one iteration per era boundary spanned and `IIncendiaryRegistry.integratedSkim` one per epoch bucket (the L-D23 direct walk, NOT the O(1) cache its stale interface comment still promises), so an unbounded catch-up after a long dormancy would resurrect E.6's forfeiture as a gas-brick. It also caps per-call MISALLOCATION: a window held pending across a post-accrual zero-`totalScore` lapse is credited to whatever scores are live when it drains, and `_accrueGlobal` runs BEFORE the score write on every mutating entry, so the drain lands on the first pool re-scored — capping the release at one epoch bounds that to E.6's own reported 14-day keeper lapse, while any longer lapse spreads across successive calls as the roster refills.
+    uint256 internal constant MAX_ACCRUAL_SPAN_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
+
     /* ---------- Global accumulator (H-D15) ---------- */
 
     /// @notice Global FixedPoint 18-decimal accumulator per H-D15 — `accRewardPerScoreUnit += (rate * Δblocks).divDown(totalScore)` advances at `_accrueGlobal`.
@@ -72,7 +77,7 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Sum of `poolScore` over approved gauges per H-D15 — mutated only through the H-D19 F12 signed-delta middleware (no other write surface).
     uint256 public override totalScore;
 
-    /// @notice Most recent `_accrueGlobal` block per H-D21 — empty-interval short-circuit when `block.number == lastAccrualBlock`.
+    /// @notice Most recent `_accrueGlobal` block per H-D21 — empty-interval short-circuit when `block.number <= lastAccrualBlock`, the NON-STRICT form per PP-D47 making the cursor monotone by construction so a pre-genesis touch cannot drag it below `GENESIS_BLOCK`. Advanced to the CLAMPED end of the integrated interval rather than to `block.number` whenever a backlog exceeds `MAX_ACCRUAL_SPAN_BLOCKS`, and HELD in place across a post-accrual zero-`totalScore` lapse so that window stays pending rather than forfeited (E.6); it still advances unconditionally at cold start, before any accrual has ever completed against live scores.
     uint256 public override lastAccrualBlock;
 
     /// @notice Running sum of raw F-5 scores across all gauged pools per H-D31 — mutated through the H-D19 signed-delta middleware at H5.3e; consumed by the H-D33 Miliarium reshape leg (`effective_Mil = (1e18 - alpha).mulDown(f5Total / 28) + alpha.mulDown(score_F5_new)`).
