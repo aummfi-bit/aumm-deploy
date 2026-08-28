@@ -789,11 +789,19 @@ contract AureumProtocolFeeController is
 
     /// @notice Route collected ERC-4626 yield fees for `pool` into the
     ///         AureumFeeRoutingHook pipeline (OQ-20 Option A / D4.6).
-    /// @dev Governance-gated (`authenticate`); PP-D48 clause (v) KEEPS that gate
+    /// @dev Gated, but NOT on `authenticate`. PP-D48 clause (v) keeps a gate
     ///      because `04_tokenomics.md` L155 specifies routing into der Bodensee
-    ///      as governance-gated at most once per epoch, and records the caller's
-    ///      post-K unreachability as a REACHABILITY defect to be closed by
-    ///      retargeting the principal rather than by deleting the gate.
+    ///      as governance-gated at most once per epoch, and resolves the caller's
+    ///      post-K unreachability by RETARGETING the principal rather than by
+    ///      deleting the gate. The admissible callers are the seated
+    ///      `yieldRouteKeeper` — a scheduled keeper computing
+    ///      `minDepositTokenOut` off-chain, which PRESERVES PB-D9 (iii) rather
+    ///      than falsifying it — and the hook's `governanceModule` Safe as a
+    ///      standing fallback, so a stalled keeper defers the skim instead of
+    ///      stranding it. `authenticate` is deliberately absent: it resolves to
+    ///      an `AureumGovernance` that cannot express this call under fixed
+    ///      dispatch, which is E.2 itself. The caller check runs BEFORE the
+    ///      throttle so an inadmissible caller sees `NotYieldRouteKeeper`.
     ///      E.4 (PP-D48 (i)): the routed amount is no longer a parameter. It is
     ///      READ from `_protocolFeeAmounts[pool][token]` and ZEROED before the
     ///      hook is approved, so the ledger is debited by exactly what leaves,
@@ -827,7 +835,13 @@ contract AureumProtocolFeeController is
         address pool,
         IERC20 token,
         uint256 minDepositTokenOut
-    ) external authenticate returns (uint256 bptMinted) {
+    ) external returns (uint256 bptMinted) {
+        if (msg.sender != yieldRouteKeeper) {
+            address authority = IAureumFeeRoutingHook(FEE_ROUTING_HOOK).governanceModule();
+            if (authority == address(0) || msg.sender != authority) {
+                revert NotYieldRouteKeeper(msg.sender);
+            }
+        }
         if (block.number < _lastRouteBlock[pool] + AureumTime.BLOCKS_PER_EPOCH) {
             revert RouteThrottled();
         }
