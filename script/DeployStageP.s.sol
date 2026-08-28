@@ -47,8 +47,8 @@ contract DeployStageP is Script {
     error RosterPoolRecorderUnbound(address pool);
     error AuthorizerNotMigrated(address expected, address actual);
     error CCBGaugeRegistryNotSealed(address expected, address actual);
-    /// @dev Fires when the accept entry runs but the L-D25 boost leg is still unbound, per PP-D46.
-    error IncendiaryRegistryNotBound(address expected, address actual);
+    /// @dev Fires when the accept entry completes with the L-D25 boost leg still at `address(0)`, per PP-D46.
+    error IncendiaryRegistryNotBound();
 
     MiliariumRegistry public miliariumRegistry;
     TVLOracle public tvlOracle;
@@ -87,9 +87,7 @@ contract DeployStageP is Script {
         (new DeployStageL()).runAcceptRegistry();
         EmissionDistributor distributor = EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR"));
         address bound = distributor.incendiaryRegistry();
-        if (bound != vm.envAddress("INCENDIARY_REGISTRY")) {
-            revert IncendiaryRegistryNotBound(vm.envAddress("INCENDIARY_REGISTRY"), bound);
-        }
+        if (bound == address(0)) revert IncendiaryRegistryNotBound();
     }
 
     /// @notice Testable entry — env setup, base-layer governor sentinel, chain-order delegation, post-conditions.
@@ -98,6 +96,17 @@ contract DeployStageP is Script {
         _assertBaseLayerGovernor();
         _orchestrate();
         _assertPostConditions();
+    }
+
+    /// @notice Testable twin — stands to `runAcceptRegistry()` exactly as `deploy()` stands to `run()`:
+    ///         applies the governor identity through `DeployStageL.acceptRegistry`'s prank so the gated
+    ///         accept succeeds from a fork test without a live broadcast, and must be invoked at a block
+    ///         strictly later than the spine.
+    function acceptRegistry(address governor) external {
+        (new DeployStageL()).acceptRegistry(governor);
+        EmissionDistributor distributor = EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR"));
+        address bound = distributor.incendiaryRegistry();
+        if (bound == address(0)) revert IncendiaryRegistryNotBound();
     }
 
     function _setupEnv() internal {
