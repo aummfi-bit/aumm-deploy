@@ -656,7 +656,8 @@ contract AureumProtocolFeeControllerTest is Test {
         // the factory-level bypass where `protocolFeeExempt = true` would have zeroed
         // the pool's swap fee and circumvented the 50/50 split.
         assertEq(aggregateSwapFee, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
-        // Yield-side: the exempt flag still zeros the yield fee (D-D9 preserved).
+        // Yield-side: the exempt flag still zeros the yield fee, now one of two ways to
+        // reach zero — PP-D48 (iv) adds the der Bodensee address pin alongside it.
         assertEq(aggregateYieldFee, 0);
         // Storage: swap-side isOverride is false (pinned = canonical); yield-side is
         // true because the exempt flag sticks on the yield side.
@@ -669,18 +670,22 @@ contract AureumProtocolFeeControllerTest is Test {
     }
     function test_registerPool_pinsSwapFeeWhenNotExempt(address pool, address poolCreator) public {
         vm.assume(pool != address(0));
+        // The Bodensee address is an immutable on the target, so forge's fuzz dictionary
+        // will offer it; excluded here because PP-D48 (iv) zeroes its yield stamp by
+        // address and that case has its own test.
+        vm.assume(pool != DER_BODENSEE_POOL_PLACEHOLDER);
         vm.prank(mockVault);
         (uint256 aggregateSwapFee, uint256 aggregateYieldFee) =
             controller.registerPool(pool, poolCreator, false);
         assertEq(aggregateSwapFee, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
-        // _globalProtocolYieldFeePercentage is unpinned (Stage D does not touch yield);
-        // default is 0 for the non-exempt path as well.
-        assertEq(aggregateYieldFee, 0);
+        // Yield-side: PP-D48 (iv) pins the global to the constitutional skim at
+        // construction, so a non-exempt, non-Bodensee pool registers at that rate.
+        assertEq(aggregateYieldFee, controller.CONSTITUTIONAL_YIELD_FEE_PERCENTAGE());
         (uint256 storedSwapPct, bool swapIsOverride) = controller.getPoolProtocolSwapFeeInfo(pool);
         assertEq(storedSwapPct, controller.MAX_PROTOCOL_SWAP_FEE_PERCENTAGE());
         assertFalse(swapIsOverride);
         (uint256 storedYieldPct, bool yieldIsOverride) = controller.getPoolProtocolYieldFeeInfo(pool);
-        assertEq(storedYieldPct, 0);
+        assertEq(storedYieldPct, controller.CONSTITUTIONAL_YIELD_FEE_PERCENTAGE());
         assertFalse(yieldIsOverride);
     }
     // ─── Group C — Invariants ─────────────────────────────────────────────
