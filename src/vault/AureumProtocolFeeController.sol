@@ -189,6 +189,29 @@ contract AureumProtocolFeeController is
     ///         anchors the OQ-21 `BLOCKS_PER_EPOCH` throttle. Zero until first route.
     mapping(address pool => uint256 lastRouteBlock) private _lastRouteBlock;
 
+    /// @notice Reverts when a yield route is attempted by neither the seated
+    ///         `yieldRouteKeeper` nor the hook's `governanceModule` Safe.
+    error NotYieldRouteKeeper(address caller);
+
+    /// @notice Reverts when a keeper rotation is attempted by anyone other than
+    ///         the hook's `governanceModule` Safe, or while that Safe is unseated.
+    error NotKeeperAuthority(address caller);
+
+    /// @notice Emitted when the yield-route keeper is seated or rotated.
+    event YieldRouteKeeperChanged(address indexed previousKeeper, address indexed newKeeper);
+
+    /// @notice The scheduled principal permitted to drive `routeYieldFeeToHook`
+    ///         alongside the hook's governance Safe (PP-D48 clause (v)). STORAGE
+    ///         rather than an immutable because keepers are rotated, compromised
+    ///         and replaced, and ROTATABLE rather than one-shot because a burned
+    ///         slot is a permanently dead route — the trap PP3.12 avoided when
+    ///         `admissionAuthority` took the `GaugeRegistry.governance` shape
+    ///         instead of `setGaugeRegistry`'s burn. `address(0)` is a PERMITTED
+    ///         value that disables the keeper leg without stranding the skim,
+    ///         since the Safe stays admissible; it can never bypass the gate,
+    ///         because `msg.sender` is never the zero address.
+    address public yieldRouteKeeper;
+
     /// @notice The der Bodensee pool address — the D-D9 `collectAggregateFees`
     ///         pool-identity guard target.
     /// @dev Post-D4 retarget (per D-D7 reconciled / STAGE_D_NOTES D23), this
