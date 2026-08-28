@@ -1044,63 +1044,56 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     }
 
     /**
-     * @notice E.2 — post-K, the controller's `withdrawProtocolFees` /
-     *         `withdrawProtocolFeesForToken` are `authenticate`-gated to the
-     *         Vault's migrated authorizer, which grants the action only to
-     *         `AureumGovernance` (the contract) and a narrow, time-boxed
-     *         emergency role. No external account can withdraw, and the sole
-     *         authorized principal — governance — has no `propose*` entrypoint
-     *         and no `_executeProposal` arm that emits a controller call, so the
-     *         swept protocol-fee ledger has no designed drain while the
-     *         permissionless `collectAggregateFees` keeps filling it.
-     * @dev Reproduction PoC for seam-1 root cause E.2 (Medium; High → M per G36
-     *      correction 3 — unreachable to governance, reachable only as a
-     *      `VaultAuthorizerChange` payload, which is C.4 and is reproduced
-     *      separately, NOT re-driven here). The swap-leg FILL the finding names
-     *      is the rail-less ixAetheron skip (`AureumFeeRoutingHook.sol:375`),
-     *      not a railed pilot swap: `onAfterSwap` forwards the swap leg to the
-     *      hook and never credits `_protocolFeeAmounts` (D17 invariant 1), and
-     *      ixAetheron is bind-only uninitialized in this fixture, so this rung
-     *      asserts unreachability plus permissionless collect rather than a
-     *      manufactured `> 0`. Governance is live (see
-     *      `test_legC3_feeChangeExecutesThroughMigratedAuthorizer`); it simply
-     *      has no arm for the controller.
+     * @notice E.2 FIXED (PP-D48 (ii)/(iii)) — permissionless `collectAggregateFees` now
+     *         forwards the swap leg straight to `FEE_ROUTING_HOOK` and never credits
+     *         `_protocolFeeAmounts`.
+     * @dev Done-criteria case for seam-1 root cause E.2 (F-57) under PP-D48 clauses (ii)
+     *      and (iii). The rail-less candidate is the fill because `AureumFeeRoutingHook.onAfterSwap`
+     *      returns early at `:375` when `poolBodenseeDepositToken` is zero, so the hot path
+     *      cannot sweep it. The yield leg reads zero here because no rate can move inside the
+     *      test's own block, NOT because the global yield fee is zero.
      */
-    function test_P1_E2_protocolFeeWithdrawalUnreachablePostHandoff() public {
-        AureumGovernance gov = orchestrator.governance();
-        address pool = pilotPools[0];
-        address attacker = makeAddr("e2_attacker");
+    function test_swapLegFeesReachTheHook() public {
+        address candidate = _buildRailLessCandidate();
+        IERC20[] memory tokens = vault.getPoolTokens(candidate);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = 60e18;
+        amountsIn[1] = 40e18;
+        _initializePool(candidate, tokens, amountsIn);
 
-        bytes32 withdrawActionId =
-            controller.getActionId(AureumProtocolFeeController.withdrawProtocolFees.selector);
+        assertEq(hook.poolBodenseeDepositToken(candidate), address(0), "premise - candidate is rail-less");
 
-        // (1) No external account is the authority. authenticate runs before
-        //     the recipient pin, so a well-formed recipient cannot mask the
-        //     gate; each principal reverts SenderNotAllowed.
-        address[3] memory blocked = [attacker, address(orchestrator), EMERGENCY_MULTISIG];
-        for (uint256 i = 0; i < blocked.length; ++i) {
-            vm.prank(blocked[i]);
-            vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-            controller.withdrawProtocolFees(pool, address(hook));
+        _performSwap(candidate, tokens[0], tokens[1], 1e18);
+
+        uint256[] memory pending = new uint256[](tokens.length);
+        uint256[] memory hookBefore = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            pending[i] = vault.getAggregateSwapFeeAmount(candidate, tokens[i]);
+            hookBefore[i] = tokens[i].balanceOf(address(hook));
         }
 
-        // (2) The barrier is NOT the authorizer: governance holds the action.
-        bool govAllowed = AureumGovernanceAuthorizer(address(vault.getAuthorizer()))
-            .canPerform(withdrawActionId, address(gov), address(controller));
-        assertTrue(govAllowed, "E.2 - governance is authorized; the barrier is the missing path");
+        uint256 pendingSum;
+        for (uint256 i = 0; i < pending.length; ++i) {
+            pendingSum += pending[i];
+        }
+        assertGt(pendingSum, 0, "E.2 - swap fees accrued before collect");
 
-        // (3) ... yet governance has no path to fire it. Its six proposal types
-        //     (GaugeChallenge, CompositionChallenge, FeeChange, VaultAuthorizer-
-        //     Change, VaultUnpause, VaultRecoveryDisable) and their six
-        //     _executeProposal arms touch the Vault and pools only; none
-        //     constructs a controller call, so (2)'s authorization is
-        //     unreachable in production. Structural, per the NatSpec above; not
-        //     driven by a prank, which would be a non-existent path.
+        address collector = makeAddr("e2_collector");
+        vm.prank(collector);
+        controller.collectAggregateFees(candidate);
 
-        // (4, lean) The credit side stays permissionless: any EOA sweeps fees
-        //     into the ledger that (1)-(3) prove undrainable.
-        vm.prank(attacker);
-        controller.collectAggregateFees(pool);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            assertEq(
+                tokens[i].balanceOf(address(hook)) - hookBefore[i],
+                pending[i],
+                "E.2 - swap leg forwarded wei-exactly"
+            );
+        }
+
+        uint256[] memory ledger = controller.getProtocolFeeAmounts(candidate);
+        for (uint256 i = 0; i < ledger.length; ++i) {
+            assertEq(ledger[i], 0, "E.2 - no swap-leg credit in yield ledger");
+        }
     }
 
     /**
@@ -1110,7 +1103,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
      *         site is the `authenticate`-gated setter at `:645`, which post-K is
      *         authorized only to `AureumGovernance` — a contract with no
      *         `propose*` arm that reaches the controller, per
-     *         `test_P1_E2_protocolFeeWithdrawalUnreachablePostHandoff`. Every
+     *         `test_swapLegFeesReachTheHook`. Every
      *         pool is therefore stamped 0% aggregate yield at registration.
      * @dev Reproduction PoC for seam-1 root cause E.3 (Medium). The ASYMMETRY is
      *      the finding: the swap global is pinned to
