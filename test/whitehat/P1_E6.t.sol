@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 import {AuMM} from "../../src/token/AuMM.sol";
 import {IAuMM} from "../../src/token/IAuMM.sol";
-import {EmissionDistributor} from "../../src/emission/EmissionDistributor.sol";
+import {EmissionDistributorHarness} from "../unit/harness/EmissionDistributorHarness.sol";
 import {IGaugeRegistry} from "../../src/ccb/IGaugeRegistry.sol";
 import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
@@ -39,7 +39,7 @@ contract P1_E6_Test is Test {
     MockCCBMultiplier internal mult;
     MockEfficiencyOracle internal effOracle;
     MockMiliariumRegistry internal miliReg;
-    EmissionDistributor internal distributor;
+    EmissionDistributorHarness internal distributor;
 
     function setUp() public {
         aumm = new AuMM(GENESIS_BLOCK_, address(this));
@@ -49,7 +49,7 @@ contract P1_E6_Test is Test {
         effOracle = new MockEfficiencyOracle();
         miliReg = new MockMiliariumRegistry();
 
-        distributor = new EmissionDistributor(
+        distributor = new EmissionDistributorHarness(
             IAuMM(address(aumm)),
             IGaugeRegistry(address(gauges)),
             IEMASampler(address(ema)),
