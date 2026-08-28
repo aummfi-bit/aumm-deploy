@@ -351,6 +351,9 @@ abstract contract StagePIntegrationFixture is Test {
 
         // --- Orchestrate: DeployStageP runs J→F→G→H→setEmissionsRecorder→I→M→N→(seedFoundingPool×3 + setGovernanceContract)→L→K, then asserts the four post-conditions in-run ---
         orchestrator.deploy();
+        // PP-D46 — the spine ARMS the incendiary registry and stops, because `DeployStageL.run()` only proposes under the PP-D44 two-step; the accept is a separate invocation one block later, and this fixture drives it explicitly rather than having it buried inside `DeployStageL.deploy()`, which PP4.1c20a rejected on the ground that it would make a fork test assert a binding that production reaches only by a separate operator action.
+        vm.roll(block.number + 1);
+        orchestrator.acceptRegistry(address(orchestrator));
     }
 
     // Bodensee helpers — parity with test/fork/AureumFeeRoutingHook.t.sol
