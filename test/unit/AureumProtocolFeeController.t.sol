@@ -1206,4 +1206,98 @@ contract AureumProtocolFeeControllerTest is Test {
         uint256 bpt = controller.routeYieldFeeToHook(pool, token, 5e17);
         assertEq(bpt, 2e18, "same-block retry after bound revert should succeed");
     }
+
+    // ─── Group — the PP-D48 clause (v) keeper surface ──────────────────────
+
+    function test_setYieldRouteKeeper_seatsRotatesAndEmits() public {
+        address keeper = makeAddr("keeper");
+        address successor = makeAddr("successor");
+        assertEq(controller.yieldRouteKeeper(), address(0), "precondition: no keeper seated");
+
+        vm.expectEmit(true, true, false, false, address(controller));
+        emit AureumProtocolFeeController.YieldRouteKeeperChanged(address(0), keeper);
+        vm.prank(multisig);
+        controller.setYieldRouteKeeper(keeper);
+        assertEq(controller.yieldRouteKeeper(), keeper, "keeper was not seated");
+
+        // Decision (b): ROTATABLE, never one-shot. A second call must succeed, or a
+        // compromised keeper would be permanent and the route effectively dead.
+        vm.expectEmit(true, true, false, false, address(controller));
+        emit AureumProtocolFeeController.YieldRouteKeeperChanged(keeper, successor);
+        vm.prank(multisig);
+        controller.setYieldRouteKeeper(successor);
+        assertEq(controller.yieldRouteKeeper(), successor, "keeper did not rotate");
+    }
+
+    function test_setYieldRouteKeeper_revertsForNonAuthority(address stranger) public {
+        vm.assume(stranger != multisig);
+        vm.prank(stranger);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.NotKeeperAuthority.selector, stranger)
+        );
+        controller.setYieldRouteKeeper(makeAddr("keeper"));
+    }
+
+    function test_setYieldRouteKeeper_revertsWhenSafeUnseated() public {
+        // Decision (c) fails CLOSED: before the hook's one-shot setGovernanceModule
+        // fires there is no authority, so not even the multisig may seat a keeper.
+        vm.mockCall(
+            FEE_ROUTING_HOOK_PLACEHOLDER,
+            abi.encodeWithSelector(IAureumFeeRoutingHook.governanceModule.selector),
+            abi.encode(address(0))
+        );
+        vm.prank(multisig);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.NotKeeperAuthority.selector, multisig)
+        );
+        controller.setYieldRouteKeeper(makeAddr("keeper"));
+    }
+
+    function test_routeYieldFeeToHook_seatedKeeperMayRoute() public {
+        address keeper = makeAddr("keeper");
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        vm.prank(multisig);
+        controller.setYieldRouteKeeper(keeper);
+
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(3e18);
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        _seedLedger(pool, token, 5e18);
+
+        // The keeper is neither the multisig nor authenticate-permitted; it routes
+        // purely on the seated slot, which is the leg clause (v) exists to create.
+        vm.prank(keeper);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 0);
+        assertEq(bpt, 3e18, "seated keeper could not route");
+    }
+
+    function test_setYieldRouteKeeper_zeroDisablesKeeperLegAndSafeStillRoutes() public {
+        address keeper = makeAddr("keeper");
+        address pool = makeAddr("pool");
+        IERC20 token = IERC20(makeAddr("token"));
+        vm.prank(multisig);
+        controller.setYieldRouteKeeper(keeper);
+        vm.prank(multisig);
+        controller.setYieldRouteKeeper(address(0));
+        assertEq(controller.yieldRouteKeeper(), address(0), "keeper leg was not disabled");
+
+        _mockTokenApprove(token);
+        _mockHookRouteReturns(4e18);
+        vm.roll(AureumTime.BLOCKS_PER_EPOCH * 100);
+        _seedLedger(pool, token, 5e18);
+
+        // The retired keeper is now inadmissible ...
+        vm.prank(keeper);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.NotYieldRouteKeeper.selector, keeper)
+        );
+        controller.routeYieldFeeToHook(pool, token, 0);
+
+        // ... while the Safe fallback keeps the skim reachable, which is why a zero
+        // keeper is a valve rather than a brick.
+        vm.prank(multisig);
+        uint256 bpt = controller.routeYieldFeeToHook(pool, token, 0);
+        assertEq(bpt, 4e18, "Safe fallback could not route with the keeper leg disabled");
+    }
 }
