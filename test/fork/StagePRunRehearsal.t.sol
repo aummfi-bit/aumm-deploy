@@ -84,6 +84,9 @@ contract StagePRunRehearsalTest is Test {
     address internal constant GOVERNOR = address(uint160(uint256(keccak256("rehearsalGovernorEOA"))));
     // PB-D19 — one epoch (14 days) of block offset; the emission clock decouples from deploy time.
     uint256 internal constant GENESIS_OFFSET = 100_800;
+    // Records the block at which GENESIS_BLOCK was sealed, so assertions do not re-derive it from a live
+    // block.number that later rolls move — the F15 hazard.
+    uint256 internal genesisSealBlock;
     // PB3.3/PB-D22 Router-leg literals — mainnet WETH and the canonical cross-chain permit2.
     address internal constant MAINNET_WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
@@ -175,7 +178,8 @@ contract StagePRunRehearsalTest is Test {
         // PB-D19 — genesis one epoch (100_800 blocks) into the future; DeployAuMM reads the key with no
         // block.number clamp, so the emission clock decouples from deploy time.
         /// forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.setEnv("GENESIS_BLOCK", vm.toString(block.number + GENESIS_OFFSET));
+        genesisSealBlock = block.number;
+        vm.setEnv("GENESIS_BLOCK", vm.toString(genesisSealBlock + GENESIS_OFFSET));
         // minterAdmin_ = GOVERNANCE_MULTISIG env = GOVERNOR (the PB-D25 (a) delta vs the P10 fixture).
         aumm = AuMM(new DeployAuMM().run());
 
@@ -500,7 +504,7 @@ contract StagePRunRehearsalTest is Test {
         );
         assertTrue(GOVERNOR != address(orchestrator), "governor must not be the orchestrator");
         assertTrue(GOVERNOR != address(this), "governor must not be the harness");
-        assertEq(aumm.GENESIS_BLOCK(), block.number + GENESIS_OFFSET, "genesis is not one epoch ahead");
+        assertEq(aumm.GENESIS_BLOCK(), genesisSealBlock + GENESIS_OFFSET, "genesis is not one epoch ahead");
         assertTrue(aumm.GENESIS_BLOCK() > block.number, "genesis must be in the future");
         assertTrue(address(bodenseeSusdsRp) != address(0), "susds stub RP unresolved");
         assertTrue(address(bodenseeSvZchfRp) != address(0), "svZchf stub RP unresolved");
@@ -514,10 +518,12 @@ contract StagePRunRehearsalTest is Test {
     /// @notice Post-condition (1) — genesis uniformity, re-asserted test-side, plus the PB-D19 delta
     ///         run() cannot check: _assertPostConditions proves the four genesis slots AGREE, never
     ///         that they carry the FUTURE value. Pinning the common value at block.number plus
-    ///         GENESIS_OFFSET is what catches a regression reverting genesis to deploy time.
+    ///         GENESIS_OFFSET is what catches a regression reverting genesis to deploy time. The expected
+    ///         value is pinned at seal time because `setUp` rolls a block for the PP-D46 accept invocation,
+    ///         so a live re-derivation would be off by exactly that roll.
     function test_postCondition1_genesisUniformAtFutureOffset() public view {
         uint256 gb = orchestrator.gaugeRegistry().GENESIS_BLOCK();
-        assertEq(gb, block.number + GENESIS_OFFSET, "genesis is not the PB-D19 future offset");
+        assertEq(gb, genesisSealBlock + GENESIS_OFFSET, "genesis is not the PB-D19 future offset");
         assertGt(gb, block.number, "genesis must still be in the future");
         assertEq(orchestrator.efficiencyOracle().GENESIS_BLOCK(), gb, "efficiencyOracle genesis diverged");
         assertEq(orchestrator.emissionDistributor().GENESIS_BLOCK(), gb, "emissionDistributor genesis diverged");
