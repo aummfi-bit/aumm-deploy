@@ -659,12 +659,15 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
+    /// @dev Disabled per PP-D48 (iv). The ERC-4626 yield skim is pinned to the
+    ///      constitutional 10% at construction and applies uniformly to every pool;
+    ///      per `10_constitution.md` §xxix L150—151 it is immutable from block 0, so
+    ///      there is no governance path to change it. Any call reverts with
+    ///      `YieldSkimIsImmutable`.
     function setGlobalProtocolYieldFeePercentage(
-        uint256 newProtocolYieldFeePercentage
-    ) external withValidYieldFee(newProtocolYieldFeePercentage) authenticate {
-        _globalProtocolYieldFeePercentage = newProtocolYieldFeePercentage;
-
-        emit GlobalProtocolYieldFeePercentageChanged(newProtocolYieldFeePercentage);
+        uint256 /* newProtocolYieldFeePercentage */
+    ) external pure {
+        revert YieldSkimIsImmutable();
     }
 
     /// @inheritdoc IProtocolFeeController
@@ -679,14 +682,14 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
-    // Rationale: events emitted after Vault calls inside the unlock context;
-    // Vault reentrancy lock prevents observer action within the same tx.
-    // slither-disable-next-line reentrancy-events
+    /// @dev Disabled per PP-D48 (iv). Per-pool overrides would defeat the uniform skim;
+    ///      the pinned constitutional value applies to every pool registered through the
+    ///      Vault. Any call reverts with `YieldSkimIsImmutable`.
     function setProtocolYieldFeePercentage(
-        address pool,
-        uint256 newProtocolYieldFeePercentage
-    ) external authenticate withValidYieldFee(newProtocolYieldFeePercentage) withLatestFees(pool) {
-        _updatePoolYieldFeePercentage(pool, newProtocolYieldFeePercentage, true);
+        address /* pool */,
+        uint256 /* newProtocolYieldFeePercentage */
+    ) external pure {
+        revert YieldSkimIsImmutable();
     }
 
     /// @inheritdoc IProtocolFeeController
