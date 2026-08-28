@@ -10,6 +10,7 @@ import {IEMASampler} from "../../src/ccb/IEMASampler.sol";
 import {ICCBMultiplier} from "../../src/ccb/ICCBMultiplier.sol";
 import {IMiliariumRegistry} from "../../src/ccb/IMiliariumRegistry.sol";
 import {IEfficiencyOracle} from "../../src/gauge/IEfficiencyOracle.sol";
+import {AureumTime} from "../../src/lib/AureumTime.sol";
 import {
     MockGaugeRegistry,
     MockEMASampler,
@@ -104,5 +105,60 @@ contract P1_E6_Test is Test {
         distributor.recordScore(POOL);
         assertEq(distributor.lastAccrualBlock(), block.number, "cursor did not catch up once scores returned");
         assertGt(distributor.accRewardPerScoreUnit(), accAfterHealthyAccrual, "the pending window was never integrated");
+    }
+
+    /// @notice The fork's OTHER arm (PP-D47): before any accrual has ever completed, the zero-`totalScore`
+    ///         branch still advances the cursor and the window IS forfeited. That window is the post-genesis
+    ///         maturity gap, in which `_gatedTvlEMA` returns zero for every pool because none has cleared
+    ///         `EMA_MATURITY_BLOCKS`, so no pool was eligible and none earned it. Holding it instead would
+    ///         hand the whole bootstrap-rate tranche to whichever pool was scored first, against F-1's equal
+    ///         1/28 split; `accRewardPerScoreUnit == 0` is the sentinel that separates the two arms.
+    function test_coldStartWindowIsForfeitedAsUnearned() public {
+        assertEq(distributor.accRewardPerScoreUnit(), 0, "precondition: no accrual has ever completed");
+        assertEq(distributor.totalScore(), 0, "precondition: no pool is scored");
+        uint256 cursorBefore = distributor.lastAccrualBlock();
+
+        vm.roll(block.number + 50_000);
+        vm.prank(MALLORY);
+        distributor.claim(POOL, MALLORY);
+
+        assertGt(distributor.lastAccrualBlock(), cursorBefore, "cold-start cursor was held instead of advanced");
+        assertEq(distributor.lastAccrualBlock(), block.number, "cold-start cursor did not reach the current block");
+        assertEq(distributor.accRewardPerScoreUnit(), 0, "emission accrued with no eligible pool");
+    }
+
+    /// @notice The clamp (PP-D47): one call releases at most `MAX_ACCRUAL_SPAN_BLOCKS`, one epoch, so a
+    ///         backlog drains across successive touches rather than landing in a single lump on whatever
+    ///         scores happen to be live at that instant. The bound is what keeps a long lapse from being
+    ///         both a gas-brick and a windfall. Two and a half epochs of gap therefore take exactly three
+    ///         calls, and the first two land on exact epoch boundaries measured from the pre-gap cursor.
+    function test_backlogDrainsOneEpochPerCall() public {
+        ema.setTVLEMA(POOL, 1_000e18);
+        distributor.recordScore(POOL);
+        vm.roll(block.number + 1);
+        distributor.recordScore(POOL);
+        uint256 cursor0 = distributor.lastAccrualBlock();
+        assertGt(distributor.accRewardPerScoreUnit(), 0, "control: an accrual completed before the gap");
+        assertEq(cursor0, block.number, "control: the cursor is current before the gap");
+
+        vm.roll(block.number + (AureumTime.BLOCKS_PER_EPOCH * 5) / 2);
+
+        distributor.recordScore(POOL);
+        assertEq(
+            distributor.lastAccrualBlock(),
+            cursor0 + AureumTime.BLOCKS_PER_EPOCH,
+            "first call did not release exactly one epoch"
+        );
+        assertLt(distributor.lastAccrualBlock(), block.number, "the whole backlog drained in one call");
+
+        distributor.recordScore(POOL);
+        assertEq(
+            distributor.lastAccrualBlock(),
+            cursor0 + 2 * AureumTime.BLOCKS_PER_EPOCH,
+            "second call did not release exactly one epoch"
+        );
+
+        distributor.recordScore(POOL);
+        assertEq(distributor.lastAccrualBlock(), block.number, "third call did not finish the backlog");
     }
 }
