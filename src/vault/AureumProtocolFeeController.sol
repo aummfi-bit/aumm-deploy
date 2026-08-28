@@ -180,6 +180,16 @@ contract AureumProtocolFeeController is
     ///      See docs/STAGE_D_PLAN.md (D-D15) and docs/FINDINGS.md (OQ-1, OQ-1a).
     error SplitIsImmutable();
 
+    /// @notice Reverts when a caller attempts to change the protocol yield-fee percentage.
+    /// @dev Per `10_constitution.md` §xxix L150—151 the 10% ERC-4626 yield skim is immutable
+    ///      from block 0, expressed here by pinning `_globalProtocolYieldFeePercentage` to
+    ///      that skim (1e17) at construction. There is no governance path to change this
+    ///      value; both the global setter and the per-pool override revert with this error.
+    ///      Distinct from `SplitIsImmutable` above, whose provenance is the swap-side 50/50
+    ///      split (D-D15, OQ-1, OQ-1a) and which governs a different pair of setters.
+    ///      See docs/STAGE_P_PRIME_NOTES.md (PP-D48 (iv), (vi)).
+    error YieldSkimIsImmutable();
+
     /// @notice Reverts when `routeYieldFeeToHook` is called before
     ///         `BLOCKS_PER_EPOCH` blocks have elapsed since `pool`'s last
     ///         successful route (OQ-21 per-pool cadence throttle).
