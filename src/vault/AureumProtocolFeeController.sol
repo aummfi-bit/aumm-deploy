@@ -717,7 +717,17 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
-    function withdrawProtocolFees(address pool, address recipient) external authenticate {
+    /// @dev E.2 (PP-D48 (ii)): deliberately NOT `authenticate`-gated. The gate was
+    ///      removed rather than retargeted because it protected nothing — `recipient` is
+    ///      pinned to `FEE_ROUTING_HOOK` two lines below, so the only reachable effect is
+    ///      moving a pool's own credit to the hook, which is where the fee pipeline sends
+    ///      it regardless. Post-K the gate resolved to `AureumGovernance`, which cannot
+    ///      express this call under fixed dispatch, leaving the fees withdrawable by
+    ///      nobody; permissionless with a pinned recipient is strictly safer than gated
+    ///      and unreachable. This does NOT touch `04_tokenomics.md` L155, which governs
+    ///      ROUTING INTO der Bodensee — `routeYieldFeeToHook` keeps its gate per PP-D48
+    ///      clause (v), still open.
+    function withdrawProtocolFees(address pool, address recipient) external {
         if (recipient != FEE_ROUTING_HOOK) {
             revert InvalidRecipient(FEE_ROUTING_HOOK, recipient);
         }
@@ -731,7 +741,10 @@ contract AureumProtocolFeeController is
     }
 
     /// @inheritdoc IProtocolFeeController
-    function withdrawProtocolFeesForToken(address pool, address recipient, IERC20 token) external authenticate {
+    /// @dev E.2 (PP-D48 (ii)): ungated for the same reason as `withdrawProtocolFees`
+    ///      above — the recipient pin below is the actual control, and the gate removed
+    ///      here was unreachable post-K rather than protective.
+    function withdrawProtocolFeesForToken(address pool, address recipient, IERC20 token) external {
         if (recipient != FEE_ROUTING_HOOK) {
             revert InvalidRecipient(FEE_ROUTING_HOOK, recipient);
         }
