@@ -180,7 +180,14 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
         // functions are stranded rather than transferred. One-shotness of setAuMTContractForPool
         // is C.8's face (test/whitehat/P1_C8.t.sol, AuMTAlreadyBound on a second bind), not re-derived here.
 
-        address unboundPool = makeAddr("p1_c2_unbound_for_authority");
+        // F.1's `setAuMTContractForPool` gate now requires `IVault.isPoolRegistered(pool)`, so a `makeAddr`
+        // address reverts `PoolNotRegistered`; der Bodensee is the one Vault-registered pool with NO
+        // recorder bound, because it is the fee sink rather than an emission-eligible pool and neither
+        // `DeployStageI`'s three pilots nor `DeployStageP`'s twenty-six roster binds it. The pool's
+        // identity is incidental to what this case demonstrates — that the rotated holder can still call
+        // the bind path under a prank while no proposal type can cause that call — and this is
+        // deliberately NOT a test of F.1's gate, which is a different finding with its own row.
+        address unboundPool = bodenseePool;
         address aumt = makeAddr("p1_c2_aumt_for_authority");
         assertEq(ed.auMTContractByPool(unboundPool), address(0), "fresh pool starts unbound");
 
@@ -198,7 +205,14 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
         address gov = _executeDissolutionRotation();
         IEmissionDistributor ed = orchestrator.emissionDistributor();
 
-        address unboundPool = makeAddr("p1_c2_unbound_for_onboarding");
+        // F.1's `setAuMTContractForPool` gate now requires `IVault.isPoolRegistered(pool)`, so a `makeAddr`
+        // address reverts `PoolNotRegistered`; der Bodensee is the one Vault-registered pool with NO
+        // recorder bound, because it is the fee sink rather than an emission-eligible pool and neither
+        // `DeployStageI`'s three pilots nor `DeployStageP`'s twenty-six roster binds it. The pool's
+        // identity is incidental to what this case demonstrates — that the rotated holder can still call
+        // the bind path under a prank while no proposal type can cause that call — and this is
+        // deliberately NOT a test of F.1's gate, which is a different finding with its own row.
+        address unboundPool = bodenseePool;
         address wouldBeAuMT = makeAddr("p1_c2_would_be_aumt");
         address lp = makeAddr("p1_c2_lp");
 
