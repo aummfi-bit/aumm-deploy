@@ -47,6 +47,8 @@ contract DeployStageP is Script {
     error RosterPoolRecorderUnbound(address pool);
     error AuthorizerNotMigrated(address expected, address actual);
     error CCBGaugeRegistryNotSealed(address expected, address actual);
+    /// @dev Fires when the accept entry runs but the L-D25 boost leg is still unbound, per PP-D46.
+    error IncendiaryRegistryNotBound(address expected, address actual);
 
     MiliariumRegistry public miliariumRegistry;
     TVLOracle public tvlOracle;
@@ -72,6 +74,22 @@ contract DeployStageP is Script {
         _assertBaseLayerGovernorProduction();
         _orchestrateProduction();
         _assertPostConditions();
+    }
+
+    /// @notice Second production invocation — run after `run()` at a strictly later block, because
+    ///         `forge script` executes an entry at a single `block.number` and the PP-D44 two-step
+    ///         requires the accept to land after the propose. `run()` arms the registry and this
+    ///         commits it, after which the L-D25 boost leg is live.
+    /// @dev This assertion lives here and NOT in `_assertPostConditions()` because that runs at the
+    ///      end of `run()`, where the registry is legitimately still unbound — asserting it there
+    ///      would fail the spine by design, per PP-D46.
+    function runAcceptRegistry() external {
+        (new DeployStageL()).runAcceptRegistry();
+        EmissionDistributor distributor = EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR"));
+        address bound = distributor.incendiaryRegistry();
+        if (bound != vm.envAddress("INCENDIARY_REGISTRY")) {
+            revert IncendiaryRegistryNotBound(vm.envAddress("INCENDIARY_REGISTRY"), bound);
+        }
     }
 
     /// @notice Testable entry — env setup, base-layer governor sentinel, chain-order delegation, post-conditions.
