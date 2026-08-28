@@ -571,6 +571,18 @@ contract AureumFeeRoutingHookForkTest is Test {
         hook.routeYieldFee(tradingPool, svZchf, 1e18, 0, 0);
     }
 
+    // E.4 (PP-D48 (i)): the routed amount is READ from `_protocolFeeAmounts[pool][token]`
+    // rather than passed, and `collectAggregateFees` accrues nothing on a static fork
+    // block, so a route driven here must credit the ledger directly. Slot formula and its
+    // base-slot-7 provenance are the unit suite's (`test/unit/AureumProtocolFeeController
+    // .t.sol` `_protocolFeeAmountsSlot`); every caller below asserts through the public
+    // `getProtocolFeeAmounts` getter that the seed landed, so a wrong slot fails loudly
+    // rather than routing a silent zero.
+    function _seedLedger(address pool, IERC20 token, uint256 amount) private {
+        bytes32 outerSlot = keccak256(abi.encode(pool, uint256(7)));
+        vm.store(address(controller), keccak256(abi.encode(token, outerSlot)), bytes32(amount));
+    }
+
     function test_Fork_RouteYieldFeeToHookEntryPoint() public {
         _initializeBodensee();
         uint256 amount = 100e18;
@@ -580,17 +592,25 @@ contract AureumFeeRoutingHookForkTest is Test {
         // scenario — live yield accrual is the Sepolia run's job, PB3).
         controller.collectAggregateFees(tradingPool);
 
-        // Step 2 — seed the controller with the yield-fee token (the D7
-        // primitive-test pattern, L509) and route through the OQ-20 governance
-        // entry point: no prank-as-controller, the real authenticate chain.
+        // Step 2 — credit the pool's ledger and seed the controller's balance, then
+        // route through the OQ-20 governance entry point: no prank-as-controller, the
+        // real authenticate chain. Post-E.4 the routed amount is the CREDIT, not an
+        // argument, so the seed is what makes this route non-zero.
+        _seedLedger(tradingPool, svZchf, amount);
         deal(address(svZchf), address(controller), amount, true);
+        (, uint256 idx) = vault.getPoolTokenCountAndIndexOfToken(tradingPool, svZchf);
+        assertEq(
+            controller.getProtocolFeeAmounts(tradingPool)[idx],
+            amount,
+            "rig: the ledger seed landed in the slot the route reads"
+        );
         uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
         uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
 
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
         vm.prank(GOVERNANCE_MULTISIG);
-        uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
+        uint256 bptMinted = controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
 
         assertEq(bptMinted, 0, "PB-D68 (vi) - donation mints no BPT");
         assertEq(IERC20(bodenseePool).balanceOf(address(controller)), 0, "F-23 - no redeemable claim reaches the fee controller");
@@ -603,13 +623,13 @@ contract AureumFeeRoutingHookForkTest is Test {
         deal(address(svZchf), address(controller), amount, true);
         vm.prank(GOVERNANCE_MULTISIG);
         vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
-        controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
 
         // Step 4 — the deployed-authorizer gate: non-governance reverts.
         address attacker = address(uint160(uint256(keccak256("attacker"))));
         vm.prank(attacker);
         vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-        controller.routeYieldFeeToHook(tradingPool, svZchf, amount, 0, 0);
+        controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
     }
 
     function test_Fork_RecursionGuard() public {
