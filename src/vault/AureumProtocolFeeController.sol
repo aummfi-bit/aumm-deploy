@@ -93,6 +93,11 @@ contract AureumProtocolFeeController is
     // Maximum protocol yield fee percentage.
     uint256 public constant MAX_PROTOCOL_YIELD_FEE_PERCENTAGE = 50e16; // 50%
 
+    // The constitutional ERC-4626 yield skim, pinned at construction and immutable
+    // thereafter per `10_constitution.md` §xxix L150—151. Far below
+    // MAX_PROTOCOL_YIELD_FEE_PERCENTAGE, which is the Vault's ceiling rather than a target.
+    uint256 public constant CONSTITUTIONAL_YIELD_FEE_PERCENTAGE = 10e16; // 10%
+
     // Maximum pool creator (swap, yield) fee percentage.
     uint256 public constant MAX_CREATOR_FEE_PERCENTAGE = 99.999e16; // 99.999%
 
@@ -281,6 +286,12 @@ contract AureumProtocolFeeController is
         // Bodensee. Both setters (`setGlobalProtocolSwapFeePercentage` and the per-pool
         // `setProtocolSwapFeePercentage`) revert with `SplitIsImmutable`.
         _globalProtocolSwapFeePercentage = MAX_PROTOCOL_SWAP_FEE_PERCENTAGE;
+        // PP-D48 (iv): pin the ERC-4626 yield skim at the constitutional 10% at
+        // construction, mirroring the swap pin above. `10_constitution.md` §xxix L150—151
+        // declares it immutable from block 0, so both setters
+        // (`setGlobalProtocolYieldFeePercentage` and the per-pool
+        // `setProtocolYieldFeePercentage`) revert with `YieldSkimIsImmutable`.
+        _globalProtocolYieldFeePercentage = CONSTITUTIONAL_YIELD_FEE_PERCENTAGE;
     }
 
     /// @inheritdoc IProtocolFeeController
