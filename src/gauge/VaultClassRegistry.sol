@@ -304,12 +304,15 @@ contract VaultClassRegistry is IVaultClassRegistry {
     }
 
     /// @notice Admits the class after veto window expiry per G-D9 auto-finalize; permissionless caller.
-    /// @dev Mutates `admittedClasses` / `admissionTypes`; emits `VaultClassFinalized` (G-D19 window constant).
+    /// @dev Mutates `admittedClasses` / `admissionTypes`; emits `VaultClassFinalized` (G-D19 window constant). PP-D49 adds three gates after the window check: a finalization deadline at one further `VETO_WINDOW_BLOCKS`, a comparison against `lastRevokedBlock` so a proposal predating a revocation cannot re-admit past governance, and a re-check of `admittedClasses` closing the duplicate-admission case.
     function finalizeProposal(uint256 proposalId) external {
         if (proposalId >= nextProposalId) revert UnknownProposal(proposalId);
         VaultClassProposal storage proposal = proposals[proposalId];
         if (proposal.finalized) revert ProposalAlreadyFinalized(proposalId);
         if (block.number <= proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowOpen(proposalId);
+        if (block.number > proposal.createdBlock + 2 * VETO_WINDOW_BLOCKS) revert FinalizeDeadlineExpired(proposalId);
+        if (proposal.createdBlock <= lastRevokedBlock[proposal.admissionValue]) revert ProposalPredatesRevocation(proposalId);
+        if (admittedClasses[proposal.admissionValue]) revert ClassAlreadyAdmitted(proposal.admissionValue);
         proposal.finalized = true;
         admittedClasses[proposal.admissionValue] = true;
         admissionTypes[proposal.admissionValue] = proposal.admissionType;
@@ -325,6 +328,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     function revokeVaultClass(address admissionValue) external onlyGovernance {
         if (!admittedClasses[admissionValue]) revert ClassNotAdmitted(admissionValue);
         admittedClasses[admissionValue] = false;
+        lastRevokedBlock[admissionValue] = block.number;
         emit VaultClassRevoked(admissionValue);
     }
 }
