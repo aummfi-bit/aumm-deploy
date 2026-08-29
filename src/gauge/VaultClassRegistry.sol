@@ -288,6 +288,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     /// @notice Records voting-weight veto support during the window per G-D9 / G-D19; crossing threshold auto-revokes the proposal.
     /// @dev One veto per address per proposal (F-08): reverts `AlreadyVetoed` on a repeat call. Emits `VaultClassVetoed` on each accepted veto; bond remains in Bodensee on successful veto per G-D9.
     function vetoProposal(uint256 proposalId) external {
+        if (proposalId >= nextProposalId) revert UnknownProposal(proposalId);
         VaultClassProposal storage proposal = proposals[proposalId];
         if (proposal.finalized || proposal.revoked) revert ProposalAlreadyFinalized(proposalId);
         if (block.number > proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowExpired(proposalId);
@@ -305,6 +306,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     /// @notice Admits the class after veto window expiry per G-D9 auto-finalize; permissionless caller.
     /// @dev Mutates `admittedClasses` / `admissionTypes`; emits `VaultClassFinalized` (G-D19 window constant).
     function finalizeProposal(uint256 proposalId) external {
+        if (proposalId >= nextProposalId) revert UnknownProposal(proposalId);
         VaultClassProposal storage proposal = proposals[proposalId];
         if (proposal.finalized) revert ProposalAlreadyFinalized(proposalId);
         if (block.number <= proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowOpen(proposalId);
