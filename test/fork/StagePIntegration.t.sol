@@ -17,7 +17,6 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 import {
     TokenConfig,
     TokenType,
@@ -1138,68 +1137,64 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     }
 
     /**
-     * @notice E.3 — the constitution's 10% ERC-4626 yield skim is 0% in code.
-     *         `_globalProtocolYieldFeePercentage` (`:105`) has no constructor
-     *         write and no script write anywhere in the repo; its sole write
-     *         site is the `authenticate`-gated setter at `:645`, which post-K is
-     *         authorized only to `AureumGovernance` — a contract with no
-     *         `propose*` arm that reaches the controller, per
-     *         `test_swapLegFeesReachTheHook`. Every
-     *         pool is therefore stamped 0% aggregate yield at registration.
-     * @dev Reproduction PoC for seam-1 root cause E.3 (Medium). The ASYMMETRY is
-     *      the finding: the swap global is pinned to
-     *      `MAX_PROTOCOL_SWAP_FEE_PERCENTAGE` in the constructor
-     *      (`AureumProtocolFeeController.sol:259`) and its setter is `pure`,
-     *      reverting `SplitIsImmutable` (`:638`), while the yield global is
-     *      written nowhere and its setter is merely gated. This case does NOT
-     *      switch the skim on: PP-D13 requires A.3's strict rise and E.4's debit
-     *      before any non-zero yield fee, and enabling it here would brick the
-     *      donation path rather than evidence E.3. The probe value is `10e16`,
-     *      the constitution's own figure — chosen because `withValidYieldFee`
-     *      runs BEFORE `authenticate`, so an out-of-range value would revert on
-     *      precision and never reach the gate this case is asserting.
+     * @notice E.3 FIXED (PP-D48 (iv)) — the constitution's 10% ERC-4626 yield skim is
+     *         live in code. The constructor pins `_globalProtocolYieldFeePercentage` to
+     *         `CONSTITUTIONAL_YIELD_FEE_PERCENTAGE`, every pool inherits it at
+     *         registration, and der Bodensee alone is zeroed by address.
+     * @dev Done-criteria case for seam-1 root cause E.3 (F-58). The queue names this
+     *      `test_yieldFeeSettableOrHardReverts`, and the disjunction resolves to the
+     *      SECOND branch: the rate is settable by nobody, because `10_constitution.md`
+     *      §xxix L150—151 declares it immutable from block 0, so both setters revert
+     *      `YieldSkimIsImmutable` exactly as the swap pair reverts `SplitIsImmutable`.
+     *      The ASYMMETRY the reproduction reported is therefore gone: both globals are
+     *      constructor-pinned and neither is governance-adjustable. Beat 4 is the only
+     *      fork-level evidence of the address pin — der Bodensee registers NON-exempt
+     *      through `wpf.create`, so its zero comes from the `DER_BODENSEE_POOL`
+     *      comparison in `registerPool` and not from `protocolFeeExempt`.
      */
-    function test_P1_E3_globalYieldFeeIsZeroAndItsOnlyWriteSiteIsUnreachable() public {
-        AureumGovernance gov = orchestrator.governance();
-        address attacker = makeAddr("e3_attacker");
-        uint256 constitutionalSkim = 10e16;
+    function test_yieldFeeSettableOrHardReverts() public {
+        uint256 skim = controller.CONSTITUTIONAL_YIELD_FEE_PERCENTAGE();
+        address stranger = makeAddr("e3_stranger");
 
-        // (1) Never initialised.
-        assertEq(controller.getGlobalProtocolYieldFeePercentage(), 0, "E.3 - yield global is zero");
+        // (1) The skim is live rather than zero.
+        assertGt(skim, 0, "E.3 - the pinned skim is non-zero");
+        assertEq(controller.getGlobalProtocolYieldFeePercentage(), skim, "E.3 - yield global is pinned");
 
-        // (2) The contrast: the swap global IS constructor-pinned, so (1) is an
-        //     omission, not a protocol-wide fees-off posture.
+        // (2) Both globals are constructor-pinned now; the reported asymmetry is gone.
         assertEq(
             controller.getGlobalProtocolSwapFeePercentage(),
             50e16,
             "E.3 - swap global pinned at construction"
         );
 
-        // (3) Consequence: every live pool carries a zero aggregate yield fee.
+        // (3) Every live pilot pool inherits the skim at registration.
         for (uint256 i = 0; i < pilotPools.length; ++i) {
             PoolConfig memory cfg = vault.getPoolConfig(pilotPools[i]);
-            assertEq(cfg.aggregateYieldFeePercentage, 0, "E.3 - pool stamped 0% aggregate yield");
+            assertEq(cfg.aggregateYieldFeePercentage, skim, "E.3 - pool stamped at the skim");
         }
 
-        // (4) The sole write site is unreachable. 10e16 clears withValidYieldFee
-        //     so the revert proves the authenticate gate, not the range check.
-        address[3] memory blocked = [attacker, address(orchestrator), EMERGENCY_MULTISIG];
-        for (uint256 i = 0; i < blocked.length; ++i) {
-            vm.prank(blocked[i]);
-            vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
-            controller.setGlobalProtocolYieldFeePercentage(constitutionalSkim);
-        }
+        // (4) der Bodensee alone reads zero, and it is not exempt, so the address pin
+        //     is what produced that zero.
+        PoolConfig memory bodenseeCfg = vault.getPoolConfig(bodenseePool);
+        assertEq(bodenseeCfg.aggregateYieldFeePercentage, 0, "E.3 - Bodensee excluded by address");
 
-        // ... and governance holds the action yet has no arm that emits it.
-        bool govAllowed = AureumGovernanceAuthorizer(address(vault.getAuthorizer())).canPerform(
-            controller.getActionId(
-                AureumProtocolFeeController.setGlobalProtocolYieldFeePercentage.selector
-            ),
-            address(gov),
-            address(controller)
+        // (5) Settable by nobody, governance included: the gate is gone and a hard revert
+        //     stands in its place on both entries.
+        address[3] memory callers = [stranger, address(orchestrator), EMERGENCY_MULTISIG];
+        for (uint256 i = 0; i < callers.length; ++i) {
+            vm.prank(callers[i]);
+            vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+            controller.setGlobalProtocolYieldFeePercentage(skim);
+
+            vm.prank(callers[i]);
+            vm.expectRevert(AureumProtocolFeeController.YieldSkimIsImmutable.selector);
+            controller.setProtocolYieldFeePercentage(pilotPools[0], skim);
+        }
+        assertEq(
+            controller.getGlobalProtocolYieldFeePercentage(),
+            skim,
+            "E.3 - unchanged after every attempt"
         );
-        assertTrue(govAllowed, "E.3 - governance authorized; the barrier is the missing path");
-        assertEq(controller.getGlobalProtocolYieldFeePercentage(), 0, "E.3 - still zero after every attempt");
     }
 
     /// @dev C.6 veto-leg candidate — RAIL-LESS by construction: [sfrxETH 0.6, wOETH 0.4], neither
