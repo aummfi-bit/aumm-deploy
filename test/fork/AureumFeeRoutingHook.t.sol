@@ -11,7 +11,6 @@ import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 import { TokenConfig, TokenType, PoolRoleAccounts, AfterSwapParams, SwapKind, VaultSwapParams } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
-import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IAuthentication.sol";
 import { IVaultErrors } from "@balancer-labs/v3-interfaces/contracts/vault/IVaultErrors.sol";
 import { CREATE3 } from "@balancer-labs/v3-solidity-utils/contracts/solmate/CREATE3.sol";
 import { WeightedPoolFactory } from "@balancer-labs/v3-pool-weighted/contracts/WeightedPoolFactory.sol";
@@ -607,6 +606,15 @@ contract AureumFeeRoutingHookForkTest is Test {
         uint256 bodenseeSupplyBefore = IERC20(bodenseePool).totalSupply();
         uint256 bodenseeReserveBefore = _bodenseeReserve(svZchf);
 
+        // PP-D48 (v): routeYieldFeeToHook admits the seated keeper or the hook's
+        // governanceModule Safe, and this fixture seats neither, so the entry is
+        // unreachable until one exists. Seat the Safe: the hook is constructed with
+        // GOVERNANCE_MULTISIG as moduleAdmin_, and production seats that same Safe at
+        // genesis. Done per-test rather than in setUp so the other cases keep their
+        // module-unset at-rest state.
+        vm.prank(GOVERNANCE_MULTISIG);
+        hook.setGovernanceModule(GOVERNANCE_MULTISIG);
+
         vm.expectEmit(true, true, false, false, address(hook));
         emit IAureumFeeRoutingHook.YieldFeeRouted(tradingPool, address(svZchf), amount, 0);
         vm.prank(GOVERNANCE_MULTISIG);
@@ -625,10 +633,13 @@ contract AureumFeeRoutingHookForkTest is Test {
         vm.expectRevert(AureumProtocolFeeController.RouteThrottled.selector);
         controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
 
-        // Step 4 — the deployed-authorizer gate: non-governance reverts.
+        // Step 4 — PP-D48 (v): the keeper gate, not authenticate. A stranger is neither
+        //          the seated keeper nor the Safe, so the route rejects them by name.
         address attacker = address(uint160(uint256(keccak256("attacker"))));
         vm.prank(attacker);
-        vm.expectRevert(IAuthentication.SenderNotAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumProtocolFeeController.NotYieldRouteKeeper.selector, attacker)
+        );
         controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
     }
 
@@ -887,6 +898,10 @@ contract AureumFeeRoutingHookForkTest is Test {
         uint256[] memory creditBefore = controller.getProtocolFeeAmounts(tradingPool);
         assertEq(creditBefore[idx], credit, "rig: the seeded credit is what the route reads");
         assertLt(credit, balance, "rig: the balance exceeds the credit, as the reproduction had it");
+
+        // PP-D48 (v): seat the Safe leg, as test_Fork_RouteYieldFeeToHookEntryPoint does.
+        vm.prank(GOVERNANCE_MULTISIG);
+        hook.setGovernanceModule(GOVERNANCE_MULTISIG);
 
         vm.prank(GOVERNANCE_MULTISIG);
         controller.routeYieldFeeToHook(tradingPool, svZchf, 0);
