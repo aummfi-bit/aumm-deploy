@@ -80,6 +80,9 @@ contract VaultClassRegistry is IVaultClassRegistry {
 
     mapping(address => IVaultClassRegistry.AdmissionType) public admissionTypes;
 
+    /// @notice Block of the last `revokeVaultClass` for each admission value, zero if never revoked (PP-D49 (iv)). `finalizeProposal` compares a proposal's `createdBlock` against it, so any proposal predating a revocation dies with that revocation; zero is its own sentinel, since `createdBlock` is always at least one.
+    mapping(address => uint256) public lastRevokedBlock;
+
     // -------------------------------------------------------------------------
     // Forward-dep placeholder + one-shot setter slots (F-D20–F-D23 pattern)
     // -------------------------------------------------------------------------
@@ -158,6 +161,15 @@ contract VaultClassRegistry is IVaultClassRegistry {
     error OnlyVotingWeightSetter();
 
     error OnlyGovernanceSetter();
+
+    /// @notice Reverts when `proposalId` was never issued. Ids at or above `nextProposalId` read the zero struct, whose `AdmissionType` is a VALID enum value and whose zero `createdBlock` passes the veto-window check, so an unguarded call would admit `address(0)` as a real class (PP-D49 (i)).
+    error UnknownProposal(uint256 proposalId);
+
+    /// @notice Reverts when `finalizeProposal` is called more than one further `VETO_WINDOW_BLOCKS` past the close of the veto window, so a proposal cannot sit indefinitely as a readmission ticket (PP-D49 (iii)).
+    error FinalizeDeadlineExpired(uint256 proposalId);
+
+    /// @notice Reverts when a proposal created at or before its value's last revocation attempts to finalize; a stale proposal must not re-admit a class governance removed (PP-D49 (iv)).
+    error ProposalPredatesRevocation(uint256 proposalId);
 
     // -------------------------------------------------------------------------
     // Modifiers
