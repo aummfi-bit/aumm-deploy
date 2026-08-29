@@ -13,24 +13,30 @@ contract MockBodenseeHelper {
     function donate(IERC20, uint256) external {}
 }
 
-/// @title P1 G.5b — finalizeProposal admits address(0) on a non-existent id
-/// @notice Reproduction PoC for seam-1 root cause G.5b (Info). `finalizeProposal`
-///         and `vetoProposal` never check `proposalId < nextProposalId`. A read
-///         of an unwritten `proposals[id]` returns a zero struct whose
-///         `createdBlock == 0`, so the veto-window test
-///         (`block.number <= createdBlock + VETO_WINDOW_BLOCKS`) passes for any
-///         block past the window, and finalize then admits the struct's
-///         `admissionValue` — `address(0)` — as a vault class. G14's heuristic:
-///         the zero record AUTHORISES an action here, where at the nine other
-///         zero-struct sites it merely permits an opportunity, which is why this
-///         is the single instance. Fix intent: `if (proposalId >= nextProposalId)
-///         revert UnknownProposal` on both entries.
-contract P1_G5b_UnknownIdAdmitsZeroTest is Test {
+/// @title P1 G.5b — an unissued proposal id is rejected on both entries
+/// @notice Regression for seam-1 root cause G.5b (Info), inverted at PP4.7 from the
+///         PP3.2 reproduction per PP-D49 (i). Before the fix neither
+///         `finalizeProposal` nor `vetoProposal` bounded `proposalId` against
+///         `nextProposalId`: an unwritten `proposals[id]` reads a zero struct whose
+///         `AdmissionType` is enum value ZERO — a VALID type — and whose zero
+///         `createdBlock` makes the veto-window test pass at every block past
+///         `VETO_WINDOW_BLOCKS`, so finalize admitted the struct's `address(0)` as a
+///         real vault class.
+/// @dev Three cases, and the second and third are not decoration. `vetoProposal`
+///      reverted before the fix too, but INCIDENTALLY on `VetoWindowExpired`, so only
+///      an assertion on the error itself distinguishes the guard from the accident it
+///      hid behind. And the guard is `>=`, never `>`: the boundary case pins that the
+///      last ISSUED id still finalizes while `nextProposalId` does not, which an
+///      off-by-one would break in exactly the direction that re-opens the finding.
+contract P1_G5b_UnknownIdRejectedTest is Test {
+    MockERC20 internal svZCHF;
     VaultClassRegistry internal registry;
+    address internal proposer;
 
     function setUp() public {
-        MockERC20 svZCHF = new MockERC20("svZCHF", "svZCHF", 18);
+        svZCHF = new MockERC20("svZCHF", "svZCHF", 18);
         MockBodenseeHelper helper = new MockBodenseeHelper();
+        proposer = makeAddr("proposer");
         address[] memory genesisTokens = new address[](0);
         IVaultClassRegistry.AdmissionType[] memory genesisTypes = new IVaultClassRegistry.AdmissionType[](0);
         registry = new VaultClassRegistry(
@@ -41,21 +47,53 @@ contract P1_G5b_UnknownIdAdmitsZeroTest is Test {
             genesisTokens,
             genesisTypes
         );
+        svZCHF.mint(proposer, 100_000e18);
+        vm.prank(proposer);
+        svZCHF.approve(address(registry), type(uint256).max);
     }
 
-    function test_P1_G5b_finalizeUnknownIdAdmitsZeroAddress() public {
+    /// @notice The queue's done-criteria case for G.5b. The roll is retained from the
+    ///         reproduction deliberately: it puts the call at the exact block where the
+    ///         zero struct's window check used to wave a phantom id through.
+    function test_finalizeRejectsUnknownId() public {
         uint256 unknownId = registry.nextProposalId();
         assertEq(unknownId, 0, "premise: no proposals created, nextProposalId is 0");
         assertFalse(registry.admittedClasses(address(0)), "premise: address(0) not admitted");
 
-        // The zero struct's createdBlock is 0, so past the window the finalize
-        // guard treats a never-created proposal as vetoable-then-finalizable.
         vm.roll(block.number + registry.VETO_WINDOW_BLOCKS() + 1);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.UnknownProposal.selector, unknownId));
         registry.finalizeProposal(unknownId);
 
-        assertTrue(
+        assertFalse(
             registry.admittedClasses(address(0)),
-            "G.5b - address(0) admitted as a vault class via a non-existent proposal id"
+            "G.5b - address(0) must never be admitted through a non-existent proposal id"
         );
+    }
+
+    /// @notice The second guarded entry. Pre-fix this reverted `VetoWindowExpired`, an
+    ///         accident of the zero `createdBlock` rather than an existence check, so the
+    ///         assertion is on the error and not merely on the revert.
+    function test_vetoRejectsUnknownId() public {
+        uint256 unknownId = registry.nextProposalId();
+        vm.roll(block.number + registry.VETO_WINDOW_BLOCKS() + 1);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.UnknownProposal.selector, unknownId));
+        registry.vetoProposal(unknownId);
+    }
+
+    /// @notice The `>=` boundary, and the positive control: the guard rejects only ids
+    ///         that were never issued, so the last issued id still finalizes.
+    function test_finalizeAcceptsLastIssuedIdAndRejectsTheNext() public {
+        address value = makeAddr("classValue");
+        vm.prank(proposer);
+        uint256 issuedId =
+            registry.proposeVaultClass(IVaultClassRegistry.AdmissionType.ImplementationAddress, value, bytes32(0));
+        assertEq(registry.nextProposalId(), issuedId + 1, "premise: exactly one id issued");
+
+        vm.roll(block.number + registry.VETO_WINDOW_BLOCKS() + 1);
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.UnknownProposal.selector, issuedId + 1));
+        registry.finalizeProposal(issuedId + 1);
+
+        registry.finalizeProposal(issuedId);
+        assertTrue(registry.admittedClasses(value), "the last issued id still finalizes");
     }
 }
