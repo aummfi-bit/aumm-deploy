@@ -207,12 +207,12 @@ Some fixes create defects that do not exist today. The report's "Defects that on
 | 5 | E.6 prefix-sum, THEN the cursor change | PP-D33 ordering inside the rung pair |
 | 6 | E.4 debit → E.2 reachable withdrawals → E.3 yield fee (in that order) | PP-D13 |
 | 7 | G.5a finalize re-check + deadline; G.5b existence check | must precede any `revokeVaultClass` reachability (PP-D19) |
-| 8 | C.6 admission pair (snapshot at propose + standing re-check for emission), designed as one | PP-D26; precedes C.2's registry branches |
+| 8 | C.6 admission pair (snapshot at propose + gauge-status revocation for emission), designed as one, plus E.5 `deregisterScore` ABSORBED per PP-D50 | PP-D26 as amended by PP-D50; precedes C.2's registry branches |
 | 9 | G.2 + G.3 + the `GaugeChallenge` re-check, one rung over `:426-433` | PP-D9, PP-D30 |
 | 10 | keeper decision (PP-D31) → D.5 freeze-not-zero → D.1 sample floor → D.3 time-weighted decay → D.6 fail-soft oracle → D.4 gated multiplier | PP-D31 chain; D.6 also redeploys `TVLOracle` |
 | 11 | B.7 veto fraction + zero guard; B.8 read-time exponent; B.5 read-time `held < lp` rule | reader-side, no hook dependency |
 | 12 | seed-accounting decision (PP-D17) → B.3 share denominator → B.1 denominator redesign with INV-1 re-adjudication and the existence check (PP-D14, PP-D15) → B.2 push-reset under INV-8 (PP-D16) → the third-party-poke rule (PP-D18) | the electorate redesign, the largest design change in the stage |
-| 13 | E.5 `deregisterScore`; E.7c cap at settle; E.7b pagination; E.7a numerator skip + feed + vintage (PP-D34); E.8 coupling + cursor; E.9 `try/catch` | distributor/oracle/eligibility unit |
+| 13 | E.7c cap at settle; E.7b pagination; E.7a numerator skip + feed + vintage (PP-D34); E.8 coupling + cursor; E.9 `try/catch` (E.5 MOVED to rung 8 per PP-D50) | distributor/oracle/eligibility unit |
 | 14 | D.8 divisor (PP-D32) + C.7 immutables (PP-D27) | `CCBMultiplier` redeploy |
 | 15 | hook unit: B.6 attribution, C.8 recorder `try/catch`, C.9 post-condition, D.2 accumulator, B.3's initialize hook if PP-D17 says so | PP-D12 — one hook |
 | 16 | C.5 recovery-mode disqualifier + `PoolPause`/`PoolUnpause` + batched recovery-disable + role conjunct; C.8 binding hygiene across the fifteen setters + `_wire` read-backs | governance/eligibility/script |
