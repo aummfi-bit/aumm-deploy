@@ -103,6 +103,7 @@ contract MockGaugeRegistry is IGaugeRegistry {
     function setGovernanceContract(address) external override {}
 
     function meetsCompositionQualityGate(address) external view override returns (bool passes) {}
+    function feeRailConjunctSatisfied(address) external view override returns (bool satisfied) {}
     function poolEmissionCapBps(address) external view override returns (uint256 capBps) {}
 }
 
