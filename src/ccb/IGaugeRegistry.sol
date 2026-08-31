@@ -126,6 +126,12 @@ interface IGaugeRegistry {
     /// @return passes True when `pool` clears the 52% quality gate and carries the canonical hook.
     function meetsCompositionQualityGate(address pool) external view returns (bool);
 
+    /// @notice **PB-D69** fee-rail conjunct for `pool` — delegates to `IGaugeEligibility.feeRailConjunctSatisfied`: the pool carries a der-Bodensee deposit rail, or it is `recoveryPathAdmitted`.
+    /// @dev **PP-D50** amendment (x). The `GaugeRegistry` implementation forwards to its `gaugeEligibility` immutable exactly as `meetsCompositionQualityGate` does, so `AureumGovernance` reaches the conjunct through its existing `GAUGE_REGISTRY` handle and the K-tagged governance constructor stays unchanged. Governance reads it LIVE in `proposeCompositionChallenge`, stores the result in `Proposal.railAdmittedAtPropose`, and honours the STORED value in `_executeProposal` — so a revocation landing after a passed two-thirds vote can no longer annul the mandate (**C.6**). The conjunct is no longer evaluated inside `meetsCompositionQualityGate`; the activation path in `GaugeEligibility._checkEligibilityCriteria` keeps its own inline copy and does not consume this view.
+    /// @param pool The pool whose fee-rail conjunct is queried.
+    /// @return satisfied True when `pool` carries a der-Bodensee rail or is admitted to the recovery path.
+    function feeRailConjunctSatisfied(address pool) external view returns (bool satisfied);
+
     /// @notice F-10 efficiency-tournament emission cap for `pool` in basis points — delegates to `GaugeEligibility.poolEmissionCapBps`.
     /// @dev The `GaugeRegistry` implementation forwards to its `gaugeEligibility` immutable via a concrete `GaugeEligibility` cast (the mapping is concrete-only on `GaugeEligibility`, absent from `IGaugeEligibility`, per F16d). Tier values: 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%). Consumed by `EmissionDistributor.recordScore` (F16f) to clamp a capped pool's emission share. Assigned each epoch by `computeEpochSnapshot`; a tournament-skipped pool retains its prior value (**P-D15 (4)**). Cross-references: **P-D13 (5)**.
     /// @param pool The pool whose F-10 emission cap is queried.
