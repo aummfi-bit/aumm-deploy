@@ -47,4 +47,12 @@ interface IGaugeEligibility {
      * @return passes `true` when the pool clears the 52% quality gate and carries the canonical hook.
      */
     function meetsCompositionQualityGate(address pool) external view returns (bool);
+
+    /**
+     * @notice Returns whether `pool` satisfies the **PB-D69** fee-rail conjunct — the pool carries a der-Bodensee deposit rail, or it is `recoveryPathAdmitted`.
+     * @dev Split out of `meetsCompositionQualityGate` by **PP-D50** amendment (x). The composition path needs this value SNAPSHOTTED at propose, so that a revocation landing between a passed two-thirds vote and its execution can no longer annul the mandate (**C.6**), while the gate's pool-intrinsic checks stay live at execute. Named for the conjunct rather than for admission because it is true for any railed pool that was never admitted at all. The ACTIVATION path is unaffected and keeps its own inline conjunct in `_checkEligibilityCriteria`; it does not consume this view. Consumed by `AureumGovernance.proposeCompositionChallenge` through the `IGaugeRegistry` delegation.
+     * @param pool The pool whose fee-rail conjunct is queried.
+     * @return satisfied `true` when `pool` carries a der-Bodensee rail or is admitted to the recovery path.
+     */
+    function feeRailConjunctSatisfied(address pool) external view returns (bool satisfied);
 }
