@@ -246,6 +246,11 @@ contract GaugeRegistry is IGaugeRegistry {
     }
 
     /// @inheritdoc IGaugeRegistry
+    function feeRailConjunctSatisfied(address pool) external view override returns (bool) {
+        return IGaugeEligibility(gaugeEligibility).feeRailConjunctSatisfied(pool);
+    }
+
+    /// @inheritdoc IGaugeRegistry
     function poolEmissionCapBps(address pool) external view override returns (uint256) {
         return GaugeEligibility(gaugeEligibility).poolEmissionCapBps(pool);
     }
