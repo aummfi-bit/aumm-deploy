@@ -459,4 +459,15 @@ contract GaugeEligibility is IGaugeEligibility {
         if (!IBasePoolFactory(approvedFactory).isPoolFromFactory(pool)) revert PoolTypeNotWhitelisted(approvedFactory);
         return numerator >= 0.52e18;
     }
+
+    /**
+     * @notice Returns whether `pool` satisfies the **PB-D69** fee-rail conjunct — it carries a der-Bodensee deposit rail, or it is `recoveryPathAdmitted`.
+     * @dev **PP-D50** amendment (x) splits this out of `meetsCompositionQualityGate`, which no longer evaluates it. `AureumGovernance` reads this LIVE at `proposeCompositionChallenge`, stores the result in `Proposal.railAdmittedAtPropose`, and honours the STORED value at `_executeProposal`, so a revocation landing after a passed two-thirds vote cannot annul the mandate (**C.6**). It returns a boolean rather than reverting because the caller branches on it at two different lifecycle points and needs the value, not a revert. The ACTIVATION path keeps its own inline conjunct in `_checkEligibilityCriteria` and does not consume this view — the two paths are deliberately independent per **PP-D50** (iii).
+     * @param pool The pool whose fee-rail conjunct is queried.
+     * @return satisfied `true` when `pool` carries a der-Bodensee rail or is admitted to the recovery path.
+     */
+    function feeRailConjunctSatisfied(address pool) external view override returns (bool satisfied) {
+        address rail = IAureumFeeRoutingHook(feeRoutingHook).poolBodenseeDepositToken(pool);
+        return rail != address(0) || recoveryPathAdmitted[pool];
+    }
 }
