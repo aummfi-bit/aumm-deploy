@@ -451,8 +451,6 @@ contract GaugeEligibility is IGaugeEligibility {
     function meetsCompositionQualityGate(address pool) external view override returns (bool) {
         address poolHook = IVault(vault).getHooksConfig(pool).hooksContract;
         if (poolHook != feeRoutingHook) revert WrongFeeRoutingHook(pool, poolHook);
-        address rail = IAureumFeeRoutingHook(feeRoutingHook).poolBodenseeDepositToken(pool);
-        if (rail == address(0) && !recoveryPathAdmitted[pool]) revert NoFeeRailAndNotAdmitted(pool);
         IERC20[] memory tokens = IVault(vault).getPoolTokens(pool);
         uint256[] memory weights = IWeightedPool(pool).getNormalizedWeights();
         uint256 numerator = _compute52PctNumerator(tokens, weights);
