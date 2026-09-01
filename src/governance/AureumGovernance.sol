@@ -412,7 +412,7 @@ contract AureumGovernance {
         if (s != ProposalState.Queued) revert ProposalNotSucceeded(proposalId);
         if (block.number < p.eta) revert TimelockNotMet(p.eta, block.number);
         p.executed = true;
-        _executeProposal(p);
+        _executeProposal(proposalId, p);
         emit ProposalExecuted(proposalId);
     }
 
@@ -428,10 +428,11 @@ contract AureumGovernance {
     ///      NO trailing bare `else` — the pre-fix trailing `else` was bound to `FeeChange`, so any appended
     ///      type would have fallen into the fee-change path and called `setStaticSwapFeePercentage` on a
     ///      zero pool. A future seventh type must add its own branch or no-op, never inherit another's.
-    function _executeProposal(Proposal storage p) internal {
+    function _executeProposal(uint256 proposalId, Proposal storage p) internal {
         if (p.proposalType == ProposalType.GaugeChallenge) {
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
         } else if (p.proposalType == ProposalType.CompositionChallenge) {
+            if (!p.railAdmittedAtPropose) revert RailConjunctSnapshotFalse(proposalId);
             if (!GAUGE_REGISTRY.meetsCompositionQualityGate(p.newPool)) revert CompositionQualityGateFailed(p.newPool);
             address oldPool = SLOT_REGISTRY.poolAtSlot(p.slot);
             GAUGE_REGISTRY.revokeGauge(oldPool);
