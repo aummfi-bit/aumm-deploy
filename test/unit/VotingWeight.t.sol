@@ -106,6 +106,7 @@ contract MockRecorder is IEmissionDistributor {
         return _poolTotalLP[pool];
     }
     function recordScore(address) external override {}
+    function deregisterScore(address) external override {}
     function recordDeposit(address, address, uint256) external override {}
     function recordWithdrawal(address, address, uint256) external override {}
     function syncPosition(address, address) external override {}
