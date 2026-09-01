@@ -142,6 +142,20 @@ contract GaugeEligibility is IGaugeEligibility {
      */
     event RecoveryPathAdmissionSet(address indexed pool, bool admitted);
 
+    /**
+     * @notice Emitted when `setRecoveryPathAdmitted(pool, false)` SCHEDULES a revocation per **PP-D50** (xii) — the flag itself is unchanged until `finalizeRecoveryPathRevocation` runs.
+     * @param pool The pool whose revocation was scheduled.
+     * @param effectiveBlock The block at or after which the revocation may be finalized.
+     */
+    event RecoveryPathRevocationScheduled(address indexed pool, uint256 effectiveBlock);
+
+    /**
+     * @notice Emitted when the current authority nominates its successor per **PP-D50** (viii); the rotation completes only when that address calls `acceptAdmissionAuthority`.
+     * @param currentAuthority The authority making the nomination.
+     * @param pendingAuthority The nominated address, which must accept before it takes effect.
+     */
+    event AdmissionAuthorityProposed(address indexed currentAuthority, address indexed pendingAuthority);
+
     // -------------------------------------------------------------------------
     // Custom errors
     // -------------------------------------------------------------------------
