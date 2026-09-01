@@ -1281,25 +1281,30 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         _runProposalToQueued(id, voter);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Queued), "passed 2/3 and queued");
 
-        // (4) One untimelocked call by a non-participant annuls the passed vote.
+        // (4) The authority withdraws its attestation. PP-D50 (xii) only SCHEDULES a revocation, so
+        // the conjunct has not moved and the queued mandate is untouched.
         vm.prank(address(orchestrator));
         elig.setRecoveryPathAdmitted(candidate, false);
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, candidate));
-        gov.execute(id);
-        assertEq(
-            uint256(gov.state(id)),
-            uint256(AureumGovernance.ProposalState.Queued),
-            "C.6 - execute reverted, the executed flag rolled back, proposal still Queued and retryable"
-        );
+        assertTrue(elig.feeRailConjunctSatisfied(candidate), "scheduling alone leaves the conjunct true");
 
-        // (5) Invisible until execute, terminal once the grace window closes.
-        AureumGovernance.Proposal memory p = gov.getProposal(id);
-        vm.roll(p.eta + AureumTime.BLOCKS_PER_EPOCH);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Expired), "C.6 - grace expired, no path back");
-        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.GracePeriodExpired.selector, id));
+        // (5) THE INVERSION. Before PP4.8 this execute reverted and the bond was burned. Two
+        // independent protections now hold it: the conjunct was snapshotted at propose per PP-D50
+        // (iii), and REVOCATION_DELAY_BLOCKS is one block longer than a full proposal lifecycle, so
+        // a revocation scheduled here cannot mature until after this proposal's grace window has
+        // already closed. The second is asserted rather than argued.
+        assertGt(
+            elig.revocationEffectiveBlock(candidate),
+            gov.getProposal(id).eta + AureumTime.BLOCKS_PER_EPOCH,
+            "C.6 - the revocation cannot mature before the grace window closes"
+        );
         gov.execute(id);
-        assertEq(svZchf.balanceOf(voter), 0, "C.6 - bond gone, no refund path in AureumGovernance");
-        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), oldPool, "C.6 - slot unchanged; the passed vote was annulled");
+        assertTrue(gov.getProposal(id).executed, "C.6 - the passed mandate executed despite the withdrawal");
+        assertEq(
+            orchestrator.miliariumRegistry().poolAtSlot(5),
+            candidate,
+            "C.6 - the slot moved to the candidate the vote approved"
+        );
+        assertEq(svZchf.balanceOf(voter), 0, "the bond is still non-refundable - that is by design, not the defect");
     }
 
     /// @notice P1 G.3 — a candidate is pre-poisoned by a permissionless `activateGauge`, and the
