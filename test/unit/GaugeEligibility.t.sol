@@ -1123,13 +1123,15 @@ contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
 
 /// @notice PB3.12d2 — PB-D69 admission-authority surface: access control on both setters, the two zero-address
 ///         guards, the idempotent re-emit, and rotation that is deliberately repeatable rather than one-shot.
-/// @dev All three events are redeclared locally, matching this file's existing convention at L574 and L582.
+/// @dev The events asserted below are redeclared locally, matching this file's existing convention at L574 and L582.
 contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
     event AdmissionAuthorityTransferred(address indexed oldAuthority, address indexed newAuthority);
 
     event RecoveryPathAdmissionSet(address indexed pool, bool admitted);
 
     event RecoveryPathRevocationScheduled(address indexed pool, uint256 effectiveBlock);
+
+    event AdmissionAuthorityProposed(address indexed currentAuthority, address indexed pendingAuthority);
 
     function testSetRecoveryPathAdmittedRevertsForNonAuthority() public {
         address intruder = makeAddr("intruder");
