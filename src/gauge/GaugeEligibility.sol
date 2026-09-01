@@ -82,7 +82,7 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice F-10 per-pool emission cap in basis points assigned by the last `computeEpochSnapshot` — 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%) — **P-D13 (3)** / **P-D15 (2)**. Written each epoch for every ranked pool (including 0 that un-caps a pool which climbed back into the top 85% — self-correction per spec L129). Skipped pools (cold-start, warmup, post-warmup zero-denominator) retain their prior value per **P-D15 (4)**. Consumed by the EmissionDistributor via `IGaugeRegistry` delegation (F16e / F16f).
     mapping(address => uint256) public poolEmissionCapBps;
 
-    /// @notice **PB-D69 (viii)** governance authority over the recovery-path admission map — gates `setRecoveryPathAdmitted` and its own rotation via `setAdmissionAuthority`. Storage rather than immutable and rotatable rather than one-shot, inverting the `setGaugeRegistry` pattern below: a burned authority here would leave a dead map in which no rail-less pool could ever be admitted again. Seated at genesis on the same Safe that holds `AureumFeeRoutingHook.governanceModule`, never `AureumGovernance` (**PB-D61 (iii)**), because admission is an ops commitment tied to a manual call rather than a proposal.
+    /// @notice **PB-D69 (viii)** governance authority over the recovery-path admission map — gates `setRecoveryPathAdmitted` and its own rotation via `proposeAdmissionAuthority`. Storage rather than immutable and rotatable rather than one-shot, inverting the `setGaugeRegistry` pattern below: a burned authority here would leave a dead map in which no rail-less pool could ever be admitted again. Seated at genesis on the same Safe that holds `AureumFeeRoutingHook.governanceModule`, never `AureumGovernance` (**PB-D61 (iii)**), because admission is an ops commitment tied to a manual call rather than a proposal.
     address public admissionAuthority;
 
     /// @notice **PB-D69** no-fees-no-emissions attestation — `true` when `admissionAuthority` has committed to recovering this pool's stranded protocol fees through the PB-D66 `recoverStrandedFees` path on `AureumFeeRoutingHook`. Read at **PB3.12c** as the second disjunct of the eligibility conjunct, so a pool carrying no der-Bodensee rail (`poolBodenseeDepositToken(pool) == address(0)`; live instance `02 ixAetheron`) stays eligible only while admitted. Deliberately an attestation and NOT a route registry per **PB-D69 (vi)** — recovery takes its route as calldata and carries no pool identifier, so nothing on that path could consume a per-pool route. It certifies capability-of-ops, never contribution (**PB-D69 (vii)**).
@@ -129,7 +129,7 @@ contract GaugeEligibility is IGaugeEligibility {
     event GaugeEfficiencyRising(address indexed pool, uint256 indexed epoch, uint256 numeratorSma, uint256 denominatorSma, uint256 efficiencyRatio);
 
     /**
-     * @notice Emitted when `setAdmissionAuthority` rotates the **PB-D69** admission authority.
+     * @notice Emitted when `acceptAdmissionAuthority` completes a rotation of the **PB-D69** admission authority.
      * @param oldAuthority The authority in force before the rotation.
      * @param newAuthority The authority in force after the rotation.
      */
@@ -198,7 +198,7 @@ contract GaugeEligibility is IGaugeEligibility {
         _;
     }
 
-    /// @notice Gates the **PB-D69** admission surface — `setRecoveryPathAdmitted` and `setAdmissionAuthority` — to the current `admissionAuthority`.
+    /// @notice Gates the **PB-D69** admission surface — `setRecoveryPathAdmitted` and `proposeAdmissionAuthority` — to the current `admissionAuthority`. `acceptAdmissionAuthority` sits deliberately OUTSIDE this gate, guarded by the pending slot instead, so the incoming holder rather than the outgoing one completes a rotation.
     modifier onlyAdmissionAuthority() {
         if (msg.sender != admissionAuthority) revert OnlyAdmissionAuthority(msg.sender);
         _;
@@ -219,7 +219,7 @@ contract GaugeEligibility is IGaugeEligibility {
      * @param gaugeRegistrySetter_ One-shot setter authority for wiring `gaugeRegistry` post-deploy per **G-D22**.
      * @param efficiencyOracle_ **G-D23 (i)** + **G-D23 (ii)** F-10 efficiency oracle binding (sibling to `tvlOracle`) for the OQ-G1 canonical formula at **G2.5**.
      * @param feeRoutingHook_ Canonical `AureumFeeRoutingHook` — the only hook a gauge-eligible pool may carry per **I-D13** / **OQ-24**.
-     * @param admissionAuthority_ **PB-D69 (viii)** initial admission authority for `recoveryPathAdmitted` — seated on the same Safe as the hook's `governanceModule`, rotatable thereafter via `setAdmissionAuthority`.
+     * @param admissionAuthority_ **PB-D69 (viii)** initial admission authority for `recoveryPathAdmitted` — seated on the same Safe as the hook's `governanceModule`, rotatable thereafter via the `proposeAdmissionAuthority` and `acceptAdmissionAuthority` handshake.
      */
     constructor(
         address approvedFactory_,
