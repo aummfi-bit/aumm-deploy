@@ -68,6 +68,13 @@ contract MockGaugeRegistry {
     function meetsCompositionQualityGate(address pool) external view returns (bool) {
         return !compositionGateFails[pool];
     }
+    mapping(address => bool) public railConjunctFails;
+    function setRailConjunctFails(address pool, bool fails_) external {
+        railConjunctFails[pool] = fails_;
+    }
+    function feeRailConjunctSatisfied(address pool) external view returns (bool) {
+        return !railConjunctFails[pool];
+    }
 }
 contract MockSlotRegistry {
     mapping(address => uint256) public slotOfPool;
