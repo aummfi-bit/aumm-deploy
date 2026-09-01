@@ -136,9 +136,9 @@ contract GaugeEligibility is IGaugeEligibility {
     event AdmissionAuthorityTransferred(address indexed oldAuthority, address indexed newAuthority);
 
     /**
-     * @notice Emitted on every `setRecoveryPathAdmitted` write — admission and revocation alike.
+     * @notice Emitted when the recovery-path flag is actually WRITTEN — the admission branch of `setRecoveryPathAdmitted`, and a revocation once `finalizeRecoveryPathRevocation` clears it. Per **PP-D50** amendment (xii) it no longer fires on every `setRecoveryPathAdmitted` call: the revocation branch only schedules, and emits `RecoveryPathRevocationScheduled` instead.
      * @param pool The pool whose recovery-path attestation was written.
-     * @param admitted The value written — `true` admits, `false` revokes.
+     * @param admitted The value written — `true` from the admission branch, `false` from a finalized revocation.
      */
     event RecoveryPathAdmissionSet(address indexed pool, bool admitted);
 
