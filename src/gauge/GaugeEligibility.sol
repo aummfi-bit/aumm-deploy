@@ -180,6 +180,14 @@ contract GaugeEligibility is IGaugeEligibility {
 
     error NoFeeRailAndNotAdmitted(address pool);
 
+    error RecoveryPathNotAdmitted(address pool);
+
+    error NoPendingRevocation(address pool);
+
+    error RevocationNotMatured(address pool, uint256 effectiveBlock);
+
+    error OnlyPendingAdmissionAuthority(address caller);
+
     // -------------------------------------------------------------------------
     // Modifiers
     // -------------------------------------------------------------------------
