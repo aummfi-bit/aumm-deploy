@@ -1192,20 +1192,27 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         assertTrue(eligibility.recoveryPathAdmitted(pool));
     }
 
-    function testAdmissionAuthorityRotationLocksOutOldHolder() public {
+    function testAdmissionAuthorityRotationLocksOutOldHolderOnAccept() public {
         address newAuthority = makeAddr("newAdmissionAuthority");
         address pool = makeAddr("admissionPool");
         vm.expectEmit(true, true, false, true, address(eligibility));
-        emit AdmissionAuthorityTransferred(admissionAuthority, newAuthority);
+        emit AdmissionAuthorityProposed(admissionAuthority, newAuthority);
         vm.prank(admissionAuthority);
-        eligibility.setAdmissionAuthority(newAuthority);
+        eligibility.proposeAdmissionAuthority(newAuthority);
+        assertEq(eligibility.pendingAdmissionAuthority(), newAuthority);
+        assertEq(eligibility.admissionAuthority(), admissionAuthority, "a nomination alone does not move the authority");
+        vm.prank(admissionAuthority);
+        eligibility.setRecoveryPathAdmitted(pool, true);
+        assertTrue(eligibility.recoveryPathAdmitted(pool), "the incumbent still governs while a nomination is pending");
+        vm.expectEmit(true, true, false, true, address(eligibility));
+        emit AdmissionAuthorityTransferred(admissionAuthority, newAuthority);
+        vm.prank(newAuthority);
+        eligibility.acceptAdmissionAuthority();
         assertEq(eligibility.admissionAuthority(), newAuthority);
+        assertEq(eligibility.pendingAdmissionAuthority(), address(0), "pending cleared on accept");
         vm.prank(admissionAuthority);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, admissionAuthority));
-        eligibility.setRecoveryPathAdmitted(pool, true);
-        vm.prank(newAuthority);
-        eligibility.setRecoveryPathAdmitted(pool, true);
-        assertTrue(eligibility.recoveryPathAdmitted(pool));
+        eligibility.setRecoveryPathAdmitted(makeAddr("secondPool"), true);
     }
 
     function testAdmissionAuthorityRotationIsRepeatableNotOneShot() public {
