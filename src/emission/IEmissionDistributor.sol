@@ -29,6 +29,14 @@ interface IEmissionDistributor {
     /// @param newScore The absolute new score written to `poolScore[pool]`.
     event ScoreUpdated(address indexed pool, uint256 oldScore, uint256 newScore);
 
+    /// @notice Emitted when `deregisterScore` removes a revoked pool's scores — distinct from
+    ///         `ScoreUpdated` so a revocation-driven removal is not confused with a routine update
+    ///         that happens to reach zero.
+    /// @param pool The revoked pool whose scores were removed.
+    /// @param clearedF5Score The `f5Score[pool]` value removed from `f5Total`.
+    /// @param clearedEffectiveScore The `poolScore[pool]` value removed from `totalScore`.
+    event ScoreDeregistered(address indexed pool, uint256 clearedF5Score, uint256 clearedEffectiveScore);
+
     /// @notice Emitted when the AuMT contract records a deposit for `user` in `pool`.
     /// @dev Per H-D16 single-snapshot MasterChef variant and H-D4 pull semantics — deposit triggers
     ///      accrual against the pre-deposit stake.
@@ -93,6 +101,11 @@ interface IEmissionDistributor {
     /// @param pool The pool address that failed the approval check.
     error NotApproved(address pool);
 
+    /// @notice Reverts when `deregisterScore` is called on a pool whose gauge is still approved — the
+    ///         inverse of `NotApproved`, since score removal is legitimate only after revocation.
+    /// @param pool The pool address that is still gauge-approved.
+    error StillApproved(address pool);
+
     /// @notice Thrown when `recordDeposit` or `recordWithdrawal` is invoked by a non-recorder caller for `pool`.
     /// @dev Per I-D9 per-pool recorder gate — `msg.sender` must equal `auMTContractByPool[pool]`.
     ///      Pre-binding posture: `auMTContractByPool[pool] == address(0)` means all callers revert because
@@ -153,6 +166,17 @@ interface IEmissionDistributor {
     ///      `ScoreUpdated`. Cross-refs H-D5, H-D17, H-D19, F-5, OQ-23.
     /// @param pool The Balancer V3 pool address whose score is being recorded.
     function recordScore(address pool) external;
+
+    /// @notice Permissionless removal of a revoked pool's F-5 and effective scores, closing E.5 — a
+    ///         revoked pool's score cannot be removed by `recordScore`, which reverts `NotApproved`, so
+    ///         it kept drawing while survivors were diluted by a frozen denominator.
+    /// @dev **PP-D50** (v). Gated on `!isGaugeApproved(pool)`, reverting `StillApproved` otherwise.
+    ///      Settles first so pre-revocation pending stays claimable per E.5's fix intent, then drives
+    ///      `f5Score[pool]` and `poolScore[pool]` to zero through the signed-delta middleware, which can
+    ///      only reduce `f5Total` and `totalScore`. Idempotent — a second call on an already-zeroed pool
+    ///      succeeds and re-emits with zero cleared amounts. Emits `ScoreDeregistered`.
+    /// @param pool The revoked pool whose scores are removed.
+    function deregisterScore(address pool) external;
 
     /// @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated.
     /// @dev Per H-D16 single-snapshot MasterChef variant: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; run
