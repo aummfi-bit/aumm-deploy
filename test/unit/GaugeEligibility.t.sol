@@ -1157,7 +1157,7 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         eligibility.proposeAdmissionAuthority(address(0));
     }
 
-    function testSetRecoveryPathAdmittedEmitsOnAdmitAndOnRevoke() public {
+    function testAdmitEmitsImmediatelyWhileRevokeOnlySchedules() public {
         address pool = makeAddr("admissionPool");
         vm.expectEmit(true, false, false, true, address(eligibility));
         emit RecoveryPathAdmissionSet(pool, true);
@@ -1165,10 +1165,18 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         eligibility.setRecoveryPathAdmitted(pool, true);
         assertTrue(eligibility.recoveryPathAdmitted(pool));
         vm.expectEmit(true, false, false, true, address(eligibility));
-        emit RecoveryPathAdmissionSet(pool, false);
+        emit RecoveryPathRevocationScheduled(pool, block.number + eligibility.REVOCATION_DELAY_BLOCKS());
         vm.prank(admissionAuthority);
         eligibility.setRecoveryPathAdmitted(pool, false);
+        assertTrue(eligibility.recoveryPathAdmitted(pool), "the flag survives the scheduling call");
+        uint256 effectiveBlock = eligibility.revocationEffectiveBlock(pool);
+        vm.roll(effectiveBlock);
+        vm.expectEmit(true, false, false, true, address(eligibility));
+        emit RecoveryPathAdmissionSet(pool, false);
+        vm.prank(makeAddr("strangerFinalizer"));
+        eligibility.finalizeRecoveryPathRevocation(pool);
         assertFalse(eligibility.recoveryPathAdmitted(pool));
+        assertEq(eligibility.revocationEffectiveBlock(pool), 0, "stamp cleared on finalize");
     }
 
     function testSetRecoveryPathAdmittedIsIdempotentAndReEmits() public {
