@@ -1140,7 +1140,7 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         address intruder = makeAddr("intruder");
         vm.prank(intruder);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, intruder));
-        eligibility.setAdmissionAuthority(makeAddr("usurper"));
+        eligibility.proposeAdmissionAuthority(makeAddr("usurper"));
     }
 
     function testSetRecoveryPathAdmittedRevertsOnZeroPool() public {
@@ -1152,7 +1152,7 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
     function testSetAdmissionAuthorityRevertsOnZeroAuthority() public {
         vm.prank(admissionAuthority);
         vm.expectRevert(GaugeEligibility.ZeroAddress.selector);
-        eligibility.setAdmissionAuthority(address(0));
+        eligibility.proposeAdmissionAuthority(address(0));
     }
 
     function testSetRecoveryPathAdmittedEmitsOnAdmitAndOnRevoke() public {
