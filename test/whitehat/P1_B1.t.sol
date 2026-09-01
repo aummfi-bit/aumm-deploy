@@ -97,6 +97,11 @@ contract P1_B1_QuorumDenominatorCountsOnlyPokedHoldersTest is Test {
             abi.encodeWithSelector(IGaugeRegistry.meetsCompositionQualityGate.selector, candidate),
             abi.encode(true)
         );
+        vm.mockCall(
+            address(gaugeReg),
+            abi.encodeWithSelector(IGaugeRegistry.feeRailConjunctSatisfied.selector, candidate),
+            abi.encode(true)
+        );
 
         svZchf.mint(proposer, 1_000_000e18);
         vm.prank(proposer);
