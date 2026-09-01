@@ -25,10 +25,10 @@ import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
 contract AureumGovernance {
     using SafeERC20 for IERC20;
 
-    uint256 internal constant VOTING_DELAY_BLOCKS = AureumTime.BLOCKS_PER_DAY;
-    uint256 internal constant VOTING_PERIOD_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
-    uint256 internal constant EXECUTION_TIMELOCK_BLOCKS = 2 * AureumTime.BLOCKS_PER_DAY;
-    uint256 internal constant EXECUTION_GRACE_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
+    uint256 public constant VOTING_DELAY_BLOCKS = AureumTime.BLOCKS_PER_DAY;
+    uint256 public constant VOTING_PERIOD_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
+    uint256 public constant EXECUTION_TIMELOCK_BLOCKS = 2 * AureumTime.BLOCKS_PER_DAY;
+    uint256 public constant EXECUTION_GRACE_BLOCKS = AureumTime.BLOCKS_PER_EPOCH;
     uint256 internal constant QUORUM_BPS = 2_000;
     uint256 internal constant PROPOSAL_DEPOSIT_SVZCHF = 1_000e18;
     uint256 internal constant PROPOSAL_DEPOSIT_SUSDS = 1_250e18;
