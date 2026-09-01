@@ -567,6 +567,24 @@ contract EmissionDistributor is IEmissionDistributor {
         emit ScoreUpdated(pool, oldEffective, effective_new);
     }
 
+    /**
+     * @notice Permissionlessly removes a revoked pool's F-5 and effective scores, closing **E.5** — `recordScore` reverts `NotApproved` on a revoked gauge, so nothing could remove the stale score and the pool kept drawing while survivors were diluted by a frozen denominator.
+     * @dev **PP-D50** (v), the emission leg of rung 8. Inverts `recordScore`'s gate, reverting `StillApproved` while the gauge is still live, then runs the same accrue-then-settle prologue so pre-revocation pending stays claimable per E.5's fix intent, and only afterwards drives both scores to zero. The cleared amounts are read into locals BEFORE either mapping is written, so the event reports what was actually removed rather than zeros. Both deltas go through `_applySignedDelta`, which can only reduce here. Idempotent — a second call succeeds and re-emits with zero cleared amounts.
+     * @param pool The revoked pool whose scores are removed.
+     */
+    function deregisterScore(address pool) external override {
+        if (_gaugeRegistry.isGaugeApproved(pool)) revert StillApproved(pool);
+        _accrueGlobal();
+        _settlePool(pool);
+        uint256 clearedF5Score = f5Score[pool];
+        uint256 clearedEffectiveScore = poolScore[pool];
+        f5Total = _applySignedDelta(f5Total, -clearedF5Score.toInt256());
+        f5Score[pool] = 0;
+        totalScore = _applySignedDelta(totalScore, -clearedEffectiveScore.toInt256());
+        poolScore[pool] = 0;
+        emit ScoreDeregistered(pool, clearedF5Score, clearedEffectiveScore);
+    }
+
     /* ---------- Recorder mutators (H-D16 / H-D21 / H-D25) ---------- */
 
     /* ---------- F-17 downward reconciliation (WH-I.1 / P-D18) ---------- */
