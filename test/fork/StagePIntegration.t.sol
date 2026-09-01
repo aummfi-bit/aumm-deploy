@@ -1256,7 +1256,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     ///      `meetsCompositionQualityGate` entirely, so neither error arises on this path at all.
     ///      `_seatVoter` runs BEFORE propose: seating after would snapshot ahead of the poke and
     ///      `getPastVotes(snapshotBlock)` would read zero.
-    function test_P1_C6_admissionAuthorityAnnulsPassedCompositionChallenge() public {
+    function test_P1_C6_withdrawnAttestationCannotAnnulAPassedChallenge() public {
         address voter = makeAddr("p1_c6_veto_voter");
         _seatVoter(voter);
         GaugeRegistry gr = orchestrator.gaugeRegistry();
