@@ -1270,23 +1270,28 @@ contract StageGC6AdmissionAuthorityTest is StageGIntegrationFixture {
         );
     }
 
-    function test_P1_C6_singleStepRotationBricksTheAdmissionMap() public {
-        // Any destination with no path back to the setters does this; the zero-address check at
-        // :256 catches exactly one of the infinitely many unusable values.
+    function test_P1_C6_rotationToADeadEndCannotBrickTheAdmissionMap() public {
+        // PP-D50 (xii) clause (viii) inverted this from a reproduction: the single-step write is
+        // gone, so a nomination to an address with no path back never takes effect at all.
         address deadEnd = address(uint160(1));
         assertEq(gaugeEligibility.admissionAuthority(), address(this), "premise - this fixture holds the authority");
 
-        gaugeEligibility.setAdmissionAuthority(deadEnd);
-        assertEq(gaugeEligibility.admissionAuthority(), deadEnd, "rotation lands in ONE transaction, no handshake");
+        gaugeEligibility.proposeAdmissionAuthority(deadEnd);
+        assertEq(gaugeEligibility.pendingAdmissionAuthority(), deadEnd, "the nomination is recorded");
+        assertEq(
+            gaugeEligibility.admissionAuthority(),
+            address(this),
+            "C.6 - a nomination to an unusable address does not move the authority"
+        );
 
-        // Both surfaces are now unreachable by the prior holder, and nothing reaches them from
-        // deadEnd either. AureumGovernance cannot help: _executeProposal dispatches a fixed
-        // six-value enum with no target and no calldata member. This is the dead map the design
-        // rationale at :78 and :252 names as the reason NOT to make the slot one-shot.
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, address(this)));
         gaugeEligibility.setRecoveryPathAdmitted(pilotPools[0], true);
+        assertTrue(gaugeEligibility.recoveryPathAdmitted(pilotPools[0]), "C.6 - the map stays writable throughout");
 
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyAdmissionAuthority.selector, address(this)));
-        gaugeEligibility.setAdmissionAuthority(address(this));
+        address usable = makeAddr("usableAuthority");
+        gaugeEligibility.proposeAdmissionAuthority(usable);
+        assertEq(gaugeEligibility.pendingAdmissionAuthority(), usable, "a later nomination replaces the dead-end one");
+        vm.prank(usable);
+        gaugeEligibility.acceptAdmissionAuthority();
+        assertEq(gaugeEligibility.admissionAuthority(), usable, "the rotation completes only to an address that can transact");
     }
 }
