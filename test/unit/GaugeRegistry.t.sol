@@ -53,6 +53,10 @@ contract MockGaugeEligibility is IGaugeEligibility {
     function meetsCompositionQualityGate(address) external pure override returns (bool) {
         return false;
     }
+
+    function feeRailConjunctSatisfied(address) external pure override returns (bool) {
+        return false;
+    }
 }
 
 contract MockSwapAndDeposit {
