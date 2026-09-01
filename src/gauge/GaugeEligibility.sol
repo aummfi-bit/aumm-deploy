@@ -12,6 +12,7 @@ import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
 import {IEfficiencyOracle} from "./IEfficiencyOracle.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 import {IAureumFeeRoutingHook} from "../fee_router/IAureumFeeRoutingHook.sol";
+import {AureumGovernance} from "../governance/AureumGovernance.sol";
 
 /**
  * @title GaugeEligibility
@@ -56,6 +57,12 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /// @notice Oracle smoothing horizon in epochs for OQ-G1 EMA discipline.
     uint256 public constant SMOOTHING_EPOCHS = 3;
+
+    /// @notice **PP-D50** (vii) delay a `recoveryPathAdmitted` revocation waits before `finalizeRecoveryPathRevocation` may clear it — one full `AureumGovernance` proposal lifecycle plus one block, so a revocation cannot outrun a composition mandate already snapshotted at propose.
+    /// @dev Summed from the four `public constant` lifecycle values on `AureumGovernance` rather than re-derived here, per **RB-026** — voting delay, voting period, execution timelock and execution grace. 223,201 blocks at the canonical figures.
+    uint256 public constant REVOCATION_DELAY_BLOCKS = AureumGovernance.VOTING_DELAY_BLOCKS
+        + AureumGovernance.VOTING_PERIOD_BLOCKS + AureumGovernance.EXECUTION_TIMELOCK_BLOCKS
+        + AureumGovernance.EXECUTION_GRACE_BLOCKS + 1;
 
     // -------------------------------------------------------------------------
     // Storage
