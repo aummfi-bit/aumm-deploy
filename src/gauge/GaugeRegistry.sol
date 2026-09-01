@@ -71,6 +71,9 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice Reverts `advanceTournament` calls when the current epoch index has not advanced beyond `lastTournamentEpoch` — **P-D14 (2)**; enforces one snapshot per `BLOCKS_PER_EPOCH`.
     error TournamentEpochNotElapsed();
 
+    /// @notice Reverts `revokeGaugeIfIneligible` when `pool` still satisfies the **PB-D69** fee-rail conjunct — there is nothing to revoke, and that entry is hygiene rather than a governance lever.
+    error GaugeStillEligible(address pool);
+
     // ----------------------------------------------------------------------------
     // Events
     // ----------------------------------------------------------------------------
