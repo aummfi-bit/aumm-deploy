@@ -444,6 +444,7 @@ contract AureumGovernance {
     ///      zero pool. A future seventh type must add its own branch or no-op, never inherit another's.
     function _executeProposal(uint256 proposalId, Proposal storage p) internal {
         if (p.proposalType == ProposalType.GaugeChallenge) {
+            if (SLOT_REGISTRY.slotOf(p.targetPool) != 0) revert GaugeTargetSlotted(p.targetPool);
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
         } else if (p.proposalType == ProposalType.CompositionChallenge) {
             if (!p.railAdmittedAtPropose) revert RailConjunctSnapshotFalse(proposalId);
