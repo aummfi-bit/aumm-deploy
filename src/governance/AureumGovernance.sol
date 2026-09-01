@@ -161,6 +161,10 @@ contract AureumGovernance {
     error AuthorizerNotContract(address newAuthorizer);
     error CompositionRailConjunctFailed(address pool);
     error RailConjunctSnapshotFalse(uint256 proposalId);
+    error CompositionIncumbentChanged(address expected, address actual);
+    error CompositionCandidateSlotted(address pool);
+    error CompositionCandidateRevoked(address pool);
+    error GaugeTargetSlotted(address pool);
 
     constructor(
         IVotingWeight votingWeight_,
