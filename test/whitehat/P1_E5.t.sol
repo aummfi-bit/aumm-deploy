@@ -113,9 +113,10 @@ contract P1_E5_RevokedPoolScoreWeldedIntoTotalScoreTest is Test {
         gaugeRegistry.revokeGauge(revokedPool);
     }
 
-    /// @notice After revocation, no caller can drive the revoked pool's score to zero through
-    ///         `recordScore`, so `totalScore` and `f5Total` stay frozen with the welded share.
-    function test_P1_E5_revokedPoolScoreCannotBeRemovedByAnyCaller() public {
+    /// @notice `recordScore` still cannot drive a revoked pool's score to zero — its gauge gate
+    ///         reverts `NotApproved`, which is what E.5 reported — but `deregisterScore`, added at
+    ///         PP4.8 per **PP-D50** (v), can, and any caller may do it.
+    function test_P1_E5_revokedPoolScoreRemovableOnlyThroughDeregisterScore() public {
         _scoreBothPools();
 
         uint256 totalBefore = distributor.totalScore();
@@ -126,13 +127,23 @@ contract P1_E5_RevokedPoolScoreWeldedIntoTotalScoreTest is Test {
         assertFalse(gaugeRegistry.isGaugeApproved(revokedPool), "revoked pool is not approved");
         assertTrue(gaugeRegistry.gaugeStatus(revokedPool) == IGaugeRegistry.GaugeStatus.Revoked, "registry reports Revoked");
 
+        // recordScore still refuses, and the score stays welded — E.5's original finding, unchanged.
         vm.prank(STRANGER);
         vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotApproved.selector, revokedPool));
         distributor.recordScore(revokedPool);
+        assertEq(distributor.totalScore(), totalBefore, "totalScore unchanged after the blocked correction");
+        assertGt(distributor.poolScore(revokedPool), 0, "still welded at this point");
 
-        assertEq(distributor.totalScore(), totalBefore, "totalScore unchanged after blocked correction");
-        assertEq(distributor.f5Total(), f5Before, "f5Total unchanged after blocked correction");
-        assertGt(distributor.poolScore(revokedPool), 0, "revoked pool score remains welded");
+        // THE REMEDY, and it removes exactly the revoked pool's share and nothing else.
+        uint256 weldedEffective = distributor.poolScore(revokedPool);
+        uint256 weldedF5 = distributor.f5Score(revokedPool);
+        vm.prank(STRANGER);
+        distributor.deregisterScore(revokedPool);
+        assertEq(distributor.poolScore(revokedPool), 0, "E.5 - the revoked pool's effective score is cleared");
+        assertEq(distributor.f5Score(revokedPool), 0, "E.5 - and its F-5 score with it");
+        assertEq(distributor.totalScore(), totalBefore - weldedEffective, "E.5 - totalScore drops by exactly the welded share");
+        assertEq(distributor.f5Total(), f5Before - weldedF5, "E.5 - f5Total likewise");
+        assertGt(distributor.poolScore(survivorPool), 0, "the survivor is untouched");
     }
 
     /// @notice The frozen denominator still allocates emissions to the revoked pool via `_settlePool`,
