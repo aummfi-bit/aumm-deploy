@@ -291,6 +291,20 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /**
+     * @notice Permissionlessly clears `recoveryPathAdmitted[pool]` once a scheduled revocation has matured, completing the two-step that `setRecoveryPathAdmitted(pool, false)` begins.
+     * @dev Deliberately NOT `onlyAdmissionAuthority` per **PP-D50** amendment (xii): the authority has already made the decision, and gating execution behind the same key would let a revocation be scheduled and then never executed, leaving the pool's status indefinitely ambiguous. The two guards are distinct so an operator can tell nothing-scheduled from scheduled-but-early — `NoPendingRevocation` on a zero stamp, `RevocationNotMatured` carrying the effective block otherwise. The stamp is cleared in the same call that consumes it, so a finalized revocation leaves no live schedule behind, and the write emits `RecoveryPathAdmissionSet` rather than a third event, being an admission-state change like any other.
+     * @param pool The pool whose matured revocation is finalized.
+     */
+    function finalizeRecoveryPathRevocation(address pool) external {
+        uint256 effectiveBlock = revocationEffectiveBlock[pool];
+        if (effectiveBlock == 0) revert NoPendingRevocation(pool);
+        if (block.number < effectiveBlock) revert RevocationNotMatured(pool, effectiveBlock);
+        delete revocationEffectiveBlock[pool];
+        recoveryPathAdmitted[pool] = false;
+        emit RecoveryPathAdmissionSet(pool, false);
+    }
+
+    /**
      * @notice Rotates the **PB-D69** admission authority to `newAuthority`.
      * @dev `onlyAdmissionAuthority`-gated and repeatable — deliberately not the one-shot `setGaugeRegistry` pattern, because a burned authority leaves a dead map no rail-less pool could ever clear per **PB-D69 (viii)**. Reverts `ZeroAddress` when `newAuthority == address(0)`. Emits `AdmissionAuthorityTransferred(oldAuthority, newAuthority)`.
      * @param newAuthority The incoming admission authority; must be non-zero.
