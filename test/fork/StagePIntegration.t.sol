@@ -1240,18 +1240,20 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
     }
 
-    /// @notice P1 C.6 veto leg — `admissionAuthority` annuls a CompositionChallenge that already
-    ///         passed, and the proposer's non-refundable bond is burned.
-    /// @dev Reproduction PoC for C.6's THIRD audit file,
-    ///      `admission-authority-vetoes-passed-composition-proposal` (M), completing rung 8
-    ///      alongside the StageG grant and rotation legs. `recoveryPathAdmitted` is the ONLY
-    ///      input to the composition gate a third party can falsify between propose and execute;
-    ///      every other input is immutable or written once at pool registration. The revert at
-    ///      beat 4 is the INNER `NoFeeRailAndNotAdmitted`, not `CompositionQualityGateFailed`:
-    ///      `GaugeRegistry.meetsCompositionQualityGate` is a bare pass-through (`:244-246`) with
-    ///      no try/catch, so eligibility's revert propagates and governance's
-    ///      `if (!...) revert CompositionQualityGateFailed` at `:429` never evaluates. That outer
-    ///      error is the sub-0.52 return-false path, which this candidate never takes.
+    /// @notice P1 C.6 veto leg, INVERTED at PP4.8 — a withdrawn `admissionAuthority` attestation can
+    ///         no longer annul a CompositionChallenge that already passed.
+    /// @dev Regression for C.6's THIRD audit file,
+    ///      `admission-authority-vetoes-passed-composition-proposal` (M), closed by **PP-D50** (iii)
+    ///      and (xii) alongside the StageG grant and rotation legs. `recoveryPathAdmitted` WAS the
+    ///      only input to the composition gate a third party could falsify between propose and
+    ///      execute — every other input is immutable or written once at pool registration — which is
+    ///      exactly why it needed snapshotting rather than a second re-read. Two protections now
+    ///      hold the mandate, and beat 5 asserts the second: the conjunct is captured into
+    ///      `Proposal.railAdmittedAtPropose` at propose, and `REVOCATION_DELAY_BLOCKS` exceeds a full
+    ///      proposal lifecycle, so a revocation scheduled mid-proposal cannot mature in time.
+    ///      WITHDRAWN: the former note that beat 4 surfaces the inner `NoFeeRailAndNotAdmitted`
+    ///      rather than `CompositionQualityGateFailed`. Amendment (x) removed the conjunct from
+    ///      `meetsCompositionQualityGate` entirely, so neither error arises on this path at all.
     ///      `_seatVoter` runs BEFORE propose: seating after would snapshot ahead of the poke and
     ///      `getPastVotes(snapshotBlock)` would read zero.
     function test_P1_C6_admissionAuthorityAnnulsPassedCompositionChallenge() public {
