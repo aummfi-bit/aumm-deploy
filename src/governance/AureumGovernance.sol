@@ -243,7 +243,14 @@ contract AureumGovernance {
     /// @param newPool_ replacement pool address.
     /// @param payToken_ SVZCHF or sUSDS proposal deposit.
     /// @return proposalId 1-based identifier.
-    /// @dev Proposer must `approve` this contract for the deposit amount before calling.
+    /// @dev Proposer must `approve` this contract for the deposit amount before calling. **PP-D51** (ii): the
+    ///      candidate gate is `slotOf(newPool_) == 0` and deliberately NOT `gaugeStatus == None`. Composition is
+    ///      about SLOT MEMBERSHIP, and G.3's poisoning leaves a candidate `Active` with no slot — `activateGauge`
+    ///      is permissionless for the anti-spam fee and no writer anywhere returns a status to `None` — so a
+    ///      `None` gate would refuse a poisoned candidate its challenge rather than close the finding. DO NOT
+    ///      tighten this to `None`. `Revoked` IS rejected, here and again at execute, because unlike `Active` it
+    ///      is not attacker-reachable. (i): the incumbent is frozen into `targetPool` for execute to pin, so a
+    ///      second challenge on the same slot fails instead of revoking the winner of the first.
     function proposeCompositionChallenge(uint256 slot_, address newPool_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (slot_ == 0 || slot_ > 28) revert InvalidCompositionTarget(slot_); // 28 = Miliarium constellation size
         if (newPool_ == address(0)) revert ZeroAddress();
