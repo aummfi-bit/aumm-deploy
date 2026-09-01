@@ -185,6 +185,19 @@ contract GaugeRegistry is IGaugeRegistry {
         emit GaugeRevoked(pool);
     }
 
+    /**
+     * @notice Permissionlessly revokes `pool`'s gauge once its **PB-D69** fee-rail conjunct no longer holds, closing **C.6**'s first face — a withdrawn admission previously left a live gauge drawing emissions until an 18-day `GaugeChallenge` removed it.
+     * @dev **PP-D50** (v). Deliberately UNGATED: the admission authority has already withdrawn its attestation and `finalizeRecoveryPathRevocation` has already let the delay run, so executing the consequence is hygiene anyone may perform. The predicate is the CONJUNCT ALONE and not the full criteria suite, which is a decision rather than a shortcut — **PP-D50** (vi) excludes the TVL floor, since a pool dipping momentarily below it would otherwise become revocable by anyone, and every other criterion is immutable after activation: the rail is written once in `onRegister`, the hook is sealed by the Vault at registration, and factory provenance, the token set and the weights cannot move. Mirrors `revokeGauge`'s transition exactly and emits the same `GaugeRevoked`, because consumers must react identically however the revocation arose; the `RecoveryPathAdmissionSet(pool, false)` that necessarily precedes it is what distinguishes the path. Once revoked, `EmissionDistributor.deregisterScore` becomes callable and clears the stale score.
+     * @param pool The Active gauge whose admission has lapsed.
+     */
+    function revokeGaugeIfIneligible(address pool) external {
+        if (_gaugeStatus[pool] != GaugeStatus.Active) revert NotGauged(pool);
+        if (IGaugeEligibility(gaugeEligibility).feeRailConjunctSatisfied(pool)) revert GaugeStillEligible(pool);
+        _gaugeStatus[pool] = GaugeStatus.Revoked;
+        _activeGauges.remove(pool);
+        emit GaugeRevoked(pool);
+    }
+
     // ----------------------------------------------------------------------------
     // External — governance (founding seeds)
     // ----------------------------------------------------------------------------
