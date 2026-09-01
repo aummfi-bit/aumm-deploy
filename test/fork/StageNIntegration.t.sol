@@ -267,29 +267,39 @@ contract StageNIxAetheronAdmissionTest is StageNIntegrationFixture {
         _makePoolEligible(ixAetheron, 50_000e18);
         assertFalse(gaugeEligibility.recoveryPathAdmitted(ixAetheron));
 
-        // Unadmitted: both gates reject, and neither is reachable by clearing any other criterion.
+        // Unadmitted: the ACTIVATION path rejects. The composition gate no longer evaluates the
+        // conjunct — PP-D50 (x) moved that to AureumGovernance.proposeCompositionChallenge — so the
+        // gate passes, and feeRailConjunctSatisfied is what now reports the pool's true state.
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
         gaugeEligibility.evaluateEligibility(ixAetheron);
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
-        gaugeEligibility.meetsCompositionQualityGate(ixAetheron);
+        assertFalse(gaugeEligibility.feeRailConjunctSatisfied(ixAetheron), "false for the real rail-less pool");
+        assertTrue(gaugeEligibility.meetsCompositionQualityGate(ixAetheron), "the gate itself no longer reads it");
 
         // Admitted: the ops attestation is the only thing that changed, and it is sufficient.
         gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, true);
-        assertTrue(gaugeEligibility.meetsCompositionQualityGate(ixAetheron));
+        assertTrue(gaugeEligibility.feeRailConjunctSatisfied(ixAetheron));
         assertTrue(gaugeEligibility.evaluateEligibility(ixAetheron));
         assertTrue(gaugeEligibility.isEligible(ixAetheron));
+        assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "premise - founding-seeded, so already Active");
 
-        // Revoked: bars the next evaluation, does NOT demote the live gauge, per PB-D69 (ix).
+        // Withdrawn: PP-D50 (xii) SCHEDULES rather than revokes, so nothing has changed yet.
         gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, false);
+        assertTrue(gaugeEligibility.feeRailConjunctSatisfied(ixAetheron), "scheduling alone leaves it true");
+
+        // Finalized: the conjunct lapses and the activation path rejects again.
+        vm.roll(gaugeEligibility.revocationEffectiveBlock(ixAetheron));
+        gaugeEligibility.finalizeRecoveryPathRevocation(ixAetheron);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
         gaugeEligibility.evaluateEligibility(ixAetheron);
-        assertTrue(gaugeEligibility.isEligible(ixAetheron), "latch survives revocation");
-        // C.6 real-pool pin: the attestation is withdrawn, yet the latch every emission consumer
-        // reads is untouched. StageG's test_P1_C6_admissionGrantSurvivesRevocationAsALiveGauge
-        // shows this on a gauge activated BY the admission; ixAetheron here is founding-seeded via
-        // seedFoundingPool, which never called evaluateEligibility, so this pins the demotion half
-        // only — against the protocol's real rail-less pool.
-        assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "C.6 - revocation does not demote the live gauge");
+        assertTrue(gaugeEligibility.isEligible(ixAetheron), "the certificate latch still survives - that is D.7, its own row");
+
+        // C.6 real-pool pin, INVERTED at PP4.8: the withdrawn attestation now demotes the gauge, on
+        // the protocol's one genuinely rail-less pool. ixAetheron is founding-seeded via
+        // seedFoundingPool and never went through evaluateEligibility, so this pins the demotion
+        // half against real state rather than against a fixture.
+        vm.prank(makeAddr("c6_hygiene_stageN"));
+        gaugeRegistry.revokeGaugeIfIneligible(ixAetheron);
+        assertFalse(gaugeRegistry.isGaugeApproved(ixAetheron), "C.6 - revocation now demotes the live gauge");
     }
 }
 
