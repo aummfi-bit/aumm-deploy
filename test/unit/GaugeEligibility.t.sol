@@ -9,6 +9,13 @@ import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 import {ITVLOracle} from "src/ccb/ITVLOracle.sol";
 import {IVaultExtension} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExtension.sol";
 import {HooksConfig} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {AureumGovernance} from "src/governance/AureumGovernance.sol";
+import {IVotingWeight} from "src/governance/IVotingWeight.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {IMiliariumSlotRegistry} from "src/registry/IMiliariumSlotRegistry.sol";
+import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
+import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Test double exposing configurable class admission bits for GaugeEligibility.
 contract MockVaultClassRegistry is IVaultClassRegistry {
