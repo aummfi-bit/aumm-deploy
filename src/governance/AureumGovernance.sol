@@ -231,7 +231,7 @@ contract AureumGovernance {
     /// @dev Proposer must `approve` this contract for the deposit amount before calling.
     function proposeGaugeChallenge(address targetPool_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (GAUGE_REGISTRY.gaugeStatus(targetPool_) != IGaugeRegistry.GaugeStatus.Active || SLOT_REGISTRY.slotOf(targetPool_) != 0) revert InvalidGaugeTarget(targetPool_);
-        proposalId = _createProposal(ProposalType.GaugeChallenge, targetPool_, address(0), 0, 0, address(0), payToken_);
+        proposalId = _createProposal(ProposalType.GaugeChallenge, targetPool_, address(0), 0, 0, address(0), false, payToken_);
     }
 
     /// @notice Propose a composition challenge to replace the pool at a filled constellation slot.
@@ -267,7 +267,7 @@ contract AureumGovernance {
         // propose-time suffices.
         address manager = VAULT.getPoolRoleAccounts(targetPool_).swapFeeManager;
         if (manager != address(0) && manager != address(this)) revert ExclusiveSwapFeeManager(targetPool_, manager);
-        proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, address(0), payToken_);
+        proposalId = _createProposal(ProposalType.FeeChange, targetPool_, address(0), 0, newFee_, address(0), false, payToken_);
     }
 
     /// @notice Propose an authorizer migration — the keystone Vault admin lever, gated to a two-thirds supermajority.
@@ -281,7 +281,7 @@ contract AureumGovernance {
     function proposeVaultAuthorizerChange(address newAuthorizer_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (newAuthorizer_ == address(0)) revert ZeroAddress();
         if (newAuthorizer_.code.length == 0) revert AuthorizerNotContract(newAuthorizer_);
-        proposalId = _createProposal(ProposalType.VaultAuthorizerChange, address(0), address(0), 0, 0, newAuthorizer_, payToken_);
+        proposalId = _createProposal(ProposalType.VaultAuthorizerChange, address(0), address(0), 0, 0, newAuthorizer_, false, payToken_);
     }
 
     /// @notice Propose lifting the Vault's global pause — the de-escalation counterpart to the emergency pause.
@@ -290,7 +290,7 @@ contract AureumGovernance {
     /// @dev Proposer must `approve` this contract for the deposit amount before calling. Carries no payload;
     ///      every `Proposal` field besides the shared bookkeeping stays zero.
     function proposeVaultUnpause(IERC20 payToken_) external returns (uint256 proposalId) {
-        proposalId = _createProposal(ProposalType.VaultUnpause, address(0), address(0), 0, 0, address(0), payToken_);
+        proposalId = _createProposal(ProposalType.VaultUnpause, address(0), address(0), 0, 0, address(0), false, payToken_);
     }
 
     /// @notice Propose disabling recovery mode on a pool — the de-escalation counterpart to the emergency entry.
@@ -302,7 +302,7 @@ contract AureumGovernance {
     ///      `targetPool_`: unlike F-20's exclusive fee manager, a pool's recovery-mode status carries no state
     ///      that can look valid at propose time and silently break by execute time.
     function proposeVaultRecoveryDisable(address targetPool_, IERC20 payToken_) external returns (uint256 proposalId) {
-        proposalId = _createProposal(ProposalType.VaultRecoveryDisable, targetPool_, address(0), 0, 0, address(0), payToken_);
+        proposalId = _createProposal(ProposalType.VaultRecoveryDisable, targetPool_, address(0), 0, 0, address(0), false, payToken_);
     }
 
     /// @notice Cast a snapshot-weighted vote on an active proposal.
