@@ -1249,24 +1249,26 @@ contract StageGC6AdmissionAuthorityTest is StageGIntegrationFixture {
         vm.stopPrank();
         assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "activated on the strength of the admission");
 
-        // The authority revokes its own attestation.
+        // The authority withdraws its attestation. Under PP-D50 (xii) that SCHEDULES a revocation.
         gaugeEligibility.setRecoveryPathAdmitted(ixAetheron, false);
+        assertTrue(gaugeRegistry.isGaugeApproved(ixAetheron), "scheduling alone leaves the gauge live");
 
-        // It bars a LATER evaluation ...
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, ixAetheron));
-        gaugeEligibility.evaluateEligibility(ixAetheron);
+        // Once the delay has run, anyone finalizes it and the conjunct lapses.
+        vm.roll(gaugeEligibility.revocationEffectiveBlock(ixAetheron));
+        gaugeEligibility.finalizeRecoveryPathRevocation(ixAetheron);
+        assertFalse(gaugeEligibility.feeRailConjunctSatisfied(ixAetheron), "the conjunct has lapsed");
 
-        // ... and demotes nothing. isGaugeApproved is the latch every consumer reads
-        // (EmissionDistributor.recordScore, VotingWeight, IncendiaryRegistry, advanceTournament),
-        // so a pool routing nothing to der Bodensee keeps its emission share until an 18-day
-        // GaugeChallenge removes it. GaugeEligibility.sol:81 claims the opposite.
-        assertTrue(
+        // And anyone may then demote the gauge — the face of C.6 that PP-D50 (v) closed. Before the
+        // fix this pool kept drawing emissions until an 18-day GaugeChallenge removed it.
+        vm.prank(makeAddr("c6_hygiene"));
+        gaugeRegistry.revokeGaugeIfIneligible(ixAetheron);
+        assertFalse(
             gaugeRegistry.isGaugeApproved(ixAetheron),
-            "C.6 - revoking the admission does not demote the live gauge"
+            "C.6 - a withdrawn admission now demotes the live gauge"
         );
         assertTrue(
-            gaugeRegistry.gaugeStatus(ixAetheron) == IGaugeRegistry.GaugeStatus.Active,
-            "C.6 - still Active after the attestation was withdrawn"
+            gaugeRegistry.gaugeStatus(ixAetheron) == IGaugeRegistry.GaugeStatus.Revoked,
+            "C.6 - Revoked, not merely ineligible for a later evaluation"
         );
     }
 
