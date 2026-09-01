@@ -305,15 +305,27 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /**
-     * @notice Rotates the **PB-D69** admission authority to `newAuthority`.
-     * @dev `onlyAdmissionAuthority`-gated and repeatable — deliberately not the one-shot `setGaugeRegistry` pattern, because a burned authority leaves a dead map no rail-less pool could ever clear per **PB-D69 (viii)**. Reverts `ZeroAddress` when `newAuthority == address(0)`. Emits `AdmissionAuthorityTransferred(oldAuthority, newAuthority)`.
-     * @param newAuthority The incoming admission authority; must be non-zero.
+     * @notice Nominates `newAuthority` as the incoming **PB-D69** admission authority; the rotation completes only when that address calls `acceptAdmissionAuthority`.
+     * @dev `onlyAdmissionAuthority`-gated and REPEATABLE per **PB-D69 (viii)** — deliberately not the one-shot `setGaugeRegistry` pattern, because a burned authority leaves a dead map no rail-less pool could ever clear. **PP-D50** amendment (xii) splits the former single-step write into a nomination and an acceptance, so a rotation aimed at an address that cannot transact is no longer a one-transaction brick. A later nomination REPLACES an earlier pending one, so a mistaken nomination is corrected by making another rather than by waiting. Passing `address(0)` reverts rather than clearing, since a zero pending slot is exactly what `acceptAdmissionAuthority` reads as no rotation in flight.
+     * @param newAuthority The nominated incoming authority; must be non-zero.
      */
-    function setAdmissionAuthority(address newAuthority) external onlyAdmissionAuthority {
+    function proposeAdmissionAuthority(address newAuthority) external onlyAdmissionAuthority {
         if (newAuthority == address(0)) revert ZeroAddress();
+        pendingAdmissionAuthority = newAuthority;
+        emit AdmissionAuthorityProposed(admissionAuthority, newAuthority);
+    }
+
+    /**
+     * @notice Completes a rotation nominated by `proposeAdmissionAuthority`; callable only by the nominated address.
+     * @dev **PP-D50** amendment (xii). Reverts `OnlyPendingAdmissionAuthority` for every other caller, the outgoing authority included — that is what makes this a handshake rather than a push, since the incoming address proves it can transact before it holds the map. With no rotation in flight the pending slot is zero and no real caller matches it, so the same guard covers that case without a second one. Clears the pending slot in the same call, so a nomination cannot be replayed, and emits `AdmissionAuthorityTransferred` exactly as the single-step form did.
+     */
+    function acceptAdmissionAuthority() external {
+        address pending = pendingAdmissionAuthority;
+        if (msg.sender != pending) revert OnlyPendingAdmissionAuthority(msg.sender);
         address oldAuthority = admissionAuthority;
-        admissionAuthority = newAuthority;
-        emit AdmissionAuthorityTransferred(oldAuthority, newAuthority);
+        admissionAuthority = pending;
+        delete pendingAdmissionAuthority;
+        emit AdmissionAuthorityTransferred(oldAuthority, pending);
     }
 
     // -------------------------------------------------------------------------
