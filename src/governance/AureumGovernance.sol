@@ -122,6 +122,8 @@ contract AureumGovernance {
         uint256 newFee;
         // F-22 / PB-D64 (iii) — read only by VaultAuthorizerChange; zero for every other type.
         address newAuthorizer;
+        // C.6 / PP-D50 (iii) — read only by CompositionChallenge; false for every other type.
+        bool railAdmittedAtPropose;
     }
 
     uint256 public proposalCount;
@@ -208,7 +210,7 @@ contract AureumGovernance {
     /// @dev Deposit is pulled via `safeTransferFrom(proposer → BODENSEE_CHANNEL)` then donated — proposer must
     ///      `approve` this contract before calling; deposit is non-refundable (permanent Bodensee donation per
     ///      K-D6d). This contract must be an `authorizedDonator` on `BODENSEE_CHANNEL` (G-D21, wired at K7).
-    function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, address newAuthorizer_, IERC20 payToken_) internal returns (uint256 proposalId) {
+    function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, address newAuthorizer_, bool railAdmittedAtPropose_, IERC20 payToken_) internal returns (uint256 proposalId) {
         uint256 amount = _depositAmount(payToken_);
         payToken_.safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
         BODENSEE_CHANNEL.donate(payToken_, amount);
@@ -216,7 +218,7 @@ contract AureumGovernance {
         uint256 start = block.number;
         uint256 snapshotBlock = start + VOTING_DELAY_BLOCKS;
         uint256 end = snapshotBlock + VOTING_PERIOD_BLOCKS;
-        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotBlock: snapshotBlock, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_, newAuthorizer: newAuthorizer_ });
+        _proposals[proposalId] = Proposal({ proposer: msg.sender, proposalType: proposalType_, startBlock: start, endBlock: end, snapshotBlock: snapshotBlock, forVotes: 0, againstVotes: 0, eta: 0, executed: false, targetPool: targetPool_, newPool: newPool_, slot: slot_, newFee: newFee_, newAuthorizer: newAuthorizer_, railAdmittedAtPropose: railAdmittedAtPropose_ });
         emit ProposalCreated(proposalId, proposalType_, msg.sender, start, snapshotBlock, end);
     }
 
