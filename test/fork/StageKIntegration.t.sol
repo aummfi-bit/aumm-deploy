@@ -202,6 +202,7 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
         uint256 slot = 5;
         address candidate = makeAddr("candidatePool");
         vm.mockCall(address(gaugeRegistry), abi.encodeWithSignature("meetsCompositionQualityGate(address)", candidate), abi.encode(true));
+        vm.mockCall(address(gaugeRegistry), abi.encodeWithSignature("feeRailConjunctSatisfied(address)", candidate), abi.encode(true));
         address oldPool = realRegistry.poolAtSlot(slot);
         assertEq(oldPool, pilotPools[1], "slot 5 holds ixEdelweiss");
         deal(address(svZchf), address(this), 1_000e18); // PROPOSAL_DEPOSIT_SVZCHF
