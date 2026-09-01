@@ -1116,7 +1116,7 @@ contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
         assertTrue(_admittedSlotWasRead(pool));
     }
 
-    function testRevocationBarsLaterEvaluationButLeavesLatchSet() public {
+    function testFinalizedRevocationBarsLaterEvaluationButLeavesLatchSet() public {
         address pool = _wireAdmissionPool(address(0));
         vm.prank(admissionAuthority);
         eligibility.setRecoveryPathAdmitted(pool, true);
@@ -1124,6 +1124,9 @@ contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
         assertTrue(eligibility.isEligible(pool));
         vm.prank(admissionAuthority);
         eligibility.setRecoveryPathAdmitted(pool, false);
+        assertTrue(eligibility.evaluateEligibility(pool), "scheduling alone does not bar evaluation");
+        vm.roll(eligibility.revocationEffectiveBlock(pool));
+        eligibility.finalizeRecoveryPathRevocation(pool);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, pool));
         eligibility.evaluateEligibility(pool);
         assertTrue(eligibility.isEligible(pool));
