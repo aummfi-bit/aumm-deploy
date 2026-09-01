@@ -247,11 +247,14 @@ contract AureumGovernance {
     function proposeCompositionChallenge(uint256 slot_, address newPool_, IERC20 payToken_) external returns (uint256 proposalId) {
         if (slot_ == 0 || slot_ > 28) revert InvalidCompositionTarget(slot_); // 28 = Miliarium constellation size
         if (newPool_ == address(0)) revert ZeroAddress();
-        if (SLOT_REGISTRY.poolAtSlot(slot_) == address(0)) revert InvalidCompositionTarget(slot_);
+        address incumbent = SLOT_REGISTRY.poolAtSlot(slot_);
+        if (incumbent == address(0)) revert InvalidCompositionTarget(slot_);
+        if (SLOT_REGISTRY.slotOf(newPool_) != 0) revert CompositionCandidateSlotted(newPool_);
+        if (GAUGE_REGISTRY.gaugeStatus(newPool_) == IGaugeRegistry.GaugeStatus.Revoked) revert CompositionCandidateRevoked(newPool_);
         if (!GAUGE_REGISTRY.meetsCompositionQualityGate(newPool_)) revert CompositionQualityGateFailed(newPool_);
         bool railConjunctSatisfied = GAUGE_REGISTRY.feeRailConjunctSatisfied(newPool_);
         if (!railConjunctSatisfied) revert CompositionRailConjunctFailed(newPool_);
-        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, address(0), railConjunctSatisfied, payToken_);
+        proposalId = _createProposal(ProposalType.CompositionChallenge, incumbent, newPool_, slot_, 0, address(0), railConjunctSatisfied, payToken_);
     }
 
     /// @notice Propose a static swap-fee change on a gauged, non-Bodensee pool.
