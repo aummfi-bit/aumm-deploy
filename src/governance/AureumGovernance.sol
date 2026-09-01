@@ -159,6 +159,8 @@ contract AureumGovernance {
     error CompositionQualityGateFailed(address pool);
     error ExclusiveSwapFeeManager(address pool, address manager);
     error AuthorizerNotContract(address newAuthorizer);
+    error CompositionRailConjunctFailed(address pool);
+    error RailConjunctSnapshotFalse(uint256 proposalId);
 
     constructor(
         IVotingWeight votingWeight_,
