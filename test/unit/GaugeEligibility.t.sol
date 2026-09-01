@@ -1219,10 +1219,14 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         address second = makeAddr("secondAuthority");
         address third = makeAddr("thirdAuthority");
         vm.prank(admissionAuthority);
-        eligibility.setAdmissionAuthority(second);
+        eligibility.proposeAdmissionAuthority(second);
+        vm.prank(second);
+        eligibility.acceptAdmissionAuthority();
         assertEq(eligibility.admissionAuthority(), second);
         vm.prank(second);
-        eligibility.setAdmissionAuthority(third);
+        eligibility.proposeAdmissionAuthority(third);
+        vm.prank(third);
+        eligibility.acceptAdmissionAuthority();
         assertEq(eligibility.admissionAuthority(), third);
         vm.prank(third);
         eligibility.setRecoveryPathAdmitted(makeAddr("admissionPool"), true);
