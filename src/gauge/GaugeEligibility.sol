@@ -88,6 +88,12 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice **PB-D69** no-fees-no-emissions attestation — `true` when `admissionAuthority` has committed to recovering this pool's stranded protocol fees through the PB-D66 `recoverStrandedFees` path on `AureumFeeRoutingHook`. Read at **PB3.12c** as the second disjunct of the eligibility conjunct, so a pool carrying no der-Bodensee rail (`poolBodenseeDepositToken(pool) == address(0)`; live instance `02 ixAetheron`) stays eligible only while admitted. Deliberately an attestation and NOT a route registry per **PB-D69 (vi)** — recovery takes its route as calldata and carries no pool identifier, so nothing on that path could consume a per-pool route. It certifies capability-of-ops, never contribution (**PB-D69 (vii)**).
     mapping(address => bool) public recoveryPathAdmitted;
 
+    /// @notice **PP-D50** (xii) scheduled-revocation stamp — the block at or after which `finalizeRecoveryPathRevocation` may clear `recoveryPathAdmitted[pool]`. Zero means no revocation is pending.
+    mapping(address => uint256) public revocationEffectiveBlock;
+
+    /// @notice **PP-D50** (viii) incoming admission authority awaiting its own `acceptAdmissionAuthority` call — zero when no rotation is pending.
+    address public pendingAdmissionAuthority;
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
