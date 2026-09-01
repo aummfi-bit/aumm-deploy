@@ -271,15 +271,23 @@ contract GaugeEligibility is IGaugeEligibility {
     // -------------------------------------------------------------------------
 
     /**
-     * @notice Writes the **PB-D69** recovery-path attestation for `pool` — `true` admits, `false` revokes.
-     * @dev `onlyAdmissionAuthority`-gated. Idempotent: a repeat write of the same value succeeds and re-emits, the slot being a plain flag with no roster push behind it. Revocation bars a LATER `evaluateEligibility` or `meetsCompositionQualityGate` and does NOT demote a live gauge — `isGaugeEligible` is written `true` and cleared nowhere in `src/`, so eviction stays with the governance `GaugeChallenge` path and `GaugeRegistry.revokeGauge` per **PB-D69 (ix)**. Reverts `ZeroAddress` when `pool == address(0)`. Emits `RecoveryPathAdmissionSet(pool, admitted)`.
+     * @notice Writes the **PB-D69** recovery-path attestation for `pool` — `true` admits immediately, `false` SCHEDULES a revocation rather than performing one.
+     * @dev `onlyAdmissionAuthority`-gated. **PP-D50** amendment (xii) splits the two directions. Admission is immediate and additionally CLEARS any pending stamp, so re-admitting cancels a scheduled revocation. Revocation writes nothing to the flag: it stamps `revocationEffectiveBlock[pool]` one `REVOCATION_DELAY_BLOCKS` out, and the flag falls only when anyone calls `finalizeRecoveryPathRevocation` at or after that block — so a revocation cannot annul a composition mandate already snapshotted at propose. Reverts `RecoveryPathNotAdmitted` when revoking a pool that is not admitted, since a stamp there would leave finalize writing false over false. Re-stamping while a schedule is pending is legal and only moves the effective block later; cancellation is the `true` call. The former idempotence claim is WITHDRAWN — the two directions no longer share a body.
      * @param pool The pool whose attestation is written.
-     * @param admitted `true` to admit the pool's recovery path, `false` to revoke it.
+     * @param admitted `true` to admit the pool's recovery path immediately, `false` to schedule its revocation.
      */
     function setRecoveryPathAdmitted(address pool, bool admitted) external onlyAdmissionAuthority {
         if (pool == address(0)) revert ZeroAddress();
-        recoveryPathAdmitted[pool] = admitted;
-        emit RecoveryPathAdmissionSet(pool, admitted);
+        if (admitted) {
+            recoveryPathAdmitted[pool] = true;
+            delete revocationEffectiveBlock[pool];
+            emit RecoveryPathAdmissionSet(pool, true);
+        } else {
+            if (!recoveryPathAdmitted[pool]) revert RecoveryPathNotAdmitted(pool);
+            uint256 effectiveBlock = block.number + REVOCATION_DELAY_BLOCKS;
+            revocationEffectiveBlock[pool] = effectiveBlock;
+            emit RecoveryPathRevocationScheduled(pool, effectiveBlock);
+        }
     }
 
     /**
