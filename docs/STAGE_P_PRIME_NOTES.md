@@ -177,6 +177,20 @@ The 2026-08-18 residual is CLOSED. Measured, not derived. No private key and no 
 - **PP4.1c12** — the clean instance: payload measured, file total derived, 167 against 175.
 - **PP4.1b / PP4.1c4b / PP4.1c11-pre** — the shifted anchor, the substring form the code does not contain, and the term already living elsewhere.
 
+## PP14 — a fixed `tail -N` selects by position, and truncated output looks exactly like a report
+
+**Caught twice in one session, 2026-08-30, at the PP4.7 rung gate and again at the PP4.8e3 build gate.** The rung-7 fork roster ran 25 file-scoped invocations through a loop capturing `tail -1` per file. Forge prints its `Tip: run forge test --rerun` line AFTER the summary when a run has failures, so for the one file that failed, the captured line was the tip while the `[FAIL]` rows and the tally scrolled past unread — the failure text was destroyed and no cause could ever be assigned, which is why `WK18ThinVenuePumpSim`'s transient is recorded as UNEXPLAINED rather than diagnosed. Hours later `forge build 2>&1 | tail -20` captured only trailing lint warnings from an unrelated fixture and cut off the verdict line, leaving the build's success unreadable at the exact rung whose success criterion WAS compilation.
+
+**Why it survives a careful reader.** Truncated output does not announce itself. A tip line reads as a summary; a tail of warnings reads as a clean run that has warnings; an empty filter result reads as nothing to report. In all three the command ran, the tool answered correctly, and the harness threw the answer away — so the failure is invisible precisely where a reader is looking for reassurance, and both instances here were caught by accident rather than by the check.
+
+**The rule.** Select on the OUTCOME, never on position. Filter for the line forms that carry the verdict — `^Ran .* test suite`, `^\[FAIL`, `Compiler run successful`, `Compilation failed` — and where the tool offers an exit status, read THAT instead of any text, because `EXIT=$?` cannot miss a line form the drafter failed to anticipate. A fixed `tail` is admissible only where a tool's last line is guaranteed to be its verdict, which forge guarantees in neither of its two most-used commands.
+
+**Cross-references:**
+
+- **PB20** (`STAGE_P_BIS_NOTES.md`) — the pattern-reach sibling: a zero-hit sentinel proves nothing until the pattern's reach on the target file is measured.
+- **PP12** — the file-set sibling: a `-r` grep handed explicit file arguments does not recurse, and its short result does not look truncated.
+- **PP4.7i** — the WK18 transient, recorded unexplained because this defect destroyed its evidence; **PP4.8e3b** — the build verdict lost to `tail -20` and recovered by `EXIT=$?`.
+
 ## PP3.3 — Family A verdicts (A.2 and A.3 locked; A.1 and A.4 deferred)
 
 **Locked.** Both rows exit **Fix**, and neither severity moves.
