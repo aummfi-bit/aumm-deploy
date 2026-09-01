@@ -245,7 +245,9 @@ contract AureumGovernance {
         if (newPool_ == address(0)) revert ZeroAddress();
         if (SLOT_REGISTRY.poolAtSlot(slot_) == address(0)) revert InvalidCompositionTarget(slot_);
         if (!GAUGE_REGISTRY.meetsCompositionQualityGate(newPool_)) revert CompositionQualityGateFailed(newPool_);
-        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, address(0), payToken_);
+        bool railConjunctSatisfied = GAUGE_REGISTRY.feeRailConjunctSatisfied(newPool_);
+        if (!railConjunctSatisfied) revert CompositionRailConjunctFailed(newPool_);
+        proposalId = _createProposal(ProposalType.CompositionChallenge, address(0), newPool_, slot_, 0, address(0), railConjunctSatisfied, payToken_);
     }
 
     /// @notice Propose a static swap-fee change on a gauged, non-Bodensee pool.
