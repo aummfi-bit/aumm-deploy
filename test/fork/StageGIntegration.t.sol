@@ -1219,7 +1219,7 @@ contract StageGRegistryGovernanceHandoffTest is StageGIntegrationFixture {
 ///      ixAetheron is deployed test-local rather than in `setUp` so the other 38 cases are untaxed;
 ///      the two N-D7 rate-provider env keys `setUp` seats at PP3.2p are what let `run()` resolve.
 contract StageGC6AdmissionAuthorityTest is StageGIntegrationFixture {
-    function test_P1_C6_admissionGrantSurvivesRevocationAsALiveGauge() public {
+    function test_P1_C6_revokedAdmissionNowDemotesTheGauge() public {
         address ixAetheron = new DeployIxAetheron().run();
 
         // Premise. No liquidity is needed: the gate reads pool config and takes TVL from
