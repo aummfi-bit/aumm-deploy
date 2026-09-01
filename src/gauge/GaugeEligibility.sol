@@ -12,7 +12,7 @@ import {IVaultClassRegistry} from "./IVaultClassRegistry.sol";
 import {IEfficiencyOracle} from "./IEfficiencyOracle.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 import {IAureumFeeRoutingHook} from "../fee_router/IAureumFeeRoutingHook.sol";
-import {AureumGovernance} from "../governance/AureumGovernance.sol";
+import {AureumTime} from "../lib/AureumTime.sol";
 
 /**
  * @title GaugeEligibility
@@ -59,10 +59,10 @@ contract GaugeEligibility is IGaugeEligibility {
     uint256 public constant SMOOTHING_EPOCHS = 3;
 
     /// @notice **PP-D50** (vii) delay a `recoveryPathAdmitted` revocation waits before `finalizeRecoveryPathRevocation` may clear it — one full `AureumGovernance` proposal lifecycle plus one block, so a revocation cannot outrun a composition mandate already snapshotted at propose.
-    /// @dev Summed from the four `public constant` lifecycle values on `AureumGovernance` rather than re-derived here, per **RB-026** — voting delay, voting period, execution timelock and execution grace. 223,201 blocks at the canonical figures.
-    uint256 public constant REVOCATION_DELAY_BLOCKS = AureumGovernance.VOTING_DELAY_BLOCKS
-        + AureumGovernance.VOTING_PERIOD_BLOCKS + AureumGovernance.EXECUTION_TIMELOCK_BLOCKS
-        + AureumGovernance.EXECUTION_GRACE_BLOCKS + 1;
+    /// @dev **PP-D50** amendment (xiii). MIRRORS the `AureumTime` expansion `AureumGovernance.sol:28-31` uses for its own four lifecycle constants, plus one block; it does NOT read them through the `AureumGovernance` type, which is invalid Solidity — `public constant` on a contract yields instance getters, not type-level members. **RB-026** is discharged by a unit pin asserting this equals the sum of those four PUBLIC GETTERS plus one, the only form that catches governance changing a term while this formula sits still. 223,201 blocks at canonical figures.
+    uint256 public constant REVOCATION_DELAY_BLOCKS =
+        AureumTime.BLOCKS_PER_DAY + AureumTime.BLOCKS_PER_EPOCH + 2 * AureumTime.BLOCKS_PER_DAY
+            + AureumTime.BLOCKS_PER_EPOCH + 1;
 
     // -------------------------------------------------------------------------
     // Storage
