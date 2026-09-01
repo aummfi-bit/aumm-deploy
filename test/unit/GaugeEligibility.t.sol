@@ -1082,10 +1082,12 @@ contract GaugeEligibilityAdmissionGateTest is GaugeEligibilityFixture {
         eligibility.evaluateEligibility(pool);
     }
 
-    function testRailLessUnadmittedPoolRevertsInCompositionGate() public {
+    function testRailLessUnadmittedPoolNoLongerRevertsInCompositionGate() public {
+        // PP-D50 amendment (x) moved the conjunct OUT of this gate so a revocation landing after a
+        // passed vote cannot annul the mandate; enforcement now sits at proposeCompositionChallenge.
         address pool = _wireAdmissionPool(address(0));
-        vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.NoFeeRailAndNotAdmitted.selector, pool));
-        eligibility.meetsCompositionQualityGate(pool);
+        assertFalse(eligibility.feeRailConjunctSatisfied(pool), "the conjunct is still false for this pool");
+        assertTrue(eligibility.meetsCompositionQualityGate(pool), "but the gate no longer evaluates it");
     }
 
     function testRailLessAdmittedPoolPassesBothGates() public {
@@ -1238,6 +1240,25 @@ contract GaugeEligibilityAdmissionAuthorityTest is GaugeEligibilityFixture {
         vm.prank(third);
         eligibility.setRecoveryPathAdmitted(makeAddr("admissionPool"), true);
         assertTrue(eligibility.recoveryPathAdmitted(makeAddr("admissionPool")));
+    }
+
+    function testRevocationDelayPinsGovernanceLifecycle() public {
+        AureumGovernance gov = new AureumGovernance(
+            IVotingWeight(makeAddr("pinVotingWeight")),
+            IGaugeRegistry(makeAddr("pinGaugeRegistry")),
+            IMiliariumSlotRegistry(makeAddr("pinSlotRegistry")),
+            IVault(makeAddr("pinVault")),
+            SwapAndDepositToBodensee(makeAddr("pinChannel")),
+            IERC20(makeAddr("pinSvZchf")),
+            IERC20(makeAddr("pinSUsds")),
+            makeAddr("pinBodenseePool")
+        );
+        assertEq(
+            eligibility.REVOCATION_DELAY_BLOCKS(),
+            gov.VOTING_DELAY_BLOCKS() + gov.VOTING_PERIOD_BLOCKS() + gov.EXECUTION_TIMELOCK_BLOCKS()
+                + gov.EXECUTION_GRACE_BLOCKS() + 1,
+            "RB-026 - the gauge delay must track governance's four lifecycle constants, not merely their AureumTime expansion"
+        );
     }
 }
 
