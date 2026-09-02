@@ -139,10 +139,10 @@ contract EMASampler {
     // -------------------------------------------------------------------------
 
     /// @notice Sample the pool's spot TVL and update its EMA per F-4 / OQ-5a-bis.
-    /// @dev Permissionless per F-D5. Cadence guard at one update per
-    ///      BLOCKS_PER_DAY. First call (lastEMAUpdateBlock[pool] == 0) seeds
-    ///      tvlEMA[pool] = spotTVL per F-D15 cold-start sentinel; subsequent
-    ///      calls apply tvlEMA_new = (2 * spotTVL + 59 * tvlEMA_old) / 61.
+    /// @dev Permissionless per F-D5. Cadence guard at one update per BLOCKS_PER_DAY, enforced by
+    ///      REVERT. This entry keeps its revert for the PP-D31 keeper set and for the callers that
+    ///      assert `TooEarly` directly; the folded paths call `updateEMAIfDue` instead, which
+    ///      no-ops rather than reverting, per PP-D52 (vii). Both share `_update`.
     /// @param pool The Balancer V3 pool address to sample.
     /// @return newEMA The post-update EMA value for the pool.
     function updateEMA(address pool) external returns (uint256 newEMA) {
@@ -151,7 +151,38 @@ contract EMASampler {
         if (block.number < nextEligible) {
             revert TooEarly(block.number, nextEligible);
         }
+        return _update(pool, last);
+    }
 
+    /// @notice Sample the pool's EMA if the daily cadence has elapsed; no-op otherwise.
+    /// @dev PP-D52 (vii). This is the entry the economically motivated paths fold into,
+    ///      `EmissionDistributor.recordScore` and `claim`, both permissionless and repeatable
+    ///      within a day. A bare `updateEMA` there would revert the SECOND such call of any day on
+    ///      that pool, a liveness regression worse than the staleness D.5 fixes. Callers may ignore
+    ///      `updated`; a no-op leaves every mapping untouched.
+    /// @param pool The Balancer V3 pool address to sample.
+    /// @return updated True when a sample was taken, false when the cadence had not elapsed.
+    /// @return newEMA The pool's EMA after the call, read from storage unchanged on a no-op.
+    function updateEMAIfDue(address pool) external returns (bool updated, uint256 newEMA) {
+        uint256 last = lastEMAUpdateBlock[pool];
+        if (block.number < last + AureumTime.BLOCKS_PER_DAY) {
+            return (false, tvlEMA[pool]);
+        }
+        return (true, _update(pool, last));
+    }
+
+    /// @dev Shared core for both entries; the cadence check belongs to the caller and has passed.
+    ///      D.3 / PP-D52 (iv): the F-4 step is applied once per ELAPSED DAY rather than once per
+    ///      CALL, bounded at `MAX_CATCHUP_PERIODS`. Before this, fortnightly sampling decayed a
+    ///      drained pool fourteen times slower than daily sampling did, so a stale seed survived
+    ///      far past its half-life while `lastEMAUpdateBlock` still read fresh. ONE spot read
+    ///      serves every step: the loop replays the smoothing that should already have happened,
+    ///      it does not re-read the oracle per day. `sampleCount` counts CALLS rather than
+    ///      catch-up steps, and includes the cold-start seed.
+    /// @param pool The pool being sampled.
+    /// @param last The pool's previous `lastEMAUpdateBlock`; zero on cold start.
+    /// @return newEMA The post-update EMA value for the pool.
+    function _update(address pool, uint256 last) internal returns (uint256 newEMA) {
         uint256 spotTVL = TVL_ORACLE.tvl(pool);
 
         if (last == 0) {
@@ -159,16 +190,22 @@ contract EMASampler {
             newEMA = spotTVL;
             emaSeedBlock[pool] = block.number;
         } else {
-            // F-4 update: alpha = 2/61, half-life ~21 days.
-            newEMA = (
-                EMA_ALPHA_NUMERATOR * spotTVL +
-                (EMA_ALPHA_DENOMINATOR - EMA_ALPHA_NUMERATOR) * tvlEMA[pool]
-            ) / EMA_ALPHA_DENOMINATOR;
+            uint256 periods = (block.number - last) / AureumTime.BLOCKS_PER_DAY;
+            if (periods > MAX_CATCHUP_PERIODS) periods = MAX_CATCHUP_PERIODS;
+
+            newEMA = tvlEMA[pool];
+            for (uint256 i = 0; i < periods; i++) {
+                // F-4 update: alpha = 2/61, half-life ~21 days.
+                newEMA = (
+                    EMA_ALPHA_NUMERATOR * spotTVL +
+                    (EMA_ALPHA_DENOMINATOR - EMA_ALPHA_NUMERATOR) * newEMA
+                ) / EMA_ALPHA_DENOMINATOR;
+            }
         }
 
         tvlEMA[pool] = newEMA;
         lastEMAUpdateBlock[pool] = block.number;
-
+        sampleCount[pool] += 1;
         emit EMAUpdated(pool, spotTVL, newEMA, block.number);
     }
 }
