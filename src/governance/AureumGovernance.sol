@@ -444,6 +444,9 @@ contract AureumGovernance {
     ///      zero pool. A future seventh type must add its own branch or no-op, never inherit another's.
     function _executeProposal(uint256 proposalId, Proposal storage p) internal {
         if (p.proposalType == ProposalType.GaugeChallenge) {
+            // PP-D9's companion to PP-D51 (iii): `proposeGaugeChallenge` evaluates this at propose ONLY, and the
+            // `CompositionChallenge` branch below is what seats pools into slots, so a challenge banked while its
+            // target was slot-free would otherwise revoke a seated Miliarium pool at execute.
             if (SLOT_REGISTRY.slotOf(p.targetPool) != 0) revert GaugeTargetSlotted(p.targetPool);
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
         } else if (p.proposalType == ProposalType.CompositionChallenge) {
