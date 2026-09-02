@@ -1309,21 +1309,23 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertEq(svZchf.balanceOf(voter), 0, "the bond is still non-refundable - that is by design, not the defect");
     }
 
-    /// @notice P1 G.3 — a candidate is pre-poisoned by a permissionless `activateGauge`, and the
-    ///         poisoning is permanent because no writer returns a gauge status to `None`.
-    /// @dev Reproduction PoC for seam-1 root cause G.3 (High), fix-sequence rung 9.
-    ///      `GaugeRegistry.activateGauge` is permissionless for the 100 svZCHF anti-spam fee,
-    ///      `proposeCompositionChallenge` never reads the candidate's gauge status (`:239-245`
-    ///      checks only the composition quality gate), and `registerGaugeFromComposition` reverts
-    ///      `AlreadyGauged` on an `Active` pool (`GaugeRegistry.sol:168-171`). So any credible
-    ///      candidate becomes permanently unseatable the moment it carries the hook and clears
-    ///      the TVL floor, possibly years before anyone proposes it. The poisoning is driven
-    ///      BEFORE the proposal here because that is the finding's shape: propose-blindness is
-    ///      the first half, the execute revert the second. PP-D9 ties a `GaugeChallenge`
-    ///      execute-time `slotOf == 0` re-check to G.3's FIX; that is a fix constraint and does
-    ///      not bind this reproduction. The candidate is the railed C1 shape, initialized so the
-    ///      real TVLOracle values it: `_constellationRatio(svZCHF)` returns 1e18, so the svZCHF
-    ///      leg alone clears `TVL_FLOOR_SVZCHF` even if sUSDS resolves no venue.
+    /// @notice PP-D51 (ii) and (iii) regression — a candidate pre-poisoned by a permissionless
+    ///         `activateGauge` can still be challenged in, and still seats.
+    /// @dev Regression for seam-1 root cause G.3 (High), fixed at PP4.9; inverted from the
+    ///      reproduction `test_P1_G3_permissionlessActivationPermanentlyBricksCompositionChallenge`.
+    ///      Two changes close it together. `proposeCompositionChallenge` gates the candidate on
+    ///      `slotOf(newPool_) == 0` and NOT on `gaugeStatus == None`, so a poisoned candidate is
+    ///      still proposable; and `_executeProposal` TOLERATES an already-`Active` candidate,
+    ///      skipping `registerGaugeFromComposition` rather than reverting `AlreadyGauged`.
+    ///      THE POISONING STAYS BEFORE THE PROPOSE, and that ordering is what makes this case
+    ///      strict: a `None` propose gate would close the between-propose-and-execute race while
+    ///      leaving this one open, and would fail HERE, at the propose, never reaching execute.
+    ///      The poisoning is still permanent, no writer anywhere returning a gauge status to
+    ///      `None`, so the candidate is Active throughout and seats without a second registration.
+    ///      PP-D9's `GaugeChallenge` execute-time `slotOf == 0` re-check is the companion this
+    ///      tolerance requires and carries its own case. The candidate is the railed C1 shape,
+    ///      initialized so the real TVLOracle values it: `_constellationRatio(svZCHF)` returns
+    ///      1e18, so the svZCHF leg alone clears `TVL_FLOOR_SVZCHF` even if sUSDS resolves no venue.
     function test_challengeSurvivesGaugeActivation() public {
         address voter = makeAddr("p1_g3_voter");
         _seatVoter(voter);
