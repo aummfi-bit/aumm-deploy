@@ -1369,25 +1369,29 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         vm.stopPrank();
         assertEq(svZchf.balanceOf(voter), 0, "G.3 - bond donated at propose; no cancel and no refund path");
 
-        // (3) The vote passes, and execute reverts on the poisoning.
+        // (3) The vote passes and execute now SEATS the pre-poisoned candidate. PP-D51 (iii)
+        //     TOLERATES an already-`Active` candidate instead of re-registering it, so the
+        //     poisoning no longer bricks a mandate the electorate passed.
         _runProposalToQueued(id, voter);
         assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Queued), "passed 2/3 and queued");
-        vm.expectRevert(abi.encodeWithSelector(IGaugeRegistry.AlreadyGauged.selector, candidate));
         gov.execute(id);
 
-        // (4) Permanent: no writer returns a status to None, so every retry hits the same revert
-        //     and the proposal ages out of its grace window.
-        assertTrue(
-            gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active,
-            "G.3 - still Active; nothing returns a gauge to None"
-        );
-        AureumGovernance.Proposal memory p = gov.getProposal(id);
-        vm.roll(p.eta + AureumTime.BLOCKS_PER_EPOCH);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Expired), "G.3 - grace expired");
+        // (4) The slot changed hands and the incumbent was revoked, exactly as voted. The candidate
+        //     is still Active because the ATTACKER gauged it, not because composition did.
         assertEq(
             orchestrator.miliariumRegistry().poolAtSlot(5),
-            oldPool,
-            "G.3 - slot unchanged; a passed 2/3 supermajority defeated for 100 svZCHF"
+            candidate,
+            "G.3 - the pre-poisoned candidate seats; 100 svZCHF no longer defeats a 2/3 supermajority"
+        );
+        assertTrue(gr.gaugeStatus(oldPool) == IGaugeRegistry.GaugeStatus.Revoked, "G.3 - incumbent revoked as voted");
+        assertTrue(
+            gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active,
+            "G.3 - candidate Active throughout, seated without a second registration"
+        );
+        assertEq(
+            uint256(gov.state(id)),
+            uint256(AureumGovernance.ProposalState.Executed),
+            "G.3 - executed rather than aged out of its grace window"
         );
     }
 
