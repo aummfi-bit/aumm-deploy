@@ -1397,6 +1397,66 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
     }
 
+    function test_bankedGaugeChallengeCannotRevokeASeatedPool() public {
+        address voter = makeAddr("ppd9_voter");
+        _seatVoter(voter);
+        GaugeRegistry gr = orchestrator.gaugeRegistry();
+        AureumGovernance gov = orchestrator.governance();
+        address oldPool = orchestrator.miliariumRegistry().poolAtSlot(5);
+        address candidate = _buildCompositionCandidate();
+        IERC20[] memory tokens = vault.getPoolTokens(candidate);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = 30_000e18;
+        amountsIn[1] = 20_000e18;
+        _initializePool(candidate, tokens, amountsIn);
+
+        // Gauge it permissionlessly so it is a legal gauge-challenge target: Active, and unslotted.
+        address gauger = makeAddr("ppd9_gauger");
+        uint256 fee = gr.ANTI_SPAM_FEE();
+        deal(address(svZchf), gauger, fee);
+        vm.startPrank(gauger);
+        svZchf.approve(address(gr), fee);
+        gr.activateGauge(candidate);
+        vm.stopPrank();
+        assertTrue(gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active, "premise - candidate is Active");
+        assertEq(orchestrator.miliariumRegistry().slotOf(candidate), 0, "premise - candidate is unslotted");
+
+        // Both proposals open in one block: a gauge challenge banked against the pool, and a
+        // composition challenge that will seat that same pool into slot 5.
+        deal(address(svZchf), voter, PROPOSAL_DEPOSIT * 2);
+        vm.startPrank(voter);
+        svZchf.approve(address(gov), PROPOSAL_DEPOSIT * 2);
+        uint256 idGauge = gov.proposeGaugeChallenge(candidate, svZchf);
+        uint256 idComp = gov.proposeCompositionChallenge(5, candidate, svZchf);
+        vm.stopPrank();
+
+        AureumGovernance.Proposal memory pg = gov.getProposal(idGauge);
+        vm.roll(pg.snapshotBlock + 1);
+        vm.startPrank(voter);
+        gov.castVote(idGauge, true);
+        gov.castVote(idComp, true);
+        vm.stopPrank();
+
+        vm.roll(pg.endBlock + 1);
+        gov.queue(idGauge);
+        gov.queue(idComp);
+        vm.roll(gov.getProposal(idGauge).eta);
+
+        // Composition executes first and seats the candidate.
+        gov.execute(idComp);
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidate, "candidate seated by composition");
+        assertTrue(gr.gaugeStatus(oldPool) == IGaugeRegistry.GaugeStatus.Revoked, "incumbent revoked as voted");
+
+        // PP-D9: the banked challenge now re-checks slot membership at execute and refuses.
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.GaugeTargetSlotted.selector, candidate));
+        gov.execute(idGauge);
+        assertTrue(
+            gr.gaugeStatus(candidate) == IGaugeRegistry.GaugeStatus.Active,
+            "PP-D9 - the seated pool keeps its gauge; a stale challenge cannot strip it"
+        );
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidate, "PP-D9 - and keeps its slot");
+    }
+
     /// @dev G.2 second candidate — identical shape to `_buildCompositionCandidate`, distinct salt
     ///      and symbol so both can exist in one test. Railed and CQG-clean; no initialization is
     ///      needed because `registerGaugeFromComposition` is onlyGovernance and never runs
