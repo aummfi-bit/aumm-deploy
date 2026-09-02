@@ -1306,6 +1306,10 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
             candidate,
             "C.6 - the slot moved to the candidate the vote approved"
         );
+        assertTrue(
+            gr.gaugeStatus(oldPool) == IGaugeRegistry.GaugeStatus.Revoked,
+            "C.6 - and the incumbent it displaced was revoked, which is what makes the slot move real"
+        );
         assertEq(svZchf.balanceOf(voter), 0, "the bond is still non-refundable - that is by design, not the defect");
     }
 
