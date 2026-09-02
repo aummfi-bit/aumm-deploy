@@ -1441,7 +1441,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     ///      both proposals are honest and neither proposer is adversarial. Driven inline rather
     ///      than through `_runProposalToQueued`: both proposals share one schedule, so a second
     ///      call would roll backward to a snapshot already passed.
-    function test_P1_G2_secondSlotChallengeRevokesTheWinnerOfTheFirst() public {
+    function test_challengeIncumbentFrozenAtPropose() public {
         address voter = makeAddr("p1_g2_voter");
         _seatVoter(voter);
         GaugeRegistry gr = orchestrator.gaugeRegistry();
