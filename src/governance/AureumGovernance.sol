@@ -459,6 +459,10 @@ contract AureumGovernance {
             if (candidateStatus == IGaugeRegistry.GaugeStatus.Revoked) revert CompositionCandidateRevoked(p.newPool);
             GAUGE_REGISTRY.revokeGauge(p.targetPool);
             SLOT_REGISTRY.replaceSlot(p.slot, p.newPool);
+            // PP-D51 (iii): `Active` is TOLERATED rather than re-registered. `activateGauge` is permissionless
+            // for the anti-spam fee, so reverting here would let anyone brick a passed mandate, which is G.3
+            // itself. `Revoked` reverted above instead, being reachable only through governance. The
+            // `GaugeChallenge` branch above carries PP-D9's re-check, the companion this tolerance requires.
             if (candidateStatus != IGaugeRegistry.GaugeStatus.Active) {
                 GAUGE_REGISTRY.registerGaugeFromComposition(p.newPool);
             }
