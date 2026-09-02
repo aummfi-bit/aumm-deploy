@@ -12,11 +12,11 @@ Public site: <https://aumm.fi> · Canonical spec: [aummfi-bit/aumm-site](https:/
 
 ## Current status
 
-**Stages A through P are complete** — tagged `stage-a-complete` through `stage-p-complete` — and **Stage P-bis is in flight**: workstream A (open-issue close-out) closed with every item Fixed, Built, or explicitly descoped with rationale; workstream B (Sepolia testnet go-live) executed; workstream C (the `aumm-app` frontend against live Sepolia) underway. Stage Q narrows to the external audit engagement; Stage R is mainnet.
+**Stages A through P are complete** — tagged `stage-a-complete` through `stage-p-complete`. **Stage P-bis** (open-issue close-out, Sepolia go-live, the `aumm-app` frontend) is built out but not closed. **Stage P-prime is the live stage**: a first external security audit ran against the frozen candidate and returned 82 confirmed findings, which [`docs/STAGE_P_PRIME_PLAN.md`](docs/STAGE_P_PRIME_PLAN.md) collapses into 51 distinct root causes across eight families, now being remediated rung by rung against a locked fix ordering. Stage Q narrows to the external audit engagement; Stage R is mainnet.
 
-**The full protocol is live on Sepolia** (chain 11155111): 53 protocol contracts — the base layer, the Stage F–K emission and governance stack, the canonical Router, and 26 of the 28 Miliarium slots deployed and capitalised — plus 59 stub tokens standing in for mainnet assets, all explorer-verified, the TVL oracle wired, and the emission genesis block sealed on-chain. Addresses live in [`deployments/11155111.json`](deployments/11155111.json); the authoritative per-transaction history, including two abandoned earlier generations, is [`docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`](docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md).
+**The protocol has been deployed end to end on Sepolia** (chain 11155111): 53 protocol contracts — the base layer, the Stage F–K emission and governance stack, the canonical Router, and 26 of the 28 Miliarium slots deployed and capitalised — plus 59 stub tokens standing in for mainnet assets, all explorer-verified, the TVL oracle wired, and the emission genesis block sealed on-chain. **That generation is retired rather than current**: the audit remediation changes contracts whose bindings are immutable or one-shot, so it cannot be patched in place and a fresh generation redeploys after the Stage P-prime exit gate. Addresses live in [`deployments/11155111.json`](deployments/11155111.json); the authoritative per-transaction history, including the abandoned earlier generations, is [`docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md`](docs/STAGE_P_BIS_SEPOLIA_DEPLOYMENT_RECORD.md).
 
-White-hat ledger: findings F-01 through F-23, **zero open** — each Fixed, Split, or Accepted-risk with recorded rationale ([`docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`](docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md)). Formal methods: 55/55 hevm symbolic proofs green across the four Aureum-owned surfaces, plus nine Act specs ([`formal/RESULTS.md`](formal/RESULTS.md)). Unit gate: 1005 tests green as of the 2026-08 Sepolia generation-3 refresh (run split-form per Quick start).
+**White-hat ledger** ([`docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md`](docs/white_hat/AUREUM_WHITEHAT_OUTPUT.md)) — 74 findings across two blocks. The pre-audit block F-01…F-23 is closed: 21 Fixed, one Split, one Accepted-risk, each with recorded rationale. The external-audit block F-24…F-74 is **open**: 14 Fixed, 1 Accepted-risk, **36 still to be remediated**. **Formal methods** ([`formal/RESULTS.md`](formal/RESULTS.md)): the hevm bundle last attested 55/55 at commit `9c109b1`, and **that attestation is stale** — one property is provably false against a later widening of the authorizer's emergency set, and the bundle is deliberately not re-run until the patch cycle ends. Unit gate: 1085 passed, 1 skipped of 1086 across 90 suites (run split-form per Quick start).
 
 | Stage | Focus | Status |
 |---|---|---|
@@ -36,7 +36,8 @@ White-hat ledger: findings F-01 through F-23, **zero open** — each Fixed, Spli
 | N | Miliarium pools, Sector 3 — the 18-pool tranche + the rate-provider surface | Complete |
 | O | Composition-fitness gate (OQ-7) for governance composition challenges | Complete |
 | P | White-hat back-fill sweep + full-system deploy validation on a mainnet fork | Complete |
-| P-bis | Open-issue close-out + Sepolia go-live + frontend | **In flight — current** |
+| P-bis | Open-issue close-out + Sepolia go-live + frontend | Built, not closed |
+| P-prime | First external security audit — remediation of 51 root causes | **In flight — current** |
 | Q | External audit engagement | Pending |
 | R | Mainnet deployment — terminal stage | Pending |
 
