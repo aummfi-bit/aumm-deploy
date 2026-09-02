@@ -1484,12 +1484,16 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertTrue(gr.gaugeStatus(incumbent) == IGaugeRegistry.GaugeStatus.Revoked, "incumbent revoked as voted");
         assertTrue(gr.gaugeStatus(candidateA) == IGaugeRegistry.GaugeStatus.Active, "A gauged from composition");
 
-        // Second challenge re-resolves the victim at execute and takes A instead of the incumbent.
+        // B's mandate named the incumbent at propose. A holds the slot now, so the pin fails and B
+        // cannot revoke a pool its voters never saw on the ballot.
+        vm.expectRevert(
+            abi.encodeWithSelector(AureumGovernance.CompositionIncumbentChanged.selector, incumbent, candidateA)
+        );
         gov.execute(idB);
-        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidateB, "B seated");
+        assertEq(orchestrator.miliariumRegistry().poolAtSlot(5), candidateA, "G.2 - A keeps the slot");
         assertTrue(
-            gr.gaugeStatus(candidateA) == IGaugeRegistry.GaugeStatus.Revoked,
-            "G.2 - A was terminally revoked by a mandate its voters cast against the incumbent"
+            gr.gaugeStatus(candidateA) == IGaugeRegistry.GaugeStatus.Active,
+            "G.2 - A survives the stale mandate that would have revoked it"
         );
     }
 
