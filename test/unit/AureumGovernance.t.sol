@@ -360,6 +360,24 @@ contract AureumGovernanceTest is Test {
         vm.expectRevert(AureumGovernance.ZeroAddress.selector);
         gov.proposeCompositionChallenge(5, address(0), IERC20(address(svZchf)));
     }
+    /// @dev PP-D51 (ii): the candidate gate is SLOT MEMBERSHIP. A pool already seated in the
+    ///      constellation cannot be proposed into a second slot, and the gate fires at PROPOSE so
+    ///      the bond is never donated. The G.3 fork witness covers the permissive direction, an
+    ///      already-`Active` candidate being accepted; this covers the restrictive one.
+    function test_proposeComposition_revert_candidateAlreadySlotted() public {
+        slotReg.setSlotOf(candidatePool, 7);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.CompositionCandidateSlotted.selector, candidatePool));
+        gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
+    }
+    /// @dev PP-D51 (iii): `Revoked` is REJECTED where `Active` is tolerated, because unlike `Active`
+    ///      it is not attacker-reachable: `revokeGauge` is `onlyGovernance` and
+    ///      `revokeGaugeIfIneligible` fires only once the rail conjunct has genuinely fallen. The
+    ///      same predicate is re-checked at execute, so a candidate revoked mid-flight also fails.
+    function test_proposeComposition_revert_candidateRevoked() public {
+        gaugeReg.setGaugeStatus(candidatePool, IGaugeRegistry.GaugeStatus.Revoked);
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.CompositionCandidateRevoked.selector, candidatePool));
+        gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
+    }
     function test_proposeFee_happyPath_depositsAndRecords() public {
         uint256 start = block.number;
         vm.expectEmit(address(gov));
