@@ -135,12 +135,21 @@ contract VotingWeight is IVotingWeight {
     /// @param holder The holder whose checkpoint is refreshed.
     function poke(address holder) external {
         uint256 newWeight = 0;
+        bool anyStaleZero = false;
         uint256 count = REGISTRY.miliariumPoolsCount();
         for (uint256 i = 0; i < count; i++) {
-            newWeight += _positionPower(REGISTRY.miliariumPoolAt(i), holder);
+            (uint256 power, bool staleZero) = _positionPower(REGISTRY.miliariumPoolAt(i), holder);
+            newWeight += power;
+            if (staleZero) anyStaleZero = true;
         }
         uint256 oldWeight = _holderWeight[holder];
         if (newWeight == oldWeight) return;
+        // PP-D52 (ix), shape (A prime) — a reduction CAUSED BY a stale EMA is never banked into
+        // checkpoint history: `getPastTotalSupply` reads that history, so a proposal snapshotted
+        // inside the outage would stay Defeated even after the EMA recovered. Upward moves and
+        // non-staleness reductions still write, so recovery and genuine withdrawal are unaffected
+        // and a new qualifier can enter during an outage. INV-8 holds — this returns, never reverts.
+        if (newWeight < oldWeight && anyStaleZero) return;
         _holderWeight[holder] = newWeight;
         if (newWeight > oldWeight) {
             _totalQualifiedWeight += newWeight - oldWeight;
@@ -159,19 +168,24 @@ contract VotingWeight is IVotingWeight {
     ///      degenerate input (immature/never-seeded/stale EMA, zero LP, fully-moved capped LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
     /// @param holder The holder.
-    /// @return The position's governance power (18-dec).
-    function _positionPower(address pool, address holder) internal view returns (uint256) {
-        if (!GAUGE_REGISTRY.isGaugeApproved(pool)) return 0;
+    /// @return power The position's governance power (18-dec).
+    /// @return staleZero True ONLY when the pool's TVL EMA is stale (PP-D52 (ix)); every other zero
+    ///         this function returns is a legitimate absence and must still ratchet the checkpoint down.
+    function _positionPower(address pool, address holder) internal view returns (uint256 power, bool staleZero) {
+        if (!GAUGE_REGISTRY.isGaugeApproved(pool)) return (0, false);
         uint256 seedBlock = EMA_SAMPLER.emaSeedBlock(pool);
-        if (seedBlock == 0) return 0;
-        if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return 0;
-        if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return 0;
+        if (seedBlock == 0) return (0, false);
+        if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return (0, false);
+        // PP-D52 (ix) — this is the ONLY branch that sets `staleZero`. Every other zero below is a
+        // legitimate absence (no gauge, immature EMA, no position, sub-cliff, capped LP, dust share)
+        // and must keep ratcheting the checkpoint down; only a stale oracle is held.
+        if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return (0, true);
         uint256 eqb = RECORDER.effectiveQualBlock(pool, holder);
-        if (eqb == 0) return 0;
+        if (eqb == 0) return (0, false);
         uint256 timeInPool = block.number - eqb;
-        if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return 0;
+        if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return (0, false);
         uint256 totalLP = RECORDER.poolTotalLP(pool);
-        if (totalLP == 0) return 0;
+        if (totalLP == 0) return (0, false);
         uint256 lp = RECORDER.userLP(pool, holder);
         // F-17 / P-D18 read-cap: cap the numerator at the holder's live BPT balance so a phantom position
         // (recorded userLP over balanceOf, from an out-of-band BPT move that skipped the recorder) confers no
@@ -179,11 +193,11 @@ contract VotingWeight is IVotingWeight {
         // EmissionDistributor.syncPosition — so the cap only ever under-counts.
         uint256 held = IERC20(pool).balanceOf(holder);
         if (held < lp) lp = held;
-        if (lp == 0) return 0;
+        if (lp == 0) return (0, false);
         uint256 ema = EMA_SAMPLER.tvlEMA(pool);
-        if (ema == 0) return 0;
+        if (ema == 0) return (0, false);
         uint256 share = lp.divDown(totalLP);
-        if (share == 0) return 0;
+        if (share == 0) return (0, false);
         uint256 cappedTime = timeInPool > AureumTime.ON_RAMP_PERIOD_BLOCKS
             ? AureumTime.ON_RAMP_PERIOD_BLOCKS
             : timeInPool;
@@ -191,6 +205,6 @@ contract VotingWeight is IVotingWeight {
         uint256 exponent = block.number < AureumTime.firstHalvingBlock(GENESIS_BLOCK)
             ? ERA0_EXPONENT
             : ERA1_PLUS_EXPONENT;
-        return ema.powDown(exponent).mulDown(share).mulDown(timeFactor);
+        return (ema.powDown(exponent).mulDown(share).mulDown(timeFactor), false);
     }
 }
