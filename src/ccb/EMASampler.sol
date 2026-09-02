@@ -46,6 +46,20 @@ contract EMASampler {
     ///         Half-life ~21 days; 60-day horizon framing per OQ-5a.
     uint256 public constant EMA_ALPHA_DENOMINATOR = 61;
 
+    /// @notice Minimum successful samples before a pool's EMA counts as mature (D.1 / PP-D52 (i)).
+    /// @dev    60 = 432_000 / 7_200 — the 60-day maturity window already locked elsewhere, restated
+    ///         in the sampler's own unit, so NO new constant is adjudicated per PP-D43's fifth
+    ///         obligation. It is a LITERAL and not a read of `EMA_MATURITY_BLOCKS`, which is
+    ///         `internal constant` on `EmissionDistributor` and `VotingWeight` and is therefore
+    ///         unreachable through a contract type — PP-D50 (xiii)'s G10 miss, not repeated here.
+    uint256 public constant MIN_SAMPLES = 60;
+
+    /// @notice Ceiling on decay steps applied in a single update (D.3 / PP-D52 (iv)).
+    /// @dev    Aligned to `MIN_SAMPLES` rather than adjudicated separately: a pool left unsampled
+    ///         for longer than the maturity window decays by at most one window's worth per call,
+    ///         which bounds the loop's gas on the folded path.
+    uint256 public constant MAX_CATCHUP_PERIODS = 60;
+
     // -------------------------------------------------------------------------
     // Immutables
     // -------------------------------------------------------------------------
@@ -71,6 +85,11 @@ contract EMASampler {
     /// @notice Per-pool block number of the first updateEMA seed per F-D15.
     ///         Zero indicates "never sampled". Written exactly once.
     mapping(address => uint256) public emaSeedBlock;
+
+    /// @notice Per-pool count of successful updates, the cold-start seed included (D.1 / PP-D52 (i)).
+    /// @dev    Maturity measured in TIME cannot distinguish two samples sixty days apart from sixty
+    ///         daily ones; this is the quantity that can. Consumers gate on `>= MIN_SAMPLES`.
+    mapping(address => uint256) public sampleCount;
 
     // -------------------------------------------------------------------------
     // Events
