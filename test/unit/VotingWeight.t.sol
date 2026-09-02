@@ -12,6 +12,11 @@ contract MockEMASampler is IEMASampler {
     mapping(address => uint256) public tvlEMA;
     mapping(address => uint256) public lastEMAUpdateBlock;
     mapping(address => uint256) public emaSeedBlock;
+    mapping(address => uint256) public sampleCount;
+
+    function setSampleCount(address pool, uint256 n) external {
+        sampleCount[pool] = n;
+    }
 
     function setTvlEMA(address pool, uint256 value) external {
         tvlEMA[pool] = value;
