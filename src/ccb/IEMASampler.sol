@@ -31,4 +31,11 @@ interface IEMASampler {
     ///      cannot distinguish two samples sixty days apart from sixty daily ones. `EMASampler.sol`
     ///      `public sampleCount` satisfies this via its Solidity auto-generated getter.
     function sampleCount(address pool) external view returns (uint256);
+
+    /// @notice The sample floor a pool's EMA must reach before consumers treat it as mature.
+    /// @return The minimum successful-sample count, 60 per D.1 / PP-D52 (ii).
+    /// @dev PP-D52 (x) — this getter is the ONLY way a consumer may obtain the threshold.
+    ///      `EMASampler` declares it `public constant`, which is unreachable through a contract
+    ///      type from a holder of this interface, so the value is read here rather than mirrored.
+    function MIN_SAMPLES() external view returns (uint256);
 }
