@@ -165,6 +165,7 @@ contract AureumGovernance {
     error CompositionCandidateSlotted(address pool);
     error CompositionCandidateRevoked(address pool);
     error GaugeTargetSlotted(address pool);
+    error ZeroQualifiedWeight();
 
     constructor(
         IVotingWeight votingWeight_,
@@ -217,6 +218,13 @@ contract AureumGovernance {
     ///      `approve` this contract before calling; deposit is non-refundable (permanent Bodensee donation per
     ///      K-D6d). This contract must be an `authorizedDonator` on `BODENSEE_CHANNEL` (G-D21, wired at K7).
     function _createProposal(ProposalType proposalType_, address targetPool_, address newPool_, uint256 slot_, uint256 newFee_, address newAuthorizer_, bool railAdmittedAtPropose_, IERC20 payToken_) internal returns (uint256 proposalId) {
+        // PP-D52 (v), D.5 clause 4 — refuse the bond when the electorate is empty. This reads LIVE
+        // supply, NOT the `getPastTotalSupply(p.snapshotBlock)` that F-21 guards at `_voteSucceeded`:
+        // the snapshot block is still in the future here, so the two are different quantities and a
+        // live zero cannot prove a snapshot zero or the reverse. It exists to stop a bond burning
+        // irreversibly during the structural launch-window zero, where `_positionPower` short-circuits
+        // for every holder until a pool's EMA matures. It is NOT a completeness guarantee.
+        if (VOTING_WEIGHT.totalSupply() == 0) revert ZeroQualifiedWeight();
         uint256 amount = _depositAmount(payToken_);
         payToken_.safeTransferFrom(msg.sender, address(BODENSEE_CHANNEL), amount);
         BODENSEE_CHANNEL.donate(payToken_, amount);
