@@ -18,6 +18,10 @@ contract MockEMASampler is IEMASampler {
         sampleCount[pool] = n;
     }
 
+    function MIN_SAMPLES() external pure returns (uint256) {
+        return 60;
+    }
+
     function setTvlEMA(address pool, uint256 value) external {
         tvlEMA[pool] = value;
     }

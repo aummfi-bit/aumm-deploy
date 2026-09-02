@@ -130,6 +130,10 @@ contract MockEMASampler is IEMASampler {
         sampleCount[pool] = n;
     }
 
+    function MIN_SAMPLES() external pure returns (uint256) {
+        return 60;
+    }
+
     /// @notice Sets the pool's TVL EMA and, on first seed, stamps `emaSeedBlock` to 1 — an ancient seed so the F-10 / F-04 maturity gate (EMA_MATURITY_BLOCKS = 432_000) always passes for tests rolling at or after GENESIS_BLOCK_ = 1_000_000. F-10 gate boundaries are exercised by test/whitehat/F10_emaScoreGate.t.sol, not this neutralizing mock.
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;
