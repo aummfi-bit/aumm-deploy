@@ -23,4 +23,12 @@ interface IEMASampler {
     /// @return The block number of the first seed for `pool`; zero means never sampled.
     /// @dev `EMASampler.sol` `public emaSeedBlock` mapping satisfies this interface via Solidity auto-generated getters.
     function emaSeedBlock(address pool) external view returns (uint256);
+
+    /// @notice Per-pool count of successful `updateEMA` calls, the cold-start seed included.
+    /// @param pool The Balancer V3 pool address.
+    /// @return The number of samples taken for `pool`.
+    /// @dev Consumers gate on `>= MIN_SAMPLES` per D.1 / PP-D52 (i): maturity measured in TIME
+    ///      cannot distinguish two samples sixty days apart from sixty daily ones. `EMASampler.sol`
+    ///      `public sampleCount` satisfies this via its Solidity auto-generated getter.
+    function sampleCount(address pool) external view returns (uint256);
 }
