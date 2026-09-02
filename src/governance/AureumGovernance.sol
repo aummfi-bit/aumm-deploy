@@ -449,10 +449,16 @@ contract AureumGovernance {
         } else if (p.proposalType == ProposalType.CompositionChallenge) {
             if (!p.railAdmittedAtPropose) revert RailConjunctSnapshotFalse(proposalId);
             if (!GAUGE_REGISTRY.meetsCompositionQualityGate(p.newPool)) revert CompositionQualityGateFailed(p.newPool);
-            address oldPool = SLOT_REGISTRY.poolAtSlot(p.slot);
-            GAUGE_REGISTRY.revokeGauge(oldPool);
+            address currentIncumbent = SLOT_REGISTRY.poolAtSlot(p.slot);
+            if (currentIncumbent != p.targetPool) revert CompositionIncumbentChanged(p.targetPool, currentIncumbent);
+            if (SLOT_REGISTRY.slotOf(p.newPool) != 0) revert CompositionCandidateSlotted(p.newPool);
+            IGaugeRegistry.GaugeStatus candidateStatus = GAUGE_REGISTRY.gaugeStatus(p.newPool);
+            if (candidateStatus == IGaugeRegistry.GaugeStatus.Revoked) revert CompositionCandidateRevoked(p.newPool);
+            GAUGE_REGISTRY.revokeGauge(p.targetPool);
             SLOT_REGISTRY.replaceSlot(p.slot, p.newPool);
-            GAUGE_REGISTRY.registerGaugeFromComposition(p.newPool);
+            if (candidateStatus != IGaugeRegistry.GaugeStatus.Active) {
+                GAUGE_REGISTRY.registerGaugeFromComposition(p.newPool);
+            }
         } else if (p.proposalType == ProposalType.FeeChange) {
             if (block.number < lastFeeChangeBlock[p.targetPool] + FEE_CHANGE_COOLDOWN_BLOCKS) revert FeeCooldownActive(p.targetPool);
             lastFeeChangeBlock[p.targetPool] = block.number;
