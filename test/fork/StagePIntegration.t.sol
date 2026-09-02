@@ -1426,21 +1426,22 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
     }
 
-    /// @notice P1 G.2 — a composition challenge is a mandate against a SLOT, not against the pool
-    ///         the electorate voted to remove, so the second of two concurrent challenges revokes
-    ///         the winner of the first.
-    /// @dev Reproduction PoC for seam-1 root cause G.2 (Medium), fix-sequence rung 9.
-    ///      `proposeCompositionChallenge` stores the slot index and passes `address(0)` as
-    ///      `targetPool`, so nothing records which occupant the vote was against; `_executeProposal`
-    ///      then re-resolves `SLOT_REGISTRY.poolAtSlot(p.slot)` at EXECUTE time and terminally
-    ///      revokes whoever is sitting there (`AureumGovernance.sol:428-433`). `_createProposal`
-    ///      has no per-slot dedup, so two challenges on one slot both open. Both are proposed
-    ///      here against the SAME incumbent and both pass; executing them in order seats A and
-    ///      then revokes A on behalf of voters who never saw A on the ballot. The plan records
-    ///      the realistic path as an honest double-proposal accident, not an attack, which is why
-    ///      both proposals are honest and neither proposer is adversarial. Driven inline rather
-    ///      than through `_runProposalToQueued`: both proposals share one schedule, so a second
-    ///      call would roll backward to a snapshot already passed.
+    /// @notice PP-D51 (i) regression — a composition challenge is a mandate against the pool the
+    ///         electorate voted to remove, frozen at propose, so the second of two concurrent
+    ///         challenges can no longer revoke the winner of the first.
+    /// @dev Regression for seam-1 root cause G.2 (Medium), fixed at PP4.9; inverted from the
+    ///      reproduction `test_P1_G2_secondSlotChallengeRevokesTheWinnerOfTheFirst`.
+    ///      `proposeCompositionChallenge` now stores `poolAtSlot(slot_)` in `targetPool`, the field
+    ///      it previously passed as `address(0)`, and `_executeProposal` pins
+    ///      `poolAtSlot(p.slot) == p.targetPool` before revoking, reverting
+    ///      `CompositionIncumbentChanged(expected, actual)` once the slot has moved on.
+    ///      `_createProposal` still has NO per-slot dedup and concurrent challenges stay LEGAL at
+    ///      creation BY DESIGN: the gate sits at redemption, so an honest double-proposal fails
+    ///      loudly instead of executing a mandate nobody cast. The first half of this case is
+    ///      unchanged from the reproduction and is the POSITIVE CONTROL: challenge A must still
+    ///      seat exactly as its voters intended, or the second half would pass vacuously. Driven
+    ///      inline rather than through `_runProposalToQueued`: both proposals share one schedule,
+    ///      so a second call would roll backward to a snapshot already passed.
     function test_challengeIncumbentFrozenAtPropose() public {
         address voter = makeAddr("p1_g2_voter");
         _seatVoter(voter);
