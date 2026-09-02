@@ -1324,7 +1324,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     ///      not bind this reproduction. The candidate is the railed C1 shape, initialized so the
     ///      real TVLOracle values it: `_constellationRatio(svZCHF)` returns 1e18, so the svZCHF
     ///      leg alone clears `TVL_FLOOR_SVZCHF` even if sUSDS resolves no venue.
-    function test_P1_G3_permissionlessActivationPermanentlyBricksCompositionChallenge() public {
+    function test_challengeSurvivesGaugeActivation() public {
         address voter = makeAddr("p1_g3_voter");
         _seatVoter(voter);
         GaugeRegistry gr = orchestrator.gaugeRegistry();
