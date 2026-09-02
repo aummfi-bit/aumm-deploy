@@ -4,6 +4,8 @@ Foundry monorepo for **Aureum** — an automated market maker built as a paralle
 
 Public site: <https://aumm.fi> · Canonical spec: [aummfi-bit/aumm-site](https://github.com/aummfi-bit/aumm-site)
 
+> **This branch is not current.** `main` is 1072 commits behind active development and describes the repository as it stood at Stage K. Current work — including a first external security audit whose remediation is in progress, with 36 findings still open — lives on the [`stage-p-prime`](https://github.com/aummfi-bit/aumm-deploy/blob/stage-p-prime/README.md) branch, whose README carries accurate status. Everything below describes an earlier state of the project.
+
 > **Scope.** This repository contains the **full Aureum protocol** — the parallel Vault customization *and* the complete tokenomic layer: the AuMM token, fee routing, the CCB engine, gauges, emission, the Miliarium registry, and on-chain governance. (Earlier revisions of this README described a Vault-only repo with tokenomics living elsewhere — that is no longer the case; everything is here.)
 >
 > **Canonical specs.** All protocol specifications — mental model, tokenomics, constitution, formulas (F-0…F-12), the 28-pool Miliarium Aureum registry — live in [aummfi-bit/aumm-site](https://github.com/aummfi-bit/aumm-site). Constants and logic here reference that spec by path; they do not duplicate it.
