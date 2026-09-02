@@ -1397,6 +1397,21 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
     }
 
+    /// @notice PP-D51 (iv) regression, the PP-D9 companion — a gauge challenge banked against an
+    ///         unslotted pool cannot revoke it once composition has seated it in the constellation.
+    /// @dev PP-D9 records a coupling that carries NO queue row of its own, which is why PP-D51 (vi)
+    ///      makes this witness mandatory rather than optional: without it the guard would ship on an
+    ///      argument alone. `proposeGaugeChallenge` requires `gaugeStatus == Active && slotOf == 0`
+    ///      at PROPOSE, and before this rung that was the ONLY evaluation — `_executeProposal`
+    ///      revoked `p.targetPool` unconditionally. A composition challenge executing in between
+    ///      seats the pool into a slot, after which the banked gauge challenge would terminally
+    ///      revoke a seated Miliarium pool that no composition vote had removed. Both proposals are
+    ///      opened in the SAME block against the SAME pool and share one schedule, so they are
+    ///      driven inline rather than through `_runProposalToQueued`, which would roll backward to
+    ///      a snapshot already passed. The candidate is gauged permissionlessly first because a
+    ///      gauge challenge needs an `Active` target: that is G.3's poisoning primitive reused as
+    ///      ordinary setup, not an attack, and it is legal here precisely because PP-D51 (iii)
+    ///      stopped an `Active` candidate from bricking composition.
     function test_bankedGaugeChallengeCannotRevokeASeatedPool() public {
         address voter = makeAddr("ppd9_voter");
         _seatVoter(voter);
