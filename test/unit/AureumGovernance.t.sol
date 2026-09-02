@@ -338,7 +338,7 @@ contract AureumGovernanceTest is Test {
         assertEq(gov.proposalCount(), 1);
         AureumGovernance.Proposal memory p = gov.getProposal(1);
         assertEq(uint256(p.proposalType), uint256(AureumGovernance.ProposalType.CompositionChallenge));
-        assertEq(p.targetPool, address(0));
+        assertEq(p.targetPool, occupantPool, "PP-D51 (i) - targetPool now carries the incumbent frozen at propose");
         assertEq(p.newPool, candidatePool);
         assertEq(p.slot, 5);
         assertEq(p.newFee, 0);
