@@ -22,8 +22,13 @@ contract MockEMASampler is IEMASampler {
         return 60;
     }
 
+    /// @notice Sets the pool's TVL EMA and, on first write, stamps `sampleCount` to 60 — a
+    ///         neutralizing mock, so the D.1 sample floor (PP-D52 (i)) always passes for tests that
+    ///         are not about it. The 60 matches this mock's own `MIN_SAMPLES()` and must move with
+    ///         it. Seed age is set separately here via `setSeedBlock`.
     function setTvlEMA(address pool, uint256 value) external {
         tvlEMA[pool] = value;
+        if (sampleCount[pool] == 0) sampleCount[pool] = 60;
     }
 
     function setSeedBlock(address pool, uint256 blockNo) external {

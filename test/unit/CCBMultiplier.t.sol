@@ -51,8 +51,14 @@ contract MockEMASampler is IEMASampler {
         return 60;
     }
 
+    /// @notice Sets the pool's TVL EMA and, on first write, stamps `sampleCount` to 60 — a
+    ///         neutralizing mock, so the D.1 sample floor (PP-D52 (i)) always passes for tests that
+    ///         are not about it. The 60 matches this mock's own `MIN_SAMPLES()` and must move with
+    ///         it. Sample-floor boundaries belong in a dedicated suite, as F-10 does for the
+    ///         time-based gate.
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;
+        if (sampleCount[pool] == 0) sampleCount[pool] = 60;
     }
 
     function setLastEMAUpdateBlock(address pool, uint256 b) external {

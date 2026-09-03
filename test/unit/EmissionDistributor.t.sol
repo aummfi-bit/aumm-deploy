@@ -134,10 +134,11 @@ contract MockEMASampler is IEMASampler {
         return 60;
     }
 
-    /// @notice Sets the pool's TVL EMA and, on first seed, stamps `emaSeedBlock` to 1 — an ancient seed so the F-10 / F-04 maturity gate (EMA_MATURITY_BLOCKS = 432_000) always passes for tests rolling at or after GENESIS_BLOCK_ = 1_000_000. F-10 gate boundaries are exercised by test/whitehat/F10_emaScoreGate.t.sol, not this neutralizing mock.
+    /// @notice Sets the pool's TVL EMA and, on first seed, stamps `emaSeedBlock` to 1 — an ancient seed so the F-10 / F-04 maturity gate (EMA_MATURITY_BLOCKS = 432_000) always passes for tests rolling at or after GENESIS_BLOCK_ = 1_000_000 — and stamps `sampleCount` to 60, so the D.1 sample floor (PP-D52 (i)) passes on the same neutralizing basis. The 60 matches this mock's own `MIN_SAMPLES()` and must move with it. Both gate boundaries are exercised in dedicated suites, F-10 for time and D.1's witness for samples, not this mock.
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;
         if (emaSeedBlock[pool] == 0) emaSeedBlock[pool] = 1;
+        if (sampleCount[pool] == 0) sampleCount[pool] = 60;
     }
 
     function tvlEMA(address pool) external view override returns (uint256) {
