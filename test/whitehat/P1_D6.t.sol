@@ -15,8 +15,9 @@ import {MockVaultExplorer, MockBasePoolFactory, MockWeightedPool} from "test/for
 import {MockGaugeRegistry, MockMiliariumRegistry, MockRecorder} from "test/unit/VotingWeight.t.sol";
 
 /// @notice In production the throw originates in a third-party getRate() reached inside
-///         the Vault's getPoolData; this double raises it from the sibling unguarded read
-///         in TVLOracle.sol:328-330, which is the root cause the D.6 row names.
+///         the Vault's getPoolData; this double raises it from the sibling read, which was
+///         unguarded at TVLOracle.sol:328-330 when the D.6 row named it and is wrapped at
+///         :342 since PP4.10g1, so the double now drives leg 1 of the regression.
 contract P1_D6_RevertingVenue {
     error RateProviderReverted();
 
@@ -195,8 +196,18 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
         assertEq(tvlOracle.tvl(healthy), 400e18, "leg 3: pool-tokens revert excludes the venue");
     }
 
-    /// @dev Stamp freeze case — a reverting venue blocks refresh and the electorate goes to zero.
-    function test_P1_D6_frozenStampZeroesTheElectorateAfterTheFreshnessWindow() public {
+    /// @notice The fix (PP-D52 (vi) / (xi), D.6), second face: the sampler's stamp keeps advancing
+    ///         and the electorate holds while a reverting venue sits permanently in the roster.
+    ///         EMASampler._update reaches the oracle only through tvl(pool), so the try/catch in
+    ///         _venueRatio protects this layer with no change to EMASampler.sol or VotingWeight.sol.
+    ///         The witness is exact rather than merely positive: the EMA and the holder's weight are
+    ///         read BEFORE the sick venue enters, fifteen daily samples then run with it present, one
+    ///         day more than the freshness window, and both values are asserted UNCHANGED after a
+    ///         poke that lands past the block at which the reproduction observed zero. The on-ramp is
+    ///         already pinned at 1.0 (effectiveQualBlock 1 against START_BLOCK 2_000_000, PB12), the
+    ///         sample floor is long met and the read cap is untouched, so equality is the only
+    ///         outcome a working fix can produce.
+    function test_P1_D6_revertingVenueNeitherFreezesTheStampNorZeroesTheElectorate() public {
         address healthy = address(healthyPoolToken);
         address good = address(goodVenue);
 
@@ -216,7 +227,10 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
         }
 
         vw.poke(holder);
-        assertGt(vw.governanceWeight(holder), 0, "premise: healthy pool conferred governance power");
+        uint256 weightBefore = vw.governanceWeight(holder);
+        uint256 emaBefore = sampler.tvlEMA(healthy);
+        assertGt(weightBefore, 0, "premise: healthy pool conferred governance power");
+        assertEq(emaBefore, 400e18, "premise: the EMA sits at the good venue's price");
 
         address[] memory broken = new address[](3);
         broken[0] = healthy;
@@ -225,19 +239,17 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
         registry.setPoolList(broken);
         registry.setMiliarium(sickVenue, true);
 
-        uint256 frozenStamp = sampler.lastEMAUpdateBlock(healthy);
-        blockCounter += AureumTime.BLOCKS_PER_DAY;
-        vm.roll(blockCounter);
-        vm.expectRevert(P1_D6_RevertingVenue.RateProviderReverted.selector);
-        sampler.updateEMA(healthy);
-        assertEq(
-            sampler.lastEMAUpdateBlock(healthy),
-            frozenStamp,
-            "stamp unchanged because oracle read precedes the write"
-        );
+        uint256 stampAtEntry = sampler.lastEMAUpdateBlock(healthy);
+        for (uint256 i = 0; i < 15; ++i) {
+            blockCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blockCounter);
+            sampler.updateEMA(healthy);
+        }
+        assertEq(sampler.lastEMAUpdateBlock(healthy), blockCounter, "stamp advanced to the latest sample");
+        assertGt(blockCounter, stampAtEntry + AureumTime.BLOCKS_PER_EPOCH + 1, "past the block where the reproduction read zero");
+        assertEq(sampler.tvlEMA(healthy), emaBefore, "EMA unchanged: the reverting venue is invisible to the mean");
 
-        vm.roll(frozenStamp + AureumTime.BLOCKS_PER_EPOCH + 1);
         vw.poke(holder);
-        assertEq(vw.governanceWeight(holder), 0, "freshness lapsed while the venue still reverts");
+        assertEq(vw.governanceWeight(holder), weightBefore, "weight unchanged past the old cliff");
     }
 }
