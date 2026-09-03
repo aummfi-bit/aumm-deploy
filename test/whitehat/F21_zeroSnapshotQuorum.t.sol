@@ -97,4 +97,87 @@ contract F21_ZeroSnapshotQuorumTest is Test {
         assertEq(svZchf.balanceOf(attacker), balanceBefore, "the bond never moved");
         assertEq(gov.proposalCount(), 0, "no proposal was created");
     }
+
+    /// @dev The F-21 choreography, and the reason this suite needs a block-aware electorate. The
+    ///      bond is taken while live supply is non-zero, so PP4.10d's propose guard is satisfied and
+    ///      the proposal exists; a later checkpoint at a block at or before the snapshot then drives
+    ///      `getPastTotalSupply(snapshotBlock)` to zero, which is the denominator F-21 guards. The
+    ///      zero is ASSERTED rather than assumed, because a choreography that silently failed to
+    ///      zero it would still end in `Defeated` on turnout alone and prove nothing.
+    function _zeroTheSnapshotDenominator(uint256 id) internal {
+        uint256 snap = gov.getProposal(id).snapshotBlock;
+        vm.roll(snap - 1);
+        _seat(attacker, 0);
+        vm.roll(snap + 1);
+        assertEq(votingWeight.getPastTotalSupply(snap), 0, "premise - the snapshot denominator is zero");
+    }
+
+    /// @notice F-21 at the vote: a zero snapshot denominator defeats a gauge challenge even with a
+    ///         vote cast, because the quorum test would otherwise pass vacuously at `0 < 0`.
+    /// @dev The original of this case, in F01, cast a 1e18 FOR vote against a zero total. That state
+    ///      is NOT reachable with a coherent electorate and was an artifact of the block-agnostic
+    ///      mock, which held total supply and holder weight as independent fields. Here `poke`
+    ///      maintains total as the sum of holders, so a zero denominator at the snapshot entails
+    ///      zero holder weight at that snapshot: the vote is cast and accepted, and contributes
+    ///      nothing. `castVote` does not reject a zero-weight voter, so the call still lands. The
+    ///      guard's job is therefore narrower than the original framing implied, and still
+    ///      load-bearing, since `0 < 0` is false and the quorum test would pass without it.
+    function test_F21_zeroSnapshotDefeatsGaugeDespiteVotes() public {
+        _seat(attacker, 1_000e18);
+        vm.prank(attacker);
+        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+        _zeroTheSnapshotDenominator(id);
+
+        vm.prank(attacker);
+        gov.castVote(id, true);
+        assertEq(gov.getProposal(id).forVotes, 0, "the vote was cast and carried no weight");
+
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertFalse(gaugeReg.revoked(gaugePool), "the gauge survives a vacuous quorum");
+    }
+
+    /// @notice F-21 slot safety: a composition challenge cannot capture a Miliarium slot at a zero
+    ///         snapshot denominator, with no vote cast at all.
+    /// @dev This case was originally the DISCRIMINATOR between proposal types, since Composition's
+    ///      `forVotes * 3 >= totalVotes * 2` is true at `0 >= 0` while Gauge's `forVotes >
+    ///      againstVotes` is false at `0 > 0`. That divergence is GONE by design: F-21's guard
+    ///      rejects the denominator ahead of both majority branches, so the two types now agree.
+    ///      What survives, and what this pins, is the consequence the divergence used to produce -
+    ///      a slot captured with zero turnout. It is a slot-safety regression now, not a proof that
+    ///      the branches differ, and a later reader should not restore the comparison to it.
+    function test_F21_compositionZeroVoteCannotCaptureSlotAtZeroSnapshot() public {
+        _seat(attacker, 1_000e18);
+        vm.prank(attacker);
+        uint256 id = gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
+        _zeroTheSnapshotDenominator(id);
+
+        assertEq(slotReg.poolAtSlot(5), occupantPool, "premise - the slot starts occupied");
+        assertFalse(gaugeReg.registered(candidatePool), "premise - the candidate is not yet registered");
+
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+
+        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotSucceeded.selector, id));
+        gov.queue(id);
+
+        assertEq(slotReg.poolAtSlot(5), occupantPool, "the slot is untouched");
+        assertFalse(gaugeReg.revoked(occupantPool), "the occupant keeps its gauge");
+        assertFalse(gaugeReg.registered(candidatePool), "the candidate was never seated");
+    }
+
+    /// @notice F-21 on the gauge side at zero turnout, the companion to the composition case above.
+    /// @dev Identical inputs and identical zero turnout, differing only in proposal type. Before the
+    ///      guard the pair disagreed and that disagreement was the finding; now they agree, and this
+    ///      pins the gauge half of that agreement.
+    function test_F21_gaugeChallengeZeroVoteDefeatsAtSameSnapshot() public {
+        _seat(attacker, 1_000e18);
+        vm.prank(attacker);
+        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
+        _zeroTheSnapshotDenominator(id);
+
+        vm.roll(gov.getProposal(id).endBlock + 1);
+        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
+        assertFalse(gaugeReg.revoked(gaugePool), "the gauge survives zero turnout at a zero denominator");
+    }
 }
