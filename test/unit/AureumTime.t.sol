@@ -55,6 +55,24 @@ contract AureumTimeTest is Test {
         assertEq(AureumTime.ON_RAMP_PERIOD_BLOCKS, 180 * AureumTime.BLOCKS_PER_DAY);
     }
 
+    // --- PP-D52 (xii) EMA maturity and freshness ---
+
+    function test_emaMaturityBlocks_equals_432000() public pure {
+        assertEq(AureumTime.EMA_MATURITY_BLOCKS, 432_000);
+    }
+
+    function test_emaMaturityBlocks_equals60TimesBlocksPerDay() public pure {
+        assertEq(AureumTime.EMA_MATURITY_BLOCKS, 60 * AureumTime.BLOCKS_PER_DAY);
+    }
+
+    function test_emaStalenessBlocks_equals_100800() public pure {
+        assertEq(AureumTime.EMA_STALENESS_BLOCKS, 100_800);
+    }
+
+    function test_emaStalenessBlocks_equalsBlocksPerEpoch() public pure {
+        assertEq(AureumTime.EMA_STALENESS_BLOCKS, AureumTime.BLOCKS_PER_EPOCH);
+    }
+
     // index tests at boundaries
 
     // --- monthIndex ---

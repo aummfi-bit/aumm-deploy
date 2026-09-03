@@ -35,6 +35,13 @@ library AureumTime {
     /// @dev Derived from BLOCKS_PER_DAY (not BLOCKS_PER_MONTH) because §ix specifies an exact 180-day duration, not 6 calendar months.
     uint256 internal constant ON_RAMP_PERIOD_BLOCKS       = 180 * BLOCKS_PER_DAY;
 
+    // EMA maturity and freshness (PP-D52 (xii))
+
+    /// @notice 60-day EMA maturity, the F-04 seed-age gate. = 60 × BLOCKS_PER_DAY. The library home for the value that EmissionDistributor, VotingWeight and IncendiaryRegistry each carry as a contract constant; CCBMultiplier reads it here (PP-D52 (xii)), and RB-026 re-points the three copies.
+    uint256 internal constant EMA_MATURITY_BLOCKS         = 60 * BLOCKS_PER_DAY;
+    /// @notice EMA freshness window, the F-05 staleness gate. = BLOCKS_PER_EPOCH; the consumers test it with a strict greater-than, so the natural window is one epoch plus one block (RB-030). Same home and same consumers as EMA_MATURITY_BLOCKS.
+    uint256 internal constant EMA_STALENESS_BLOCKS        = BLOCKS_PER_EPOCH;
+
     // index helpers
 
     /// @notice Zero-indexed month since genesis. Month 0 is [genesis, genesis + BLOCKS_PER_MONTH).
