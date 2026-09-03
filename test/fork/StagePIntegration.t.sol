@@ -576,10 +576,17 @@ abstract contract StagePIntegrationFixture is Test {
         IERC20(pilotPools[0]).transfer(lp, bptOut);
         // EMA seed
         orchestrator.emaSampler().updateEMA(pilotPools[0]);
-        // EMA_MATURITY_BLOCKS (60 days, F-04)
-        vm.roll(block.number + 432_000);
-        // freshness refresh (F-05)
-        orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        // PP-D52 (xii) / D.1 (PP4.10f2) — sixty daily samples, not one refresh: the D.1 sample floor
+        // (MIN_SAMPLES, 60) and CCBMultiplier's PP-D52 (xii) readiness gate both need it, and this helper
+        // is now the only maturation path five callers across this file share. F10: the height is
+        // threaded through an explicit counter, since via_ir hoists a block.number read out of a
+        // vm.roll loop. End block is unchanged at seed + EMA_MATURITY_BLOCKS (432_000).
+        uint256 blockCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            blockCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blockCounter);
+            orchestrator.emaSampler().updateEMA(pilotPools[0]);
+        }
         // F-5 score > 0 in bootstrap via the Miliarium f5Total/28 branch
         orchestrator.emissionDistributor().recordScore(pilotPools[0]);
     }

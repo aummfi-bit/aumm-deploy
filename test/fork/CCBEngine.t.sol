@@ -415,6 +415,17 @@ contract CCBEngineCompositionTest is CCBEngineFixture {
             mockOracle.set(pilotPools[i], UNIFORM_TVL);
             sampler.updateEMA(pilotPools[i]);
         }
+        // PP-D52 (xii) — updateMultiplier now reads every EMA through the readiness gate, so the three
+        // pilots need sixty daily samples before the call. F10: the height is threaded through an explicit
+        // counter, because via_ir hoists a block.number read out of a vm.roll loop.
+        uint256 blockCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            blockCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blockCounter);
+            for (uint256 i = 0; i < 3; ++i) {
+                sampler.updateEMA(pilotPools[i]);
+            }
+        }
 
         address pool = pilotPools[0];
         multiplier.updateMultiplier(pool);
