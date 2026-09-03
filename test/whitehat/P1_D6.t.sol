@@ -35,6 +35,10 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant START_BLOCK = 2_000_000;
 
+    /// @dev Revert data for the mocked explorer reads in legs 2 and 3 of the done-criteria case; a
+    ///      named selector so each leg's positive control can prove its mock is armed.
+    error ExplorerReadReverted();
+
     MockERC20 internal healthyPoolToken;
     MockERC20 internal pricedToken;
     MockERC20 internal svZchfToken;
@@ -130,8 +134,16 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
         );
     }
 
-    /// @dev Defect case — one sick venue in the Leg 2 roster walk bricks tvl() for an unrelated pool.
-    function test_P1_D6_oneRevertingVenueBricksTvlForEveryUnrelatedPool() public {
+    /// @notice The fix (PP-D52 (vi) / (xi), D.6): a venue whose read reverts is EXCLUDED from the
+    ///         cross-venue mean and tvl() succeeds for every unrelated pool. Three legs drive the three
+    ///         wrapped reads in turn: the double's getNormalizedWeights (TVLOracle.sol:342), then
+    ///         getPoolData (:336), the read that reaches third-party getRate() in production, then
+    ///         getPoolTokens (:330). The sick venue is re-registered at ratio 8 against the good venue's 4,
+    ///         so a priced sick venue would lift the mean to 600e18 and the 400e18 read on every leg
+    ///         proves exclusion rather than mere survival. Legs 2 and 3 arm a positive control on the
+    ///         explorer first, so a passing leg cannot be a mock that never fired. No event is asserted
+    ///         because none exists: the chain is view end to end (PP-D52 (xi)).
+    function test_revertingVenueDegradesNotBricks() public {
         address healthy = address(healthyPoolToken);
         address good = address(goodVenue);
 
@@ -143,6 +155,14 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
 
         assertEq(tvlOracle.tvl(healthy), 400e18, "positive control before sick venue enters roster");
 
+        IERC20[] memory sickTokens = new IERC20[](2);
+        sickTokens[0] = IERC20(address(pricedToken));
+        sickTokens[1] = IERC20(address(svZchfToken));
+        uint256[] memory sickBalances = new uint256[](2);
+        sickBalances[0] = 1000e18;
+        sickBalances[1] = 8000e18;
+        explorer.setPool(sickVenue, sickTokens, sickBalances);
+
         address[] memory broken = new address[](3);
         broken[0] = healthy;
         broken[1] = good;
@@ -150,8 +170,29 @@ contract P1_D6_RevertingVenueBricksTvlTest is Test {
         registry.setPoolList(broken);
         registry.setMiliarium(sickVenue, true);
 
-        vm.expectRevert(P1_D6_RevertingVenue.RateProviderReverted.selector);
-        tvlOracle.tvl(healthy);
+        // Leg 1: getNormalizedWeights reverts through the double, no mock involved.
+        assertEq(tvlOracle.tvl(healthy), 400e18, "leg 1: weights revert excludes the venue");
+
+        // Leg 2: getPoolData reverts on the explorer, reached before the double is ever asked.
+        vm.mockCallRevert(
+            address(explorer),
+            abi.encodeWithSelector(IVaultExplorer.getPoolData.selector, sickVenue),
+            abi.encodeWithSelector(ExplorerReadReverted.selector)
+        );
+        vm.expectRevert(ExplorerReadReverted.selector);
+        explorer.getPoolData(sickVenue);
+        assertEq(tvlOracle.tvl(healthy), 400e18, "leg 2: pool-data revert excludes the venue");
+
+        // Leg 3: getPoolTokens reverts on the explorer, the first of the three reads.
+        vm.clearMockedCalls();
+        vm.mockCallRevert(
+            address(explorer),
+            abi.encodeWithSelector(IVaultExplorer.getPoolTokens.selector, sickVenue),
+            abi.encodeWithSelector(ExplorerReadReverted.selector)
+        );
+        vm.expectRevert(ExplorerReadReverted.selector);
+        explorer.getPoolTokens(sickVenue);
+        assertEq(tvlOracle.tvl(healthy), 400e18, "leg 3: pool-tokens revert excludes the venue");
     }
 
     /// @dev Stamp freeze case — a reverting venue blocks refresh and the electorate goes to zero.
