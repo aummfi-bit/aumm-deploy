@@ -21,7 +21,10 @@ import {MockVotingWeight, MockGaugeRegistry, MockSlotRegistry, MockVault, MockBo
 ///         mock with consistent snapshot inputs; the block-precise freeze proof (a post-snapshot `poke`
 ///         cannot move `getPastTotalSupply(snapshotBlock)`) lives in `F06_*.t.sol` with a block-aware mock.
 ///         The one case F-06 did NOT close (ledger L140 mul-form, `snapshot == 0`) escalated to F-21 at
-///         PB3.8p and is closed by the PB-D62 zero-supply guard; the three `test_F21_` cases below pin it.
+///         PB3.8p and is closed by the PB-D62 zero-supply guard. Its witnesses live in
+///         `F21_zeroSnapshotQuorum.t.sol`, moved there at PP4.10f5: once PP4.10d added a SECOND,
+///         propose-time zero-supply guard, F-21 required live and snapshot supply to DIVERGE, and the
+///         block-agnostic mock this file uses collapses them into one quantity.
 contract F01_QuorumSnapshotTimingTest is Test {
     AureumGovernance internal gov;
     MockVotingWeight internal votingWeight;
