@@ -523,6 +523,10 @@ contract EmissionDistributor is IEmissionDistributor {
         uint256 seedBlock = _emaSampler.emaSeedBlock(pool);
         if (seedBlock == 0) return 0;
         if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return 0;
+        // D.1 / PP-D52 (i) — maturity measured in TIME cannot distinguish two samples sixty days
+        // apart from sixty daily ones; the sample floor is the quantity that can. The threshold is
+        // read through the interface per PP-D52 (x) and never mirrored as a local constant.
+        if (_emaSampler.sampleCount(pool) < _emaSampler.MIN_SAMPLES()) return 0;
         if (block.number - _emaSampler.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return 0;
         return _emaSampler.tvlEMA(pool);
     }

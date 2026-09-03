@@ -176,6 +176,10 @@ contract VotingWeight is IVotingWeight {
         uint256 seedBlock = EMA_SAMPLER.emaSeedBlock(pool);
         if (seedBlock == 0) return (0, false);
         if (block.number - seedBlock < EMA_MATURITY_BLOCKS) return (0, false);
+        // D.1 / PP-D52 (i) — the same floor and the same reason as `EmissionDistributor._gatedTvlEMA`.
+        // A zero from THIS branch is a legitimate absence, not a staleness hold, so `staleZero` stays
+        // false and a checkpoint may still ratchet down on it.
+        if (EMA_SAMPLER.sampleCount(pool) < EMA_SAMPLER.MIN_SAMPLES()) return (0, false);
         // PP-D52 (ix) — this is the ONLY branch that sets `staleZero`. Every other zero below is a
         // legitimate absence (no gauge, immature EMA, no position, sub-cliff, capped LP, dust share)
         // and must keep ratcheting the checkpoint down; only a stale oracle is held.
