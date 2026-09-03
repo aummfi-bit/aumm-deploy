@@ -41,8 +41,16 @@ contract MockBodenseeChannel {
     }
 }
 
-/// @notice Constructor-placeholder double — the fee-propose path never reads the voting weight.
-contract MockVotingWeight {}
+/// @notice Constructor-placeholder double for the voting-weight slot. It answers `totalSupply` only
+///         because PP4.10d's propose guard reads live supply before the bond moves; the value is
+///         arbitrary and non-zero, since F-20 is about the swap-fee-manager gate and not about the
+///         electorate. A zero here would refuse the bond at `ZeroQualifiedWeight` and never reach
+///         the `ExclusiveSwapFeeManager` check these tests exist to witness.
+contract MockVotingWeight {
+    function totalSupply() external pure returns (uint256) {
+        return 1e18;
+    }
+}
 
 /// @notice Constructor-placeholder double — the fee-propose path never reads the slot registry.
 contract MockSlotRegistry {}
