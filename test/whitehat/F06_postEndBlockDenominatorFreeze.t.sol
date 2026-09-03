@@ -11,65 +11,7 @@ import {IMiliariumSlotRegistry} from "src/registry/IMiliariumSlotRegistry.sol";
 import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {MockGaugeRegistry, MockSlotRegistry, MockVault, MockBodenseeChannel} from "test/unit/AureumGovernance.t.sol";
-
-/// @notice Block-aware voting-weight mock for the F-06 PoC. Unlike the block-agnostic MockVotingWeight
-///         in AureumGovernance.t.sol, this honors the block argument of getPastVotes / getPastTotalSupply
-///         via ascending per-block checkpoints, mirroring the OZ Checkpoints.Trace208 upperLookup
-///         semantics of the real VotingWeight. poke(holder) pulls the holder's true (position-derived)
-///         weight into the live accumulator and stamps a checkpoint at the current block - the
-///         permissionless lever the F-06 griefer pulls after endBlock. The future-lookup guard is
-///         omitted; the PoC reads only strictly-past blocks.
-contract MockBlockAwareVotingWeight is IVotingWeight {
-    struct Ckpt {
-        uint256 blk;
-        uint256 val;
-    }
-
-    mapping(address => Ckpt[]) private _holderCkpts;
-    Ckpt[] private _totalCkpts;
-    mapping(address => uint256) private _liveHolder;
-    uint256 private _liveTotal;
-    mapping(address => uint256) public trueWeight;
-
-    /// @notice Set a holder's true position-derived weight, materialized into the accumulator on the next poke.
-    function setTrueWeight(address holder, uint256 weight) external {
-        trueWeight[holder] = weight;
-    }
-
-    function poke(address holder) external {
-        uint256 prev = _liveHolder[holder];
-        uint256 target = trueWeight[holder];
-        _liveTotal = _liveTotal - prev + target;
-        _liveHolder[holder] = target;
-        _holderCkpts[holder].push(Ckpt(block.number, target));
-        _totalCkpts.push(Ckpt(block.number, _liveTotal));
-    }
-
-    function governanceWeight(address holder) external view returns (uint256) {
-        return _liveHolder[holder];
-    }
-
-    function totalSupply() external view returns (uint256) {
-        return _liveTotal;
-    }
-
-    function getPastVotes(address holder, uint256 blockNumber) external view returns (uint256) {
-        return _upperLookup(_holderCkpts[holder], blockNumber);
-    }
-
-    function getPastTotalSupply(uint256 blockNumber) external view returns (uint256) {
-        return _upperLookup(_totalCkpts, blockNumber);
-    }
-
-    function _upperLookup(Ckpt[] storage ckpts, uint256 blockNumber) private view returns (uint256) {
-        uint256 value;
-        for (uint256 i; i < ckpts.length; ++i) {
-            if (ckpts[i].blk <= blockNumber) value = ckpts[i].val;
-            else break;
-        }
-        return value;
-    }
-}
+import {MockBlockAwareVotingWeight} from "test/mocks/MockBlockAwareVotingWeight.sol";
 
 /// @notice White-hat finding F-06 (S9) PoC: the post-endBlock quorum-denominator inflation grief and its
 ///         symmetric deflate-to-pass face are structurally closed by the F-06 snapshot denominator.
