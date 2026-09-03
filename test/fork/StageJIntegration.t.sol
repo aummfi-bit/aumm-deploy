@@ -68,6 +68,31 @@ abstract contract StageJIntegrationFixture is Test {
         pools[2] = pilotPools[2];
         return new MiliariumRegistry(address(this), slotNumbers, pools);
     }
+
+    /// @notice PP-D52 (xii) — brings every pool in `pools` past the readiness gate `CCBMultiplier._gatedTvlEMA`
+    ///         now applies: a cold-start seed plus sixty daily samples, which clears the D.1 sample floor
+    ///         (61 against `MIN_SAMPLES` 60) and the F-04 maturity window (60 × `BLOCKS_PER_DAY` equals
+    ///         `EMA_MATURITY_BLOCKS`) in one pass, and leaves the stamp fresh at the final block. The spot
+    ///         value is held constant across the loop, so the F-4 step returns the seed value unchanged and
+    ///         every expected EMA in this file carries over from before the gate existed.
+    /// @dev F10 — the block height is threaded through an explicit local counter rather than read as
+    ///      `block.number` inside the loop: `via_ir` hoists that read out of a `vm.roll` loop, so every
+    ///      iteration would roll to the same height and the second `updateEMA` of the day would revert
+    ///      `EMASampler.TooEarly`. Same counter form as `test/whitehat/P1_D6.t.sol`.
+    /// @param pools The pools to seed and mature, each already carrying its spot value on `mockOracle`.
+    function _matureEmas(address[] memory pools) internal {
+        for (uint256 i = 0; i < pools.length; ++i) {
+            sampler.updateEMA(pools[i]);
+        }
+        uint256 blockCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            blockCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blockCounter);
+            for (uint256 i = 0; i < pools.length; ++i) {
+                sampler.updateEMA(pools[i]);
+            }
+        }
+    }
 }
 
 contract StageJDenseEnumerationTest is StageJIntegrationFixture {
@@ -92,14 +117,20 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
         for (uint256 i = 0; i < 3; ++i) {
             mockOracle.set(pilotPools[i], UNIFORM_TVL);
-            sampler.updateEMA(pilotPools[i]);
         }
+        // PP-D52 (xii) — the gauge walk and the pool's own read both go through the readiness gate now, so
+        // every pilot must be seeded, sampled sixty times and fresh before updateMultiplier is called.
+        address[] memory toMature = new address[](3);
+        toMature[0] = pilotPools[0];
+        toMature[1] = pilotPools[1];
+        toMature[2] = pilotPools[2];
+        _matureEmas(toMature);
 
         multiplier.updateMultiplier(pilotPools[0]);
 
-        // deltaGlobal = 0 (F-D18 cold-start sentinel: lastProtocolAggregateEMA == 0); poolEMA (1_000e18) far exceeds miliariumAgg/28, so deltaIntra = -STEP_SIZE; M_i = 1.0 - 0.05 = 0.95.
+        // deltaGlobal = 0 (F-D18 cold-start sentinel: lastProtocolAggregateEMA[pilotPools[0]] == 0); poolEMA (1_000e18) far exceeds miliariumAgg/28, so deltaIntra = -STEP
         assertEq(multiplier.M_i(pilotPools[0]), EXPECTED_POST_STEP_M, "F-8 step from real-registry aggregate (deltaIntra = -STEP)");
-        assertEq(multiplier.lastProtocolAggregateEMA(), 3 * UNIFORM_TVL, "aggregate = gauge-roster sum (mirrors the 3 pilots per PB-D18 (ii))");
+        assertEq(multiplier.lastProtocolAggregateEMA(pilotPools[0]), 3 * UNIFORM_TVL, "aggregate = gauge-roster sum (mirrors the 3 pilots per PB-D18 (ii))");
     }
 
     function test_StageJ_ReplaceSlot_ReEnumerates() external {
@@ -135,18 +166,23 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
         mockOracle.set(pilotPools[0], 9_000e18);
         mockOracle.set(pilotPools[1], UNIFORM_TVL);
         mockOracle.set(pilotPools[2], UNIFORM_TVL);
-        sampler.updateEMA(pilotPools[0]);
-        sampler.updateEMA(pilotPools[1]);
-        sampler.updateEMA(pilotPools[2]);
-        registry.replaceSlot(1, newPool);
         mockOracle.set(newPool, UNIFORM_TVL);
-        sampler.updateEMA(newPool);
+        // PP-D52 (xii) — all four EMAs must clear the readiness gate: the gauge walk reads the three pilots
+        // and the intra walk plus the pool's own read reach newPool. Maturing BEFORE replaceSlot is safe and
+        // is what lets newPool be ready at all, EMA state being independent of Miliarium membership.
+        address[] memory toMature = new address[](4);
+        toMature[0] = pilotPools[0];
+        toMature[1] = pilotPools[1];
+        toMature[2] = pilotPools[2];
+        toMature[3] = newPool;
+        _matureEmas(toMature);
+        registry.replaceSlot(1, newPool);
         multiplier.updateMultiplier(newPool);
         // PB-D18 (ii)/(iii) decoupling — the aggregate walks the UNMOVED gauge roster {pilot0, pilot1, pilot2}
         // = 9_000e18 + 2 × UNIFORM_TVL: pilot0's distinctive TVL survives, newPool is absent. The Miliarium
         // universe followed the swap: updateMultiplier(newPool) passes the isMiliarium gate (post-swap member)
         // and its intra mean is the post-swap sum {newPool, pilot1, pilot2}/28, far below newPool's EMA.
-        assertEq(multiplier.lastProtocolAggregateEMA(), 9_000e18 + 2 * UNIFORM_TVL, "aggregate decoupled from swap - dropped pilot0 survives in gauge sum, newPool absent");
+        assertEq(multiplier.lastProtocolAggregateEMA(newPool), 9_000e18 + 2 * UNIFORM_TVL, "aggregate decoupled from swap - dropped pilot0 survives in gauge roster");
         assertEq(multiplier.M_i(newPool), EXPECTED_POST_STEP_M, "F-8 step on post-swap newPool (deltaIntra = -STEP from the post-swap Miliarium mean)");
     }
 }

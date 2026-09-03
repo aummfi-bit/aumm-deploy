@@ -51,14 +51,17 @@ contract MockEMASampler is IEMASampler {
         return 60;
     }
 
-    /// @notice Sets the pool's TVL EMA and, on first write, stamps `sampleCount` to 60 — a
-    ///         neutralizing mock, so the D.1 sample floor (PP-D52 (i)) always passes for tests that
-    ///         are not about it. The 60 matches this mock's own `MIN_SAMPLES()` and must move with
-    ///         it. Sample-floor boundaries belong in a dedicated suite, as F-10 does for the
-    ///         time-based gate.
+    /// @notice Sets the pool's TVL EMA and, on first write, stamps `sampleCount` to 60 and
+    ///         `emaSeedBlock` to 1 — a neutralizing mock, so the D.1 sample floor (PP-D52 (i))
+    ///         and the PP-D52 (xii) seed-presence and maturity gates always pass for tests that
+    ///         are not about them. The 60 matches this mock's own `MIN_SAMPLES()` and must move
+    ///         with it; the seed block of 1 is mature at any `block.number` past
+    ///         `AureumTime.EMA_MATURITY_BLOCKS`, which `START_BLOCK` guarantees. Sample-floor and
+    ///         maturity boundaries belong in dedicated suites, as F-10 does for the time-based gate.
     function setTVLEMA(address pool, uint256 v) external {
         _tvl[pool] = v;
         if (sampleCount[pool] == 0) sampleCount[pool] = 60;
+        if (emaSeedBlock[pool] == 0) emaSeedBlock[pool] = 1;
     }
 
     function setLastEMAUpdateBlock(address pool, uint256 b) external {
@@ -69,8 +72,12 @@ contract MockEMASampler is IEMASampler {
         return _tvl[pool];
     }
 
+    /// @notice Returns the pool's last EMA update block, defaulting to the CURRENT block when never
+    ///         set — the freshness half of the same neutralizing posture as `setTVLEMA`, so the
+    ///         PP-D52 (xii) staleness gate passes unless a test sets an explicit stale value.
     function lastEMAUpdateBlock(address pool) external view returns (uint256) {
-        return _lastBlock[pool];
+        uint256 b = _lastBlock[pool];
+        return b == 0 ? block.number : b;
     }
 }
 
@@ -131,7 +138,7 @@ contract CCBMultiplierTest is Test {
     MockEMASampler internal ema;
     MockGaugeRegistry internal gauge;
 
-    uint256 internal constant START_BLOCK = 200_000;
+    uint256 internal constant START_BLOCK = AureumTime.EMA_MATURITY_BLOCKS + 200_000;
     address internal constant POOL_A = address(0xA1);
     address internal constant POOL_B = address(0xB2);
     address internal constant POOL_C = address(0xC3);
@@ -299,7 +306,7 @@ contract CCBMultiplierTest is Test {
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 1000e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 1000e18);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
     }
 
@@ -375,7 +382,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA(POOL_A);
         uint256 targetSum = lastAgg * (ONE + DEAD_ZONE) / ONE;
         uint256 u1 = targetSum / 3;
         uint256 r1 = targetSum % 3;
@@ -408,7 +415,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA(POOL_A);
         uint256 baseSum = lastAgg * (ONE + DEAD_ZONE) / ONE + 1;
         uint256 t = baseSum / 3;
         uint256 r = baseSum % 3;
@@ -439,7 +446,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA(POOL_A);
         uint256 targetSum = lastAgg * (ONE - DEAD_ZONE) / ONE;
         uint256 u1 = targetSum / 3;
         uint256 r1 = targetSum % 3;
@@ -472,7 +479,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA(POOL_A);
         uint256 baseSum = lastAgg * (ONE - DEAD_ZONE) / ONE - 1;
         uint256 tiny = 100e18;
         uint256 half = (baseSum - tiny) / 2;
@@ -574,7 +581,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        uint256 lastAgg = multiplier.lastProtocolAggregateEMA();
+        uint256 lastAgg = multiplier.lastProtocolAggregateEMA(POOL_A);
         uint256 targetSum = lastAgg * (ONE + DEAD_ZONE) / ONE + 1000e18;
         ema.setTVLEMA(POOL_A, 50e18);
         ema.setTVLEMA(POOL_B, targetSum - 50e18);
@@ -680,7 +687,7 @@ contract CCBMultiplierTest is Test {
         registry.setMiliarium(POOL_A, true);
         ema.setTVLEMA(POOL_A, 777e18);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 777e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 777e18);
     }
 
     // -------------------------------------------------------------------------
@@ -738,7 +745,7 @@ contract CCBMultiplierTest is Test {
         ema.setTVLEMA(POOL_A, 1000e18);
         ema.setTVLEMA(poolX, 777e18);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 777e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 777e18);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
     }
 
@@ -778,7 +785,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 10_000e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 10_000e18);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
         uint256 bumped = (unit * 110) / 100;
         for (uint256 i = 0; i < 28; ++i) {
@@ -788,7 +795,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 10_000e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 10_000e18);
     }
 
     function test_updateMultiplier_decoupling_emptyGaugeRoster_globalNeutral() public {
@@ -803,14 +810,14 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 0);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 0);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
         ema.setTVLEMA(POOL_A, 10_000e18);
         ema.setTVLEMA(POOL_B, 10_000e18);
         uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch2);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 0);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 0);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - 2 * STEP_SIZE);
     }
 
@@ -828,7 +835,7 @@ contract CCBMultiplierTest is Test {
         uint256 epoch1 = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 29_000e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 29_000e18);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
         address[] memory shrunk = new address[](28);
         for (uint256 i = 0; i < 28; ++i) {
@@ -839,7 +846,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER + STEP_SIZE);
-        assertEq(multiplier.lastProtocolAggregateEMA(), 28_000e18);
+        assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 28_000e18);
     }
 
 }

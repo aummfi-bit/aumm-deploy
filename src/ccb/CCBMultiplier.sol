@@ -68,7 +68,7 @@ contract CCBMultiplier {
     /// @notice Miliarium registry binding. Stage J handoff replaces the placeholder via `setMiliariumRegistry` per F-D20. Mutable storage; protected by sealed-after-first-write `registrySetter` slot.
     IMiliariumRegistry public miliariumRegistry;
 
-    /// @notice EMA sampler binding. Bound at construction; no setter, never replaced — F-D22 read-only-interface contract. `CCBMultiplier` calls `tvlEMA(pool)` and `lastEMAUpdateBlock(pool)`; never `updateEMA(pool)`.
+    /// @notice EMA sampler binding. Bound at construction; no setter, never replaced — F-D22 read-only-interface contract. `CCBMultiplier` reads `emaSeedBlock`, `sampleCount`, `MIN_SAMPLES`, `lastEMAUpdateBlock` and `tvlEMA` through the PP-D52 (xii) `_gatedTvlEMA` gate; never `updateEMA(pool)`.
     IEMASampler public immutable emaSampler;
 
     /// @notice Authority for `setMiliariumRegistry` per F-D20. Initialized to the deployer at construction; self-zeros on first successful `setMiliariumRegistry` call. Subsequent calls fail at the `OnlyRegistrySetter()` check because `address(0)` cannot transact.
@@ -94,8 +94,8 @@ contract CCBMultiplier {
     // Storage — F-8 protocol-aggregate state
     // -------------------------------------------------------------------------
 
-    /// @notice Last protocol-wide aggregate EMA baseline — since PB-D18 (ii) the sum of `tvlEMA` over ALL currently-Active gauges (the name finally matches its claim; previously the Miliarium-only OQ-23 (iii.b) sum). F-D18 cold-start seed: `0` sentinel for "never written" — first `updateMultiplier` across the protocol seeds this and applies `delta_global = 0` for that epoch. Subsequent calls compare the current all-gauge aggregate to the seeded baseline per F-D19.
-    uint256 public lastProtocolAggregateEMA;
+    /// @notice Per-pool last protocol-wide aggregate EMA baseline (PP-D52 (xii)) — the sum of `tvlEMA` over ALL currently-Active gauges (PB-D18 (ii)) as observed at THIS pool's own most recent `updateMultiplier` call. Keyed by pool rather than global so each pool's `deltaGlobal` compares the current aggregate to the aggregate at ITS OWN prior cadence window, not to whichever pool last happened to update. F-D18 cold-start seed: `0` sentinel for "never written for this pool" — a pool's own first `updateMultiplier` call applies `delta_global = 0` for that call.
+    mapping(address => uint256) public lastProtocolAggregateEMA;
 
     // -------------------------------------------------------------------------
     // Errors
@@ -115,6 +115,9 @@ contract CCBMultiplier {
 
     /// @notice `updateMultiplier(pool)` reverts when called before `lastMultiplierUpdateBlock[pool] + BLOCKS_PER_EPOCH`. Per F-D6 cadence guard.
     error TooEarly(uint256 currentBlock, uint256 nextEligibleBlock);
+
+    /// @notice `updateMultiplier(pool)` reverts when `pool`'s own TVL EMA is not seeded, not yet matured (< `AureumTime.EMA_MATURITY_BLOCKS` old), below the D.1 sample floor, or stale (last refreshed more than `AureumTime.EMA_STALENESS_BLOCKS` ago). PP-D52 (xii) FOURTH — mirrors `EmissionDistributor._gatedTvlEMA`'s read taxonomy exactly; an ungated zero here would read as a pool far below the constellation mean and step it UP, the opposite of D.4's fix.
+    error EmaNotReady(address pool);
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -181,20 +184,44 @@ contract CCBMultiplier {
     }
 
     // -------------------------------------------------------------------------
+    // PP-D52 (xii) EMA readiness gate (mirrors EmissionDistributor._gatedTvlEMA)
+    // -------------------------------------------------------------------------
+
+    /// @notice PP-D52 (xii) SECOND — gated TVL EMA read: returns `pool`'s TVL EMA only when its EMA is seeded, matured (at least `AureumTime.EMA_MATURITY_BLOCKS` old), past the D.1 sample floor, and fresh (refreshed within `AureumTime.EMA_STALENESS_BLOCKS`); otherwise `0`. Mirrors `EmissionDistributor._gatedTvlEMA` check for check, and reads the threshold through `MIN_SAMPLES()` per PP-D52 (x) rather than mirroring it as a local constant. D.4: the three raw `tvlEMA` reads this replaces let an unseeded, immature, under-sampled or stale pool move `M_i` over a gauge set anyone grows for 100 svZCHF.
+    /// @param pool The Balancer V3 pool address.
+    /// @return The pool's TVL EMA when seeded, mature, sampled and fresh, else 0.
+    function _gatedTvlEMA(address pool) private view returns (uint256) {
+        uint256 seedBlock = emaSampler.emaSeedBlock(pool);
+        if (seedBlock == 0) return 0;
+        if (block.number - seedBlock < AureumTime.EMA_MATURITY_BLOCKS) return 0;
+        if (emaSampler.sampleCount(pool) < emaSampler.MIN_SAMPLES()) return 0;
+        if (block.number - emaSampler.lastEMAUpdateBlock(pool) > AureumTime.EMA_STALENESS_BLOCKS) return 0;
+        return emaSampler.tvlEMA(pool);
+    }
+
+    // -------------------------------------------------------------------------
     // F-8 evolution — updateMultiplier (F-D6 / F-D18 / F-D19 / F-D25 / PB-D18)
     // -------------------------------------------------------------------------
 
     /**
      * @notice Evolve pool `M_i` by epoch-gated anti-cyclical F-8 steps when outside aggregate and intra dead zones.
-     * @dev Per F-D6, F-D16, F-D18, F-D19, F-D25, PB-D18 (ii)/(iii). Gate-order convention —
-     *      (1) Miliarium → (2) cadence — so non-member and too-early calls revert. delta_global universe per
-     *      PB-D18 (ii): the enumerated sum of `tvlEMA` over ALL currently-Active gauges
+     * @dev Per F-D6, F-D16, F-D18, F-D19, F-D25, PB-D18 (ii)/(iii), PP-D52 (xii). Gate-order convention —
+     *      (1) Miliarium → (2) cadence → (3) readiness — so non-member, too-early and not-yet-readable calls
+     *      revert. The readiness gate is `EmaNotReady`, evaluated once on `pool`'s own EMA immediately after
+     *      the cadence check and reused as `poolEMA` at the intra comparison; it writes nothing and consumes
+     *      no cadence, exactly as `TooEarly` does, so a keeper may retry once the pool's EMA matures
+     *      (PP-D52 (xii) FOURTH — an ungated zero would read as a pool far below the mean and step it UP).
+     *      delta_global universe per PB-D18 (ii): the enumerated sum over ALL currently-Active gauges
      *      (`gaugeRegistry.gaugeCount()` / `gaugeAt(i)`, the P-D13 EnumerableSet — Revoked pools leave the set),
-     *      raw and ungated, superseding the Miliarium-only OQ-23 (iii.b) universe. Cold-start:
-     *      `lastProtocolAggregateEMA == 0` sentinel yields `delta_global = 0` for that epoch (F-D18); a pre-seal
-     *      placeholder registry enumerating zero gauges keeps the aggregate at zero and the channel neutral.
+     *      now read through `_gatedTvlEMA` rather than raw, superseding the Miliarium-only OQ-23 (iii.b)
+     *      universe; a gauge failing the readiness gate contributes zero to the sum rather than reverting the
+     *      call, since only `pool`'s own unreadiness is the caller's to fix. Cold-start:
+     *      `lastProtocolAggregateEMA[pool] == 0` sentinel yields `delta_global = 0` for that call (F-D18),
+     *      now PER POOL per PP-D52 (xii) FIFTH — each pool compares the current aggregate to the aggregate at
+     *      ITS OWN prior cadence window, closing D.4's second face, where one global slot re-keyed by whoever
+     *      updated last cost every subsequent updater in the same epoch its entire global channel.
      *      delta_intra baseline per PB-D18 (iii): its own Miliarium-only sum — decoupled from the global
-     *      aggregate — with simple mean `miliariumAgg / MILIARIUM_POOL_COUNT` against `pool`'s TVL EMA
+     *      aggregate — with simple mean `miliariumAgg / MILIARIUM_POOL_COUNT` against `pool`'s gated TVL EMA
      *      (OQ-23 (iv.a) unchanged); Miliarium pools legitimately appear in both roster walks. Prior-value
      *      sentinel: `M_i[pool] == 0 → INITIAL_MULTIPLIER` ahead of summed steps and clamps (F-D25).
      *      Strict-inequality dead-zone comparisons (`>` / `<`): boundary equality stays neutral across both
@@ -205,16 +232,18 @@ contract CCBMultiplier {
         if (!miliariumRegistry.isMiliarium(pool)) revert NotMiliariumPool(pool);
         uint256 nextEligibleBlock = lastMultiplierUpdateBlock[pool] + AureumTime.BLOCKS_PER_EPOCH;
         if (block.number < nextEligibleBlock) revert TooEarly(block.number, nextEligibleBlock);
+        uint256 poolEMA = _gatedTvlEMA(pool);
+        if (poolEMA == 0) revert EmaNotReady(pool);
 
         uint256 currentGlobalAgg;
         IGaugeRegistry gauges = gaugeRegistry;
         uint256 gaugePoolCount = gauges.gaugeCount();
         for (uint256 i = 0; i < gaugePoolCount; ++i) {
-            currentGlobalAgg += emaSampler.tvlEMA(gauges.gaugeAt(i));
+            currentGlobalAgg += _gatedTvlEMA(gauges.gaugeAt(i));
         }
 
         int256 deltaGlobal;
-        uint256 lastAgg = lastProtocolAggregateEMA;
+        uint256 lastAgg = lastProtocolAggregateEMA[pool];
         if (lastAgg != 0) {
             uint256 upperBoundGlobal = lastAgg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
             uint256 lowerBoundGlobal = lastAgg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
@@ -225,11 +254,10 @@ contract CCBMultiplier {
         uint256 miliariumAgg;
         uint256 poolCount = miliariumRegistry.miliariumPoolsCount();
         for (uint256 i = 0; i < poolCount; ++i) {
-            miliariumAgg += emaSampler.tvlEMA(miliariumRegistry.miliariumPoolAt(i));
+            miliariumAgg += _gatedTvlEMA(miliariumRegistry.miliariumPoolAt(i));
         }
 
         uint256 miliariumAvg = miliariumAgg / MILIARIUM_POOL_COUNT;
-        uint256 poolEMA = emaSampler.tvlEMA(pool);
         int256 deltaIntra;
         uint256 upperBoundIntra = miliariumAvg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
         uint256 lowerBoundIntra = miliariumAvg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;
@@ -243,7 +271,7 @@ contract CCBMultiplier {
 
         M_i[pool] = newM.toUint256();
         lastMultiplierUpdateBlock[pool] = block.number;
-        lastProtocolAggregateEMA = currentGlobalAgg;
+        lastProtocolAggregateEMA[pool] = currentGlobalAgg;
     }
 
     // -------------------------------------------------------------------------

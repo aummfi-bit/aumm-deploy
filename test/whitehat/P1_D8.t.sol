@@ -14,7 +14,7 @@ import {MockMiliariumRegistry, MockEMASampler, MockGaugeRegistry} from "test/uni
 ///         `EmissionDistributor.sol` L482 is share-neutral at alpha zero and mis-calibrates
 ///         the F-3 transition and is NOT reproduced here. C.7 shares this row's redeploy unit.
 contract P1_D8_MeanDivisorIsALiteralNotTheLengthWalkedTest is Test {
-    uint256 internal constant START_BLOCK = 200_000;
+    uint256 internal constant START_BLOCK = AureumTime.EMA_MATURITY_BLOCKS + 200_000;
     uint256 internal constant BLOCKS_PER_EPOCH = 100_800;
     uint256 internal constant EPOCH_1_BLOCK = START_BLOCK;
     uint256 internal constant EPOCH_2_BLOCK = START_BLOCK + BLOCKS_PER_EPOCH;
