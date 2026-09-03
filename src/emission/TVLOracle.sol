@@ -318,16 +318,32 @@ contract TVLOracle is ITVLOracle {
      * @param base The valuation base underlying.
      * @param quote The valuation quote underlying.
      * @return ratio `(balQuote * wBase * 1e18) / (balBase * wQuote)` when eligible, else `0`.
-     * @return eligible True when `v` is claimed by either approved factory and holds both `base` and `quote` with positive scaled balances and positive summed weights.
+     * @return eligible True when `v` is claimed by either approved factory and holds both `base` and `quote` with positive scaled balances and positive summed weights; false also when any of the three venue reads reverts (PP-D52 (vi)).
      */
     function _venueRatio(address v, address base, address quote) internal view returns (uint256 ratio, bool eligible) {
         // F-19 / P-D37 — an uninitialized venue cannot price and would return (0, false) anyway; skip BEFORE the getPoolData read, which carries the Vault's withInitializedPool modifier and reverts PoolNotInitialized.
         if (!vaultExplorer.isPoolInitialized(v)) return (0, false);
         // PB-D52 (ii) / PB-D57 (v) — provenance precedes every read it protects, and trust is disjunctive across the two weighted-pool factories this system actually runs. The Aureum factory is tested first because the Miliarium roster dominates the venue set, so the common case short-circuits on one call. A venue claimed by neither is skipped before getNormalizedWeights is reached, so a pool that cannot answer it is never asked. The PB-D55 BODENSEE_POOL exemption is retired here rather than kept beside this: der Bodensee is created from WEIGHTED_POOL_FACTORY and therefore passes on the general rule.
         if (!IBasePoolFactory(approvedFactoryAureum).isPoolFromFactory(v) && !IBasePoolFactory(approvedFactory).isPoolFromFactory(v)) return (0, false);
-        IERC20[] memory tokens = vaultExplorer.getPoolTokens(v);
-        PoolData memory data = vaultExplorer.getPoolData(v);
-        uint256[] memory weights = IWeightedPool(v).getNormalizedWeights();
+        // PP-D52 (vi) / (xi) — the three venue reads degrade rather than brick. getPoolData walks every rate provider the venue holds, so one reverting third-party getRate() there took tvl() down for every unrelated pool (F-53); its two siblings are wrapped with it so a venue that cannot answer any of the three yields (0, false), indistinguishable from the skips above and below. No event marks the degradation, because this function and every caller up to tvl() are view (PP-D52 (xi)).
+        IERC20[] memory tokens;
+        try vaultExplorer.getPoolTokens(v) returns (IERC20[] memory t) {
+            tokens = t;
+        } catch {
+            return (0, false);
+        }
+        PoolData memory data;
+        try vaultExplorer.getPoolData(v) returns (PoolData memory d) {
+            data = d;
+        } catch {
+            return (0, false);
+        }
+        uint256[] memory weights;
+        try IWeightedPool(v).getNormalizedWeights() returns (uint256[] memory w) {
+            weights = w;
+        } catch {
+            return (0, false);
+        }
         // PB-D53 (iv) — a weight array disagreeing with the token array skips rather than reverting; close to unreachable behind the provenance gate, and one comparison cheaper than the out-of-bounds panic it prevents.
         if (weights.length != tokens.length) return (0, false);
         uint256 balBase = 0;
