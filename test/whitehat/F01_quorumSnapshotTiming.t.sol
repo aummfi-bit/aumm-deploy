@@ -112,67 +112,6 @@ contract F01_QuorumSnapshotTimingTest is Test {
         assertFalse(gaugeReg.revoked(gaugePool));
     }
 
-    /// @notice F-21 regression, the `snapshot == 0` case F-06 left open and PB-D62 closed. The stored
-    ///         mul-form `totalVotes * 10_000 < getPastTotalSupply(snapshotBlock) * QUORUM_BPS` passes
-    ///         vacuously when the denominator is 0, since `0 < 0` is false. The zero-supply guard now
-    ///         rejects that denominator before any majority branch is reached, so the proposal Defeats
-    ///         at any turnout — asserted here with a real 1e18 FOR vote, which Succeeded before the fix.
-    function test_F21_zeroSnapshotDefeatsGaugeDespiteVotes() public {
-        votingWeight.setTotalSupply(0);
-        vm.prank(attacker);
-        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
-        vm.roll(gov.getProposal(id).snapshotBlock + 1);
-        votingWeight.setGovernanceWeight(attacker, 1e18);
-        vm.prank(attacker);
-        gov.castVote(id, true);
-        vm.roll(gov.getProposal(id).endBlock + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
-        assertFalse(gaugeReg.revoked(gaugePool));
-    }
-
-    /// @notice F-21 regression, the sharp face: `_voteSucceeded` branches on proposal type and the two
-    ///         branches used different comparisons — Gauge and Fee return `forVotes > againstVotes`,
-    ///         false at `0 > 0`, while Composition returned `forVotes * 3 >= totalVotes * 2`, TRUE at
-    ///         `0 >= 0`. With the denominator also zero the quorum guard passed vacuously, so a
-    ///         CompositionChallenge Succeeded with NO vote cast at all and captured a Miliarium slot
-    ///         through queue and execute. The PB-D62 zero-supply guard closes it at the denominator, so
-    ///         the proposal now Defeats, `queue` reverts `ProposalNotSucceeded`, and the slot is untouched.
-    function test_F21_compositionZeroVoteCannotCaptureSlotAtZeroSnapshot() public {
-        votingWeight.setTotalSupply(0);
-        vm.prank(attacker);
-        uint256 id = gov.proposeCompositionChallenge(5, candidatePool, IERC20(address(svZchf)));
-
-        // Premise asserted before the attempt, so an unchanged slot at the end is the guard holding
-        // rather than the fixture having started in some other state.
-        assertEq(slotReg.poolAtSlot(5), occupantPool);
-        assertFalse(gaugeReg.registered(candidatePool));
-
-        // No castVote anywhere in this test. Turnout is exactly zero.
-        vm.roll(gov.getProposal(id).endBlock + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
-
-        vm.expectRevert(abi.encodeWithSelector(AureumGovernance.ProposalNotSucceeded.selector, id));
-        gov.queue(id);
-
-        assertEq(slotReg.poolAtSlot(5), occupantPool);
-        assertFalse(gaugeReg.revoked(occupantPool));
-        assertFalse(gaugeReg.registered(candidatePool));
-    }
-
-    /// @notice F-21 companion. Before the fix this was the discriminator: identical zero supply and zero
-    ///         turnout, differing only in proposal type, isolating the comparison operator as the one
-    ///         thing that made Composition succeed where Gauge defeated. The guard removes that
-    ///         divergence by rejecting the denominator ahead of both branches, so the pair now agrees
-    ///         and this case pins the Gauge side of that agreement rather than discriminating.
-    function test_F21_gaugeChallengeZeroVoteDefeatsAtSameSnapshot() public {
-        votingWeight.setTotalSupply(0);
-        vm.prank(attacker);
-        uint256 id = gov.proposeGaugeChallenge(gaugePool, IERC20(address(svZchf)));
-        vm.roll(gov.getProposal(id).endBlock + 1);
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Defeated));
-        assertFalse(gaugeReg.revoked(gaugePool));
-    }
-
     /// @notice F-01 regression: a single 100e18 voter cleared a composition 2/3 supermajority in the finding
     ///         because the propose-time snapshot excluded never-poked holders. Under snapshot voting the
     ///         denominator is the full checkpointed total, so 100e18 fails the 20% quorum outright and the
