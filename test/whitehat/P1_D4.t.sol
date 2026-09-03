@@ -93,65 +93,137 @@ contract P1_D4_UngatedMultiplierTest is Test {
         sampler.updateEMA(pool);
     }
 
-    /// @dev Defect case — an immature EMA moves the multiplier while VotingWeight scores it zero.
-    function test_P1_D4_immatureEmaMovesTheMultiplierWhileVotingWeightScoresItZero() public {
+    /// @dev PP-D52 (xii) — sixty daily samples on every pool in `pools`, which clears the D.1 sample
+    ///      floor and the F-04 maturity window in one pass and leaves each stamp fresh. Spot values are
+    ///      held constant, so the F-4 step returns each seed value unchanged. F10: the height is threaded
+    ///      through an explicit counter, since via_ir hoists a block.number read out of a vm.roll loop.
+    function _matureAll(address[] memory pools) private {
+        uint256 blockCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            blockCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(blockCounter);
+            for (uint256 i = 0; i < pools.length; ++i) {
+                sampler.updateEMA(pools[i]);
+            }
+        }
+    }
+
+    function _allThree() private view returns (address[] memory pools) {
+        pools = new address[](3);
+        pools[0] = poolA;
+        pools[1] = poolB;
+        pools[2] = poolZ;
+    }
+
+    /// @dev Regression (PP-D52 (xii), D.4): an immature EMA is now REFUSED by the multiplier, which
+    ///      is the symmetry the finding was about — VotingWeight already scored this same EMA zero,
+    ///      and the two consumers now agree instead of disagreeing. The matured leg is a positive
+    ///      control: the gate discriminates on readiness rather than blocking outright, and once the
+    ///      sample floor and maturity window are genuinely met the step lands at exactly the value
+    ///      the pre-fix defect used to reach on a zero-block-old EMA.
+    function test_multiplierGatesOnEmaMaturity() public {
         _seedPoolEma(poolA, SEEDED_EMA);
         _seedPoolEma(poolB, SEEDED_EMA);
         _seedPoolEma(poolZ, SEEDED_EMA);
 
         assertLt(
             block.number - sampler.emaSeedBlock(poolA),
-            60 * AureumTime.BLOCKS_PER_DAY,
-            "EMA is provably immature by the EmissionDistributor gate threshold"
+            AureumTime.EMA_MATURITY_BLOCKS,
+            "premise - the EMA is provably immature"
         );
 
         vw.poke(holder);
         assertEq(vw.governanceWeight(holder), 0, "sibling consumer rejects this immature EMA");
 
+        vm.expectRevert(abi.encodeWithSelector(CCBMultiplier.EmaNotReady.selector, poolA));
         multiplier.updateMultiplier(poolA);
+        assertEq(
+            multiplier.getMultiplier(poolA),
+            multiplier.INITIAL_MULTIPLIER(),
+            "the refused call moved nothing"
+        );
 
+        // Positive control: mature the same three pools and the identical call now lands its step.
+        _matureAll(_allThree());
+        multiplier.updateMultiplier(poolA);
         uint256 step = multiplier.STEP_SIZE().toUint256();
         assertEq(
             multiplier.getMultiplier(poolA),
             multiplier.INITIAL_MULTIPLIER() - step,
-            "multiplier moved a full step on a zero-block-old immature EMA"
+            "matured, the intra channel steps down exactly as before the gate existed"
         );
     }
 
-    /// @dev Cadence case — per-pool guard on a global baseline drops the second updater's global step.
-    function test_P1_D4_perPoolCadenceGuardsAGlobalBaselineSoTheSecondUpdaterLosesTheGlobalStep() public {
+    /// @notice Regression (PP-D52 (xii) FIFTH, D.4): a per-pool baseline gives EVERY updater its
+    ///         own global step, closing the gap the old single global slot opened — whoever updated
+    ///         last would re-key the shared baseline to the just-observed aggregate, so the SECOND
+    ///         updater in the same epoch compared the aggregate to itself and lost the global channel
+    ///         entirely. Round 1 establishes each pool's OWN prior baseline (both cold-start, so both
+    ///         read deltaGlobal = 0 regardless of call order). gaugeC then joins the roster and the
+    ///         aggregate grows. Round 2 calls poolA then poolB in the SAME block: under the old
+    ///         single-slot code, poolA's call would have re-keyed the shared baseline to the new
+    ///         aggregate, and poolB's immediately following call would have compared that aggregate
+    ///         to itself and read zero growth. Under the fix, poolB reads its OWN round-1 baseline —
+    ///         untouched by poolA's write to a DIFFERENT mapping slot — and correctly detects the same
+    ///         growth poolA did, taking the identical step.
+    function test_perPoolBaselineGivesEveryUpdaterTheGlobalStep() public {
         _seedPoolEma(poolA, SEEDED_EMA);
         _seedPoolEma(poolB, SEEDED_EMA);
         _seedPoolEma(poolZ, SEEDED_EMA);
-
-        multiplier.updateMultiplier(poolZ);
-
         _seedPoolEma(gaugeC, SEEDED_EMA);
-        address[] memory gauges = new address[](4);
-        gauges[0] = poolA;
-        gauges[1] = poolB;
-        gauges[2] = poolZ;
-        gauges[3] = gaugeC;
-        gaugeReg.setGaugeList(gauges);
+        address[] memory allFour = new address[](4);
+        allFour[0] = poolA;
+        allFour[1] = poolB;
+        allFour[2] = poolZ;
+        allFour[3] = gaugeC;
+        _matureAll(allFour);
 
+        // Round 1: gaugeC not yet in the roster. Both calls are cold-start on the global channel
+        // (baseline[pool] == 0), so both take deltaGlobal = 0, isolating the intra step alone.
         multiplier.updateMultiplier(poolA);
         multiplier.updateMultiplier(poolB);
 
         uint256 step = multiplier.STEP_SIZE().toUint256();
         assertEq(
             multiplier.getMultiplier(poolA),
-            multiplier.INITIAL_MULTIPLIER() - 2 * step,
-            "first updater took both global and intra steps"
+            multiplier.INITIAL_MULTIPLIER() - step,
+            "round 1: cold-start global, intra step only"
         );
         assertEq(
             multiplier.getMultiplier(poolB),
             multiplier.INITIAL_MULTIPLIER() - step,
-            "second updater lost the global step to the overwritten baseline"
+            "round 1: symmetric with poolA, same cold start"
+        );
+
+        // gaugeC joins the roster; the aggregate grows from 3x SEEDED_EMA to 4x. One epoch clears
+        // both pools' cadence guards for round 2.
+        address[] memory gauges = new address[](4);
+        gauges[0] = poolA;
+        gauges[1] = poolB;
+        gauges[2] = poolZ;
+        gauges[3] = gaugeC;
+        gaugeReg.setGaugeList(gauges);
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
+
+        // Round 2: poolA first, poolB immediately after, same block. Each reads its OWN round-1
+        // baseline (3x SEEDED_EMA), not a slot the other's call could have overwritten.
+        multiplier.updateMultiplier(poolA);
+        multiplier.updateMultiplier(poolB);
+
+        assertEq(
+            multiplier.getMultiplier(poolA),
+            multiplier.INITIAL_MULTIPLIER() - 3 * step,
+            "round 2: poolA takes both the global step and the intra step"
+        );
+        assertEq(
+            multiplier.getMultiplier(poolB),
+            multiplier.INITIAL_MULTIPLIER() - 3 * step,
+            "round 2: poolB, called second in the same block, takes the SAME global step"
         );
         assertEq(
             multiplier.getMultiplier(poolB) - multiplier.getMultiplier(poolA),
-            step,
-            "gap is exactly one global step lost to per-pool cadence"
+            0,
+            "fixed: no gap, where the pre-fix defect read exactly one global step"
         );
     }
 }
