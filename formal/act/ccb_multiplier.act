@@ -44,7 +44,7 @@ creates
   address gaugeRegistrySetter := CALLER
   mapping(address => uint256) M_i := []
   mapping(address => uint256) lastMultiplierUpdateBlock := []
-  uint256 lastProtocolAggregateEMA := 0
+  mapping(address => uint256) lastProtocolAggregateEMA := []
 
 // The F-D20 one-shot: deployer-only, non-zero, binds then seals. After the
 // seal registrySetter == 0, and no EVM caller holds address(0), so the
@@ -84,20 +84,29 @@ returns (if (M_i[pool] == 0) then 1000000000000000000 else M_i[pool])
 // miliariumRegistry.isMiliarium(pool), and walks TWO rosters --
 // gaugeRegistry.gaugeCount()/gaugeAt(i) and
 // miliariumRegistry.miliariumPoolsCount()/miliariumPoolAt(i) -- against
-// emaSampler.tvlEMA(*): environment plus three external contracts, outside
-// the single-contract fragment. The behavioural contract for the firm's
-// model, per PB-D18 (ii)/(iii) superseding the pre-reopening Miliarium-only
-// aggregate: (1) gate order Miliarium-membership then cadence
-// (BLOCKS_PER_EPOCH = 100800, OQ-3); (2) delta_global compares the enumerated
-// sum of tvlEMA over ALL currently-Active gauges (raw, ungated -- the P-D13
-// set; Revoked pools leave the enumeration) to the stored
-// lastProtocolAggregateEMA baseline, with the F-D18 cold-start sentinel
-// (baseline == 0 yields delta_global = 0) and the baseline re-keyed to the
-// current gauge sum on every update; (3) delta_intra compares the pool's
-// tvlEMA to the simple mean miliariumAgg / 28 over the Miliarium-only sum
+// emaSampler reads that now pass through the PP-D52 (xii) readiness gate:
+// environment plus three external contracts, outside the single-contract
+// fragment. The behavioural contract for the firm's model, per PB-D18
+// (ii)/(iii) superseding the pre-reopening Miliarium-only aggregate and per
+// PP-D52 (xii) superseding the raw reads and the single baseline:
+// (1) gate order Miliarium-membership then cadence (BLOCKS_PER_EPOCH =
+// 100800, OQ-3) then readiness -- the pool's own gated EMA, reverting
+// EmaNotReady(pool) on zero, evaluated once and reused at (3);
+// (2) delta_global compares the enumerated sum over ALL currently-Active
+// gauges (the P-D13 set; Revoked pools leave the enumeration), each read
+// through the gate so an unready gauge contributes zero rather than
+// reverting, to the PER-POOL lastProtocolAggregateEMA[pool] baseline, with
+// the F-D18 cold-start sentinel (baseline == 0 yields delta_global = 0) now
+// keyed per pool and re-keyed to the current gauge sum on that pool's own
+// update; (3) delta_intra compares the pool's gated EMA to the simple mean
+// miliariumAgg / 28 over the Miliarium-only sum, itself gated per member
 // (OQ-23 (iv.a), decoupled from the global aggregate); (4) anti-cyclical
 // dead-zone steps per F-D6 / F-D18 / F-D19 / F-D25 with DEAD_ZONE = 1e15,
 // STEP_SIZE = 5e16, the M_i[pool] == 0 sentinel reading INITIAL_MULTIPLIER
 // ahead of the summed steps and the [75e16, 125e16] clamps; boundary
 // equality stays neutral in both channels (strict inequalities, F-D19).
+// The gate itself (seed presence, seed age against EMA_MATURITY_BLOCKS, the
+// D.1 sample floor against MIN_SAMPLES, freshness against
+// EMA_STALENESS_BLOCKS) is four emaSampler reads and is part of this
+// residual, not of the modelled fragment.
 // ---------------------------------------------------------------------------

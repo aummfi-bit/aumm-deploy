@@ -60,6 +60,19 @@ PENDING-REATTESTATION below. PP-D37 defers the bundle re-run to the end of
 the P-prime patch cycle; until it runs, the 55/55 figure above describes
 commit 9c109b1 and not this tree.
 
+FURTHER DIVERGED as of PP4.10 (D.4): formal/act/ccb_multiplier.act was
+revised again for PP-D52 (xii) -- lastProtocolAggregateEMA became a per-pool
+mapping and all three emaSampler reads inside updateMultiplier now pass
+through a readiness gate that reverts EmaNotReady(pool) on the pool's own
+unready EMA. The spec's creates block and its updateMultiplier residual
+footer were corrected to match. NO Tier-1 harness changed: every prove_
+function in test/formal/CCBEngineProofs.sol constructs CCBMultiplier at an
+unchanged constructor arity and none reads lastProtocolAggregateEMA or calls
+updateMultiplier, so no proof is falsified and no status row moves. This
+paragraph records a Tier-2 spec correction, not a new PENDING-REATTESTATION:
+that status is reserved above for a rewritten harness. The bundle re-run
+deferred by PP-D37 still covers this tree.
+
 Solver and flag notes:
 
 - --max-iterations 10: raised at PB2.12e1. Multi-call proofs re-visit the
