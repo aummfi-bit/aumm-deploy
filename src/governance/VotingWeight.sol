@@ -163,7 +163,7 @@ contract VotingWeight is IVotingWeight {
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
     /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity + freshness — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), has never seeded, or was last refreshed more than EMA_STALENESS_BLOCKS (14 days) ago confers 0 (F-04 anti-spot-pump; F-05 anti-stale-seed); (c) clock from the recorder
     ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
-    ///      `min(userLP, live BPT balanceOf) / poolTotalLP` — the F-17 / P-D18 read-cap denies a phantom position (recorded userLP over live balance, from an out-of-band BPT move) any power, denominator left uncapped (heals via `syncPosition`), so the cap only under-counts (OQ-25); timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
+    ///      `userLP / poolTotalLP`, but a phantom position (recorded userLP over live BPT balance, from an out-of-band BPT move) confers ZERO rather than a capped share per B.5 / PP-D53 (i) — the F-17 / P-D18 cap handled the share and never the clock, so a desynced holder kept a mature `timeFactor` an honest `recordWithdrawal` had already reset; denominator left uncapped (heals via `syncPosition`), so this only under-counts (OQ-25); timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
     ///      poolPower * share * timeFactor — the holder leg is linear, so the position is split-invariant across wallets (F-02). Every
     ///      degenerate input (immature/never-seeded/stale EMA, zero LP, fully-moved capped LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
@@ -191,12 +191,17 @@ contract VotingWeight is IVotingWeight {
         uint256 totalLP = RECORDER.poolTotalLP(pool);
         if (totalLP == 0) return (0, false);
         uint256 lp = RECORDER.userLP(pool, holder);
-        // F-17 / P-D18 read-cap: cap the numerator at the holder's live BPT balance so a phantom position
-        // (recorded userLP over balanceOf, from an out-of-band BPT move that skipped the recorder) confers no
-        // governance power. Denominator (poolTotalLP) stays uncapped — it heals via
-        // EmissionDistributor.syncPosition — so the cap only ever under-counts.
+        // B.5 / PP-D53 (i) — a phantom position confers NOTHING, not a capped share. The F-17 / P-D18
+        // read-cap this replaces handled the SHARE and never the CLOCK: a desynced holder still read
+        // `effectiveQualBlock` above and applied `timeFactor` below, keeping a mature clock on residual BPT
+        // where an honest `recordWithdrawal` had already been reset to zero (I-D14, and `04_tokenomics.md`
+        // L105 "even 1%"). That gap is the row's ~12.9x — `ON_RAMP_PERIOD_BLOCKS / QUALIFICATION_PERIOD_BLOCKS`,
+        // 1_296_000 / 100_800 = 12.857 — a time-factor ratio and not a share ratio. The denominator
+        // (`poolTotalLP`) stays uncapped and heals via `EmissionDistributor.syncPosition`, so this only ever
+        // under-counts. `_syncDown`'s unconditional clock reset is UNCHANGED and correct: it mirrors
+        // `recordWithdrawal`, and PP-D53 (ii) amends PP-D18's full-drain conjunct away as canon-hostile.
         uint256 held = IERC20(pool).balanceOf(holder);
-        if (held < lp) lp = held;
+        if (held < lp) return (0, false);
         if (lp == 0) return (0, false);
         uint256 ema = EMA_SAMPLER.tvlEMA(pool);
         if (ema == 0) return (0, false);
