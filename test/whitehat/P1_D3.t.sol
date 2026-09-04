@@ -74,8 +74,14 @@ contract P1_D3_FreshnessCertifiesSamplingTest is Test {
         );
     }
 
-    /// @dev Defect case — fortnightly sampling keeps a drained pool fresh and fiftyfold overstated.
-    function test_P1_D3_fortnightlySamplingKeepsADrainedPoolFreshAndFiftyFoldOverstated() public {
+    /// @notice The fix (D.3): decay tracks ELAPSED TIME, not call count. A pool sampled once a
+    ///         fortnight and a pool sampled daily, over the same 294-day window against the same
+    ///         drained spot, converge to the IDENTICAL EMA — the catch-up loop replays the F-4
+    ///         steps the sparse pool's own calls skipped, so sparse sampling can no longer hold a
+    ///         stale valuation aloft while `lastEMAUpdateBlock` reads fresh. Equality is EXACT, not
+    ///         approximate: 294 applications of the same step to the same start with the same
+    ///         constant spot give the same result whether batched 14-at-a-time or taken one daily.
+    function test_sparseAndDailySamplingConvergeIdentically() public {
         address poolA = address(poolTokenA);
         address poolB = address(poolTokenB);
 
@@ -102,21 +108,24 @@ contract P1_D3_FreshnessCertifiesSamplingTest is Test {
             sampler.lastEMAUpdateBlock(poolB),
             "both pools share the same freshness anchor block"
         );
-        assertLe(
-            block.number - sampler.lastEMAUpdateBlock(poolA),
-            AureumTime.BLOCKS_PER_EPOCH,
-            "sparse pool elapsed since update is within the freshness gate"
+        assertEq(
+            sampler.tvlEMA(poolA),
+            sampler.tvlEMA(poolB),
+            "D.3 fixed - same elapsed window, same EMA, regardless of sampling cadence"
         );
-        assertLt(sampler.tvlEMA(poolB), PRE_DRAIN_TVL / 50, "daily-sampled pool converged toward truth");
-        assertGt(sampler.tvlEMA(poolA), (PRE_DRAIN_TVL * 45) / 100, "sparse pool still above 45% of pre-drain");
-        assertGt(sampler.tvlEMA(poolA), sampler.tvlEMA(poolB) * 40, "sparse pool exceeds daily pool by fortyfold");
-
-        vw.poke(holder);
-        assertGt(vw.governanceWeight(holder), 0, "drained sparse pool confers live governance weight");
+        assertLt(
+            sampler.tvlEMA(poolA),
+            (DRAINED_TVL * 101) / 100,
+            "D.3 fixed - the sparse pool converged onto the drained truth"
+        );
     }
 
-    /// @dev Mechanism case — decay is per call, not per elapsed time, over the same window.
-    function test_P1_D3_decayIsPerCallNotPerElapsedTime() public {
+    /// @notice The fix (D.3), the mechanism stated directly: over ONE identical elapsed window,
+    ///         one call and two calls produce the SAME EMA. The catch-up loop applies the F-4 step
+    ///         once per elapsed day rather than once per call, so `lastEMAUpdateBlock` now certifies
+    ///         a value as well as a cadence. Before this, poolB's extra call decayed it strictly
+    ///         further than poolA over the very same 28 days.
+    function test_emaDecaysWithElapsedTime() public {
         address poolA = address(poolTokenA);
         address poolB = address(poolTokenB);
 
@@ -129,29 +138,29 @@ contract P1_D3_FreshnessCertifiesSamplingTest is Test {
         oracle.setTvl(poolB, DRAINED_TVL);
 
         uint256 blockCounter = sampler.emaSeedBlock(poolA);
-        uint256 alphaNum = sampler.EMA_ALPHA_NUMERATOR();
-        uint256 alphaDen = sampler.EMA_ALPHA_DENOMINATOR();
 
+        // poolB samples at the midpoint; poolA does not.
         blockCounter += AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(blockCounter);
         sampler.updateEMA(poolB);
 
-        uint256 oneStep = (alphaNum * DRAINED_TVL + (alphaDen - alphaNum) * PRE_DRAIN_TVL) / alphaDen;
-
+        // Both sample at the end of the same 28-day window.
         blockCounter += AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(blockCounter);
         sampler.updateEMA(poolA);
         sampler.updateEMA(poolB);
 
-        uint256 twoStep = (alphaNum * DRAINED_TVL + (alphaDen - alphaNum) * oneStep) / alphaDen;
-
-        assertEq(sampler.tvlEMA(poolA), oneStep, "poolA took one post-drain sample");
-        assertEq(sampler.tvlEMA(poolB), twoStep, "poolB took two post-drain samples");
-        assertLt(sampler.tvlEMA(poolB), sampler.tvlEMA(poolA), "more calls decay further over the same elapsed time");
+        assertEq(
+            sampler.tvlEMA(poolA),
+            sampler.tvlEMA(poolB),
+            "D.3 fixed - one call and two calls decay identically over the same elapsed window"
+        );
         assertEq(
             sampler.lastEMAUpdateBlock(poolA),
             sampler.lastEMAUpdateBlock(poolB),
             "identical freshness reading at the same final block"
         );
+        assertEq(sampler.sampleCount(poolA), 2, "poolA took two calls in total");
+        assertEq(sampler.sampleCount(poolB), 3, "poolB took three, and it bought no extra decay");
     }
 }
