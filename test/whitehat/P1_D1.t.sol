@@ -65,8 +65,13 @@ contract P1_D1_SampleCountFloorTest is Test {
         );
     }
 
-    /// @dev Defect case — two samples 60 days apart mature a pumped seed past both gates.
-    function test_P1_D1_twoSamplesSixtyDaysApartMatureAPumpedSeed() public {
+    /// @notice The fix (D.1): a pool sampled only twice, sixty days apart, is REJECTED — not
+    ///         because its EMA value is wrong (D.3's catch-up loop already converges it correctly
+    ///         off the same elapsed window), but because `sampleCount` never cleared `MIN_SAMPLES`.
+    ///         Maturity measured in TIME cannot distinguish two samples sixty days apart from sixty
+    ///         daily ones; `sampleCount` is the quantity that can, and it is checked independently
+    ///         of whatever the EMA arithmetic produces.
+    function test_immatureEmaRejectedBelowMinSamples() public {
         address pool = address(poolToken);
 
         oracle.setTvl(pool, PUMPED_TVL);
@@ -77,14 +82,15 @@ contract P1_D1_SampleCountFloorTest is Test {
         vm.roll(block.number + MATURITY_WINDOW);
         sampler.updateEMA(pool);
 
-        uint256 alphaNum = sampler.EMA_ALPHA_NUMERATOR();
-        uint256 alphaDen = sampler.EMA_ALPHA_DENOMINATOR();
-        uint256 expectedEma = (alphaNum * TRUE_TVL + (alphaDen - alphaNum) * PUMPED_TVL) / alphaDen;
-        assertEq(sampler.tvlEMA(pool), expectedEma, "second sample applies one F-4 step from the seed");
-        assertGt(sampler.tvlEMA(pool), (PUMPED_TVL * 967) / 1000, "EMA still above 96.7% of the pumped seed");
+        // D.3 already converged the value correctly off this same elapsed window — the catch-up
+        // loop applies the F-4 step once per elapsed day, so this is not what blocks the pool.
+        assertLt(sampler.tvlEMA(pool), PUMPED_TVL / 5, "the EMA value itself is already correct");
+
+        assertEq(sampler.sampleCount(pool), 2, "only two samples were ever taken");
+        assertLt(sampler.sampleCount(pool), sampler.MIN_SAMPLES(), "below the D.1 floor");
 
         vw.poke(holder);
-        assertGt(vw.governanceWeight(holder), 0, "both gates pass on exactly two samples");
+        assertEq(vw.governanceWeight(holder), 0, "fixed: two samples do not clear the floor");
     }
 
     /// @dev Control case — daily sampling over the same elapsed window converges away from the seed.
