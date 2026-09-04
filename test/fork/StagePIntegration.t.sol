@@ -1590,81 +1590,55 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         );
     }
 
-    /// @notice P1 D.5 — an unfunded `updateEMA` outage lets anyone ratchet the electorate to zero,
-    ///         and the kill is permanent per proposal even after live state recovers.
-    /// @dev Reproduction PoC for seam-1 root cause D.5 (Medium), fix-sequence rung 10.
-    ///      `VotingWeight._positionPower` returns 0 once `block.number - lastEMAUpdateBlock`
-    ///      exceeds `EMA_STALENESS_BLOCKS` (`AureumTime.BLOCKS_PER_EPOCH`, 100_800, ~14 days), and
-    ///      `poke` is unconditionally permissionless: it recomputes weight across every Miliarium
-    ///      pool, writes the zero to `_holderWeight`, subtracts it from `_totalQualifiedWeight`,
-    ///      and PUSHES BOTH TO CHECKPOINT HISTORY. That push is the ratchet. `getPastTotalSupply`
-    ///      reads history, so `AureumGovernance._voteSucceeded` hits its F-21 guard at `:367`
-    ///      (`snapshotSupply == 0` returns false) for any proposal whose snapshot fell in the
-    ///      zeroed window, and `state()` at `:339` derives `Defeated` permanently.
-    ///      ORDERING IS LOAD-BEARING: the zeroing `poke` must precede the propose. Proposing first
-    ///      puts `snapshotBlock` at `start + VOTING_DELAY_BLOCKS`, which a later recovery poke can
-    ///      heal, and the case would silently fail to reproduce.
-    ///      `Defeated` is NOT reachable at `snapshotBlock + 1`: `state()` returns `Active` while
-    ///      `block.number <= endBlock` and only then evaluates `_voteSucceeded`, so the kill is
-    ///      latent until the vote closes. Both readings are asserted.
-    ///      The `VotingWeight` handle is cached BEFORE the prank per P-D38: a chained
-    ///      `orchestrator.votingWeight().poke(...)` would spend the prank on the getter, so `poke`
-    ///      would run as this contract and the third-party claim would be false.
-    ///      POST-FIX TARGET, not asserted here: PP-D31 locks the keeper model as (c), folding
-    ///      `updateEMA` into the first `recordScore`/`claim` of the day. Once that lands an outage
-    ///      narrows to an idle-and-keeper-only freeze because active pools self-heal. This case
-    ///      runs against PRE-FOLD code, where nothing self-heals, so it reproduces the
-    ///      unconditional zero-write and its ratchet. Freeze-not-zero is the fix intent, not the
-    ///      finding.
-    function test_P1_D5_staleEmaLetsAnyonePermanentlyRatchetTheElectorateToZero() public {
+    /// @notice P1 D.5 — the fix (PP-D52 (ix)): a stale-EMA outage no longer lets a third party
+    ///         ratchet the electorate to zero. `poke`'s staleness branch HOLDS the previous
+    ///         checkpoint instead of writing zero, so the quorum denominator survives an outage.
+    /// @dev Regression for seam-1 root cause D.5 (Medium), fix-sequence rung 10, PP-D52 (ix)
+    ///      shape (A prime): `_positionPower` returns `staleZero = true` only on the staleness
+    ///      branch, and `poke` returns before any write when the new weight is LOWER than the old
+    ///      AND any pool contributed a staleness zero — `_holderWeight`, `_totalQualifiedWeight`
+    ///      and both history checkpoints are untouched. An upward move or a non-staleness downward
+    ///      move still writes, so recovery and genuine withdrawal are unaffected (clause 1's own
+    ///      text). Clause 2, restricting THIRD-PARTY pokes specifically, is deferred to rung 12
+    ///      and is not this case's subject: `rando` below still succeeds at calling `poke`, and
+    ///      the fix is that the call is a no-op rather than a zeroing.
+    function test_staleEmaHoldsCheckpointNotZero() public {
         address voter = makeAddr("p1_d5_voter");
         _seatVoter(voter);
-        AureumGovernance gov = orchestrator.governance();
         VotingWeight vw = orchestrator.votingWeight();
 
         // Premise: a matured, fresh position confers real governance weight.
-        assertGt(vw.governanceWeight(voter), 0, "premise - voter carries weight while the EMA is fresh");
-        assertGt(vw.totalSupply(), 0, "premise - the electorate is non-empty");
+        uint256 weightBefore = vw.governanceWeight(voter);
+        uint256 supplyBefore = vw.totalSupply();
+        assertGt(weightBefore, 0, "premise - voter carries weight while the EMA is fresh");
+        assertGt(supplyBefore, 0, "premise - the electorate is non-empty");
 
         // (1) The outage: no updateEMA for longer than the staleness window.
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH + 1);
 
-        // (2) The ratchet. poke is permissionless and carries no staleness guard of its own, so an
-        //     arbitrary third party writes the zero and checkpoints it.
+        // (2) The hold. poke is still permissionless and still callable by an arbitrary third
+        //     party, but the staleness-caused reduction is no longer banked.
         address rando = makeAddr("p1_d5_rando");
         vm.prank(rando);
         vw.poke(voter);
-        assertEq(vw.governanceWeight(voter), 0, "D.5 - a third party zeroed the holder's weight");
-        assertEq(vw.totalSupply(), 0, "D.5 - the quorum denominator is now zero");
+        assertEq(vw.governanceWeight(voter), weightBefore, "D.5 fixed - the third party's poke held the checkpoint");
+        assertEq(vw.totalSupply(), supplyBefore, "D.5 fixed - the quorum denominator held too");
 
-        // (3) A proposal opened after the zeroing takes its snapshot inside the zeroed window.
-        deal(address(svZchf), voter, PROPOSAL_DEPOSIT);
-        vm.startPrank(voter);
-        svZchf.approve(address(gov), PROPOSAL_DEPOSIT);
-        uint256 id = gov.proposeVaultUnpause(svZchf);
-        vm.stopPrank();
-        AureumGovernance.Proposal memory p = gov.getProposal(id);
-
-        // (4) Latent, then terminal: Active while the window is open, Defeated once it closes.
-        vm.roll(p.snapshotBlock + 1);
-        assertEq(vw.getPastTotalSupply(p.snapshotBlock), 0, "D.5 - the snapshotted denominator is zero");
-        assertEq(uint256(gov.state(id)), uint256(AureumGovernance.ProposalState.Active), "still Active mid-window");
-        vm.roll(p.endBlock + 1);
+        // (3) The checkpoint HISTORY was never written with a zero, so any snapshot taken inside
+        //     the outage reads the true pre-outage denominator rather than a zeroed one. F15: the
+        //     query reads block.number fresh, after the roll, in the same statement — a pre-roll
+        //     local carried across vm.roll gets sunk forward to the post-roll value under via_ir.
+        vm.roll(block.number + 1);
         assertEq(
-            uint256(gov.state(id)),
-            uint256(AureumGovernance.ProposalState.Defeated),
-            "D.5 - F-21 defeats it on a zero denominator"
+            vw.getPastTotalSupply(block.number - 1),
+            supplyBefore,
+            "D.5 fixed - the snapshotted denominator is never zeroed"
         );
 
-        // (5) The coda, and the reason this is Medium: live state recovers, the proposal does not.
+        // (4) The coda: genuine recovery still works once real data returns.
         orchestrator.emaSampler().updateEMA(pilotPools[0]);
         vw.poke(voter);
-        assertGt(vw.governanceWeight(voter), 0, "D.5 - live weight recovers for gas, by anyone");
-        assertEq(
-            uint256(gov.state(id)),
-            uint256(AureumGovernance.ProposalState.Defeated),
-            "D.5 - the kill is permanent per proposal; recovery heals only future snapshots"
-        );
+        assertGt(vw.governanceWeight(voter), 0, "recovery still works once the outage clears");
     }
 
     // -------------------------------------------------------------------------
