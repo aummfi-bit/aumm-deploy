@@ -55,8 +55,17 @@ abstract contract WK18ThinVenuePumpSimFixture is StageNIntegrationFixture {
         gaugeRegistry.seedFoundingPool(scoredPool);
         _depositOneSided(scoredPool, scoredLp, 100);
         emaSampler.updateEMA(scoredPool);
-        vm.roll(block.number + 60 * AureumTime.BLOCKS_PER_DAY + 1);
-        emaSampler.updateEMA(scoredPool);
+        // D.1 / PP-D52 (i) — sixty daily samples clear the MIN_SAMPLES floor across the same ~60-day
+        // span this fixture always used, so the end block, the freshness stamp and the on-ramp
+        // assumptions downstream are all unchanged. F10: the height is threaded through an explicit
+        // counter, since via_ir hoists a block.number read out of a vm.roll loop.
+        uint256 wkCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            wkCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(wkCounter);
+            emaSampler.updateEMA(scoredPool);
+        }
+        vm.roll(block.number + 1);
     }
 
     /// @dev Hookless USDC/svZChf weighted venue — StageHIntegration.t.sol L465-506 shape, distinct salt per call.

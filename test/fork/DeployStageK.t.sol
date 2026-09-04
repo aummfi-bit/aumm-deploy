@@ -187,6 +187,9 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
         // F-10 gate: emaSeedBlock=1 (slot 2, ancient → mature); freshness stamped after the year1End roll
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(2))), bytes32(uint256(1)));
+        // D.1 / PP-D52 (i): sampleCount=60 (slot 3, at MIN_SAMPLES) — the fourth gate. Without it the
+        // slot reads zero, _gatedTvlEMA short-circuits, the score is zero and nothing mints.
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(3))), bytes32(uint256(60)));
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
         // F-10 gate: stamp lastEMAUpdateBlock=block.number (slot 1, fresh) at the recordScore block year1End+1
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(1))), bytes32(block.number));

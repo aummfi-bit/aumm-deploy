@@ -75,6 +75,10 @@ abstract contract StageKIntegrationFixture is StageIIntegrationFixture {
         vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.tvlEMA.selector, pool), abi.encode(svzchfValue));
         vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.emaSeedBlock.selector, pool), abi.encode(uint256(1)));
         vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.lastEMAUpdateBlock.selector, pool), abi.encode(block.number));
+        // D.1 / PP-D52 (i) — the sample floor is a FOURTH gate this shim must answer for; without it
+        // the un-mocked getter returns zero, every consumer short-circuits, and the poke logic under
+        // test is never reached. 60 matches EMASampler.MIN_SAMPLES and must move with it.
+        vm.mockCall(address(emaSampler), abi.encodeWithSelector(emaSampler.sampleCount.selector, pool), abi.encode(uint256(60)));
     }
 }
 
@@ -240,6 +244,14 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
     ///         (`AureumGovernance.sol:211-214`), so the pool's own pause bit halts proposal
     ///         creation. The exit is inside the door it opens. PP-D29 orders G.1 after this.
     function test_P1_A1_pausedBodenseeBricksProposeVaultUnpause() public {
+        // PP-D52 (v) clause 4 — `_createProposal` now refuses the bond at a zero electorate, so this
+        // reproduction must seat one qualified voter to reach the condition it is actually about.
+        address a1Seed = makeAddr("a1_electorate_seed");
+        _depositOneSided(pilotPools[0], a1Seed, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockPoolEma(pilotPools[0], 1_000e18);
+        votingWeight.poke(a1Seed);
+
         address proposer = address(uint160(uint256(keccak256("proposerA1"))));
         deal(address(svZchf), proposer, 1_000e18, true);
         vm.prank(proposer);
@@ -257,6 +269,14 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
     ///         (`:286`, validated only against zero), freezing the allowlist forever. There is no
     ///         redeployment path: `AureumGovernance.BODENSEE_CHANNEL` is immutable.
     function test_P1_A4_donateAuthorizerPermanentlyBricksGovernance() public {
+        // PP-D52 (v) clause 4 — `_createProposal` now refuses the bond at a zero electorate, so this
+        // reproduction must seat one qualified voter to reach the condition it is actually about.
+        address a4Seed = makeAddr("a4_electorate_seed");
+        _depositOneSided(pilotPools[0], a4Seed, 100);
+        vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);
+        _mockPoolEma(pilotPools[0], 1_000e18);
+        votingWeight.poke(a4Seed);
+
         address proposer = address(uint160(uint256(keccak256("proposerA4"))));
         deal(address(svZchf), proposer, 1_000e18, true);
         vm.prank(proposer);

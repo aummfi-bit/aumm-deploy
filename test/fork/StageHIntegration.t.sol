@@ -346,6 +346,11 @@ contract StageHContinuousPhaseTest is StageHIntegrationFixture {
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(1))), bytes32(block.number));
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[1], uint256(1))), bytes32(block.number));
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[2], uint256(1))), bytes32(block.number));
+        // D.1 / PP-D52 (i): sampleCount=60 (slot 3, at MIN_SAMPLES) — the fourth gate _gatedTvlEMA reads.
+        // The stored tvlEMA is untouched, so every downstream expected value in this contract holds.
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(3))), bytes32(uint256(60)));
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[1], uint256(3))), bytes32(uint256(60)));
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[2], uint256(3))), bytes32(uint256(60)));
     }
 
     /// @notice F-7 continuous-phase 3-pilot claim arc: recordScore + recordDeposit drive per-pool LP share state; claim mints AuMM via real IAuMM.mint and the bounded Σ conservation invariant confirms no wei leak across 3 gauged pools.
@@ -411,6 +416,9 @@ contract StageHHalvingBoundaryTest is StageHIntegrationFixture {
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(0))), bytes32(uint256(1e18)));
         // F-10 gate: emaSeedBlock=1 (slot 2, ancient → mature); freshness is stamped in the test after the roll to firstHalving-10
         vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(2))), bytes32(uint256(1)));
+        // D.1 / PP-D52 (i): sampleCount=60 (slot 3, at MIN_SAMPLES) — the fourth gate. tvlEMA is
+        // untouched, so the emission-rate expectations across the halving boundary are unchanged.
+        vm.store(address(emaSampler), keccak256(abi.encode(pilotPools[0], uint256(3))), bytes32(uint256(60)));
     }
 
     /// @notice H-D30 era cursor walk across firstHalvingBlock: `_lpTrancheIntegral` splits into Era 0 sub-interval (9 blocks × 1e18) + Era 1 sub-interval (11 blocks × 5e17) = 14.5e18; real AuMM `blockEmissionRate` halved-rate sanity asserts confirm OQ-5 piecewise-constant schedule.
@@ -466,6 +474,17 @@ contract StageHCrossStackTest is StageHIntegrationFixture {
 
         emaSampler.updateEMA(pilotPools[0]);
         assertGt(emaSampler.tvlEMA(pilotPools[0]), 0, "tvlEMA seeded > 0 from real TVLOracle");
+
+        // D.1 / PP-D52 (i) — sixty daily samples clear the MIN_SAMPLES floor. Run BEFORE the roll to
+        // year1End so the absolute target below, and every phase assertion resting on it, is unchanged.
+        // F10: the height is threaded through an explicit counter, since via_ir hoists a block.number
+        // read out of a vm.roll loop.
+        uint256 emaCounter = block.number;
+        for (uint256 d = 0; d < 60; ++d) {
+            emaCounter += AureumTime.BLOCKS_PER_DAY;
+            vm.roll(emaCounter);
+            emaSampler.updateEMA(pilotPools[0]);
+        }
 
         vm.roll(AureumTime.year1EndBlock(aumm.GENESIS_BLOCK()) + 1);
         // F-10 gate: a second real updateEMA refreshes lastEMAUpdateBlock to the post-roll block (fresh); the early first seed keeps emaSeedBlock mature — no vm.store, stays on the real path per H-D38(4)
