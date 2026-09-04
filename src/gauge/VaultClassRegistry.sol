@@ -33,7 +33,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     /// @notice svZCHF bond posted with each `proposeVaultClass` call (G-D9 / G-D19).
     uint256 public constant PROPOSAL_BOND_SVZCHF = 1_000e18;
 
-    /// @notice Minimum cumulative voting weight (basis points of `votingWeight.totalSupply()`) to kill a proposal (G-D9 / G-D19).
+    /// @notice Veto kill bar in basis points (G-D9 / G-D19). Compared against `vetoFractionWad`, the SUM of each vetoer's own weight over the qualified supply AT THEIR OWN CALL, rescaled by 1e14 to the banked wad; it is NOT bps of a single live `totalSupply()` read, which is the B.7 defect PP-D53 (iii) removed.
     uint256 public constant VETO_THRESHOLD_BPS = 1000;
 
     /// @notice Length of the veto window in blocks, measured from `createdBlock` (G-D9 / G-D19).
