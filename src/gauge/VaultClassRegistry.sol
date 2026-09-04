@@ -57,8 +57,12 @@ contract VaultClassRegistry is IVaultClassRegistry {
         bytes32 constraintsHash;
         /// @notice `block.number` snapshot when the proposal was created.
         uint256 createdBlock;
-        /// @notice Cumulative voting weight accrued across successive `vetoProposal` calls in the veto window (G-D9).
-        uint256 vetoSupport;
+        /// @notice Cumulative veto FRACTION in 1e18 fixed-point, each vetoer's own weight over the qualified
+        ///         supply AT THEIR OWN CALL, summed across the window (B.7 / PP-D53 iii). Banking the fraction
+        ///         rather than absolute weight is the fix: an absolute numerator divided by a LIVE denominator
+        ///         let a falling supply carry an already-banked veto over threshold. 1e18 rather than bps per
+        ///         PP-D53 (iv), bps truncation being able to zero a real slice of a legitimate coalition.
+        uint256 vetoFractionWad;
         /// @notice Set when the proposal clears (successful veto ⇒ admitted+revoked, or finalize without veto).
         bool finalized;
         /// @notice True only when a veto succeeded (proposal killed and class revoked if previously admitted); when true, `finalized` is also true.
@@ -145,6 +149,12 @@ contract VaultClassRegistry is IVaultClassRegistry {
     error VetoWindowOpen(uint256 proposalId);
 
     error InsufficientVetoWeight(uint256 weight, uint256 required);
+
+    /// @notice Reverts a veto or a finalize taken while the qualified electorate is EMPTY (B.7 / PP-D53 iii).
+    ///         The veto path cannot divide by it; the finalize path is FAIL-CLOSED, since no vote means NOT
+    ///         approved, so such an admission dies at `FinalizeDeadlineExpired` rather than admitting by
+    ///         default. Same name and same condition as `AureumGovernance.ZeroQualifiedWeight` (D.5 clause 4).
+    error ZeroQualifiedWeight();
 
     error ClassAlreadyAdmitted(address class);
 
@@ -274,7 +284,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
             admissionValue: admissionValue,
             constraintsHash: constraintsHash,
             createdBlock: block.number,
-            vetoSupport: 0,
+            vetoFractionWad: 0,
             finalized: false,
             revoked: false
         });
@@ -293,10 +303,19 @@ contract VaultClassRegistry is IVaultClassRegistry {
         if (proposal.finalized || proposal.revoked) revert ProposalAlreadyFinalized(proposalId);
         if (block.number > proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowExpired(proposalId);
         if (hasVetoed[proposalId][msg.sender]) revert AlreadyVetoed(proposalId);
-        hasVetoed[proposalId][msg.sender] = true;
+        // B.7 / PP-D53 (iii) — read weight and supply BEFORE any write, then bank the vetoer's own FRACTION.
+        // The pre-fix line banked ABSOLUTE weight and divided by a LIVE `totalSupply()`, so a falling
+        // denominator carried an already-banked numerator over threshold, a zero-weight caller re-ran that
+        // comparison for free, and a zero denominator PANICKED so every veto reverted and the class finalized
+        // unopposed. Each vetoer's share is now fixed at their own call and no later supply move can inflate it.
+        uint256 supply = votingWeight.totalSupply();
+        if (supply == 0) revert ZeroQualifiedWeight();
         uint256 weight = votingWeight.governanceWeight(msg.sender);
-        proposal.vetoSupport += weight;
-        if ((proposal.vetoSupport * 10_000) / votingWeight.totalSupply() >= VETO_THRESHOLD_BPS) {
+        if (weight == 0) revert InsufficientVetoWeight(weight, 1);
+        hasVetoed[proposalId][msg.sender] = true;
+        proposal.vetoFractionWad += (weight * 1e18) / supply;
+        // VETO_THRESHOLD_BPS is basis points; 1e18 / 10_000 = 1e14 converts it to the banked wad scale.
+        if (proposal.vetoFractionWad >= VETO_THRESHOLD_BPS * 1e14) {
             proposal.finalized = true;
             proposal.revoked = true;
         }
@@ -311,6 +330,11 @@ contract VaultClassRegistry is IVaultClassRegistry {
         if (proposal.finalized) revert ProposalAlreadyFinalized(proposalId);
         if (block.number <= proposal.createdBlock + VETO_WINDOW_BLOCKS) revert VetoWindowOpen(proposalId);
         if (block.number > proposal.createdBlock + 2 * VETO_WINDOW_BLOCKS) revert FinalizeDeadlineExpired(proposalId);
+        // B.7 / PP-D53 (iii) — FAIL-CLOSED at an empty electorate: no vote means NOT approved. A veto-side
+        // guard alone cannot close this, because the pre-fix panic made every veto revert while THIS path read
+        // no supply at all and admitted unopposed. An admission whose whole finalize window sits at zero supply
+        // is unfinalizable and dies at `FinalizeDeadlineExpired` above rather than admitting by default.
+        if (votingWeight.totalSupply() == 0) revert ZeroQualifiedWeight();
         if (proposal.createdBlock <= lastRevokedBlock[proposal.admissionValue]) revert ProposalPredatesRevocation(proposalId);
         if (admittedClasses[proposal.admissionValue]) revert ClassAlreadyAdmitted(proposal.admissionValue);
         proposal.finalized = true;
