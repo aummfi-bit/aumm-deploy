@@ -341,10 +341,10 @@ contract VaultClassRegistryTest is Test {
         mockVotingWeight.setGovernanceWeight(vetoer, 99_999e18);
         vm.prank(vetoer);
         registry.vetoProposal(0);
-        (,,,, uint256 vetoSupp, bool finalized, bool revoked) = registry.proposals(0);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(0);
         assertFalse(finalized);
         assertFalse(revoked);
-        assertEq(vetoSupp, 99_999e18);
+        assertEq(vetoFractionWad, (uint256(99_999e18) * 1e18) / INITIAL_VOTING_WEIGHT_SUPPLY);
     }
 
     function testVeto_Cumulative_CrossesThreshold() public {
