@@ -229,6 +229,11 @@ abstract contract StageGIntegrationFixture is Test {
         mockTVLOracle = new MockTVLOracle();
         mockEfficiencyOracle = new MockEfficiencyOracle();
         mockVotingWeight = new MockVotingWeight();
+        // PP-D53 (iii) made VaultClassRegistry.finalizeProposal FAIL-CLOSED at an empty electorate, and
+        // _proposeAndFinalizeClass below is the shared admission helper for this fixture and for every
+        // descendant of it, so the electorate is seated once here rather than in five separate files.
+        // Tests that exercise veto arithmetic override this with their own figures.
+        mockVotingWeight.setTotalSupply(100e18);
 
         swapAndDeposit = new SwapAndDepositToBodensee(vault, bodenseePool, svZchf, IERC20(address(susds)), address(this), address(this));
         address[] memory genesisTokens = new address[](1);
