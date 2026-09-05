@@ -61,7 +61,7 @@ contract F08_VetoStackingTest is Test {
         return registry.proposeVaultClass(IVaultClassRegistry.AdmissionType.ImplementationAddress, admissionValue, bytes32(0));
     }
 
-    /// @notice Core F-08 fix: a sub-threshold holder's repeat veto reverts AlreadyVetoed; vetoSupport cannot stack past one contribution, so the proposal survives.
+    /// @notice Core F-08 fix: a sub-threshold holder's repeat veto reverts AlreadyVetoed; the banked veto fraction cannot stack past one contribution, so the proposal survives.
     function test_F08_repeatVeto_revertsAlreadyVetoed() public {
         uint256 id = _propose(makeAddr("admission1"));
         address attacker = makeAddr("attacker");
@@ -70,8 +70,8 @@ contract F08_VetoStackingTest is Test {
         vm.prank(attacker);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSupp, bool finalized, bool revoked) = registry.proposals(id);
-        assertEq(vetoSupp, 5_000e18);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(id);
+        assertEq(vetoFractionWad, (uint256(5_000e18) * 1e18) / TOTAL_SUPPLY);
         assertFalse(finalized);
         assertFalse(revoked);
 
@@ -79,8 +79,8 @@ contract F08_VetoStackingTest is Test {
         vm.prank(attacker);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSuppAfter, bool finalizedAfter, bool revokedAfter) = registry.proposals(id);
-        assertEq(vetoSuppAfter, 5_000e18);
+        (,,,, uint256 vetoFractionWadAfter, bool finalizedAfter, bool revokedAfter) = registry.proposals(id);
+        assertEq(vetoFractionWadAfter, (uint256(5_000e18) * 1e18) / TOTAL_SUPPLY);
         assertFalse(finalizedAfter);
         assertFalse(revokedAfter);
     }
