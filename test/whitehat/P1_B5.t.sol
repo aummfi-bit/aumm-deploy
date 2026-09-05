@@ -97,8 +97,10 @@ contract P1_B5_PermissionlessClockResetTest is Test {
         vm.roll(block.number + AureumTime.ON_RAMP_PERIOD_BLOCKS);
     }
 
-    /// @dev The stranger times the clock kill; the victim already desynced themselves by transferring BPT.
-    function test_P1_B5_strangerChoosesWhenTheSelfDesyncedHolderLosesTheirClock() public {
+    /// @dev PP-D53 (ii) residual: `_syncDown`'s clock reset is still permissionless and still stranger-timed,
+    ///      and PP-D53 (ii) deliberately left it that way. What the fix removed is its CONSEQUENCE — the
+    ///      holder scores zero from their own desync onward, so the stranger's timing buys nothing.
+    function test_strangerTimedClockResetNoLongerChangesTheWeight() public {
         address victim = makeAddr("victim");
         address stranger = makeAddr("stranger");
 
@@ -114,16 +116,20 @@ contract P1_B5_PermissionlessClockResetTest is Test {
         assertGt(distributor.userLP(address(pool), victim), pool.balanceOf(victim), "recorded stake exceeds live BPT");
         assertEq(vw.governanceWeight(victim), weightBefore, "stored checkpoint is unchanged until a poke");
 
-        // Attacker did not manufacture the desync and could not have — the [corrected] B.5 note
-        // limits the victim set to holders who desynced themselves; the stranger controls the
-        // MOMENT, which is why a block before a governance snapshot is the shape that matters.
+        // The whole of the finding was that a stranger picked the MOMENT of the kill, a block before a
+        // governance snapshot. One wei of self-desync now zeroes the weight at the next poke by ANYONE,
+        // so there is no moment left to pick.
+        vw.poke(victim);
+        assertEq(vw.governanceWeight(victim), 0, "one wei below lp zeroes the weight before any stranger acts");
+        assertGt(distributor.effectiveQualBlock(address(pool), victim), 0, "and the clock is still intact here");
+
         vm.prank(stranger);
         distributor.syncPosition(address(pool), victim);
 
-        assertEq(distributor.effectiveQualBlock(address(pool), victim), 0, "syncDown zeroes the qualification clock");
+        assertEq(distributor.effectiveQualBlock(address(pool), victim), 0, "syncDown still zeroes the qualification clock");
 
         vw.poke(victim);
-        assertEq(vw.governanceWeight(victim), 0, "eqb zero short-circuits position power");
+        assertEq(vw.governanceWeight(victim), 0, "and the weight was already zero, so nothing moved");
     }
 
     /// @dev B.5's done-criteria case: a position whose live BPT has fallen below its recorded LP confers
