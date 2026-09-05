@@ -347,6 +347,22 @@ contract VaultClassRegistryTest is Test {
         assertEq(vetoFractionWad, (uint256(99_999e18) * 1e18) / INITIAL_VOTING_WEIGHT_SUPPLY);
     }
 
+    // PP-D53 (iii) — a zero-weight caller is refused by name BEFORE any write, so it cannot re-run the
+    // threshold comparison for free; the hasVetoed flag and the banked fraction both stay untouched.
+    function testVeto_ZeroWeight_Reverts() public {
+        address admissionValue = makeAddr("zeroWeightVetoAdmission");
+        uint256 proposalId = _propose(admissionValue);
+        address stranger = makeAddr("zeroWeightStranger");
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.InsufficientVetoWeight.selector, uint256(0), uint256(1)));
+        vm.prank(stranger);
+        registry.vetoProposal(proposalId);
+        assertFalse(registry.hasVetoed(proposalId, stranger));
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(proposalId);
+        assertEq(vetoFractionWad, 0);
+        assertFalse(finalized);
+        assertFalse(revoked);
+    }
+
     function testVeto_Cumulative_CrossesThreshold() public {
         address admissionValue = makeAddr("cumulativeVetoAdmission");
         _propose(admissionValue);
