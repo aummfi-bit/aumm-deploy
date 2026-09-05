@@ -142,8 +142,8 @@ contract F15_VetoDenominatorInflationTest is Test {
         vm.prank(vetoer1);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSupport, bool finalized, bool revoked) = registry.proposals(id);
-        assertApproxEqRel(vetoSupport, 2e18, 1e15);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(id);
+        assertApproxEqRel(vetoFractionWad, (uint256(2e18) * 1e18) / 10e18, 1e15);
         assertTrue(finalized);
         assertTrue(revoked);
     }
@@ -189,8 +189,8 @@ contract F15_VetoDenominatorInflationTest is Test {
 
         vm.prank(vetoer2);
         registry.vetoProposal(id);
-        (,,,, uint256 vetoSupport, bool finalized, bool revoked) = registry.proposals(id);
-        assertApproxEqRel(vetoSupport, 4e18, 1e15);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(id);
+        assertApproxEqRel(vetoFractionWad, (uint256(4e18) * 1e18) / 28e18, 1e15);
         assertTrue(finalized);
         assertTrue(revoked);
     }
@@ -214,8 +214,8 @@ contract F15_VetoDenominatorInflationTest is Test {
         vm.prank(dormant);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSupport, bool finalized, bool revoked) = registry.proposals(id);
-        assertApproxEqRel(vetoSupport, 18e18, 1e15);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(id);
+        assertApproxEqRel(vetoFractionWad, (uint256(18e18) * 1e18) / 26e18, 1e15);
         assertTrue(finalized);
         assertTrue(revoked);
     }
@@ -240,8 +240,8 @@ contract F15_VetoDenominatorInflationTest is Test {
         vm.prank(vetoer1);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSupport, bool finalized, bool revoked) = registry.proposals(id);
-        assertApproxEqRel(vetoSupport, 2e18, 1e15);
+        (,,,, uint256 vetoFractionWad, bool finalized, bool revoked) = registry.proposals(id);
+        assertApproxEqRel(vetoFractionWad, 1e18, 1e15);
         assertTrue(finalized);
         assertTrue(revoked);
     }
