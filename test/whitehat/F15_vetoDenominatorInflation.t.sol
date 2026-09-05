@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.26;
 
-import {Test, stdError} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {VaultClassRegistry} from "src/gauge/VaultClassRegistry.sol";
 import {IVaultClassRegistry} from "src/gauge/IVaultClassRegistry.sol";
@@ -220,11 +220,11 @@ contract F15_VetoDenominatorInflationTest is Test {
         assertTrue(revoked);
     }
 
-    /// @notice Zero pokes ever — empty accumulator division-by-zero panics and the whole call unwinds.
-    function test_F15_edge_zeroWeightVetoAgainstEmptyAccumulatorPanics() public {
+    /// @notice Zero pokes ever — an empty electorate reverts ZeroQualifiedWeight at the supply gate, before any state write, so no vetoer is recorded (PP-D53 iii).
+    function test_F15_edge_zeroWeightVetoAgainstEmptyAccumulatorRevertsZeroQualifiedWeight() public {
         uint256 id = _propose(makeAddr("admission5"));
 
-        vm.expectRevert(stdError.divisionError);
+        vm.expectRevert(VaultClassRegistry.ZeroQualifiedWeight.selector);
         vm.prank(stranger);
         registry.vetoProposal(id);
 
