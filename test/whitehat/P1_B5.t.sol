@@ -22,11 +22,12 @@ import {
 } from "test/unit/EmissionDistributor.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @title P1 B.5 — permissionless syncPosition times a self-desynced clock reset
-/// @notice Reproduction PoC for seam-1 root cause B.5 (Medium). A stranger chooses WHEN
-///         `_syncDown` zeroes a self-desynced holder's qualification clock, and an unsynced
-///         out-of-band exit keeps a matured clock the honest `recordWithdrawal` path resets.
-///         Both findings close via the same read-time `if (held < lp) return 0` rule.
+/// @title P1 B.5 — a position whose live BPT fell below its recorded LP confers nothing
+/// @notice Regression suite for seam-1 root cause B.5 (Medium, ledger F-31), closed at PP4.11 under
+///         PP-D53 (i): one read-time rule, `if (held < lp) return 0`, removes the WEIGHT consequence of
+///         both filed faces. What it does not remove is the clock reset itself — `_syncDown` stays
+///         unconditional and permissionless because PP-D53 (ii) amended PP-D18's full-drain conjunct away
+///         as canon-hostile, and the first case here documents that residual rather than a defect.
 contract P1_B5_PermissionlessClockResetTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant STAKE = 100e18;
