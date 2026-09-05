@@ -126,13 +126,17 @@ contract P1_B5_PermissionlessClockResetTest is Test {
         assertEq(vw.governanceWeight(victim), 0, "eqb zero short-circuits position power");
     }
 
-    /// @dev Honest recordWithdrawal resets the clock; an unsynced out-of-band exit keeps it. F-17 caps LP, not the clock.
-    function test_P1_B5_unsyncedOutOfBandExitKeepsAClockTheHonestPathResets() public {
+    /// @dev B.5's done-criteria case: a position whose live BPT has fallen below its recorded LP confers
+    ///      NOTHING at read time, whatever its clock says. The honest and out-of-band paths reach zero by
+    ///      DIFFERENT routes, and a third untouched holder proves the zeroes are earned, not fixture-wide.
+    function test_positionPowerZeroWhenHeldBelowLp() public {
         address exiter = makeAddr("exiter");
         address honest = makeAddr("honest");
+        address steady = makeAddr("steady");
 
         _openMaturedPosition(exiter, STAKE);
         _openMaturedPosition(honest, STAKE);
+        _openMaturedPosition(steady, STAKE);
 
         uint256 maturedEqb = distributor.effectiveQualBlock(address(pool), exiter);
         assertGt(maturedEqb, 0, "exiter clock is mature before the exit");
@@ -146,23 +150,28 @@ contract P1_B5_PermissionlessClockResetTest is Test {
         vm.prank(aumtRec);
         distributor.recordWithdrawal(address(pool), honest, 90e18);
 
-        // F-17 read-cap at VotingWeight.sol:180-181 correctly caps the exiter's counted LP at
-        // their live balance, so this is not weight inflation — the surviving advantage is the
-        // CLOCK, which the honest path surrenders and the out-of-band path keeps.
+        // PP-D53 (i) and (ii): the CLOCK asymmetry is unchanged and is not what the fix closed. The honest
+        // path still surrenders its clock at recordWithdrawal, the out-of-band path still keeps a matured
+        // one, and PP-D53 (ii) deliberately left _syncDown alone. What changed is the READ.
         assertEq(distributor.effectiveQualBlock(address(pool), honest), 0, "honest path resets eqb at recordWithdrawal");
         assertEq(
             distributor.effectiveQualBlock(address(pool), exiter),
             maturedEqb,
-            "unsynced out-of-band exit leaves the matured clock intact"
+            "unsynced out-of-band exit still leaves the matured clock intact"
         );
 
         assertEq(pool.balanceOf(exiter), 10e18);
         assertEq(pool.balanceOf(honest), 10e18);
+        assertGt(distributor.userLP(address(pool), exiter), pool.balanceOf(exiter), "exiter is the held below lp case");
+        assertEq(distributor.userLP(address(pool), honest), pool.balanceOf(honest), "honest is the held equals lp case");
+        assertEq(distributor.userLP(address(pool), steady), pool.balanceOf(steady), "steady is untouched");
 
         vw.poke(exiter);
         vw.poke(honest);
+        vw.poke(steady);
 
-        assertEq(vw.governanceWeight(honest), 0, "reset clock scores zero");
-        assertGt(vw.governanceWeight(exiter), 0, "preserved clock still scores on capped live BPT");
+        assertEq(vw.governanceWeight(exiter), 0, "held below lp confers nothing, matured clock notwithstanding");
+        assertEq(vw.governanceWeight(honest), 0, "zeroed clock scores zero");
+        assertGt(vw.governanceWeight(steady), 0, "an untouched matured position still scores");
     }
 }
