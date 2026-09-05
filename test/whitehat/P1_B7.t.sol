@@ -129,8 +129,10 @@ contract P1_B7_VetoDenominatorDeflationTest is Test {
         return registry.proposeVaultClass(IVaultClassRegistry.AdmissionType.ImplementationAddress, admissionValue, bytes32(0));
     }
 
-    /// @notice Falling totalSupply lets a zero-weight caller ratchet a banked veto over threshold.
-    function test_P1_B7_supplyDeflationLetsAZeroWeightCallerRatchetABankedVetoOverThreshold() public {
+    /// @notice PP-D53 (iii) regression: each vetoer's share is fixed AT THEIR OWN CALL, so a later supply
+    ///         collapse cannot carry a banked veto over the bar, and a zero-weight caller cannot re-run the
+    ///         comparison at all. B.7's done-criteria case.
+    function test_vetoBanksFractionAtCallTime() public {
         vw.poke(vetoer1);
         vw.poke(neutral);
         vw.poke(dormant);
@@ -143,23 +145,32 @@ contract P1_B7_VetoDenominatorDeflationTest is Test {
         vm.prank(vetoer1);
         registry.vetoProposal(id);
 
-        (,,,, uint256 vetoSupportAfterFirst, bool finalizedAfterFirst, bool revokedAfterFirst) = registry.proposals(id);
-        assertApproxEqRel(vetoSupportAfterFirst, 2e18, 1e15);
+        (,,,, uint256 bankedAtCall, bool finalizedAfterFirst, bool revokedAfterFirst) = registry.proposals(id);
+        assertApproxEqRel(bankedAtCall, (uint256(2e18) * 1e18) / 26e18, 1e15);
         assertFalse(finalizedAfterFirst);
         assertFalse(revokedAfterFirst);
-        assertLt((vetoSupportAfterFirst * 10_000) / vw.totalSupply(), registry.VETO_THRESHOLD_BPS());
+        assertLt(bankedAtCall, registry.VETO_THRESHOLD_BPS() * 1e14);
 
         gaugeReg.setApproved(POOL_DORMANT, false);
         vw.poke(dormant);
 
         assertApproxEqRel(vw.totalSupply(), 10e18, 1e15);
 
+        (,,,, uint256 bankedAfterDeflation, bool finalizedAfterDeflation, bool revokedAfterDeflation) = registry.proposals(id);
+        assertEq(bankedAfterDeflation, bankedAtCall);
+        assertFalse(finalizedAfterDeflation);
+        assertFalse(revokedAfterDeflation);
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.InsufficientVetoWeight.selector, uint256(0), uint256(1)));
         vm.prank(stranger);
         registry.vetoProposal(id);
 
-        (,,,,, bool finalized, bool revoked) = registry.proposals(id);
-        assertTrue(finalized);
-        assertTrue(revoked);
+        assertFalse(registry.hasVetoed(id, stranger));
+
+        (,,,, uint256 bankedAfterStranger, bool finalized, bool revoked) = registry.proposals(id);
+        assertEq(bankedAfterStranger, bankedAtCall);
+        assertFalse(finalized);
+        assertFalse(revoked);
     }
 
     /// @notice Zero totalSupply panics every veto attempt and the class finalizes unopposed after the window.
