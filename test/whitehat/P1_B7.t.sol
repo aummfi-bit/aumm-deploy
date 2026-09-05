@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity ^0.8.26;
 
-import {Test, stdError} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "test/mocks/MockERC20.sol";
 import {VaultClassRegistry} from "src/gauge/VaultClassRegistry.sol";
 import {IVaultClassRegistry} from "src/gauge/IVaultClassRegistry.sol";
@@ -12,10 +12,11 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry, MockRecorder} from "test/unit/VotingWeight.t.sol";
 import {MockSwapAndDepositToBodensee} from "test/unit/VaultClassRegistry.t.sol";
 
-/// @title P1 B.7 — vetoProposal banks absolute weight against a live totalSupply
-/// @notice Reproduction PoC for seam-1 root cause B.7 (Medium). Reopens F-15's PB-D10
-///         Accepted-risk disposition in the deflation direction — F15_vetoDenominatorInflation.t.sol
-///         cannot see it because all six of its tests move the denominator upward.
+/// @title P1 B.7 — the veto banks each caller's own fraction and an empty electorate fails closed
+/// @notice Regression suite for seam-1 root cause B.7 (Medium, ledger F-33), closed at PP4.11 under
+///         PP-D53 (iii) and (iv); carries B.7's done-criteria case. It covers the DEFLATION direction
+///         F15_vetoDenominatorInflation.t.sol structurally cannot reach, all six of its tests moving the
+///         denominator upward, which is why PB-D10's Accepted-risk disposition stands only for inflation.
 contract P1_B7_VetoDenominatorDeflationTest is Test {
     VotingWeight internal vw;
     MockEMASampler internal emaSampler;
