@@ -173,23 +173,36 @@ contract P1_B7_VetoDenominatorDeflationTest is Test {
         assertFalse(revoked);
     }
 
-    /// @notice Zero totalSupply panics every veto attempt and the class finalizes unopposed after the window.
-    function test_P1_B7_zeroSupplyPanicBarsEveryVetoAndTheClassFinalizesUnopposed() public {
+    /// @notice PP-D53 (iii) and (iv) regression: an empty electorate refuses the veto BY NAME rather than
+    ///         panicking, and finalize refuses too, so no vote means NOT approved. A veto-side guard alone
+    ///         could not close this, because the pre-fix panic reverted every veto while finalize read no
+    ///         supply at all and admitted unopposed; the admission now dies at the deadline instead.
+    function test_zeroElectorateRefusesBothTheVetoAndTheFinalize() public {
         assertEq(vw.totalSupply(), 0);
 
         address admissionValue = makeAddr("admissionB7b");
         uint256 id = _propose(admissionValue);
 
-        vm.expectRevert(stdError.divisionError);
+        vm.expectRevert(VaultClassRegistry.ZeroQualifiedWeight.selector);
         vm.prank(stranger);
         registry.vetoProposal(id);
 
         assertFalse(registry.hasVetoed(id, stranger));
 
-        vm.roll(block.number + registry.VETO_WINDOW_BLOCKS() + 1);
+        // F15: roll to an ABSOLUTE target built from the constant setUp rolled to, never from a live
+        // block.number read, which via_ir sinks forward across the cheatcode boundary.
+        vm.roll(START_BLOCK + registry.VETO_WINDOW_BLOCKS() + 1);
 
+        vm.expectRevert(VaultClassRegistry.ZeroQualifiedWeight.selector);
         registry.finalizeProposal(id);
 
-        assertTrue(registry.isAdmittedClass(admissionValue));
+        assertFalse(registry.isAdmittedClass(admissionValue));
+
+        vm.roll(START_BLOCK + 2 * registry.VETO_WINDOW_BLOCKS() + 1);
+
+        vm.expectRevert(abi.encodeWithSelector(VaultClassRegistry.FinalizeDeadlineExpired.selector, id));
+        registry.finalizeProposal(id);
+
+        assertFalse(registry.isAdmittedClass(admissionValue));
     }
 }
