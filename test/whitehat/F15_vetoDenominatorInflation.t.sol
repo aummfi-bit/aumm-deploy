@@ -12,11 +12,14 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry, MockRecorder} from "test/unit/VotingWeight.t.sol";
 import {MockSwapAndDepositToBodensee} from "test/unit/VaultClassRegistry.t.sol";
 
-/// @notice PB-D10 / PB2.5b ACCEPTED-RISK EVIDENCE suite for F-15 (WH-G.4) — pins the poke-invariant bound on
-///         the `vetoProposal` live denominator (any weight enterable into the numerator is already a denominator
-///         summand, so defender inflation is capped at fully-poked truth), demonstrates the suppression face is
-///         real, and attests the zero-denominator edge; it is NOT a fix regression — `vetoProposal` keeps its
-///         live reads by design (PB-D10 (iii)).
+/// @notice PB-D10 / PB2.5b evidence suite for F-15 (WH-G.4) — pins the poke-invariant bound on the
+///         `vetoProposal` denominator (any weight enterable into the numerator is already a denominator
+///         summand, so defender INFLATION is capped at fully-poked truth) and demonstrates the suppression
+///         face is real. PP-D53 (iii) moved only the recorded quantity, banking each vetoer's own fraction at
+///         their own call rather than dividing a cumulative sum by a later live supply; all five outcomes are
+///         unchanged and the truth ceiling still clears the bar at 4/28. The sixth case is now a REGRESSION
+///         rather than an attestation — the empty electorate reverts `ZeroQualifiedWeight`. F-33 carries the
+///         DOWNWARD ratchet this suite structurally cannot express (PP3.3b).
 contract F15_VetoDenominatorInflationTest is Test {
     VotingWeight internal vw;
     MockEMASampler internal emaSampler;
