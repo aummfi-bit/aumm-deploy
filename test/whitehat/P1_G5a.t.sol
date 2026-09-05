@@ -7,6 +7,7 @@ import {VaultClassRegistry} from "src/gauge/VaultClassRegistry.sol";
 import {IVaultClassRegistry} from "src/gauge/IVaultClassRegistry.sol";
 import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {MockVotingWeight} from "test/unit/VaultClassRegistry.t.sol";
 
 /// @notice Passive SwapAndDepositToBodensee stand-in; the registry only forwards the bond via `donate`.
 contract MockBodenseeDonationSink {
@@ -58,6 +59,14 @@ contract P1_G5a_ReadmissionTicketClosedTest is Test {
         );
         vm.prank(governanceSetter);
         registry.setGovernanceContract(governance);
+
+        // PP-D53 (iii) made finalizeProposal FAIL-CLOSED at an empty electorate, so this fixture must
+        // seat one even though its subject is the admission lifecycle rather than voting. makeAddr is
+        // deterministic on its label, so this is the same setter the constructor above received.
+        MockVotingWeight electorate = new MockVotingWeight();
+        electorate.setTotalSupply(1_000_000e18);
+        vm.prank(makeAddr("votingWeightSetter"));
+        registry.setVotingWeight(address(electorate));
 
         svZCHF.mint(proposer, 100_000e18);
         vm.prank(proposer);
