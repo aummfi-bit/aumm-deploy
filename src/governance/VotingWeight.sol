@@ -193,6 +193,39 @@ contract VotingWeight is IVotingWeight {
         }
         emit WeightPoked(holder, oldWeight, newWeight);
     }
+    /// @notice Removes `holder`'s recorded weight for `pool` from both checkpoints — the recorder's
+    ///         push-reset when a position closes (B.2).
+    /// @dev PP-D55 (ix). Storage-only: reads the stored per-pool part, removes it from `_holderWeight`
+    ///      and `_totalQualifiedWeight`, deletes the slot and pushes both histories. It makes NO oracle
+    ///      call, so a stale or hostile EMA cannot make a withdrawal revert — PP-D16's storage-only arm
+    ///      honoured directly rather than through a wrapped call, and the wrap PP-D16 also permits is
+    ///      therefore unused here. Idempotent — a zero part returns before any write, so the recorder
+    ///      may fire this on every closing path without tracking whether it already has. Same-block
+    ///      closure is what B.2's second face needs: `Checkpoints.Trace208` overwrites on an equal key,
+    ///      so a zero written in the withdrawal transaction is what `getPastVotes` returns for that
+    ///      block, where a later `poke` writes a strictly greater key and cannot. The subtraction is
+    ///      CLAMPED even though PP-D55 (xiii)'s write rule makes the part no greater than the holder's
+    ///      aggregate by construction: an underflow would revert on the liquidity exit path, the one
+    ///      outcome this entry exists to prevent, whereas a clamped result merely under-counts and the
+    ///      next `poke` restores it by recomputing absolutely. A broken sum is meant to surface in that
+    ///      invariant's own test, never on a user's withdrawal. Emits `WeightPoked` rather than a
+    ///      second topic, per PP-D50 (v).
+    /// @param pool The pool whose recorded position closed.
+    /// @param holder The holder whose recorded position closed.
+    function onPositionClosed(address pool, address holder) external {
+        if (msg.sender != address(RECORDER)) revert OnlyRecorder(msg.sender);
+        uint256 part = _holderPoolWeight[holder][pool];
+        if (part == 0) return;
+        delete _holderPoolWeight[holder][pool];
+        uint256 oldWeight = _holderWeight[holder];
+        uint256 removed = part > oldWeight ? oldWeight : part;
+        uint256 newWeight = oldWeight - removed;
+        _holderWeight[holder] = newWeight;
+        _totalQualifiedWeight = removed > _totalQualifiedWeight ? 0 : _totalQualifiedWeight - removed;
+        _holderWeightHistory[holder].push(block.number.toUint48(), newWeight.toUint208());
+        _totalQualifiedWeightHistory.push(block.number.toUint48(), _totalQualifiedWeight.toUint208());
+        emit WeightPoked(holder, oldWeight, newWeight);
+    }
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
     /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity + freshness — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), has never seeded, or was last refreshed more than EMA_STALENESS_BLOCKS (14 days) ago confers 0 (F-04 anti-spot-pump; F-05 anti-stale-seed); (c) clock from the recorder
     ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
