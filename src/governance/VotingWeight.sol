@@ -136,7 +136,8 @@ contract VotingWeight is IVotingWeight, IPositionCloseSink {
         return _totalQualifiedWeightHistory.upperLookup(blockNumber.toUint48());
     }
     /// @notice Permissionless refresh of `holder`'s checkpoint — recomputes the live aggregate over the
-    ///         gauge-filtered Miliarium enumeration and applies the signed delta to both checkpoints.
+    ///         gauge-filtered Miliarium enumeration, applies the signed delta to both checkpoints, and
+    ///         writes each pool's part of that aggregate per B.2 / PP-D55 (viii).
     /// @dev F12/F13 signed-delta discipline via branch-on-sign with unsigned subtraction in each arm; no
     ///      underflow because `_totalQualifiedWeight >= _holderWeight[holder]` (the holder's checkpoint is
     ///      one summand of the total), so `_totalQualifiedWeight - (oldWeight - newWeight) >= newWeight`.
