@@ -77,6 +77,8 @@ contract VotingWeight is IVotingWeight {
     mapping(address => Checkpoints.Trace208) internal _holderWeightHistory;
     /// @notice Total-weight history — the snapshot quorum denominator for `AureumGovernance` (F-06). Pushed on every `poke` delta; read via `getPastTotalSupply`.
     Checkpoints.Trace208 internal _totalQualifiedWeightHistory;
+    /// @notice Per-holder, per-pool weight parts — the decomposition of `_holderWeight`, so one pool's contribution can be subtracted without recomputing the aggregate over the whole enumeration. B.2 / PP-D55 (viii): the parts SUM to `_holderWeight[holder]`, and that identity is what makes `onPositionClosed`'s subtraction sound; it is NOT INV-1, which is the cross-holder identity between `getPastVotes` and `getPastTotalSupply`. Written only by `poke`, inside both of its guards so a held or no-op poke leaves the parts consistent with the aggregate, and cleared by `onPositionClosed`. PP-D55 (xiii): a part is written iff the new value DIFFERS from the stored one and a new zero is written as a `delete`, so a pool the holder was never in is never materialised, while a part that LAPSES to zero is always cleared — leaving it stale would break the sum and underflow the next close.
+    mapping(address => mapping(address => uint256)) internal _holderPoolWeight;
     /// @notice Reverts when a zero address is supplied for an immutable dependency.
     error ZeroAddress();
     /// @notice Reverts when a zero genesis block is supplied — block 0 is not a valid genesis.
