@@ -180,12 +180,18 @@ contract VotingWeight is IVotingWeight {
         // A zero from THIS branch is a legitimate absence, not a staleness hold, so `staleZero` stays
         // false and a checkpoint may still ratchet down on it.
         if (EMA_SAMPLER.sampleCount(pool) < EMA_SAMPLER.MIN_SAMPLES()) return (0, false);
-        // PP-D52 (ix) — this is the ONLY branch that sets `staleZero`. Every other zero below is a
-        // legitimate absence (no gauge, immature EMA, no position, sub-cliff, capped LP, dust share)
-        // and must keep ratcheting the checkpoint down; only a stale oracle is held.
-        if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return (0, true);
+        // B.2 / PP-D55 (iv) — the closed-position test runs BEFORE the staleness branch. A holder
+        // with no position in this pool is a legitimate absence, not a stale-EMA-caused reduction,
+        // and `poke`'s `anyStaleZero` is an OR over the whole enumeration: with this test below the
+        // staleness branch one stale pool armed the hold for holders who were never in it, freezing
+        // every downward poke protocol-wide, and a fully exited holder could never be ratcheted down.
         uint256 eqb = RECORDER.effectiveQualBlock(pool, holder);
         if (eqb == 0) return (0, false);
+        // PP-D52 (ix) — this is the ONLY branch that sets `staleZero`. Every other zero below is a
+        // legitimate absence (no gauge, immature EMA, sub-cliff, capped LP, dust share) and must
+        // keep ratcheting the checkpoint down; only a stale oracle is held. D.5 is UNWEAKENED: a
+        // holder with a LIVE position in this pool still reaches here and is still held.
+        if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return (0, true);
         uint256 timeInPool = block.number - eqb;
         if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return (0, false);
         uint256 totalLP = RECORDER.poolTotalLP(pool);
