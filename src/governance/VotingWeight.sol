@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 import { FixedPoint } from "@balancer-labs/v3-solidity-utils/contracts/math/FixedPoint.sol";
 import { IVotingWeight } from "./IVotingWeight.sol";
+import { IPositionCloseSink } from "./IPositionCloseSink.sol";
 import { IEMASampler } from "../ccb/IEMASampler.sol";
 import { IGaugeRegistry } from "../ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "../ccb/IMiliariumRegistry.sol";
@@ -27,7 +28,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  *      (OZ `Checkpoints.Trace208`); `getPastVotes` / `getPastTotalSupply` read frozen weight at a past block
  *      for `AureumGovernance` snapshot voting (numerator ≤ denominator by construction).
  */
-contract VotingWeight is IVotingWeight {
+contract VotingWeight is IVotingWeight, IPositionCloseSink {
     using FixedPoint for uint256;
     using Checkpoints for Checkpoints.Trace208;
     using SafeCast for uint256;
