@@ -139,8 +139,13 @@ contract VotingWeight is IVotingWeight {
         uint256 newWeight = 0;
         bool anyStaleZero = false;
         uint256 count = REGISTRY.miliariumPoolsCount();
+        address[] memory pools = new address[](count);
+        uint256[] memory parts = new uint256[](count);
         for (uint256 i = 0; i < count; i++) {
-            (uint256 power, bool staleZero) = _positionPower(REGISTRY.miliariumPoolAt(i), holder);
+            address pool = REGISTRY.miliariumPoolAt(i);
+            (uint256 power, bool staleZero) = _positionPower(pool, holder);
+            pools[i] = pool;
+            parts[i] = power;
             newWeight += power;
             if (staleZero) anyStaleZero = true;
         }
@@ -160,6 +165,24 @@ contract VotingWeight is IVotingWeight {
         }
         _holderWeightHistory[holder].push(block.number.toUint48(), newWeight.toUint208());
         _totalQualifiedWeightHistory.push(block.number.toUint48(), _totalQualifiedWeight.toUint208());
+        // B.2 / PP-D55 (viii) and (xiii) — the per-pool parts are written HERE, past BOTH guards, so a
+        // no-op poke and a staleness-held poke each leave the parts summing to the unchanged aggregate.
+        // A part is written only when it MOVES, and a part that lapses to zero is DELETED rather than
+        // skipped: leaving it stale would break the sum and underflow the next `onPositionClosed`. A pool
+        // the holder was never in has a stored zero and a new zero, so it is never materialised. The
+        // equality return above can leave individual parts stale when the composition shifts by exactly
+        // offsetting amounts; the SUM still holds, a later close then over-removes conservatively, and
+        // the next `poke` self-heals because it recomputes absolutely rather than incrementally.
+        for (uint256 i = 0; i < count; i++) {
+            uint256 part = parts[i];
+            address pool = pools[i];
+            if (part == _holderPoolWeight[holder][pool]) continue;
+            if (part == 0) {
+                delete _holderPoolWeight[holder][pool];
+            } else {
+                _holderPoolWeight[holder][pool] = part;
+            }
+        }
         emit WeightPoked(holder, oldWeight, newWeight);
     }
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
