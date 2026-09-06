@@ -85,10 +85,18 @@ contract VotingWeight is IVotingWeight {
     error ZeroGenesisBlock();
     /// @notice Reverts when `getPastVotes` / `getPastTotalSupply` is queried for the current or a future block — the checkpoint is not yet final (Governor `getPast*` semantics).
     error FutureLookup(uint256 blockNumber);
-    /// @notice Emitted when `poke` refreshes a holder's checkpoint.
-    /// @param holder The holder repoked (indexed).
+    /// @notice Reverts when a recorder-gated entry is called by anyone other than `RECORDER`.
+    /// @param caller The rejected caller.
+    error OnlyRecorder(address caller);
+    /// @notice Emitted whenever a holder's checkpoint moves — by `poke`'s full recompute or by
+    ///         `onPositionClosed` removing one pool's part. B.2 / PP-D55 (ix) reuses this topic on
+    ///         PP-D50 (v)'s ground, that consumers must react identically however the change arose:
+    ///         an indexer of governance weight watching only this one stays complete, where a second
+    ///         topic would split that stream and adding a `pool` field would break the ABI of every
+    ///         existing `poke`.
+    /// @param holder The holder whose checkpoint moved (indexed).
     /// @param oldWeight The prior checkpoint.
-    /// @param newWeight The recomputed checkpoint.
+    /// @param newWeight The new checkpoint.
     event WeightPoked(address indexed holder, uint256 oldWeight, uint256 newWeight);
     constructor(
         IEMASampler emaSampler_,
