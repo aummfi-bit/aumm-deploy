@@ -26,18 +26,18 @@ import { TVLOracle } from "../src/emission/TVLOracle.sol";
  * @title DeployStageK
  * @notice Deploys AND wires the Stage K governance stack — VotingWeight ->
  *         AureumGovernance -> AureumGovernanceAuthorizer -> AuMMMinterRouter (deploy, in
- *         constructor-dependency order) followed by the nine-call wiring chain that
+ *         constructor-dependency order) followed by the ten-call wiring chain that
  *         migrates the gauge + Miliarium governance to the on-chain governance contract
  *         and the Vault authorizer to AureumGovernanceAuthorizer — per K-D9 and the K14
  *         wiring inventory. _deploy() (K7.2a) performs the four `new` calls; _wire()
- *         (K7.2b) performs the nine wiring calls; both run() and deploy() deploy then wire.
- * @dev Wiring chain (9 calls, load-bearing order per K14): (1) VaultClassRegistry.setVotingWeight;
+ *         (K7.2b) performs the ten wiring calls; both run() and deploy() deploy then wire.
+ * @dev Wiring chain (10 calls, load-bearing order per K14): (1) VaultClassRegistry.setVotingWeight;
  *      (2) SwapAndDepositToBodensee.addAuthorizedDonator(governance); (3) BodenseeBootstrapChannel.setMintRouter
- *      and (4) EmissionDistributor.setMintRouter (BEFORE the handoff, K-D7); (5) AuMM.setMinter(router)
- *      (C-D11 one-shot); (6) GaugeRegistry.setGovernanceContract and (7) MiliariumRegistry.setGovernanceContract
- *      (the handoff); (8) TVLOracle.setMiliariumRegistry (K6 Miliarium-leg bind, F-03/K-D8); (9) Vault.setAuthorizer(authorizer) (OQ-10 migration, LAST). Handoff scope is gauge +
+ *      and (4) EmissionDistributor.setMintRouter (BEFORE the handoff, K-D7); (5) EmissionDistributor.setVotingWeight (the B.2 push-reset sink, PP-D55); (6) AuMM.setMinter(router)
+ *      (C-D11 one-shot); (7) GaugeRegistry.setGovernanceContract and (8) MiliariumRegistry.setGovernanceContract
+ *      (the handoff); (9) TVLOracle.setMiliariumRegistry (K6 Miliarium-leg bind, F-03/K-D8); (10) Vault.setAuthorizer(authorizer) (OQ-10 migration, LAST). Handoff scope is gauge +
  *      Miliarium ONLY per K-D9 — emission-layer and VaultClassRegistry governance slots stay at the multisig.
- * @dev Single-governor caller model (K14) — all four deploys and nine wiring calls execute as one `governor`
+ * @dev Single-governor caller model (K14) — all four deploys and ten wiring calls execute as one `governor`
  *      (= GOVERNANCE_MULTISIG) via vm.startBroadcast / vm.startPrank; deploy and migrate share one run.
  *      Production preconditions (governor holds the setter/governance role on each wiring target and is
  *      authorized for Vault.setAuthorizer by the current Stage B Safe authorizer) are the deployer's
