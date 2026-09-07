@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 import { Test } from "forge-std/Test.sol";
 import { VotingWeight } from "src/governance/VotingWeight.sol";
+import { VotingWeightHarness } from "test/unit/harness/VotingWeightHarness.sol";
 import { IEMASampler } from "src/ccb/IEMASampler.sol";
 import { IGaugeRegistry } from "src/ccb/IGaugeRegistry.sol";
 import { IMiliariumRegistry } from "src/ccb/IMiliariumRegistry.sol";
@@ -140,7 +141,7 @@ contract MockRecorder is IEmissionDistributor {
     function auMTContractByPool(address) external view override returns (address) {}
 }
 contract VotingWeightTest is Test {
-    VotingWeight internal vw;
+    VotingWeightHarness internal vw;
     MockEMASampler internal emaSampler;
     MockGaugeRegistry internal gaugeReg;
     MockRecorder internal recorder;
@@ -158,7 +159,7 @@ contract VotingWeightTest is Test {
         gaugeReg = new MockGaugeRegistry();
         recorder = new MockRecorder();
         registry = new MockMiliariumRegistry();
-        vw = new VotingWeight(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
+        vw = new VotingWeightHarness(emaSampler, gaugeReg, recorder, registry, GENESIS_BLOCK);
         // F-17 / P-D18: POOL_A/B/C are code-less test constants; large `balanceOf` no-ops the _positionPower read-cap.
         vm.mockCall(POOL_A, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(POOL_B, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
