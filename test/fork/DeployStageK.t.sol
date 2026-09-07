@@ -206,4 +206,9 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertEq(address(tvlOracle.miliariumRegistry()), address(realRegistry), "TVLOracle Miliarium registry not bound at K7 wire");
         assertEq(tvlOracle.registrySetter(), address(0), "TVLOracle registrySetter not sealed after bind");
     }
+
+    // F-29 regression — wire (5): the B.2 push-reset sink is seated on the distributor by the script
+    function test_F29_votingWeightSinkSeatedOnDistributor() public view {
+        assertEq(address(emissionDistributor.votingWeight()), address(votingWeight), "wire (5) did not seat the B.2 push-reset sink");
+    }
 }
