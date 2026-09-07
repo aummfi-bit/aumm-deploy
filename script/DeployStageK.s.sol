@@ -152,14 +152,16 @@ contract DeployStageK is Script {
         // (3) + (4) bind the mint router on both emission channels BEFORE the handoff (K-D7)
         BodenseeBootstrapChannel(vm.envAddress("BODENSEE_CHANNEL")).setMintRouter(address(router));
         EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR")).setMintRouter(address(router));
-        // (5) hand AuMM's one-shot minter slot to the router (C-D11)
+        // (5) seat the B.2 push-reset sink — one-shot, and only expressible now that VotingWeight is constructed (PP-D55 (vii) / (xiv))
+        EmissionDistributor(vm.envAddress("EMISSION_DISTRIBUTOR")).setVotingWeight(address(votingWeight));
+        // (6) hand AuMM's one-shot minter slot to the router (C-D11)
         IAuMM(vm.envAddress("AUMM")).setMinter(address(router));
-        // (6) + (7) the gauge + Miliarium governance handoff (K-D9 scope)
+        // (7) + (8) the gauge + Miliarium governance handoff (K-D9 scope)
         IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")).setGovernanceContract(address(governance));
         IMiliariumSlotRegistry(vm.envAddress("MILIARIUM_REGISTRY")).setGovernanceContract(address(governance));
-        // (8) bind the live Miliarium registry into the TVLOracle valuation leg (F-03 / K-D8 — registrySetter-gated, order-independent of the handoff)
+        // (9) bind the live Miliarium registry into the TVLOracle valuation leg (F-03 / K-D8 — registrySetter-gated, order-independent of the handoff)
         TVLOracle(vm.envAddress("TVL_ORACLE")).setMiliariumRegistry(IMiliariumRegistry(vm.envAddress("MILIARIUM_REGISTRY")));
-        // (9) OQ-10 Vault authorizer migration — LAST, the actual governance handoff
+        // (10) OQ-10 Vault authorizer migration — LAST, the actual governance handoff
         IVault(vm.envAddress("VAULT")).setAuthorizer(authorizer);
     }
 }
