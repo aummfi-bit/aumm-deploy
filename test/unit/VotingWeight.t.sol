@@ -482,4 +482,59 @@ contract VotingWeightTest is Test {
             "parts do not sum to the aggregate after the lapse"
         );
     }
+
+    // --- B.2 / PP-D55 (ix): the recorder-gated close ---
+    function test_OnPositionClosed_RemovesOnlyTheClosedPoolsPart() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, true, 16e18, 25e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        uint256 partA = vw.extHolderPoolWeight(HOLDER, POOL_A);
+        uint256 partB = vw.extHolderPoolWeight(HOLDER, POOL_B);
+        uint256 aggregate = vw.governanceWeight(HOLDER);
+        assertEq(aggregate, partA + partB, "premise: parts decompose the aggregate");
+        assertEq(vw.totalSupply(), aggregate, "premise: sole holder carries the whole supply");
+        vm.expectEmit(true, false, false, true);
+        emit VotingWeight.WeightPoked(HOLDER, aggregate, partB);
+        vm.prank(address(recorder));
+        vw.onPositionClosed(POOL_A, HOLDER);
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_A), 0, "closed part not deleted");
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_B), partB, "untouched part must not move");
+        assertEq(vw.governanceWeight(HOLDER), partB, "aggregate did not fall by exactly the closed part");
+        assertEq(vw.totalSupply(), partB, "supply did not fall by exactly the closed part");
+    }
+
+    function test_OnPositionClosed_RevertWhen_CallerNotRecorder() public {
+        _setSinglePool(POOL_A);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        vm.expectRevert(abi.encodeWithSelector(VotingWeight.OnlyRecorder.selector, POKER));
+        vm.prank(POKER);
+        vw.onPositionClosed(POOL_A, HOLDER);
+    }
+
+    function test_OnPositionClosed_ZeroPart_IsANoOp() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, true, 16e18, 25e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        vm.prank(address(recorder));
+        vw.onPositionClosed(POOL_A, HOLDER);
+        uint256 weightAfterFirst = vw.governanceWeight(HOLDER);
+        uint256 supplyAfterFirst = vw.totalSupply();
+        assertGt(weightAfterFirst, 0, "premise: pool B survives the first close");
+        // Idempotent per PP-D55 (ix) — the recorder fires this on every closing path without tracking
+        // whether it already has, so a second close on a zero part must change nothing and not revert.
+        vm.prank(address(recorder));
+        vw.onPositionClosed(POOL_A, HOLDER);
+        assertEq(vw.governanceWeight(HOLDER), weightAfterFirst, "second close moved the aggregate");
+        assertEq(vw.totalSupply(), supplyAfterFirst, "second close moved the supply");
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_B), weightAfterFirst, "pool B part must survive");
+    }
 }
