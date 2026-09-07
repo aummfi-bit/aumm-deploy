@@ -14,6 +14,7 @@ import {IEfficiencyOracle} from "../gauge/IEfficiencyOracle.sol";
 import {CCBScore} from "../ccb/CCBScore.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
 import {IIncendiaryRegistry} from "../incendiary/IIncendiaryRegistry.sol";
+import {IPositionCloseSink} from "../governance/IPositionCloseSink.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
@@ -154,6 +155,10 @@ contract EmissionDistributor is IEmissionDistributor {
     /* ---------- Mint router slot (K-D7) ---------- */
     /// @notice The AuMMMinterRouter holding AuMM's C-D11 one-shot minter slot per K-D7 — `claim` forwards mints through `mintRouter.mintFor`. Bound exactly once via `setMintRouter`; zero until then, after which `claim` can mint. Concrete-only slot (no interface getter), mirroring the `incendiaryRegistry` H-D29 precedent.
     IAuMMMinterRouter public mintRouter;
+
+    /* ---------- VotingWeight position-close sink (PP-D55 (vii) / B.2) ---------- */
+    /// @notice The `VotingWeight` reader this recorder notifies when a recorded position closes — bound one-shot by governance via `setVotingWeight`. Necessarily ZERO between Stage H and Stage K, since this contract is constructed first and `VotingWeight` takes it as a constructor argument; every call site therefore skips the push while the slot is zero, so deposits, withdrawals and claims work unchanged before the seat is bound.
+    IPositionCloseSink public votingWeight;
 
     /* ---------- Constructor ---------- */
 
