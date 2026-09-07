@@ -289,6 +289,18 @@ contract EmissionDistributor is IEmissionDistributor {
         emit MintRouterBound(router_);
     }
 
+    /**
+     * @notice One-shot binding of the VotingWeight position-close sink per PP-D55 (vii) — wires the B.2 push-reset.
+     * @dev `onlyGovernance`-gated; reverts `ZeroAddress` on zero input and `VotingWeightAlreadySet` if already bound; emits `VotingWeightBound(votingWeight_)`. Mirrors `setMintRouter` above rather than the PP-D44 two-step, because zero is NOT a valid state here: a zero sink silently disables the B.2 push-reset, whereas `incendiaryRegistry`'s zero is a legitimate H-D29 valve. One-shot also keeps the electorate single-valued, since `AureumGovernance` holds its `VotingWeight` reader as an immutable and a rotatable sink here could split the two apart.
+     * @param votingWeight_ The `VotingWeight` address implementing `IPositionCloseSink`; bound at Stage K, after `VotingWeight` is constructed against this recorder.
+     */
+    function setVotingWeight(address votingWeight_) external onlyGovernance {
+        if (votingWeight_ == address(0)) revert ZeroAddress();
+        if (address(votingWeight) != address(0)) revert VotingWeightAlreadySet();
+        votingWeight = IPositionCloseSink(votingWeight_);
+        emit VotingWeightBound(votingWeight_);
+    }
+
     /* ---------- Emission rate stub (H-D21) ---------- */
 
     /**
