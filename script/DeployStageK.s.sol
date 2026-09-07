@@ -60,7 +60,7 @@ import { TVLOracle } from "../src/emission/TVLOracle.sol";
  *        TVL_ORACLE             address  — shared TVLOracle (wire (9) Miliarium-registry bind, F-03/K-D8)
  *        EMA_SAMPLER            address  — Stage F EMASampler (VotingWeight value EMA + F-04 maturity gate)
  *        GAUGE_REGISTRY         address  — GaugeRegistry (VotingWeight + AureumGovernance + handoff)
- *        EMISSION_DISTRIBUTOR   address  — EmissionDistributor (VotingWeight recorder + setMintRouter)
+ *        EMISSION_DISTRIBUTOR   address  — EmissionDistributor (VotingWeight recorder + setMintRouter + setVotingWeight sink seat)
  *        MILIARIUM_REGISTRY     address  — MiliariumRegistry (IMiliariumRegistry + IMiliariumSlotRegistry + handoff)
  *        VAULT                  address  — Balancer V3 Vault (AureumGovernance + Authorizer + setAuthorizer)
  *        SWAP_AND_DEPOSIT       address  — SwapAndDepositToBodensee proposal-deposit channel + addAuthorizedDonator
@@ -132,11 +132,11 @@ contract DeployStageK is Script {
         );
     }
     /// @dev Wires the deployed stack into the live protocol as `governor` (single-governor caller model, K14):
-    ///      nine calls in load-bearing order. (1) VaultClassRegistry.setVotingWeight self-seal; (2)
+    ///      ten calls in load-bearing order. (1) VaultClassRegistry.setVotingWeight self-seal; (2)
     ///      addAuthorizedDonator so AureumGovernance can post proposal deposits; (3) + (4) bind the mint router
-    ///      on both emission channels BEFORE the handoff (K-D7); (5) AuMM one-shot setMinter to the router
-    ///      (C-D11); (6) + (7) the gauge + Miliarium governance handoff (K-D9 scope — emission-layer and
-    ///      VaultClassRegistry governance slots stay at the multisig); (8) the TVLOracle Miliarium-registry bind (F-03/K-D8); (9) the OQ-10 Vault authorizer migration,
+    ///      on both emission channels BEFORE the handoff (K-D7); (5) the B.2 push-reset sink seat on the distributor (PP-D55); (6) AuMM one-shot setMinter to the router
+    ///      (C-D11); (7) + (8) the gauge + Miliarium governance handoff (K-D9 scope — emission-layer and
+    ///      VaultClassRegistry governance slots stay at the multisig); (9) the TVLOracle Miliarium-registry bind (F-03/K-D8); (10) the OQ-10 Vault authorizer migration,
     ///      LAST. `IVault` inherits `IVaultAdmin.setAuthorizer`; AureumGovernanceAuthorizer `is IAuthorizer`, so
     ///      the authorizer handle upcasts implicitly.
     function _wire(
