@@ -437,4 +437,49 @@ contract VotingWeightTest is Test {
         vw.poke(HOLDER);
         assertGt(vw.governanceWeight(HOLDER), 0);
     }
+
+    // --- B.2 / PP-D55 (viii) + (xiii): the per-pool parts decompose the aggregate ---
+    function test_Poke_PerPoolParts_SumToTheAggregate() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        // Deliberately UNEQUAL shares — an implementation banking the aggregate into every part,
+        // or splitting it evenly, passes a sum check on equal positions and fails here.
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, true, 16e18, 25e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        uint256 partA = vw.extHolderPoolWeight(HOLDER, POOL_A);
+        uint256 partB = vw.extHolderPoolWeight(HOLDER, POOL_B);
+        assertGt(partA, 0, "pool A part unwritten");
+        assertGt(partB, 0, "pool B part unwritten");
+        assertGt(partA, partB, "unequal shares must give unequal parts");
+        assertEq(partA + partB, vw.governanceWeight(HOLDER), "parts do not sum to the aggregate");
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_C), 0, "a pool outside the roster is never materialised");
+    }
+
+    function test_Poke_PerPoolPart_ClearedWhenItLapsesToZero() public {
+        address[] memory pools = new address[](2);
+        pools[0] = POOL_A;
+        pools[1] = POOL_B;
+        registry.setPoolList(pools);
+        _configurePosition(POOL_A, HOLDER, true, 16e18, 100e18, 100e18, START_BLOCK - ON_RAMP);
+        _configurePosition(POOL_B, HOLDER, true, 16e18, 25e18, 100e18, START_BLOCK - ON_RAMP);
+        vw.poke(HOLDER);
+        assertGt(vw.extHolderPoolWeight(HOLDER, POOL_A), 0, "premise: pool A part is written");
+        uint256 partB = vw.extHolderPoolWeight(HOLDER, POOL_B);
+        // The holder leaves pool A: the recorder clock zeroes, so A confers nothing. Pool B is
+        // untouched and fresh, so the staleness hold never arms and the downward write proceeds.
+        recorder.setEffectiveQualBlock(POOL_A, HOLDER, 0);
+        vw.poke(HOLDER);
+        // PP-D55 (xiii) — the lapsed part is DELETED rather than skipped. A part left stale here is
+        // exactly what underflows the next onPositionClosed, on the one path that must never revert.
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_A), 0, "lapsed part not cleared");
+        assertEq(vw.extHolderPoolWeight(HOLDER, POOL_B), partB, "surviving part must not move");
+        assertEq(
+            vw.extHolderPoolWeight(HOLDER, POOL_A) + vw.extHolderPoolWeight(HOLDER, POOL_B),
+            vw.governanceWeight(HOLDER),
+            "parts do not sum to the aggregate after the lapse"
+        );
+    }
 }
