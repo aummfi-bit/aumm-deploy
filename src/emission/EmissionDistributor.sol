@@ -627,6 +627,15 @@ contract EmissionDistributor is IEmissionDistributor {
         poolTotalLP[pool] -= (recorded - referenceBalance);
         userLP[pool][user] = referenceBalance;
         effectiveQualBlock[pool][user] = 0;
+        // B.2 / PP-D55 (vi) — the recorder's push-reset. The clock above is now zero, so this pool
+        // confers nothing; telling the sink lets `getPastVotes` see that in THIS block rather than
+        // waiting for a stranger's `poke`. Skipped while the sink is unbound, which is every block
+        // between Stage H and Stage K, since `VotingWeight` takes this contract as a constructor
+        // argument and cannot exist yet. Idempotent, so the double push a withdrawal makes through
+        // both this helper and `recordWithdrawal` costs one SLOAD and writes nothing twice.
+        if (address(votingWeight) != address(0)) {
+            votingWeight.onPositionClosed(pool, user);
+        }
     }
 
     /// @notice Permissionlessly reconciles `holder`'s recorded stake in `pool` down to their live BPT balance.
