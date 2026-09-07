@@ -594,6 +594,16 @@ contract StagePRunRehearsalTest is Test {
         assertEq(baseAuthorizer.GOVERNANCE_MULTISIG(), GOVERNOR, "base-layer seat was not the EOA governor");
     }
 
+    /// @notice The B.2 push-reset sink, seated by wire (5) of the Stage-K chain and re-asserted here
+    ///         against the COMPOSED spine — `DeployStageK.t.sol` drives `deploy()` directly, while this
+    ///         fixture is the only in-process replay of `DeployStageP.run()`, so it alone proves the seat
+    ///         survives composition. Before PP4.12ai no call site existed anywhere and this read zero.
+    function test_postCondition_votingWeightSinkSeatedOnDistributor() public view {
+        address bound = address(orchestrator.emissionDistributor().votingWeight());
+        assertEq(bound, address(orchestrator.votingWeight()), "wire (5) sink seat missing from the composed spine");
+        assertTrue(bound != address(0), "distributor sink unbound after run()");
+    }
+
     /// @dev The PB-D22 (iii) seat sequence under the REAL EOA governor: the one-shot module-aim at
     ///      self, then the persistent allowlist entry. Each prank is single-shot and immediately
     ///      precedes its own call — never chained through an orchestrator getter, per PB10.
