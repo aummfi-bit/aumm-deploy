@@ -35,7 +35,7 @@ contract BytecodeSizeTest is Test {
     /// @dev Total `.sol` files under `src/`, concrete and interface alike. Pinning this
     ///      makes a newly added contract fail the gate instead of silently escaping the
     ///      roster.
-    uint256 internal constant SRC_SOL_FILE_COUNT = 45;
+    uint256 internal constant SRC_SOL_FILE_COUNT = 46;
 
     // The three vault artifacts are named by explicit `out-vault/` path, never by bare
     // identifier: `[profile.default]` holds its own differently-compiled copies of
