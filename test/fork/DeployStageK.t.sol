@@ -14,22 +14,22 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
 /**
  * @title DeployStageKForkTest
  * @notice Integration test for `script/DeployStageK.s.sol` — the Stage K governance handoff
- *         (4 deploys + 8 wiring calls per K14 / K-D9). Inherits `StageIIntegrationFixture` for a
+ *         (4 deploys + 10 wiring calls per K14 / K-D9). Inherits `StageIIntegrationFixture` for a
  *         real Vault + AuMM + Bodensee + gauge + oracle + distributor stack on a mainnet fork,
  *         deploys the two fresh registries the wiring chain consumes, installs a one-shot
  *         authorizer bridge, then runs `DeployStageK.deploy(address(this))` and stores the four
  *         returned handles. K7.3a lands setUp + a trivial sanity assertion; the A/B/C assertion
  *         groups land at K7.3b.
  *
- * @dev Single-governor caller model (K15 / Option 1). The inherited fixture splits the eight
- *      wiring gates across two addresses: `address(this)` holds seven (VCR votingWeightSetter,
+ * @dev Single-governor caller model (K15 / Option 1). The inherited fixture splits the ten
+ *      wiring gates across two addresses: `address(this)` holds nine (VCR votingWeightSetter,
  *      swapAndDeposit donateAuthorizer, emission governance on bootstrapChannel + distributor,
- *      AuMM minterAdmin, gauge governance), but wire (8) `vault.setAuthorizer` is gated to the
+ *      AuMM minterAdmin, gauge governance), but wire (10) `vault.setAuthorizer` is gated to the
  *      immutable `GOVERNANCE_MULTISIG` of the Stage B `AureumAuthorizer` the fixture installed
  *      (DeployAureumVault L178/L192). Resolution: deploy a throwaway `AureumAuthorizer(address(this))`
  *      and install it once via `vm.prank(GOVERNANCE_MULTISIG); vault.setAuthorizer(bridge)`, so the
- *      single-governor script then executes all eight wires (including the real wire (8) installing
- *      `AureumGovernanceAuthorizer`) as `address(this)`. This diverges from production — where wire (8)
+ *      single-governor script then executes all ten wires (including the real wire (10) installing
+ *      `AureumGovernanceAuthorizer`) as `address(this)`. This diverges from production — where wire (10)
  *      is signed by the real `GOVERNANCE_MULTISIG` Safe — exactly as `DeployStageH.t.sol` L208—L218
  *      diverges on its `setMinter` simulation; production multisig-path fidelity lives in the deploy
  *      script NatSpec and the K1 `AureumGovernanceAuthorizer` unit suite.
@@ -38,7 +38,7 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
  *      and the inherited `vaultClassRegistry` is one-shot-sealed at StageG L217 (`setVotingWeight`
  *      zeroes `votingWeightSetter`). K7.3 deploys a fresh real `MiliariumRegistry` (governanceContract
  *      = `address(this)`, no pre-handoff) and a fresh `VaultClassRegistry` (votingWeightSetter =
- *      `address(this)`, unsealed) so wires (7) and (1) succeed.
+ *      `address(this)`, unsealed) so wires (8) and (1) succeed.
  *
  * @dev Run with:
  *
@@ -72,7 +72,7 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         super.setUp();
         // (1) Fresh real MiliariumRegistry — dual-interface (IMiliariumRegistry + IMiliariumSlotRegistry,
         //     J-D2), seeded at manifest slots [1, 5, 14] with the three pilots, governanceContract =
-        //     address(this) so wire (7) succeeds. NO pre-handoff to gov (the StageKIntegrationFixture L62
+        //     address(this) so wire (8) succeeds. NO pre-handoff to gov (the StageKIntegrationFixture L62
         //     handoff is precisely what K7.3 must avoid so the script performs the handoff itself).
         uint256[] memory slots = new uint256[](3);
         slots[0] = 1;
@@ -92,7 +92,7 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         freshVCR = new VaultClassRegistry(svZchf, swapAndDeposit, address(this), address(this), genesisTokens, genesisTypes);
         // (3) Authorizer bridge — the fixture's Vault authorizer is AureumAuthorizer(GOVERNANCE_MULTISIG),
         //     so address(this) cannot call setAuthorizer directly. Install a throwaway
-        //     AureumAuthorizer(address(this)) under the multisig's authority once; the script's wire (8)
+        //     AureumAuthorizer(address(this)) under the multisig's authority once; the script's wire (10)
         //     then replaces it with the real AureumGovernanceAuthorizer as address(this) (K15 / Option 1).
         AureumAuthorizer bridge = new AureumAuthorizer(address(this));
         vm.prank(GOVERNANCE_MULTISIG);
@@ -133,12 +133,12 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("VAULT_CLASS_REGISTRY", vm.toString(address(freshVCR)));
         // (5) Deploy + wire the governance stack as governor = address(this); store the four handles.
-        //     Any of the eight wires reverting reverts setUp — green is end-to-end proof the chain ran.
+        //     Any of the ten wires reverting reverts setUp — green is end-to-end proof the chain ran.
         deployStageKScript = new DeployStageK();
         (votingWeight, governance, authorizer, router) = deployStageKScript.deploy(address(this));
     }
     // -------------------------------------------------------------------------
-    // K7.3a sanity — setUp ran the full deploy + 8-wire chain without reverting
+    // K7.3a sanity — setUp ran the full deploy + 10-wire chain without reverting
     // -------------------------------------------------------------------------
     function test_setUp_deployReturnedFourHandles() public view {
         assertTrue(address(votingWeight) != address(0), "votingWeight unset");
@@ -147,14 +147,14 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertTrue(address(router) != address(0), "router unset");
     }
 
-    // Assertion B — wires (1) / (6) / (7): gauge + registry handoff + VCR votingWeight
+    // Assertion B — wires (1) / (7) / (8): gauge + registry handoff + VCR votingWeight
     function test_B_governanceHandoff_gaugeRegistryVCR() public view {
         assertEq(gaugeRegistry.governanceContract(), address(governance), "gauge governance not handed off");
         assertEq(realRegistry.governanceContract(), address(governance), "miliarium governance not handed off");
         assertEq(address(freshVCR.votingWeight()), address(votingWeight), "VCR votingWeight not wired");
     }
 
-    // Assertion C — wire (8) + canPerform routing: OQ-10 authorizer migration
+    // Assertion C — wire (10) + canPerform routing: OQ-10 authorizer migration
     function test_C_authorizerMigration_canPerformRouting() public view {
         bytes32 pauseAction = authorizer.EMERGENCY_ACTION_PAUSE_VAULT();
         bytes32 recoveryAction = authorizer.EMERGENCY_ACTION_ENABLE_RECOVERY_MODE();
@@ -169,7 +169,7 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertFalse(authorizer.canPerform(pauseAction, rando, address(vault)), "arbitrary account allowed");
     }
 
-    // Assertion A1 — wires (3)/(5): bootstrap channel distribute() mints via router post-wiring
+    // Assertion A1 — wires (3)/(6): bootstrap channel distribute() mints via router post-wiring
     function test_A1_distribute_mintsViaRouterPostWiring() public {
         uint256 g = aumm.GENESIS_BLOCK();
         vm.roll(g + 1_000);
@@ -201,7 +201,7 @@ contract DeployStageKForkTest is StageIIntegrationFixture {
         assertGt(aumm.balanceOf(user), 0, "claim did not mint via router");
     }
 
-    // F-03 regression — wire (8): TVLOracle Miliarium-registry bind seals the K6 leg on deploy
+    // F-03 regression — wire (9): TVLOracle Miliarium-registry bind seals the K6 leg on deploy
     function test_F03_tvlOracleMiliariumRegistryBoundAndSealed() public view {
         assertEq(address(tvlOracle.miliariumRegistry()), address(realRegistry), "TVLOracle Miliarium registry not bound at K7 wire");
         assertEq(tvlOracle.registrySetter(), address(0), "TVLOracle registrySetter not sealed after bind");
