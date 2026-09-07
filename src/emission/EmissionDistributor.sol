@@ -707,6 +707,14 @@ contract EmissionDistributor is IEmissionDistributor {
         userLP[pool][user] -= debit;
         poolTotalLP[pool] -= debit;
         userRewardDebt[pool][user] = acc;
+        // B.2 / PP-D55 (vi) — the honest-exit push, which `_syncDown` above structurally cannot
+        // make: it is handed `balanceOf(user) + amount`, the PRE-debit total, so a trusted-router
+        // exit no-ops it and the real reduction lands at the debit above. Gated on `amount > 0` for
+        // the same reason the clock reset above is — a zero-amount call closes nothing — and placed
+        // after every state write, before the event, matching how `claim` orders its interaction.
+        if (amount > 0 && address(votingWeight) != address(0)) {
+            votingWeight.onPositionClosed(pool, user);
+        }
         emit WithdrawalRecorded(pool, user, amount);
     }
 
