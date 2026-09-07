@@ -95,6 +95,11 @@ interface IEmissionDistributor {
     /// @param router The bound AuMMMinterRouter address.
     event MintRouterBound(address indexed router);
 
+    /// @notice Emitted once when governance binds the VotingWeight position-close sink via `setVotingWeight` (B.2).
+    /// @dev Per PP-D55 (vii) one-shot binding — mirrors `MintRouterBound`'s single-indexed shape; the bound sink receives `onPositionClosed` from every recorder path that closes a position.
+    /// @param sink The bound `IPositionCloseSink` address.
+    event VotingWeightBound(address indexed sink);
+
     /// @notice Thrown when `recordScore` is called for a pool that is not gauge-approved.
     /// @dev Per H-D17 (a) and H-D5 per-call `isGaugeApproved` gate — prevents `totalScore` corruption
     ///      from stale recordings on revoked gauges.
@@ -136,6 +141,9 @@ interface IEmissionDistributor {
     /// @notice Thrown when `setMintRouter` is called after the mint router has already been bound.
     /// @dev Per K-D7 one-shot binding — once `mintRouter` is non-zero, the slot is immutable. Mirrors the I-D9 `AuMTAlreadyBound` / H-D5 one-shot setter semantic.
     error MintRouterAlreadySet();
+    /// @notice Thrown when `setVotingWeight` is called after the position-close sink has already been bound.
+    /// @dev Per PP-D55 (vii) one-shot binding — once `votingWeight` is non-zero the slot is immutable, so a rotation cannot silently split the electorate against `AureumGovernance`'s immutable reader. Mirrors `MintRouterAlreadySet`.
+    error VotingWeightAlreadySet();
     /// @notice Thrown in `claim` when the mint router has not yet been bound.
     /// @dev Per K-D7 — `claim` reverts until governance calls `setMintRouter`; replaces the H-D7 `NotMinter` revert posture (AuMM is deployed minterless; the router receives the C-D11 slot at K7).
     error MintRouterNotSet();
