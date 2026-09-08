@@ -83,6 +83,9 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
 
         effOracle.setEmissionsRecorder(address(distributor));
         distributor.setAuMTContractForPool(address(bpt), aumt);
+        // B.2 / PP-D55 (vii) — the one-shot Stage-K sink seat, wired here so recordWithdrawal and
+        // _syncDown reach VotingWeight. Governance is address(this), set at line 72.
+        distributor.setVotingWeight(address(vw));
 
         gauges.setApproved(address(bpt), true);
         miliReg.setMiliarium(address(bpt), true);
