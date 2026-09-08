@@ -98,8 +98,12 @@ contract F16_EmissionCapTournamentTest is Test {
             mult.setMultiplier(pools[i], 1e18);
             ema.setTVLEMA(pools[i], 100e18);
         }
-        // Attacker: fee-less (numeratorSma ~ 0) but emission-receiving (denominatorSma > 0, else post-warmup
-        // skip), with a flash-spiked TVL seed. efficiencyRatio == 1, uniquely worst, so bottom-5%.
+        // Attacker: near-fee-less but emission-receiving, with a flash-spiked TVL seed. efficiencyRatio
+        // == 1, uniquely worst, so bottom-5%. The numerator below is 1 rather than 0, and PP-D56 (viii)
+        // makes that LOAD-BEARING rather than cosmetic: a zero numerator is now skipped ahead of the
+        // cold-start stamp, so an attacker seated at 0 would leave the tournament entirely and take no
+        // cap at all, which would read here as F-16 still passing while proving nothing. The positive
+        // denominator matters for the same reason, its own skip having moved ahead of the stamp too.
         effOracle.setEfficiencyInputs(attacker, 1, 1e18);
         mult.setMultiplier(attacker, 1e18);
         ema.setTVLEMA(attacker, 1e30);
