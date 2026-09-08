@@ -191,6 +191,20 @@ The 2026-08-18 residual is CLOSED. Measured, not derived. No private key and no 
 - **PP12** — the file-set sibling: a `-r` grep handed explicit file arguments does not recurse, and its short result does not look truncated.
 - **PP4.7i** — the WK18 transient, recorded unexplained because this defect destroyed its evidence; **PP4.8e3b** — the build verdict lost to `tail -20` and recovered by `EXIT=$?`.
 
+## PP15 — a same-named sibling setter satisfies the grep that was supposed to prove the seat
+
+**Caught at PP4.12ag, 2026-09-07, twenty-eight commits into the rung and against a fully green Part-A.** B.2's remedy is a recorder-to-reader push that needs `EmissionDistributor.setVotingWeight` called once at Stage K. Every source edit had landed and every gate was green, yet the setter had ZERO call sites in `script/` and `test/`: the production spine left the sink at zero, both push sites returned early behind their unbound guard, and the remedy was DEAD on chain. A grep for `setVotingWeight` returned five hits, so the seat read as covered. Four were `VaultClassRegistry.setVotingWeight`, a same-named setter on a different contract seated as `_wire`'s FIRST call, and the fifth was the new declaration itself.
+
+**Why it survives a careful reader.** A missing call site usually fails loudly, at a revert or a zero read. This one cannot: the push sites are guarded on the unbound slot precisely so the Stage-H-to-K window works, so an unseated sink is indistinguishable from a correctly deferred one and every test that does not exercise the push passes either way. The name grep then supplies false comfort in the one place a reader looks for it, because its answer is non-empty and plausible, a wiring script that really does mention the name, in a call that seats a different contract. PP-D46 is the same defect with a thinner mask: there a script proposed without ever accepting, and the missing entry had no namesake to hide behind.
+
+**The rule.** A new one-shot setter is UNSEATED until a grep proves otherwise, and that grep must be one a namesake cannot satisfy: its EVENT, or its contract-qualified call. `VotingWeightBound` had zero hits outside `src/` and would have answered in one command. A bare-name grep is evidence of nothing whenever another contract declares the same name, and same-named setters are COMMON in this tree by design, since the shapes are deliberately mirrored on each other. Pair the grep with a witness that reads the slot back through the production path.
+
+**Cross-references:**
+
+- **PP-D46** — the same gap without the namesake: `DeployStageL` proposed and never accepted, and that rung's closing gate did not cover the fixture which would have caught it.
+- **PB20** (`STAGE_P_BIS_NOTES.md`) — the reach sibling. A grep's answer is worthless until its reach on the target is measured; here the reach was too WIDE rather than too narrow.
+- **PP4.12ag** — the amendment that recorded it, PP-D55 (xiv); **PP4.12ai** — wire (5), the line that had never been written; **PP4.12al** / **PP4.12an** — the two witnesses that now read the slot back.
+
 ## PP3.3 — Family A verdicts (A.2 and A.3 locked; A.1 and A.4 deferred)
 
 **Locked.** Both rows exit **Fix**, and neither severity moves.
