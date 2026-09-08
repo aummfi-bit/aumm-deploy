@@ -205,7 +205,7 @@ contract EfficiencyOracle is IEfficiencyOracle {
      * @dev `onlyFeeRecorder`-gated; triggers `_ensureCurrentEpoch(pool)` before accumulating. Skip-on-zero semantics inherited from `quoteSvZCHF`: tokens unmapped in TVLOracle contribute `0` to the accumulator without revert (consistent with the wider H-D10 skip-on-zero design). Emits `FeesRecorded(pool, token, amountScaled18, svZCHFAmountScaled18)` for off-chain reconstruction even when `svZCHFAmountScaled18 == 0` (audit trail clarity).
      * @param pool The pool whose numerator is being accumulated.
      * @param token The token in which the fee revenue is denominated (must be mapped in `tvlOracle.tokenToUnderlying`, else the contribution is silently zeroed).
-     * @param amountScaled18 The 18-decimal fixed-point fee revenue amount per Balancer V3 `balancesLiveScaled18` convention.
+     * @param amountScaled18 The 18-decimal fixed-point fee revenue amount per Balancer V3 `balancesLiveScaled18` convention. **PP-D56** pins this as a PRODUCER obligation for E.7a rather than a defect here: a caller passing a RAW token amount — six decimals for USDC, eight for WBTC — understates the numerator by twelve or ten orders of magnitude, and no guard in this function can detect it, every such value being a plausible `uint256`. There is no scaling bug at HEAD because `recordFees` has no production caller at all; enforcement lands with the producer at rung 15, which must pass Vault `balancesLiveScaled18` units.
      */
     function recordFees(address pool, address token, uint256 amountScaled18) external onlyFeeRecorder {
         _ensureCurrentEpoch(pool);
