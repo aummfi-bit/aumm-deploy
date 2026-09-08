@@ -19,12 +19,18 @@ import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from
 import {MockEfficiencyTVLOracle} from "test/unit/EfficiencyOracle.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @notice Reproduction PoC for seam-1 root cause E.7a (Medium). No deploy script calls
-///         `setFeeRecorder`, so every efficiency numerator stays zero; pass 2 of
-///         `computeEpochSnapshot` sorts descending by ratio with an ascending-address
-///         tie-break, and the highest-addressed pool takes the harshest emission cap.
+/// @notice Regression suite for seam-1 root cause E.7a (Medium), inverted at PP4.13l from the
+///         reproduction this file was authored as. The defect: no deploy script calls
+///         `setFeeRecorder`, so every efficiency numerator stays zero, and pass 2 of
+///         `computeEpochSnapshot` then sorted descending by ratio with an ascending-address
+///         tie-break, handing the harshest emission cap to the highest-addressed pool. PP4.13g
+///         added the `numeratorSma == 0` skip ahead of the cold `SSTORE` per PP-D56 (viii), so a
+///         zero-numerator pool now leaves the tournament rather than entering it with no signal
+///         to be ordered by. The feed is STILL unwired at HEAD, PP-D34 as amended by PP-D56 (ii)
+///         having moved the producer and its wiring to rung 15, which is why the premise test
+///         below asserts something live about the tree rather than recording how it once was.
 ///         E.7b and E.7c are the other two F-16 faces.
-contract P1_E7a_TournamentRanksByAddressWhenTheFeeFeedIsUnwiredTest is Test {
+contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant BLOCKS_PER_EPOCH = 100_800;
     uint256 internal constant SCORE_BLOCK = GENESIS_BLOCK + 2_628_000 + 1;
