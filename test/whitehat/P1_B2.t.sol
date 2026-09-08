@@ -113,8 +113,12 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
         ema.setLastUpdateBlock(address(bpt), block.number);
     }
 
-    /// @dev Pins that a full exit leaves the VotingWeight checkpoint intact until a stranger pokes.
-    function test_P1_B2_fullWithdrawalLeavesAFullWeightCheckpointUntilAStrangerPokes() public {
+    /// @dev B.2 done-criteria case. The honest exit clears the checkpoint and the quorum denominator
+    ///      inside the withdrawal transaction: `recordWithdrawal` pushes `onPositionClosed` per
+    ///      PP-D55 (vi), so no third party is left with anything to heal. `_syncDown` no-ops on this
+    ///      path, because the caller passes the pre-debit live total and `recorded <= referenceBalance`
+    ///      holds, which is exactly why the explicit push is required rather than redundant.
+    function test_withdrawalClearsVotingWeight() public {
         _openMaturedPosition();
 
         vw.poke(holder);
@@ -136,23 +140,23 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
             0,
             "distributor qualification clock is zeroed"
         );
-        assertEq(
-            vw.governanceWeight(holder),
-            weightBefore,
-            "VotingWeight checkpoint survives the withdrawal"
-        );
+        // The fix: both live reads collapse inside the withdrawal transaction, with no poke between.
+        assertEq(vw.governanceWeight(holder), 0, "checkpoint not cleared by the withdrawal");
+        assertEq(vw.totalSupply(), 0, "quorum denominator not cleared by the withdrawal");
+
+        // History is NOT rewritten: a proposal snapshotted before the exit still reads the weight
+        // that was genuinely qualified at that block, which is what F-06 depends on.
         assertEq(
             vw.getPastTotalSupply(pokeBlock),
             weightBefore,
-            "past total supply still reports the pre-withdrawal weight"
+            "the pre-withdrawal snapshot must not be rewritten"
         );
 
-        // Self-heal requires a discretionary third-party poke; the withdrawal path never triggers it.
+        // Coda: the stranger poke that used to be the only cure now has nothing left to heal.
         vm.prank(stranger);
         vw.poke(holder);
-
-        assertEq(vw.governanceWeight(holder), 0, "stranger poke collapses the stale checkpoint");
-        assertEq(vw.totalSupply(), 0, "live total supply collapses with the checkpoint");
+        assertEq(vw.governanceWeight(holder), 0, "poke moved a checkpoint the withdrawal had cleared");
+        assertEq(vw.totalSupply(), 0, "poke moved a denominator the withdrawal had cleared");
     }
 
     /// @dev Pins that a poke one block after withdrawal cannot rewrite the withdrawal-block snapshot.
