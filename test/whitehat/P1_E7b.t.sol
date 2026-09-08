@@ -28,9 +28,15 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant BLOCKS_PER_EPOCH = 100_800;
     uint256 internal constant TOURNAMENT_ORIGIN = GENESIS_BLOCK + 2_628_000 + 1;
-    /// @dev One run spans accrual (2 epochs) plus four tournament advances (3 further epochs from
-    ///      the second score block); five epochs of stride keep the next run strictly forward.
-    uint256 internal constant RUN_STRIDE = 5 * BLOCKS_PER_EPOCH;
+    /// @dev One run spans THREE scoring epochs and four tournament advances. The first scoring
+    ///      epoch exists so the pool's first sighting already carries BOTH legs: at the very first
+    ///      `recordScore` the distributor's `totalScore` is still zero, so that epoch accrues no
+    ///      emissions, and a pool seen only from it reads a positive numerator against a ZERO
+    ///      denominator, which PP-D56 (viii) skips AHEAD of the cold-start stamp. Without it the
+    ///      stamp lands at epoch 2, the fourth advance falls inside the warmup window and the run
+    ///      measures the skip path. Six epochs of stride keep the next run strictly forward of the
+    ///      previous run's fourth advance.
+    uint256 internal constant RUN_STRIDE = 6 * BLOCKS_PER_EPOCH;
     uint256 internal constant FREEZE_EXTRA_EPOCHS = 5;
 
     // LARGE_N is three times SMALL_N so the growth factor is read against three.
