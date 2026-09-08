@@ -637,15 +637,28 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.currentSnapshotEpoch(), 1);
     }
 
-    function testColdStartGraceWithZeroDenominatorDoesNotRevert() public {
-        address p = makeAddr("pZeroDenom");
-        address[] memory pools = new address[](1);
-        pools[0] = p;
+    function testZeroInputPoolIsSkippedBeforeTheColdStartStamp() public {
+        // PP-D56 (viii) — both zero-input skips precede the cold `SSTORE`, so a pool with no usable
+        // data never registers a grace epoch it cannot measure. `seeing` is the positive control:
+        // without it a `computeEpochSnapshot` that stamped NOTHING would satisfy the zero vacuously.
+        address blind = makeAddr("pZeroInputs");
+        address seeing = makeAddr("pUsableData");
+        mockEfficiencyOracle.setEfficiencyInputs(seeing, 100e18, 50e18);
+        address[] memory pools = new address[](2);
+        pools[0] = blind;
+        pools[1] = seeing;
 
+        vm.recordLogs();
         vm.prank(gaugeRegistry);
         eligibility.computeEpochSnapshot(pools);
 
-        assertEq(eligibility.firstTournamentEpoch(p), 1);
+        assertEq(eligibility.firstTournamentEpoch(blind), 0);
+        assertEq(eligibility.firstTournamentEpoch(seeing), 1);
+        assertEq(eligibility.lastSnapshotEpoch(blind), 0);
+        assertEq(eligibility.isFavoredCohort(blind), false);
+        assertEq(eligibility.poolEmissionCapBps(blind), 0);
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(eligibility.currentSnapshotEpoch(), 1);
     }
 
     function testWarmupWindowSkipsWithoutEventOrRevert() public {
