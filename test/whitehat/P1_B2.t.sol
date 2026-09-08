@@ -159,8 +159,13 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
         assertEq(vw.totalSupply(), 0, "poke moved a denominator the withdrawal had cleared");
     }
 
-    /// @dev Pins that a poke one block after withdrawal cannot rewrite the withdrawal-block snapshot.
-    function test_P1_B2_withdrawalAtTheSnapshotBlockCannotBeCounteredByALaterPoke() public {
+    /// @dev The same-block face of the fix, and the one a later poke structurally cannot deliver.
+    ///      `recordWithdrawal` pushes the close inside the withdrawal transaction, so the zero lands
+    ///      at the withdrawal block's own key, and `Checkpoints.Trace208` OVERWRITES on an equal key
+    ///      rather than appending. A poke one block later writes a strictly greater key and can never
+    ///      reach back, which is why the reproduction this replaces was right about the poke and
+    ///      wrong about the harm: the cure was never going to come from the poke side at all.
+    function test_withdrawalZeroesTheSameBlockSnapshotWithoutAPoke() public {
         _openMaturedPosition();
 
         vw.poke(holder);
@@ -173,15 +178,23 @@ contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
         vm.prank(aumt);
         distributor.recordWithdrawal(address(bpt), holder, STAKE);
 
+        // Asserted BEFORE any poke: the withdrawal alone did this, with no third party involved.
         vm.roll(withdrawalBlock + 1);
-        vm.prank(stranger);
-        vw.poke(holder);
-
-        assertEq(vw.governanceWeight(holder), 0, "live weight is zero after the late poke");
         assertEq(
             vw.getPastVotes(holder, withdrawalBlock),
-            weightBefore,
+            0,
             "withdrawal-block snapshot still counts the closed position"
         );
+        assertEq(
+            vw.getPastTotalSupply(withdrawalBlock),
+            0,
+            "withdrawal-block denominator still counts the closed position"
+        );
+
+        // A later poke has nothing to add: it writes a strictly greater key and the snapshot holds.
+        vm.prank(stranger);
+        vw.poke(holder);
+        assertEq(vw.getPastVotes(holder, withdrawalBlock), 0, "the later poke moved the snapshot");
+        assertEq(vw.governanceWeight(holder), 0, "live weight is zero after the late poke");
     }
 }
