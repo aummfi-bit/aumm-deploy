@@ -11,6 +11,8 @@ import { IPermit2 } from "permit2/src/interfaces/IPermit2.sol";
 import { StagePIntegrationFixture } from "./StagePIntegration.t.sol";
 import { DeployRouter } from "../../script/DeployRouter.s.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
+import { VotingWeight } from "../../src/governance/VotingWeight.sol";
+import { AureumTime } from "../../src/lib/AureumTime.sol";
 
 /// @title  RouterIntegrationTest
 /// @notice PB3.3d (PB-D22 (v)) — the mainnet-fork witness realizing the production-router leg
