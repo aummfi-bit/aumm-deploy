@@ -684,25 +684,46 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
     }
 
-    function testZeroDenominatorSkippedPostWarmup() public {
+    function testZeroDenominatorSkippedPostWarmupKeepsItsGraceEpoch() public {
+        // P-D15 (3)'s post-warmup skip, in the only form still reachable after PP-D56 (viii): a pool
+        // that warmed on usable data and LATER lost its feed. A pool whose denominator was always
+        // zero now skips at the numerator gate ahead of the stamp and never reaches this gate at all
+        // — testZeroInputPoolIsSkippedBeforeTheColdStartStamp owns that case. What is proven here is
+        // (viii)'s persistence limb, which nothing else in the tree asserts: the grace epoch survives
+        // the outage, so the pool re-ranks on the next good epoch WITHOUT re-warming.
         address p = makeAddr("pEffUnavailable");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
         address[] memory pools = new address[](1);
         pools[0] = p;
 
         _advanceWarmup(pools);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
+        assertEq(eligibility.lastSnapshotEpoch(p), 4);
 
-        // Post-warmup (epoch 4: newEpoch - firstTournamentEpoch == 3, not < SMOOTHING_EPOCHS) with
-        // denominatorSma == 0 (mock default): the pool is skipped — excluded from ranking, no cap,
-        // no revert — per P-D15 (3). One dead gauge must not brick the permissionless tournament.
+        // Epoch 5, the feed dies: excluded from ranking, no cap, no revert per P-D15 (3). One dead
+        // gauge must not brick the permissionless tournament. Pass 3 walks only the ranked survivors,
+        // so nothing is emitted and nothing the pool already holds is rewritten.
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 0);
         vm.recordLogs();
         vm.prank(gaugeRegistry);
         eligibility.computeEpochSnapshot(pools);
 
         assertEq(vm.getRecordedLogs().length, 0);
-        assertEq(eligibility.currentSnapshotEpoch(), 4);
-        assertEq(eligibility.lastSnapshotEpoch(p), 0);
-        assertEq(eligibility.isFavoredCohort(p), false);
-        assertEq(eligibility.poolEmissionCapBps(p), 0);
+        assertEq(eligibility.currentSnapshotEpoch(), 5);
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
+        assertEq(eligibility.lastSnapshotEpoch(p), 4);
+
+        // Epoch 6, the feed returns: 6 - 1 = 5 is not < SMOOTHING_EPOCHS, so the pool ranks on the
+        // very next epoch. A cleared or rewritten stamp would have put it back in warmup and left
+        // lastSnapshotEpoch at 4.
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
+        vm.prank(gaugeRegistry);
+        eligibility.computeEpochSnapshot(pools);
+
+        assertEq(eligibility.lastSnapshotEpoch(p), 6);
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
     }
 
     function testGaugeEfficiencyRisingEmitsOnAscension() public {
