@@ -176,27 +176,34 @@ contract P1_E7a_TournamentRanksByAddressWhenTheFeeFeedIsUnwiredTest is Test {
         }
     }
 
-    /// @notice With every ratio zero, the address tie-break decides: highest address gets 10 bps.
-    function test_P1_E7a_rankingCollapsesToAddressOrderSoTheHighestAddressedPoolIsClamped() public {
+    /// @notice Done-criteria for E.7a, inverted from the reproduction this file was written as.
+    ///         The numerator skip is symmetric with the denominator skip in the property that skip
+    ///         exists to give: one dead input must not brick the permissionless tournament per
+    ///         P-D15 (3). So four advances complete, nothing is ranked, and the address tie-break
+    ///         that previously handed 10 / 50 / 100 bps to the three highest-addressed pools never
+    ///         runs. Both zero-input skips precede the cold `SSTORE` per PP-D56 (viii), so not one
+    ///         of the twenty pools registers a grace epoch it has no data to measure.
+    function test_zeroNumeratorSkippedSymmetrically() public {
         _accrueEmissionDenominators();
         _runWarmupToCaps();
 
-        address highest = pools[POOL_COUNT - 1];
-        address secondHighest = pools[POOL_COUNT - 2];
-        address thirdHighest = pools[POOL_COUNT - 3];
-        address lowest = pools[0];
+        for (uint256 i = 0; i < POOL_COUNT; i++) {
+            assertEq(
+                gaugeRegistry.poolEmissionCapBps(pools[i]),
+                0,
+                "no pool carries a cap: every ratio is zero, nothing enters the ranking, and the address tie-break never decides"
+            );
+            assertEq(
+                gaugeElig.firstTournamentEpoch(pools[i]),
+                0,
+                "the skip precedes the cold SSTORE, so no pool registers a grace epoch across four advances"
+            );
+        }
 
-        assertEq(gaugeRegistry.poolEmissionCapBps(highest), 10, "highest-addressed pool carries 10 bps");
-        assertEq(gaugeRegistry.poolEmissionCapBps(secondHighest), 50, "next-highest carries 50 bps");
-        assertEq(gaugeRegistry.poolEmissionCapBps(thirdHighest), 100, "third-highest carries 100 bps");
-        assertEq(gaugeRegistry.poolEmissionCapBps(lowest), 0, "lowest-addressed pool carries 0");
-
-        uint256 tenBpsFp = 10 * 1e14;
-        uint256 equalSplitFp = 1e18 / POOL_COUNT;
-        assertLt(
-            tenBpsFp * 10,
-            equalSplitFp,
-            "10 bps is at least an order of magnitude below an equal split of the twenty ranked pools"
+        assertEq(
+            gaugeElig.currentSnapshotEpoch(),
+            4,
+            "all four advances completed without reverting, which is the denominator skip's own guarantee extended to the numerator"
         );
     }
 }
