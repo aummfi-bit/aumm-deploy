@@ -94,18 +94,25 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         }
     }
 
-    /// @dev Deploys a fresh gauge + distributor stack for one measurement, accrues denominators,
-    ///      clears the cold-start and smoothing windows with three advances, then returns the gas
-    ///      consumed by the fourth `advanceTournament`. `runIndex` selects a forward-only block
-    ///      base so a second call in the same test never rolls backward.
+    /// @dev Deploys a fresh gauge + distributor stack for one measurement, accrues both efficiency
+    ///      legs, clears the cold-start and smoothing windows with three advances, then returns the
+    ///      gas consumed by the fourth `advanceTournament`. `runIndex` selects a forward-only block
+    ///      base so a second call in the same test never rolls backward. The advances begin TWO
+    ///      epochs after the first scoring block rather than one: the very first `recordScore`
+    ///      finds `totalScore` at zero, so that epoch records fees but accrues no emissions, and an
+    ///      advance whose three-epoch lookback reaches only that epoch reads a positive numerator
+    ///      against a ZERO denominator and is skipped AHEAD of the cold-start stamp per PP-D56
+    ///      (viii). Beginning one epoch later puts a fully-populated epoch inside the lookback, so
+    ///      the pool stamps at epoch 1, warms through advances 2 and 3, and ranks on the fourth
+    ///      exactly as this helper's name says.
     function _measureFourthAdvanceGas(uint256 poolCount, uint256 runIndex) internal returns (uint256 gasUsed) {
         uint256 base = TOURNAMENT_ORIGIN + runIndex * RUN_STRIDE;
         uint256 score1 = base;
         uint256 score2 = base + BLOCKS_PER_EPOCH;
-        uint256 adv1 = score2;
-        uint256 adv2 = score2 + BLOCKS_PER_EPOCH;
-        uint256 adv3 = score2 + 2 * BLOCKS_PER_EPOCH;
-        uint256 adv4 = score2 + 3 * BLOCKS_PER_EPOCH;
+        uint256 adv1 = score2 + BLOCKS_PER_EPOCH;
+        uint256 adv2 = score2 + 2 * BLOCKS_PER_EPOCH;
+        uint256 adv3 = score2 + 3 * BLOCKS_PER_EPOCH;
+        uint256 adv4 = score2 + 4 * BLOCKS_PER_EPOCH;
 
         lastElig = new GaugeEligibility(
             PLACEHOLDER,
