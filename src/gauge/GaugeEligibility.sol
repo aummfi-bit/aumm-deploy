@@ -347,11 +347,30 @@ contract GaugeEligibility is IGaugeEligibility {
         uint256[] memory rankedRatios = new uint256[](totalLen);
         uint256 nRanked = 0;
 
-        // Pass 1 — oracle read + zero-handling precedence per G-D23 (v).
+        // Pass 1 — oracle read, then the two zero-input skips, then the cold-start and warmup gates.
+        // PP-D56 (viii) REORDERS this away from G-D23 (v)'s cold-start-then-warmup-then-denominator
+        // precedence: both zero-input skips now precede the cold `SSTORE` at the stamp, so a pool with
+        // no usable data never registers a grace epoch it cannot measure and no skipped pool pays that
+        // store. `firstTournamentEpoch` therefore means the first epoch in which the pool had USABLE
+        // DATA rather than the first epoch it was seen; once stamped it persists, so a pool that later
+        // loses a feed is skipped while keeping its grace epoch and re-ranks without re-warming.
         for (uint256 i = 0; i < totalLen; ++i) {
             address pool = eligiblePools[i];
             (uint256 numeratorSma, uint256 denominatorSma) =
                 IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
+
+            if (numeratorSma == 0) {
+                // E.7a / PP-D56 (iii) — symmetric with the denominator skip below. Before this, a pool
+                // with no fee feed produced a zero ratio, so the insertion sort fell through to its
+                // address-ascending tiebreak and the cap tiers were assigned by ADDRESS. This precedes
+                // the ratio and the tiebreak alike, because it precedes insertion into the list at all.
+                continue;
+            }
+
+            if (denominatorSma == 0) {
+                // P-D15 (3) — a zero-denominator pool is skipped rather than reverting: one dead gauge must not brick the permissionless tournament. PP-D56 (viii) moved this ahead of the cold-start stamp and the warmup gate, so it is no longer post-warmup.
+                continue;
+            }
 
             if (firstTournamentEpoch[pool] == 0) {
                 firstTournamentEpoch[pool] = newEpoch;
@@ -359,11 +378,6 @@ contract GaugeEligibility is IGaugeEligibility {
             }
 
             if (newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS) {
-                continue;
-            }
-
-            if (denominatorSma == 0) {
-                // P-D15 (3) — post-warmup zero-denominator pool skipped (excluded from ranking, no cap, no revert): one dead gauge must not brick the permissionless tournament.
                 continue;
             }
 
