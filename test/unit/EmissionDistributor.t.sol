@@ -1750,6 +1750,47 @@ contract EmissionDistributorTest is Test {
         fresh.claim(POOL_A, USER_1);
     }
 
+    /* ---------- setVotingWeight one-shot (B.2 / PP-D55 (vii)) ---------- */
+
+    /// @notice Confirms setVotingWeight binds the sink address and emits VotingWeightBound.
+    function test_SetVotingWeight_HappyPath_EmitsAndBinds() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.expectEmit(true, false, false, true);
+        emit IEmissionDistributor.VotingWeightBound(address(0xF00D));
+        vm.prank(GOV);
+        fresh.setVotingWeight(address(0xF00D));
+        assertEq(address(fresh.votingWeight()), address(0xF00D), "votingWeight bound");
+    }
+
+    /// @notice Reverts ZeroAddress when setVotingWeight is called with address(0). Unlike the incendiary
+    ///         registry's H-D29 valve, zero is NOT a legal state here: a zero sink silently disables the
+    ///         B.2 push-reset, which is why PP-D55 (vii) rejects PP-D44's two-step for this slot.
+    function test_SetVotingWeight_RevertWhen_SinkZero() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.ZeroAddress.selector);
+        fresh.setVotingWeight(address(0));
+    }
+
+    /// @notice Reverts VotingWeightAlreadySet on a second bind, keeping the electorate single-valued
+    ///         against the immutable VotingWeight reader AureumGovernance holds.
+    function test_SetVotingWeight_RevertWhen_AlreadySet() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.prank(GOV);
+        fresh.setVotingWeight(address(0xF00D));
+        vm.prank(GOV);
+        vm.expectRevert(IEmissionDistributor.VotingWeightAlreadySet.selector);
+        fresh.setVotingWeight(address(0xBEEF));
+    }
+
+    /// @notice Reverts NotGovernance when setVotingWeight is called by a non-governance address.
+    function test_SetVotingWeight_RevertWhen_CallerNotGovernance() public {
+        EmissionDistributor fresh = _freshUnboundDistributor();
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(IEmissionDistributor.NotGovernance.selector, address(0xBEEF)));
+        fresh.setVotingWeight(address(0xF00D));
+    }
+
     /* ---------- L-D25 boost-delivery leg tests (L7 / L-D25) ---------- */
 
     function test_BoostDelivery_HappyPath_AddsToAccRewardPerLPNoOraclePush() public {
