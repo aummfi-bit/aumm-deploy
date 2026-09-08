@@ -163,6 +163,54 @@ contract RouterIntegrationTest is StagePIntegrationFixture {
         assertEq(IERC20(pilotPools[0]).balanceOf(lp), bptOut - exactBptIn);
         assertEq(distributor.userLP(pilotPools[0], lp), bptOut - exactBptIn);
     }
+
+    /// @notice PP-D16's fork witness for B.2: a trusted-router exit succeeds against hostile EMA state
+    ///         and clears the checkpoint a poke refuses to touch. The contrast IS the design. With the
+    ///         oracle stale, `poke` reaches `_positionPower`'s staleness branch, reads `(0, true)`, and
+    ///         the PP-D52 (ix) hold refuses the downward write, so no third party can reset this holder
+    ///         however often they try. `onPositionClosed` reads no oracle at all per PP-D55 (ix), so the
+    ///         same state that blocks the poke cannot block the exit. That is why clause (ii) rejected
+    ///         sharing poke's loop: an entry inheriting the hold would inherit the brick.
+    function test_P1_B2_trustedExitClearsTheCheckpointUnderAStaleEma() public {
+        _seatRouter();
+        // PP10: `_matureStack` adds through the Vault DIRECTLY and is attributed by this contract's
+        // own `getSender()`, so the hook credits nobody unless this contract is ALSO on the F-09
+        // allowlist. StagePEndToEndTest seats itself in its own setUp for exactly this reason; this
+        // file does not, because its other cases exercise the real Router's seat in isolation.
+        vm.prank(gov);
+        hook.setTrustedRouter(address(this), true);
+        address lp = makeAddr("p1_b2_forkLp");
+        _seatVoter(lp);
+
+        VotingWeight vw = orchestrator.votingWeight();
+        uint256 weightBefore = vw.governanceWeight(lp);
+        uint256 supplyBefore = vw.totalSupply();
+        assertGt(weightBefore, 0, "premise: the matured position carries governance weight");
+
+        // Hostile state: one epoch past the last refresh, so every live position reads stale.
+        vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH + 1);
+
+        // The hold is armed and real: a stranger cannot ratchet this holder down.
+        address stranger = makeAddr("p1_b2_forkStranger");
+        vm.prank(stranger);
+        vw.poke(lp);
+        assertEq(vw.governanceWeight(lp), weightBefore, "premise: the stale-EMA hold refuses the poke");
+        assertEq(vw.totalSupply(), supplyBefore, "premise: the denominator is held too");
+
+        // The exit runs anyway, through the REAL seated Router, and clears what the poke could not.
+        uint256 bptHeld = IERC20(pilotPools[0]).balanceOf(lp);
+        assertGt(bptHeld, 0, "premise: the LP holds its receipt");
+        IERC20[] memory tokens = vault.getPoolTokens(pilotPools[0]);
+        uint256[] memory minOut = new uint256[](tokens.length);
+        vm.prank(lp);
+        IERC20(pilotPools[0]).approve(router, bptHeld);
+        vm.prank(lp);
+        Router(payable(router)).removeLiquidityProportional(pilotPools[0], bptHeld, minOut, false, "");
+
+        assertEq(distributor.userLP(pilotPools[0], lp), 0, "the exit did not reach the recorder");
+        assertEq(vw.governanceWeight(lp), 0, "a stale EMA blocked the storage-only close");
+        assertEq(vw.totalSupply(), supplyBefore - weightBefore, "the denominator kept the closed position");
+    }
 }
 
 /// @dev Untrusted proportional exit router — self-unlock remove with no getSender and no F-09 seat,
