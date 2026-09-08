@@ -17,11 +17,15 @@ import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry} from "test/uni
 import {MockBpt, MockCCBMultiplier, MockEfficiencyOracle} from "test/unit/EmissionDistributor.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @title P1 B.2 — closed position keeps a full voting checkpoint
-/// @notice Reproduction PoC for seam-1 root cause B.2 (High). `recordWithdrawal` writes only
-///         EmissionDistributor storage and never touches VotingWeight, so a poked holder's
-///         checkpoint and the past total supply survive a full exit until a discretionary poke.
-contract P1_B2_StaleVotingWeightPersistsAfterWithdrawalTest is Test {
+/// @title P1 B.2 — the withdrawal clears the voting checkpoint
+/// @notice Regression suite for seam-1 root cause B.2 (High, ledger F-29), closed at PP4.12 under
+///         PP-D55: `recordWithdrawal` and `_syncDown` push `VotingWeight.onPositionClosed`, which
+///         subtracts the holder's stored per-pool part from both checkpoints in the same
+///         transaction rather than waiting on a discretionary third-party poke. Carries the B.2
+///         done-criteria case. The queue's reproduction column still names the two PoC cases this
+///         file replaced; per the B.5 precedent that column records what reproduced the defect and
+///         is not rewritten when the PoC inverts.
+contract P1_B2_WithdrawalClearsVotingWeightTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant STAKE = 100e18;
     uint256 internal constant TVL_EMA = 16e18;
