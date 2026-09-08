@@ -62,17 +62,29 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         mult = new MockCCBMultiplier();
         miliReg = new MockMiliariumRegistry();
         tvlMock = new MockEfficiencyTVLOracle();
-        // Real oracle — feeRecorder is deliberately left unset; never call setFeeRecorder.
-        // The ranking path measured here is the same all-zero-ratio path E.7a established.
+        // Real oracle. PP-D56 (ix) — the fee recorder is WIRED here, reversing the E-family
+        // harness default that E.7a's file depends on. After PP4.13g a zero numerator is skipped
+        // ahead of the cold-start stamp, so an unset feed would take every pool out of the
+        // tournament and this file would measure the SKIP PATH rather than the ranking path:
+        // two of the three cost terms E.7b alleges, the cold SSTORE on first sighting and the
+        // insertion sort over ranked survivors, exist only for pools that rank. E.7a's own
+        // fixture keeps its feed unset; that is E.7a's invariant and does not bind this one.
         effOracle = new EfficiencyOracle(tvlMock, address(aumm), GENESIS_BLOCK, GOV);
         tvlMock.setRate(address(aumm), 1e18);
+        vm.prank(GOV);
+        effOracle.setFeeRecorder(address(this));
 
         vm.roll(GENESIS_BLOCK);
     }
 
+    /// @dev Pushes one epoch of numerator and denominator per pool. The fee amount is constant
+    ///      while denominators track each pool's distinct TVL EMA, so the ratios are distinct and
+    ///      the sort has real work to do; they arrive descending, which is insertion sort's best
+    ///      case and keeps these figures a LOWER bound exactly as this test's own NatSpec states.
     function _scoreAll(EmissionDistributorHarness dist, address[] storage poolList) internal {
         for (uint256 i = 0; i < poolList.length; i++) {
             dist.recordScore(poolList[i]);
+            effOracle.recordFees(poolList[i], address(aumm), 1e18);
         }
     }
 
@@ -174,6 +186,25 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
 
         emit log_named_uint("advanceTournament gas SMALL_N=30", gasSmall);
         emit log_named_uint("advanceTournament gas LARGE_N=90", gasLarge);
+
+        // Premise per PP-D56 (ix): these figures measure the RANKING path only if the pools
+        // actually rank. This file carried no such check, which is why it went on passing as a
+        // skip-path measurement from PP4.13g until the PP4.13s baseline caught the extrapolation
+        // falling under the block limit. The state read below belongs to the LARGE_N run.
+        (uint256 numeratorSma, uint256 denominatorSma) = effOracle.efficiencyInputs(lastPools[0]);
+        emit log_named_uint("numeratorSma[0]", numeratorSma);
+        emit log_named_uint("denominatorSma[0]", denominatorSma);
+        emit log_named_uint("firstTournamentEpoch[0]", lastElig.firstTournamentEpoch(lastPools[0]));
+        emit log_named_uint("currentSnapshotEpoch", lastElig.currentSnapshotEpoch());
+        emit log_named_uint("lastSnapshotEpoch[0]", lastElig.lastSnapshotEpoch(lastPools[0]));
+
+        assertGt(numeratorSma, 0, "premise: the fee feed is wired so the numerator is nonzero");
+        assertGt(denominatorSma, 0, "premise: emissions accrued so the denominator is nonzero");
+        assertGt(
+            lastElig.lastSnapshotEpoch(lastPools[0]),
+            0,
+            "premise: the measured advance RANKED the pool rather than skipping it"
+        );
 
         assertGt(gasSmall, 0, "SMALL_N measurement is nonzero");
         assertGt(gasLarge, 0, "LARGE_N measurement is nonzero");
