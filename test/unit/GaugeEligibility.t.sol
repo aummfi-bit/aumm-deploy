@@ -662,7 +662,11 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     }
 
     function testWarmupWindowSkipsWithoutEventOrRevert() public {
+        // PP-D56 (viii) — the inputs are seated so the skip at epoch 3 is the WARMUP gate rather
+        // than the zero-numerator gate that now precedes the stamp. `firstTournamentEpoch == 1` is
+        // the discriminator: a pool skipped for want of data would never have been stamped at all.
         address p = makeAddr("pWarmSkip");
+        mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
         address[] memory pools = new address[](1);
         pools[0] = p;
 
@@ -674,6 +678,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         vm.prank(gaugeRegistry);
         eligibility.computeEpochSnapshot(pools);
 
+        assertEq(eligibility.firstTournamentEpoch(p), 1);
         assertEq(vm.getRecordedLogs().length, 0);
         assertEq(eligibility.currentSnapshotEpoch(), 3);
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
