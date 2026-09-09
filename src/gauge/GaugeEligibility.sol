@@ -548,6 +548,18 @@ contract GaugeEligibility is IGaugeEligibility {
         }
     }
 
+    /// @dev Pass-3 work for one ranked entry: the crossing event, then the cap, cohort and epoch writes.
+    function _finalizeOne(uint256 i, uint256 newEpoch) internal {
+        uint256 n = nRanked;
+        RankedEntry storage e = _rankedScratch[i];
+        address pool = e.pool;
+        bool isFavored = i < (n * 15 + 99) / 100;
+        _emitCrossing(e, newEpoch, isFavoredCohort[pool], isFavored);
+        poolEmissionCapBps[pool] = _capBpsFor(i, n);
+        isFavoredCohort[pool] = isFavored;
+        lastSnapshotEpoch[pool] = newEpoch;
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
