@@ -13,6 +13,7 @@ import {IEfficiencyOracle} from "./IEfficiencyOracle.sol";
 import {ITVLOracle} from "../ccb/ITVLOracle.sol";
 import {IAureumFeeRoutingHook} from "../fee_router/IAureumFeeRoutingHook.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title GaugeEligibility
