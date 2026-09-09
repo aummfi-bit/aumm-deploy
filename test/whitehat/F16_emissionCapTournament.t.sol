@@ -121,12 +121,19 @@ contract F16_EmissionCapTournamentTest is Test {
     function _runTournamentToCaps() internal {
         uint256 currentBlock = AureumTime.year1EndBlock(GENESIS_BLOCK) + 1;
         vm.roll(currentBlock);
-        gaugeRegistry.advanceTournament();
+        _advanceOnce();
         for (uint256 k = 0; k < 3; k++) {
             currentBlock += AureumTime.BLOCKS_PER_EPOCH;
             vm.roll(currentBlock);
-            gaugeRegistry.advanceTournament();
+            _advanceOnce();
         }
+    }
+
+    /// @dev One whole tournament epoch under the **PP-D56 (iv)** two-phase split: accumulate every
+    ///      active gauge in one page, then finalize every ranked entry in one page.
+    function _advanceOnce() internal {
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        gaugeRegistry.finalizeTournament(type(uint256).max);
     }
 
     /// @notice The real tournament assigns the floor-percentile caps (P-D15 (1)) to the least-efficient
