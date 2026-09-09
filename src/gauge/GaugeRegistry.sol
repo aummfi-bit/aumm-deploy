@@ -258,6 +258,17 @@ contract GaugeRegistry is IGaugeRegistry {
         }
     }
 
+    /// @dev Applies the activation and cadence gates and seats the epoch, on a first page only.
+    ///      Deliberately does NOT stamp `lastTournamentEpoch`; that moves to the last finalize page.
+    function _seatAccumulationEpoch() internal {
+        if (accumulationEpoch != 0) return;
+        if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
+        uint256 e = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (e <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
+        accumulationEpoch = e;
+        tournamentCursor = 0;
+    }
+
     // ----------------------------------------------------------------------------
     // External — views
     // ----------------------------------------------------------------------------
