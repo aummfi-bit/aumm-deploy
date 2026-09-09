@@ -560,6 +560,25 @@ contract GaugeEligibility is IGaugeEligibility {
         lastSnapshotEpoch[pool] = newEpoch;
     }
 
+    /// @notice Finalizes one page of the ranked scratch per **PP-D56 (x)**; true when the epoch closes.
+    function finalizeEpochSnapshot(uint256 maxPools) external onlyGaugeRegistry returns (bool done) {
+        uint256 newEpoch = currentSnapshotEpoch + 1;
+        uint256 i = finalizeCursor;
+        uint256 end = i + maxPools;
+        if (end > nRanked) end = nRanked;
+        for (; i < end; ++i) {
+            _finalizeOne(i, newEpoch);
+        }
+        finalizeCursor = i;
+        done = i == nRanked;
+        if (done) {
+            currentSnapshotEpoch = newEpoch;
+            accumulationEpoch = 0;
+            nRanked = 0;
+            finalizeCursor = 0;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
