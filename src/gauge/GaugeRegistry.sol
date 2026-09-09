@@ -249,6 +249,15 @@ contract GaugeRegistry is IGaugeRegistry {
         emit TournamentAdvanced(currentEpoch, _activeGauges.length());
     }
 
+    /// @dev Copies `_activeGauges` indices [`from`, `to`) into memory through `at`, never through
+    ///      `values()`, which per **PP-D56 (iv)** is the same unbounded walk in another costume.
+    function _buildPage(uint256 from, uint256 to) internal view returns (address[] memory page) {
+        page = new address[](to - from);
+        for (uint256 k = 0; k < page.length; ++k) {
+            page[k] = _activeGauges.at(from + k);
+        }
+    }
+
     // ----------------------------------------------------------------------------
     // External — views
     // ----------------------------------------------------------------------------
