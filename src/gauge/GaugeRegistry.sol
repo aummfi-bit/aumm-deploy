@@ -247,19 +247,6 @@ contract GaugeRegistry is IGaugeRegistry {
     // External — F-10 efficiency tournament (P-D14)
     // ----------------------------------------------------------------------------
 
-    /**
-     * @notice Permissionless F-10 efficiency tournament caller — advances the epoch snapshot by one `BLOCKS_PER_EPOCH` step, driving tier assignment and emission-cap updates for all Active gauges — **P-D14 (2)-(4)**.
-     * @dev Gate order per **P-D14 (3)-(4)**: (1) `TournamentNotActive` — reverts before `AureumTime.year1EndBlock(GENESIS_BLOCK) + 1` (month-13 boundary, honoring P-D13 amendment (b)); (2) `TournamentEpochNotElapsed` — reverts when `currentEpoch <= lastTournamentEpoch` (one snapshot per `BLOCKS_PER_EPOCH`); (3) `lastTournamentEpoch = currentEpoch` written before the external call (CEI — a reverting snapshot rolls back the write); (4) `GaugeEligibility(gaugeEligibility).computeEpochSnapshot(...)` — concrete cast per **G2.5** (`computeEpochSnapshot` is concrete-only on `GaugeEligibility`, absent from `IGaugeEligibility`; confirmed by reading `src/gauge/IGaugeEligibility.sol`); (5) `_activeGauges.values()` supplies the complete deduped Active-gauge set (EnumerableSet invariant — satisfies the "caller passes a deduped set" contract at `GaugeEligibility` L210). At F16c the snapshot sorts + emits transition events; F-16 emission caps land at F16d. Concrete-only — not on `IGaugeRegistry`; interface plumbing deferred to F16e with the G16 sweep.
-     */
-    function advanceTournament() external {
-        if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
-        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
-        if (currentEpoch <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
-        lastTournamentEpoch = currentEpoch;
-        GaugeEligibility(gaugeEligibility).computeEpochSnapshot(_activeGauges.values());
-        emit TournamentAdvanced(currentEpoch, _activeGauges.length());
-    }
-
     /// @dev Copies `_activeGauges` indices [`from`, `to`) into memory through `at`, never through
     ///      `values()`, which per **PP-D56 (iv)** is the same unbounded walk in another costume.
     function _buildPage(uint256 from, uint256 to) internal view returns (address[] memory page) {
