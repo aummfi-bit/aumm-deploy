@@ -539,6 +539,15 @@ contract GaugeEligibility is IGaugeEligibility {
         return 0;
     }
 
+    /// @dev Emits the **G-D5** crossing event for one entry, at most once per pool per epoch.
+    function _emitCrossing(RankedEntry storage e, uint256 newEpoch, bool wasFavored, bool isFavored) internal {
+        if (wasFavored && !isFavored) {
+            emit GaugeEfficiencyDropped(e.pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
+        } else if (!wasFavored && isFavored) {
+            emit GaugeEfficiencyRising(e.pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
