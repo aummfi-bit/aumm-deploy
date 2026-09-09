@@ -479,6 +479,24 @@ contract GaugeEligibility is IGaugeEligibility {
         currentSnapshotEpoch = newEpoch;
     }
 
+    /// @dev Inserts one survivor at its sorted position per **PP-D56 (x)**, descending by ratio
+    ///      with an address-ascending tie, which is **G-D23 (iv)** / **T-T3** unchanged.
+    function _insertRanked(address pool, uint256 num, uint256 den, uint256 ratio) internal {
+        uint256 n = nRanked;
+        if (_rankedScratch.length == n) _rankedScratch.push();
+        uint256 j = n;
+        while (
+            j > 0 &&
+            (_rankedScratch[j - 1].efficiencyRatio < ratio ||
+                (_rankedScratch[j - 1].efficiencyRatio == ratio && _rankedScratch[j - 1].pool > pool))
+        ) {
+            _rankedScratch[j] = _rankedScratch[j - 1];
+            --j;
+        }
+        _rankedScratch[j] = RankedEntry(pool, num, den, ratio);
+        nRanked = n + 1;
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
