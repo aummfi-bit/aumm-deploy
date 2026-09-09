@@ -169,23 +169,30 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
 
         vm.roll(adv1);
         _scoreAll(lastDistributor, lastPools);
-        lastRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(adv2);
         _scoreAll(lastDistributor, lastPools);
-        lastRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(adv3);
         _scoreAll(lastDistributor, lastPools);
-        lastRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(adv4);
         _scoreAll(lastDistributor, lastPools);
 
         uint256 gasBefore = gasleft();
-        lastRegistry.advanceTournament();
+        _advanceOnce();
         uint256 gasAfter = gasleft();
         gasUsed = gasBefore - gasAfter;
+    }
+
+    /// @dev One tournament epoch under the **PP-D56 (iv)** split; the measured call spans BOTH
+    ///      phases, so its figures remain comparable to the single-call ones (ix) recorded.
+    function _advanceOnce() internal {
+        lastRegistry.accumulateTournament(type(uint256).max);
+        lastRegistry.finalizeTournament(type(uint256).max);
     }
 
     /// @dev Pool addresses are built and seeded in ascending order so the registry's active set
