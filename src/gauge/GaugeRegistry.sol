@@ -85,6 +85,10 @@ contract GaugeRegistry is IGaugeRegistry {
     ///         length, so incomplete accumulation is unfinalizable BY THE CURSOR and by no boolean.
     error AccumulationIncomplete(uint256 cursor, uint256 length);
 
+    /// @notice Reverts a tournament page taken after its accumulation epoch has elapsed
+    ///         (**PP-D56 (xi)**), so one accumulation never mixes two oracle windows.
+    error AccumulationEpochStale(uint256 accumulating, uint256 current);
+
     /// @notice Reverts `revokeGaugeIfIneligible` when `pool` still satisfies the **PB-D69** fee-rail conjunct — there is nothing to revoke, and that entry is hygiene rather than a governance lever.
     error GaugeStillEligible(address pool);
 
