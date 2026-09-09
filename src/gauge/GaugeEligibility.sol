@@ -530,6 +530,15 @@ contract GaugeEligibility is IGaugeEligibility {
         }
     }
 
+    /// @dev Floor-percentile cap tier for rank `i` of `n`, most severe first, per **P-D13 (3)** /
+    ///      **P-D15 (1)**. Identical arithmetic to the single-call form, from a settled `nRanked`.
+    function _capBpsFor(uint256 i, uint256 n) internal pure returns (uint256) {
+        if (i >= n - (n * 5) / 100) return 10;
+        if (i >= n - (n * 10) / 100) return 50;
+        if (i >= n - (n * 15) / 100) return 100;
+        return 0;
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
