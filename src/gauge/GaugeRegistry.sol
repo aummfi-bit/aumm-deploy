@@ -59,6 +59,13 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice F-10 tournament cadence tracker — **P-D14 (2)**. Stores the epoch index of the last completed `advanceTournament` run; 0 until the first post-month-13 call. `advanceTournament` enforces `currentEpoch > lastTournamentEpoch` — exactly one snapshot per `BLOCKS_PER_EPOCH`.
     uint256 public lastTournamentEpoch;
 
+    /// @notice Next `_activeGauges` index awaiting accumulation per **PP-D56 (iv)**; zero when idle.
+    uint256 public tournamentCursor;
+
+    /// @notice Epoch whose accumulation is in progress, zero when idle, per **PP-D56 (iv)**.
+    /// @dev Passed to `GaugeEligibility` on every page; the two slots of this name must agree.
+    uint256 public accumulationEpoch;
+
     // ----------------------------------------------------------------------------
     // Custom errors
     // ----------------------------------------------------------------------------
