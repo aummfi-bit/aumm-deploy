@@ -500,6 +500,20 @@ contract GaugeEligibility is IGaugeEligibility {
         nRanked = n + 1;
     }
 
+    /// @dev One pool's pass-1 work in the **PP-D56 (viii)** gate order: oracle read, zero-numerator
+    ///      skip, zero-denominator skip, cold-start stamp, warmup gate, then the ranked insert.
+    function _accumulateOne(address pool, uint256 newEpoch) internal {
+        (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
+        if (num == 0) return;
+        if (den == 0) return;
+        if (firstTournamentEpoch[pool] == 0) {
+            firstTournamentEpoch[pool] = newEpoch;
+            return;
+        }
+        if (newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS) return;
+        _insertRanked(pool, num, den, (num * 1e18) / den);
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
