@@ -113,6 +113,18 @@ contract GaugeEligibility is IGaugeEligibility {
     ///      the very bound (x) exists to impose, and overwriting a nonzero slot is cheaper anyway.
     RankedEntry[] internal _rankedScratch;
 
+    /// @notice Live entry count at the head of `_rankedScratch` per **PP-D56 (iv)**. Final once
+    ///         accumulation completes, so every finalize page derives the same percentile bands.
+    uint256 public nRanked;
+
+    /// @notice Epoch whose accumulation is in progress, zero when idle, per **PP-D56 (iv)**.
+    /// @dev Mirrors the slot of the same name on `GaugeRegistry`; the two must agree for a page.
+    uint256 public accumulationEpoch;
+
+    /// @notice Next `_rankedScratch` index awaiting cap assignment per **PP-D56 (x)**. Reaching
+    ///         `nRanked` marks finalization complete; there is no completion boolean, by design.
+    uint256 public finalizeCursor;
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
