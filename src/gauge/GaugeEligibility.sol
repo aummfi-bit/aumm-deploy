@@ -497,7 +497,7 @@ contract GaugeEligibility is IGaugeEligibility {
             _rankedScratch[j] = _rankedScratch[j - 1];
             --j;
         }
-        _rankedScratch[j] = RankedEntry(pool, num, den, ratio);
+        _rankedScratch[j] = RankedEntry(pool, SafeCast.toUint128(num), SafeCast.toUint128(den), ratio);
         nRanked = n + 1;
     }
 
