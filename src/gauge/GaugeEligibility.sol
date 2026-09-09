@@ -94,6 +94,16 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice **PP-D50** (viii) incoming admission authority awaiting its own `acceptAdmissionAuthority` call — zero when no rotation is pending.
     address public pendingAdmissionAuthority;
 
+    /// @notice One entry of the paginated tournament's ranked scratch per **PP-D56 (iv)**.
+    /// @dev Carries the two SMAs the transition events already emit, so a finalize page can emit
+    ///      without re-reading the oracle. Storage, because accumulation spans transactions.
+    struct RankedEntry {
+        address pool;
+        uint256 numeratorSma;
+        uint256 denominatorSma;
+        uint256 efficiencyRatio;
+    }
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
