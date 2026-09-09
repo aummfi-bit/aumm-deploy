@@ -104,6 +104,15 @@ contract GaugeEligibility is IGaugeEligibility {
         uint256 efficiencyRatio;
     }
 
+    /// @notice Ranked scratch for the paginated tournament, kept SORTED by insertion during
+    ///         accumulation per **PP-D56 (x)**, so finalize needs no global pass.
+    /// @dev Ordering is **G-D23 (iv)** / **T-T3** unchanged: descending by ratio, address-ascending
+    ///      on a tie. Entries beyond `nRanked` are STALE BY DESIGN, because the last finalize page
+    ///      clears the scratch LOGICALLY by zeroing `nRanked` rather than deleting entries: a
+    ///      physical clear is one unbounded write set per epoch, which would reinstate on that page
+    ///      the very bound (x) exists to impose, and overwriting a nonzero slot is cheaper anyway.
+    RankedEntry[] internal _rankedScratch;
+
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
     // -------------------------------------------------------------------------
