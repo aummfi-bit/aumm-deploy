@@ -100,8 +100,8 @@ contract GaugeEligibility is IGaugeEligibility {
     ///      without re-reading the oracle. Storage, because accumulation spans transactions.
     struct RankedEntry {
         address pool;
-        uint256 numeratorSma;
-        uint256 denominatorSma;
+        uint128 numeratorSma;
+        uint128 denominatorSma;
         uint256 efficiencyRatio;
     }
 
