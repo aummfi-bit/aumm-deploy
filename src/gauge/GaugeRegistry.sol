@@ -287,6 +287,20 @@ contract GaugeRegistry is IGaugeRegistry {
         GaugeEligibility(gaugeEligibility).accumulateEpochSnapshot(_buildPage(from, to), accumulationEpoch);
     }
 
+    /// @notice Finalizes one page of the F-10 tournament per **PP-D56 (x)**; permissionless.
+    function finalizeTournament(uint256 maxPools) external {
+        if (accumulationEpoch == 0) revert TournamentNotAccumulating();
+        uint256 len = _activeGauges.length();
+        if (tournamentCursor != len) revert AccumulationIncomplete(tournamentCursor, len);
+        uint256 e = accumulationEpoch;
+        if (GaugeEligibility(gaugeEligibility).finalizeEpochSnapshot(maxPools)) {
+            lastTournamentEpoch = e;
+            accumulationEpoch = 0;
+            tournamentCursor = 0;
+            emit TournamentAdvanced(e, len);
+        }
+    }
+
     // ----------------------------------------------------------------------------
     // External — views
     // ----------------------------------------------------------------------------
