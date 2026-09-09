@@ -144,19 +144,25 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
     function _runWarmupToCaps() internal {
         vm.roll(ADVANCE_1_BLOCK);
         _scoreAll();
-        gaugeRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(ADVANCE_2_BLOCK);
         _scoreAll();
-        gaugeRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(ADVANCE_3_BLOCK);
         _scoreAll();
-        gaugeRegistry.advanceTournament();
+        _advanceOnce();
 
         vm.roll(ADVANCE_4_BLOCK);
         _scoreAll();
-        gaugeRegistry.advanceTournament();
+        _advanceOnce();
+    }
+
+    /// @dev One tournament epoch under the **PP-D56 (iv)** split, each phase taking a single page.
+    function _advanceOnce() internal {
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        gaugeRegistry.finalizeTournament(type(uint256).max);
     }
 
     /// @notice Premise: fee feed unwired, every numerator zero, every denominator positive.
