@@ -269,12 +269,17 @@ contract GaugeRegistry is IGaugeRegistry {
         }
     }
 
-    /// @dev Applies the activation and cadence gates and seats the epoch, on a first page only.
-    ///      Deliberately does NOT stamp `lastTournamentEpoch`; that moves to the last finalize page.
+    /// @dev Gates and seats the epoch on a first page. Does NOT stamp `lastTournamentEpoch`; that
+    ///      moves to the last finalize page. A later page whose epoch has moved on REVERTS per
+    ///      **PP-D56 (xi)**, so one accumulation never mixes two oracle windows; finalize needs no
+    ///      such guard, reading no oracle, so a late finalize is a delay rather than a mix.
     function _seatAccumulationEpoch() internal {
-        if (accumulationEpoch != 0) return;
-        if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
         uint256 e = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (accumulationEpoch != 0) {
+            if (accumulationEpoch != e) revert AccumulationEpochStale(accumulationEpoch, e);
+            return;
+        }
+        if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
         if (e <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
         accumulationEpoch = e;
         tournamentCursor = 0;
