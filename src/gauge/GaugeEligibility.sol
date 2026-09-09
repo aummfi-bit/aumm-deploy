@@ -514,6 +514,22 @@ contract GaugeEligibility is IGaugeEligibility {
         _insertRanked(pool, num, den, (num * 1e18) / den);
     }
 
+    /// @notice Accumulates one page of this epoch's tournament per **PP-D56 (iv)**.
+    /// @dev First page seats `accumulationEpoch` and resets counters; later pages must match it.
+    function accumulateEpochSnapshot(address[] calldata page, uint256 epoch) external onlyGaugeRegistry {
+        if (accumulationEpoch == 0) {
+            accumulationEpoch = epoch;
+            nRanked = 0;
+            finalizeCursor = 0;
+        } else if (accumulationEpoch != epoch) {
+            revert AccumulationEpochMismatch(accumulationEpoch, epoch);
+        }
+        uint256 newEpoch = currentSnapshotEpoch + 1;
+        for (uint256 i = 0; i < page.length; ++i) {
+            _accumulateOne(page[i], newEpoch);
+        }
+    }
+
     // -------------------------------------------------------------------------
     // External — `IGaugeEligibility` surface (G-D5 + T-I5)
     // -------------------------------------------------------------------------
