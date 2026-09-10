@@ -440,7 +440,8 @@ abstract contract StageGIntegrationFixture is Test {
         uint256 smoothing = gaugeEligibility.SMOOTHING_EPOCHS();
         vm.startPrank(address(gaugeRegistry));
         for (uint256 i = 0; i < smoothing; ++i) {
-            gaugeEligibility.computeEpochSnapshot(pools);
+            gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+            gaugeEligibility.finalizeEpochSnapshot(pools.length);
         }
         vm.stopPrank();
     }
