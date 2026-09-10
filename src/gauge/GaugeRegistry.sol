@@ -72,10 +72,10 @@ contract GaugeRegistry is IGaugeRegistry {
 
     error ZeroAddress();
 
-    /// @notice Reverts `advanceTournament` calls before the month-13 boundary (`AureumTime.year1EndBlock(GENESIS_BLOCK) + 1`) — **P-D14 (3)**.
+    /// @notice Reverts an epoch's FIRST `accumulateTournament` page before the month-13 boundary (`AureumTime.year1EndBlock(GENESIS_BLOCK) + 1`) — **P-D14 (3)**.
     error TournamentNotActive();
 
-    /// @notice Reverts `advanceTournament` calls when the current epoch index has not advanced beyond `lastTournamentEpoch` — **P-D14 (2)**; enforces one snapshot per `BLOCKS_PER_EPOCH`.
+    /// @notice Reverts an epoch's FIRST `accumulateTournament` page when the current epoch index has not advanced beyond `lastTournamentEpoch` — **P-D14 (2)**; enforces one tournament per `BLOCKS_PER_EPOCH`.
     error TournamentEpochNotElapsed();
 
     /// @notice Reverts `finalizeTournament` when no epoch is being accumulated (**PP-D56 (x)**).
