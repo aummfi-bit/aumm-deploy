@@ -603,7 +603,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function _advanceWarmup(address[] memory pools) internal {
         for (uint256 i = 0; i < 3; ++i) {
             vm.prank(gaugeRegistry);
-            eligibility.computeEpochSnapshot(pools);
+            eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+            vm.prank(gaugeRegistry);
+            eligibility.finalizeEpochSnapshot(pools.length);
         }
     }
 
