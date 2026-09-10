@@ -400,14 +400,14 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /// @notice Accumulates one page of this epoch's tournament per **PP-D56 (iv)**.
-    /// @dev First page seats `accumulationEpoch` and resets counters; later pages must match it.
+    /// @dev A page carrying any epoch other than the seated one seats it and resets the counters.
+    ///      That is also how an abandoned accumulation is discarded per **PP-D56 (xiv)**: the
+    ///      registry, the only caller, passes a new epoch only on a first page or a reseat.
     function accumulateEpochSnapshot(address[] calldata page, uint256 epoch) external onlyGaugeRegistry {
-        if (accumulationEpoch == 0) {
+        if (accumulationEpoch != epoch) {
             accumulationEpoch = epoch;
             nRanked = 0;
             finalizeCursor = 0;
-        } else if (accumulationEpoch != epoch) {
-            revert AccumulationEpochMismatch(accumulationEpoch, epoch);
         }
         uint256 newEpoch = currentSnapshotEpoch + 1;
         for (uint256 i = 0; i < page.length; ++i) {
