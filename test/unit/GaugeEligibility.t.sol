@@ -769,12 +769,16 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         mockEfficiencyOracle.setEfficiencyInputs(a, 100e18, 50e18);
         mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
+        // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmits, which bind to the next call,
+        // and BELOW the input changes it reads, because both crossing events fire in finalize.
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(b, 5, 200e18, 50e18, 4e18);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyDropped(a, 5, 100e18, 50e18, 2e18);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.isFavoredCohort(a), false);
         assertEq(eligibility.isFavoredCohort(b), true);
