@@ -572,7 +572,7 @@ contract _SnapshotAttacker {
     }
 
     function attack(address[] calldata pools) external {
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, 1);
     }
 }
 
