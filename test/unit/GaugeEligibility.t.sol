@@ -578,6 +578,12 @@ contract _SnapshotAttacker {
 
 /// @notice G2.7c — computeEpochSnapshot matrix per STAGE_G_PLAN.md L357-L361.
 contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
+    /// @dev Per-call tournament epoch for the paged entries per **PP-D56 (xii)**. Each snapshot is
+    ///      a COMPLETE accumulation, so a fresh value each time is correct: finalize clears
+    ///      `accumulationEpoch` and the next accumulate seats a new one.
+    uint256 internal _snapshotEpoch;
+
+
     event GaugeEfficiencyRising(
         address indexed pool,
         uint256 indexed epoch,
