@@ -95,6 +95,12 @@ abstract contract StageGIntegrationFixture is Test {
     MockEfficiencyOracle internal mockEfficiencyOracle;
     MockVotingWeight internal mockVotingWeight;
 
+    // State — Tournament epoch counter for the paged snapshot entries (PP-D56 (xiii))
+    /// @dev Lives in the fixture because `_warmupTournament` consumes it and is inherited beyond this
+    ///      file. Each snapshot is a COMPLETE accumulation, so a fresh value per call is correct:
+    ///      finalize clears `accumulationEpoch` and the next accumulate seats a new one.
+    uint256 internal _snapshotEpoch;
+
     function setUp() public virtual {
         svZchf = IERC20(vm.envAddress("SV_ZCHF"));
         susds = IERC4626(vm.envAddress("SUSDS"));
