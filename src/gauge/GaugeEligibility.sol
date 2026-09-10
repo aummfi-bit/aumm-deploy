@@ -220,9 +220,6 @@ contract GaugeEligibility is IGaugeEligibility {
 
     error OnlyPendingAdmissionAuthority(address caller);
 
-    /// @notice A tournament page carried an epoch other than the one being accumulated (**PP-D56 (iv)**).
-    error AccumulationEpochMismatch(uint256 accumulating, uint256 given);
-
     // -------------------------------------------------------------------------
     // Modifiers
     // -------------------------------------------------------------------------
