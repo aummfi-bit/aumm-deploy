@@ -257,14 +257,17 @@ contract GaugeRegistry is IGaugeRegistry {
     }
 
     /// @dev Gates and seats the epoch on a first page. Does NOT stamp `lastTournamentEpoch`; that
-    ///      moves to the last finalize page. A later page whose epoch has moved on REVERTS per
-    ///      **PP-D56 (xi)**, so one accumulation never mixes two oracle windows; finalize needs no
-    ///      such guard, reading no oracle, so a late finalize is a delay rather than a mix.
+    ///      moves to the last finalize page. A seat left from an earlier epoch follows
+    ///      **PP-D56 (xiv)**: an INCOMPLETE accumulation is abandoned and this call reseats through
+    ///      the same gates, which it passes because the abandoned epoch was never stamped; a
+    ///      COMPLETE one reverts `AccumulationEpochStale` instead, because finalize is permissionless
+    ///      and reads no oracle, so finishing it late is a delay rather than a mix. Either way one
+    ///      accumulation never mixes two oracle windows, which is **PP-D56 (xi)**.
     function _seatAccumulationEpoch() internal {
         uint256 e = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
         if (accumulationEpoch != 0) {
-            if (accumulationEpoch != e) revert AccumulationEpochStale(accumulationEpoch, e);
-            return;
+            if (accumulationEpoch == e) return;
+            if (tournamentCursor >= _activeGauges.length()) revert AccumulationEpochStale(accumulationEpoch, e);
         }
         if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
         if (e <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
