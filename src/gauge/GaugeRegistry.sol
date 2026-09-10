@@ -96,7 +96,7 @@ contract GaugeRegistry is IGaugeRegistry {
     // Events
     // ----------------------------------------------------------------------------
 
-    /// @notice Emitted at the end of each successful `advanceTournament` call — **P-D14 (4)**; concrete-only (not on `IGaugeRegistry`). `epoch` is the `AureumTime.epochIndex` value snapshotted; `gaugeCount` is the Active-gauge set size passed to `computeEpochSnapshot`.
+    /// @notice Emitted by the `finalizeTournament` page that COMPLETES an epoch — **P-D14 (4)** as relocated by **PP-D56 (x)**; concrete-only (not on `IGaugeRegistry`). `epoch` is the accumulated `AureumTime.epochIndex` value, and `gaugeCount` is the Active-gauge set size that epoch's pages walked.
     event TournamentAdvanced(uint256 indexed epoch, uint256 gaugeCount);
 
     // ----------------------------------------------------------------------------
