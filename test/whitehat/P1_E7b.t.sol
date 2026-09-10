@@ -370,4 +370,28 @@ contract P1_E7b_PaginationRegressionTest is Test {
         assertTrue(gaugeElig.isFavoredCohort(pools[1]));
         assertFalse(gaugeElig.isFavoredCohort(pools[0]));
     }
+
+    /// @notice An accumulation already COMPLETE when its epoch ends is not discarded: the next epoch's
+    ///         accumulate reverts `AccumulationEpochStale` until it is finalized, the finalize reads no
+    ///         oracle so closing it late is a delay rather than a mix, and the new epoch then seats.
+    function test_staleCompleteAccumulationRevertsUntilFinalized() public {
+        _warmup();
+        uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
+        uint256 e5 = AureumTime.epochIndex(GENESIS_BLOCK, T5);
+
+        vm.roll(T4);
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        assertEq(gaugeRegistry.tournamentCursor(), 4);
+
+        vm.roll(T5);
+        vm.expectRevert(abi.encodeWithSelector(GaugeRegistry.AccumulationEpochStale.selector, e4, e5));
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+        assertEq(gaugeRegistry.lastTournamentEpoch(), e4);
+        assertEq(gaugeElig.currentSnapshotEpoch(), 5);
+
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        assertEq(gaugeRegistry.accumulationEpoch(), e5);
+    }
 }
