@@ -290,7 +290,8 @@ contract GaugeRegistry is IGaugeRegistry {
     function finalizeTournament(uint256 maxPools) external {
         if (accumulationEpoch == 0) revert TournamentNotAccumulating();
         uint256 len = _activeGauges.length();
-        if (tournamentCursor != len) revert AccumulationIncomplete(tournamentCursor, len);
+        // Complete at or past the length, since a revocation after the last page shrinks it per PP-D56 (xiv).
+        if (tournamentCursor < len) revert AccumulationIncomplete(tournamentCursor, len);
         uint256 e = accumulationEpoch;
         if (GaugeEligibility(gaugeEligibility).finalizeEpochSnapshot(maxPools)) {
             lastTournamentEpoch = e;
