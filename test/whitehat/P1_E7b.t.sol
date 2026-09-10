@@ -269,3 +269,78 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         );
     }
 }
+
+/// @notice **PP-D56 (xiv)** regressions for the paged tournament: an accumulation abandoned across an
+///         epoch boundary, and the active set changing under an open accumulation. Built on F16's
+///         light fixture rather than the gas fixture above, since these are behavioural cases and the
+///         mock oracle's settable inputs give every case a ranking discriminator directly.
+contract P1_E7b_PaginationRegressionTest is Test {
+    uint256 internal constant GENESIS_BLOCK = 1_000_000;
+    address internal constant GOV = address(0x9011);
+    address internal constant PLACEHOLDER = address(0xDEAD);
+
+    /// @dev Roll targets as compile-time constants per F15, one epoch apart from the first block
+    ///      past the month-13 gate: T0 to T3 carry the warmup's four tournaments, T4 and T5 the cases.
+    uint256 internal constant T0 = GENESIS_BLOCK + AureumTime.BLOCKS_PER_YEAR + 1;
+    uint256 internal constant T4 = T0 + 4 * AureumTime.BLOCKS_PER_EPOCH;
+    uint256 internal constant T5 = T0 + 5 * AureumTime.BLOCKS_PER_EPOCH;
+
+    MockEfficiencyOracle internal effOracle;
+    GaugeEligibility internal gaugeElig;
+    GaugeRegistry internal gaugeRegistry;
+    address[] internal pools;
+
+    function setUp() public {
+        effOracle = new MockEfficiencyOracle();
+        // Real gauge stack (G-D22 deploy order): GaugeEligibility first, GaugeRegistry second, then setGaugeRegistry.
+        gaugeElig = new GaugeEligibility(
+            PLACEHOLDER,          // approvedFactory_ (unused — tournament path bypasses evaluateEligibility)
+            PLACEHOLDER,          // vaultClassRegistry_
+            PLACEHOLDER,          // tvlOracle_
+            PLACEHOLDER,          // vault_
+            PLACEHOLDER,          // auMM_
+            address(this),        // gaugeRegistrySetter_ (this test calls setGaugeRegistry)
+            address(effOracle),   // efficiencyOracle_ (real ranking input source)
+            PLACEHOLDER,          // feeRoutingHook_
+            PLACEHOLDER           // admissionAuthority_ (unused in the tournament path)
+        );
+        gaugeRegistry = new GaugeRegistry(
+            GOV,                  // governance (seedFoundingPools caller)
+            address(gaugeElig),   // eligibility_
+            PLACEHOLDER,          // swapAndDeposit_ (unused — activateGauge path bypassed)
+            PLACEHOLDER,          // svZCHF_
+            GENESIS_BLOCK         // genesisBlock_ (must equal distributor GENESIS_BLOCK — P-D14 (1) / P-D16 (3))
+        );
+        gaugeElig.setGaugeRegistry(address(gaugeRegistry));
+
+        // Four gauges, efficiency descending with index, so pools[0] leads the cohort after warmup.
+        for (uint256 i = 0; i < 4; i++) {
+            pools.push(address(uint160(0xB00000 + i)));
+            effOracle.setEfficiencyInputs(pools[i], (4 - i) * 1e18, 1e18);
+        }
+        vm.prank(GOV);
+        gaugeRegistry.seedFoundingPools(pools);
+
+        vm.roll(GENESIS_BLOCK);
+    }
+
+    /// @dev Four complete tournaments: the first stamps every pool, the next two are warmup skips,
+    ///      and the fourth ranks all four, so snapshot epoch 4 is the last one closed before a case.
+    function _warmup() internal {
+        vm.roll(T0);
+        _advanceOnce();
+        vm.roll(T0 + AureumTime.BLOCKS_PER_EPOCH);
+        _advanceOnce();
+        vm.roll(T0 + 2 * AureumTime.BLOCKS_PER_EPOCH);
+        _advanceOnce();
+        vm.roll(T0 + 3 * AureumTime.BLOCKS_PER_EPOCH);
+        _advanceOnce();
+    }
+
+    /// @dev One whole tournament epoch under the **PP-D56 (iv)** two-phase split: accumulate every
+    ///      active gauge in one page, then finalize every ranked entry in one page.
+    function _advanceOnce() internal {
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+    }
+}
