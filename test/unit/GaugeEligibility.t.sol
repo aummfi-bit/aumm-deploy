@@ -611,13 +611,13 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address eoa = makeAddr("eoa");
         vm.prank(eoa);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, eoa));
-        eligibility.computeEpochSnapshot(new address[](0));
+        eligibility.accumulateEpochSnapshot(new address[](0), 1);
     }
 
     function testNonGaugeRegistrySetterReverts() public {
         vm.prank(gaugeRegistrySetter);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, gaugeRegistrySetter));
-        eligibility.computeEpochSnapshot(new address[](0));
+        eligibility.accumulateEpochSnapshot(new address[](0), 1);
     }
 
     function testNonGaugeRegistryArbitraryContractReverts() public {
