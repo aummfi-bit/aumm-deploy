@@ -740,10 +740,14 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
+        // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmit, which binds to the next call,
+        // because the crossing event now fires in finalize and accumulate emits nothing.
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(p, 4, 100e18, 50e18, 2e18);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.isFavoredCohort(p), true);
         assertEq(eligibility.lastSnapshotEpoch(p), 4);
