@@ -693,12 +693,16 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[1], 6e18, 1e18);
         mockEfficiencyOracle.setEfficiencyInputs(pools[0], 0.5e18, 1e18);
         // Cycle 2 — expect Rising for new leader then Dropped for former leader at epoch 5.
+        // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmits, which bind to the next call,
+        // and BELOW the input changes it reads, because both crossing events fire in finalize.
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
         vm.expectEmit(true, true, false, true, address(gaugeEligibility));
         emit GaugeEfficiencyRising(pools[1], 5, 6e18, 1e18, 6e18);
         vm.expectEmit(true, true, false, true, address(gaugeEligibility));
         emit GaugeEfficiencyDropped(pools[0], 5, 0.5e18, 1e18, 0.5e18);
         vm.prank(address(gaugeRegistry));
-        gaugeEligibility.computeEpochSnapshot(pools);
+        gaugeEligibility.finalizeEpochSnapshot(pools.length);
         assertEq(gaugeEligibility.currentSnapshotEpoch(), 5);
         assertTrue(gaugeEligibility.isFavoredCohort(pools[1]));
         assertFalse(gaugeEligibility.isFavoredCohort(pools[0]));
