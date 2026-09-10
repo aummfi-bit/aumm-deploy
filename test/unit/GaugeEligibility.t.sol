@@ -636,7 +636,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         vm.recordLogs();
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.firstTournamentEpoch(p), 1);
         assertEq(eligibility.isFavoredCohort(p), false);
@@ -658,7 +660,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         vm.recordLogs();
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.firstTournamentEpoch(blind), 0);
         assertEq(eligibility.firstTournamentEpoch(seeing), 1);
@@ -679,12 +683,18 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[0] = p;
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.finalizeEpochSnapshot(pools.length);
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
         vm.recordLogs();
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.firstTournamentEpoch(p), 1);
         assertEq(vm.getRecordedLogs().length, 0);
@@ -706,7 +716,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
         assertEq(eligibility.firstTournamentEpoch(p), 1);
         assertEq(eligibility.lastSnapshotEpoch(p), 4);
 
@@ -716,7 +728,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 0);
         vm.recordLogs();
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(vm.getRecordedLogs().length, 0);
         assertEq(eligibility.currentSnapshotEpoch(), 5);
@@ -728,7 +742,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         // lastSnapshotEpoch at 4.
         mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.lastSnapshotEpoch(p), 6);
         assertEq(eligibility.firstTournamentEpoch(p), 1);
@@ -767,7 +783,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         mockEfficiencyOracle.setEfficiencyInputs(a, 100e18, 50e18);
         mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
@@ -819,7 +837,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.isFavoredCohort(pools[0]), true);
     }
@@ -834,7 +854,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.isFavoredCohort(pools[0]), true);
         assertEq(eligibility.isFavoredCohort(pools[1]), true);
@@ -853,7 +875,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         for (uint256 j = 0; j < 3; ++j) {
             assertEq(eligibility.isFavoredCohort(pools[j]), true);
@@ -873,7 +897,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         // Descending efficiency (pool0 best, pool19 worst). Floor tiers at nRanked=20:
         // cap10Count = floor(20*5/100) = 1, cap50Count = floor(20*10/100) = 2, cap100Count = floor(20*15/100) = 3.
@@ -895,7 +921,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         for (uint256 j = 0; j < 6; ++j) {
             assertEq(eligibility.poolEmissionCapBps(pools[j]), 0);
@@ -912,7 +940,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         _advanceWarmup(pools);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         for (uint256 j = 0; j < 15; ++j) {
             assertEq(eligibility.isFavoredCohort(pools[j]), true);
@@ -957,7 +987,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.lastSnapshotEpoch(p), 4);
     }
@@ -969,7 +1001,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[0] = p;
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
         assertEq(eligibility.firstTournamentEpoch(p), 1);
@@ -982,9 +1016,13 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[0] = p;
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.finalizeEpochSnapshot(pools.length);
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
     }
@@ -1008,7 +1046,9 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         vm.recordLogs();
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(pools);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(vm.getRecordedLogs().length, 0);
         assertEq(eligibility.isFavoredCohort(p), true);
