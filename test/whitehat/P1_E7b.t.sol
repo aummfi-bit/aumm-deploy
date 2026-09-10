@@ -343,4 +343,31 @@ contract P1_E7b_PaginationRegressionTest is Test {
         gaugeRegistry.accumulateTournament(type(uint256).max);
         gaugeRegistry.finalizeTournament(type(uint256).max);
     }
+
+    /// @notice An accumulation left incomplete when its epoch ends is abandoned, and the next epoch
+    ///         reseats instead of reverting. `pools[0]` enters the abandoned page at a ratio above
+    ///         anything the reseated run sees, so a stale entry surviving into the scratch would both
+    ///         lift the ranked count to five and keep `pools[0]` favored over the new leader `pools[1]`.
+    function test_staleIncompleteAccumulationReseatsAndCompletes() public {
+        _warmup();
+        uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
+        uint256 e5 = AureumTime.epochIndex(GENESIS_BLOCK, T5);
+        vm.roll(T4);
+        effOracle.setEfficiencyInputs(pools[0], 100e18, 1e18);
+        gaugeRegistry.accumulateTournament(1);
+        assertEq(gaugeRegistry.accumulationEpoch(), e4);
+        assertEq(gaugeRegistry.tournamentCursor(), 1);
+        vm.roll(T5);
+        effOracle.setEfficiencyInputs(pools[0], 1, 1e18);
+        effOracle.setEfficiencyInputs(pools[1], 10e18, 1e18);
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        assertEq(gaugeRegistry.accumulationEpoch(), e5);
+        assertEq(gaugeElig.nRanked(), 4);
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+        assertEq(gaugeRegistry.lastTournamentEpoch(), e5);
+        assertEq(gaugeRegistry.accumulationEpoch(), 0);
+        assertEq(gaugeElig.currentSnapshotEpoch(), 5);
+        assertTrue(gaugeElig.isFavoredCohort(pools[1]));
+        assertFalse(gaugeElig.isFavoredCohort(pools[0]));
+    }
 }
