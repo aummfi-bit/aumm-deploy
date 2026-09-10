@@ -280,6 +280,8 @@ contract GaugeRegistry is IGaugeRegistry {
         _seatAccumulationEpoch();
         uint256 len = _activeGauges.length();
         uint256 from = tournamentCursor;
+        // Past the length after a late revocation, per PP-D56 (xiv): clamp to an empty page.
+        if (from > len) from = len;
         uint256 to = from + maxPools;
         if (to > len) to = len;
         tournamentCursor = to;
