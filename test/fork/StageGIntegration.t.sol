@@ -666,7 +666,9 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
         vm.prank(address(gaugeRegistry));
-        gaugeEligibility.computeEpochSnapshot(pools);
+        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.finalizeEpochSnapshot(pools.length);
         assertEq(gaugeEligibility.currentSnapshotEpoch(), 4);
         assertTrue(gaugeEligibility.isFavoredCohort(pools[0]));
         assertFalse(gaugeEligibility.isFavoredCohort(pools[1]));
@@ -687,7 +689,9 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
         vm.prank(address(gaugeRegistry));
-        gaugeEligibility.computeEpochSnapshot(pools);
+        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.finalizeEpochSnapshot(pools.length);
         // Cycle 1 — single-slot cohort; pools[0] is favored after epoch 4 snapshot.
         assertTrue(gaugeEligibility.isFavoredCohort(pools[0]));
         mockEfficiencyOracle.setEfficiencyInputs(pools[1], 6e18, 1e18);
@@ -736,7 +740,9 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
 
         _warmupTournament(pools);
         vm.prank(address(gaugeRegistry));
-        gaugeEligibility.computeEpochSnapshot(pools);
+        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.finalizeEpochSnapshot(pools.length);
 
         assertEq(gaugeEligibility.currentSnapshotEpoch(), 4);
         assertTrue(gaugeEligibility.isFavoredCohort(leader));
@@ -765,7 +771,9 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
         vm.prank(address(gaugeRegistry));
-        gaugeEligibility.computeEpochSnapshot(pools);
+        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.finalizeEpochSnapshot(pools.length);
 
         uint256 anchorBlock = block.number;
         bool isEligibleA = gaugeEligibility.isEligible(pilotPools[0]);
