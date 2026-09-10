@@ -956,23 +956,33 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address[] memory empty = new address[](0);
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(empty);
+        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(1));
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(empty);
+        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(2));
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(empty);
+        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(3));
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(empty);
+        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(4));
 
         vm.prank(gaugeRegistry);
-        eligibility.computeEpochSnapshot(empty);
+        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(5));
     }
 
