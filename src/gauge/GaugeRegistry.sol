@@ -56,7 +56,7 @@ contract GaugeRegistry is IGaugeRegistry {
     /// @notice Governance authority for restricted entrypoints (`registerGaugeFromComposition`, `seedFoundingPool`, `seedFoundingPools`, `revokeGauge`, `setGovernanceContract`). Not `immutable` — Stage K rebinding via `setGovernanceContract`.
     address public governanceContract;
 
-    /// @notice F-10 tournament cadence tracker — **P-D14 (2)**. Stores the epoch index of the last completed `advanceTournament` run; 0 until the first post-month-13 call. `advanceTournament` enforces `currentEpoch > lastTournamentEpoch` — exactly one snapshot per `BLOCKS_PER_EPOCH`.
+    /// @notice F-10 tournament cadence tracker — **P-D14 (2)**. Stores the epoch index of the last COMPLETED tournament; 0 until the first post-month-13 call. Per **PP-D56 (iv)** the cadence gate `currentEpoch > lastTournamentEpoch` is applied by an epoch's FIRST `accumulateTournament` page, while this slot is written only by the `finalizeTournament` page that completes — so a successful first page can no longer burn it, which is what makes the split safe.
     uint256 public lastTournamentEpoch;
 
     /// @notice Next `_activeGauges` index awaiting accumulation per **PP-D56 (iv)**; zero when idle.
