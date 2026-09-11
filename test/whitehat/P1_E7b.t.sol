@@ -394,4 +394,24 @@ contract P1_E7b_PaginationRegressionTest is Test {
         gaugeRegistry.accumulateTournament(type(uint256).max);
         assertEq(gaugeRegistry.accumulationEpoch(), e5);
     }
+
+    /// @notice A revocation after the last accumulate page leaves the cursor past the shrunken length,
+    ///         and finalize must accept the overshoot instead of demanding equality. The revoked pool,
+    ///         already ranked, is still finalized for that epoch, the bounded cost PP-D56 (xiv) accepts.
+    function test_revocationAfterCompletionStillFinalizes() public {
+        _warmup();
+        uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
+        vm.roll(T4);
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+
+        vm.prank(GOV);
+        gaugeRegistry.revokeGauge(pools[3]);
+        assertEq(gaugeRegistry.tournamentCursor(), 4);
+        assertEq(gaugeRegistry.gaugeCount(), 3);
+
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+        assertEq(gaugeRegistry.lastTournamentEpoch(), e4);
+        assertEq(gaugeRegistry.accumulationEpoch(), 0);
+        assertEq(gaugeElig.lastSnapshotEpoch(pools[3]), 5);
+    }
 }
