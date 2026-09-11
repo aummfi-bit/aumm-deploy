@@ -446,8 +446,8 @@ contract GaugeEligibility is IGaugeEligibility {
     function finalizeEpochSnapshot(uint256 maxPools) external onlyGaugeRegistry returns (bool done) {
         uint256 newEpoch = currentSnapshotEpoch + 1;
         uint256 i = finalizeCursor;
-        uint256 end = i + maxPools;
-        if (end > nRanked) end = nRanked;
+        // Saturates rather than overflowing, so type(uint256).max means every remaining entry per PP-D56 (xv).
+        uint256 end = maxPools < nRanked - i ? i + maxPools : nRanked;
         for (; i < end; ++i) {
             _finalizeOne(i, newEpoch);
         }
