@@ -1097,6 +1097,31 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertTrue(eligibility.isFavoredCohort(b));
         assertFalse(eligibility.isFavoredCohort(a));
     }
+
+    function testFinalizeContinuationPageAtMaxSaturates() public {
+        // PP-D56 (xv): a finalize page after the first, asked for every remaining entry with
+        // type(uint256).max, saturates to nRanked. Before the fix, i + maxPools overflowed at i = 1.
+        address a = address(uint160(0x1111));
+        address b = address(uint160(0x2222));
+        mockEfficiencyOracle.setEfficiencyInputs(a, 200e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(b, 100e18, 50e18);
+        address[] memory pools = new address[](2);
+        pools[0] = a;
+        pools[1] = b;
+        _advanceWarmup(pools);
+
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        vm.prank(gaugeRegistry);
+        assertFalse(eligibility.finalizeEpochSnapshot(1));
+        assertEq(eligibility.finalizeCursor(), 1);
+
+        vm.prank(gaugeRegistry);
+        assertTrue(eligibility.finalizeEpochSnapshot(type(uint256).max));
+        assertEq(eligibility.currentSnapshotEpoch(), 4);
+        assertEq(eligibility.lastSnapshotEpoch(a), 4);
+        assertEq(eligibility.lastSnapshotEpoch(b), 4);
+    }
 }
 
 contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
