@@ -382,8 +382,15 @@ contract GaugeEligibility is IGaugeEligibility {
         nRanked = n + 1;
     }
 
-    /// @dev One pool's pass-1 work in the **PP-D56 (viii)** gate order: oracle read, zero-numerator
-    ///      skip, zero-denominator skip, cold-start stamp, warmup gate, then the ranked insert.
+    /// @dev One pool's accumulation work in the **PP-D56 (viii)** gate order: oracle read,
+    ///      zero-numerator skip, zero-denominator skip, cold-start stamp, warmup gate, then the
+    ///      ranked insert. The numerator skip is E.7a's fix per **PP-D56 (iii)**: a zero numerator
+    ///      gives every pool alike a zero ratio, which would collapse the sort onto its address
+    ///      tiebreak and assign cap tiers by ADDRESS. The denominator skip is **P-D15 (3)**: one dead
+    ///      gauge must not brick the permissionless tournament. Both precede the cold `SSTORE`, so
+    ///      `firstTournamentEpoch` marks the first epoch with usable data rather than the first
+    ///      sighting, a skipped pool never pays that store, and a pool that later loses its feed keeps
+    ///      its grace epoch and re-ranks without re-warming once the feed returns.
     function _accumulateOne(address pool, uint256 newEpoch) internal {
         (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
         if (num == 0) return;
