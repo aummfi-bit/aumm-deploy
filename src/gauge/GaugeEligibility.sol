@@ -420,7 +420,7 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /// @dev Floor-percentile cap tier for rank `i` of `n`, most severe first, per **P-D13 (3)** /
-    ///      **P-D15 (1)**. Identical arithmetic to the single-call form, from a settled `nRanked`.
+    ///      **P-D15 (1)**, from the settled `nRanked`, so every finalize page assigns the same bands.
     function _capBpsFor(uint256 i, uint256 n) internal pure returns (uint256) {
         if (i >= n - (n * 5) / 100) return 10;
         if (i >= n - (n * 10) / 100) return 50;
@@ -437,7 +437,7 @@ contract GaugeEligibility is IGaugeEligibility {
         }
     }
 
-    /// @dev Pass-3 work for one ranked entry: the crossing event, then the cap, cohort and epoch writes.
+    /// @dev One ranked entry's finalize work: the crossing event, then the cap, cohort and epoch writes.
     function _finalizeOne(uint256 i, uint256 newEpoch) internal {
         uint256 n = nRanked;
         RankedEntry storage e = _rankedScratch[i];
