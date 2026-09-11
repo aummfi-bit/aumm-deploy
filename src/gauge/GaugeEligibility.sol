@@ -75,12 +75,12 @@ contract GaugeEligibility is IGaugeEligibility {
 
     mapping(address => uint256) public lastSnapshotEpoch;
 
-    /// @notice First epoch index at which `pool` was ranked in `computeEpochSnapshot` per **G-D23 (v)** — single-purpose cold-start grace predicate; set once on first appearance and gates the 3-epoch warmup window. Never overloaded with `lastSnapshotEpoch` semantics.
+    /// @notice First epoch index at which `pool` was first seen with usable data by `accumulateEpochSnapshot` per **G-D23 (v)** as reordered by **PP-D56 (viii)** — single-purpose cold-start grace predicate; set once, on that first usable sighting, and gates the 3-epoch warmup window. Never overloaded with `lastSnapshotEpoch` semantics.
     mapping(address => uint256) public firstTournamentEpoch;
 
     uint256 public currentSnapshotEpoch;
 
-    /// @notice F-10 per-pool emission cap in basis points assigned by the last `computeEpochSnapshot` — 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%) — **P-D13 (3)** / **P-D15 (2)**. Written each epoch for every ranked pool (including 0 that un-caps a pool which climbed back into the top 85% — self-correction per spec L129). Skipped pools retain their prior value per **P-D15 (4)**, and **PP-D56 (viii)** changes which pools those are: the order is now zero numerator, zero denominator, cold-start, warmup, with both zero-input skips preceding the stamp — so a pool that loses its feed keeps whatever cap it last earned, and one that never had a feed keeps the 0 it started with. Consumed by the EmissionDistributor via `IGaugeRegistry` delegation (F16e / F16f).
+    /// @notice F-10 per-pool emission cap in basis points assigned by the last finalized tournament, through `finalizeEpochSnapshot` — 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%) — **P-D13 (3)** / **P-D15 (2)**. Written each epoch for every ranked pool (including 0 that un-caps a pool which climbed back into the top 85% — self-correction per spec L129). Skipped pools retain their prior value per **P-D15 (4)**, and **PP-D56 (viii)** changes which pools those are: the order is now zero numerator, zero denominator, cold-start, warmup, with both zero-input skips preceding the stamp — so a pool that loses its feed keeps whatever cap it last earned, and one that never had a feed keeps the 0 it started with. Consumed by the EmissionDistributor via `IGaugeRegistry` delegation (F16e / F16f).
     mapping(address => uint256) public poolEmissionCapBps;
 
     /// @notice **PB-D69 (viii)** governance authority over the recovery-path admission map — gates `setRecoveryPathAdmitted` and its own rotation via `proposeAdmissionAuthority`. Storage rather than immutable and rotatable rather than one-shot, inverting the `setGaugeRegistry` pattern below: a burned authority here would leave a dead map in which no rail-less pool could ever be admitted again. Seated at genesis on the same Safe that holds `AureumFeeRoutingHook.governanceModule`, never `AureumGovernance` (**PB-D61 (iii)**), because admission is an ops commitment tied to a manual call rather than a proposal.
@@ -119,7 +119,7 @@ contract GaugeEligibility is IGaugeEligibility {
     uint256 public nRanked;
 
     /// @notice Epoch whose accumulation is in progress, zero when idle, per **PP-D56 (iv)**.
-    /// @dev Mirrors the slot of the same name on `GaugeRegistry`; the two must agree for a page.
+    /// @dev Mirrors the slot of the same name on `GaugeRegistry`; a page carrying a different epoch reseats it per **PP-D56 (xiv)**.
     uint256 public accumulationEpoch;
 
     /// @notice Next `_rankedScratch` index awaiting cap assignment per **PP-D56 (x)**. Reaching
