@@ -1064,6 +1064,39 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.isFavoredCohort(p), true);
         assertEq(eligibility.lastSnapshotEpoch(p), 5);
     }
+
+    function testNewEpochDiscardsTheAbandonedScratch() public {
+        // PP-D56 (xiv): a page carrying a new epoch discards the scratch an abandoned accumulation left.
+        // Pool a enters that page at a ratio above anything the reseated run sees, so a surviving entry
+        // would leave nRanked at three and keep a leading the cohort instead of b.
+        address a = address(uint160(0x1111));
+        address b = address(uint160(0x2222));
+        mockEfficiencyOracle.setEfficiencyInputs(a, 100e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(b, 100e18, 50e18);
+        address[] memory pools = new address[](2);
+        pools[0] = a;
+        pools[1] = b;
+        _advanceWarmup(pools);
+
+        address[] memory stalePage = new address[](1);
+        stalePage[0] = a;
+        mockEfficiencyOracle.setEfficiencyInputs(a, 500e18, 50e18);
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(stalePage, ++_snapshotEpoch);
+        assertEq(eligibility.nRanked(), 1);
+
+        mockEfficiencyOracle.setEfficiencyInputs(a, 50e18, 50e18);
+        mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        assertEq(eligibility.nRanked(), 2);
+        vm.prank(gaugeRegistry);
+        eligibility.finalizeEpochSnapshot(pools.length);
+
+        assertEq(eligibility.currentSnapshotEpoch(), 4);
+        assertTrue(eligibility.isFavoredCohort(b));
+        assertFalse(eligibility.isFavoredCohort(a));
+    }
 }
 
 contract GaugeEligibilityCompositionGateTest is GaugeEligibilityFixture {
