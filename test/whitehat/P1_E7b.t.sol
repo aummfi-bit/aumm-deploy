@@ -414,4 +414,24 @@ contract P1_E7b_PaginationRegressionTest is Test {
         assertEq(gaugeRegistry.accumulationEpoch(), 0);
         assertEq(gaugeElig.lastSnapshotEpoch(pools[3]), 5);
     }
+
+    /// @notice An accumulate page taken after a late revocation, with the cursor past the shrunken
+    ///         length, clamps to an empty page instead of underflowing in `_buildPage`, and leaves the
+    ///         cursor at the length so the finalize that follows closes the epoch normally.
+    function test_pageAfterLateRevocationClampsToEmpty() public {
+        _warmup();
+        uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
+
+        vm.roll(T4);
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        vm.prank(GOV);
+        gaugeRegistry.revokeGauge(pools[3]);
+
+        gaugeRegistry.accumulateTournament(1);
+        assertEq(gaugeRegistry.tournamentCursor(), 3);
+        assertEq(gaugeElig.nRanked(), 4);
+
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+        assertEq(gaugeRegistry.lastTournamentEpoch(), e4);
+    }
 }
