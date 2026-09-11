@@ -450,6 +450,15 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /// @notice Finalizes one page of the ranked scratch per **PP-D56 (x)**; true when the epoch closes.
+    /// @dev For each entry on the page: the favored cohort by the **G-D3** ceiling cutoff
+    ///      `(nRanked * 15 + 99) / 100`, the floor-percentile emission cap by `_capBpsFor` per
+    ///      **P-D13 (3)** / **P-D15 (1)**, and the **G-D5** crossing event, fired at most once per pool
+    ///      per epoch, `GaugeEfficiencyDropped` top to bottom (**T-T2**) and `GaugeEfficiencyRising`
+    ///      bottom to top (**T-T1**). Every page reads the same settled `nRanked`, so the bands are
+    ///      identical across pages. `maxPools` bounds the page and saturates per **PP-D56 (xv)**. The
+    ///      `EmissionDistributor` reads the caps through `IGaugeRegistry` (F16e / F16f). Only the page
+    ///      that reaches `nRanked` closes the epoch, advancing `currentSnapshotEpoch` and clearing the
+    ///      accumulation state.
     function finalizeEpochSnapshot(uint256 maxPools) external onlyGaugeRegistry returns (bool done) {
         uint256 newEpoch = currentSnapshotEpoch + 1;
         uint256 i = finalizeCursor;
