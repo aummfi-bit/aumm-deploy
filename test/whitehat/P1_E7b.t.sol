@@ -434,4 +434,27 @@ contract P1_E7b_PaginationRegressionTest is Test {
         gaugeRegistry.finalizeTournament(type(uint256).max);
         assertEq(gaugeRegistry.lastTournamentEpoch(), e4);
     }
+
+    /// @notice A revocation below the cursor mid-accumulation swaps the unvisited last gauge into a
+    ///         visited slot. Nothing reverts; the swapped gauge goes unranked for that one epoch and
+    ///         keeps its prior snapshot, the cost PP-D56 (xiv) accepts, while the revoked gauge,
+    ///         ranked before it left, is finalized. This pins accepted behaviour rather than a fix.
+    function test_revocationMidAccumulationSkipsTheSwappedGauge() public {
+        _warmup();
+
+        vm.roll(T4);
+        gaugeRegistry.accumulateTournament(2);
+        vm.prank(GOV);
+        gaugeRegistry.revokeGauge(pools[0]);
+        assertEq(gaugeRegistry.gaugeAt(0), pools[3]);
+
+        gaugeRegistry.accumulateTournament(type(uint256).max);
+        assertEq(gaugeRegistry.tournamentCursor(), 3);
+        gaugeRegistry.finalizeTournament(type(uint256).max);
+
+        assertEq(gaugeElig.lastSnapshotEpoch(pools[3]), 4);
+        assertEq(gaugeElig.lastSnapshotEpoch(pools[1]), 5);
+        assertEq(gaugeElig.lastSnapshotEpoch(pools[2]), 5);
+        assertEq(gaugeElig.lastSnapshotEpoch(pools[0]), 5);
+    }
 }

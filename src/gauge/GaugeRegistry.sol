@@ -282,8 +282,8 @@ contract GaugeRegistry is IGaugeRegistry {
         uint256 from = tournamentCursor;
         // Past the length after a late revocation, per PP-D56 (xiv): clamp to an empty page.
         if (from > len) from = len;
-        uint256 to = from + maxPools;
-        if (to > len) to = len;
+        // Saturates rather than overflowing, so type(uint256).max means every remaining gauge per PP-D56 (xv).
+        uint256 to = maxPools < len - from ? from + maxPools : len;
         tournamentCursor = to;
         GaugeEligibility(gaugeEligibility).accumulateEpochSnapshot(_buildPage(from, to), accumulationEpoch);
     }
