@@ -243,3 +243,134 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
         );
     }
 }
+
+/// @notice Reproduction PoC for the registry-side face of seam-1 root cause E.8, per PP-D56 (vi) and
+///         (xvii): `buyBoost` reads no distributor binding, so a purchase still takes the buyer's
+///         funds after the distributor unbinds the registry through its real two-step, buying a boost
+///         stream nothing will deliver. The distributor stands on placeholder collaborators, since its
+///         constructor makes no external call and the two-step touches only storage and the proposed
+///         registry's code size.
+contract P1_E8_BuyBoostKeepsSellingWhileUnboundTest is Test {
+    uint256 internal constant GENESIS_BLOCK = 1_000_000;
+    uint256 internal constant BAL_AUMM = 1_000_000e18;
+    uint256 internal constant BAL_SVZCHF = 750_000e18;
+    uint256 internal constant BAL_SUSDS = 600_000e18;
+
+    /// @dev The first block past Year 1, as a constant per F15, in this file's literal style.
+    uint256 internal constant BOOSTS_OPEN_BLOCK = GENESIS_BLOCK + 2_628_000 + 1;
+
+    address internal constant GOV = address(0x9011);
+    address internal constant PLACEHOLDER = address(0xDEAD);
+
+    IncendiaryRegistry internal registry;
+    MockBodenseeExplorer internal explorer;
+    MockWeightedVenue internal venue;
+    MockBodenseeChannel internal channel;
+    MockAuMMRate internal aumm;
+    MockGaugeRegistry internal gauges;
+    MockERC20 internal svzchf;
+    MockERC20 internal susds;
+    EmissionDistributorHarness internal distributor;
+
+    function setUp() public {
+        vm.roll(GENESIS_BLOCK);
+
+        distributor = new EmissionDistributorHarness(
+            IAuMM(PLACEHOLDER),
+            IGaugeRegistry(PLACEHOLDER),
+            IEMASampler(PLACEHOLDER),
+            ICCBMultiplier(PLACEHOLDER),
+            IEfficiencyOracle(PLACEHOLDER),
+            IMiliariumRegistry(PLACEHOLDER),
+            GENESIS_BLOCK,
+            GOV,
+            PLACEHOLDER
+        );
+
+        explorer = new MockBodenseeExplorer();
+        venue = new MockWeightedVenue();
+        channel = new MockBodenseeChannel();
+        aumm = new MockAuMMRate();
+        gauges = new MockGaugeRegistry();
+        svzchf = new MockERC20("Savings ZCHF", "svZCHF", 18);
+        susds = new MockERC20("Savings USDS", "sUSDS", 18);
+
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = IERC20(address(aumm));
+        tokens[1] = IERC20(address(svzchf));
+        tokens[2] = IERC20(address(susds));
+
+        uint256[] memory balances = new uint256[](3);
+        balances[0] = BAL_AUMM;
+        balances[1] = BAL_SVZCHF;
+        balances[2] = BAL_SUSDS;
+
+        uint256[] memory rates = new uint256[](3);
+        rates[0] = 1e18;
+        rates[1] = 1e18;
+        rates[2] = 1e18;
+
+        uint256[] memory scaling = new uint256[](3);
+        scaling[0] = 1;
+        scaling[1] = 1;
+        scaling[2] = 1;
+
+        explorer.setPoolData(address(venue), tokens, balances, rates, scaling);
+
+        uint256[] memory weights = new uint256[](3);
+        weights[0] = 4e17;
+        weights[1] = 3e17;
+        weights[2] = 3e17;
+        venue.setWeights(weights);
+
+        registry = new IncendiaryRegistry(
+            SwapAndDepositToBodensee(address(channel)),
+            address(venue),
+            IVaultExplorer(address(explorer)),
+            IAuMM(address(aumm)),
+            IERC20(address(svzchf)),
+            IERC20(address(susds)),
+            IGaugeRegistry(address(gauges)),
+            GENESIS_BLOCK,
+            address(distributor)
+        );
+    }
+
+    /// @notice A purchase goes through after the distributor has unbound the registry: the binding is
+    ///         live at genesis plus one, cleared to address(0) through the real two-step once boosts
+    ///         open, and the buyer still pays in full for an entitlement no settle will ever deliver.
+    function test_P1_E8_buyBoostKeepsSellingAfterTheDistributorUnbinds() public {
+        address buyer = makeAddr("boostBuyer");
+        uint256 amount = 1000e18;
+
+        registry.updateRailEMA(address(svzchf));
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(address(registry));
+        vm.roll(GENESIS_BLOCK + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), address(registry));
+
+        vm.roll(BOOSTS_OPEN_BLOCK);
+        registry.updateRailEMA(address(svzchf));
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(address(0));
+        vm.roll(BOOSTS_OPEN_BLOCK + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), address(0));
+
+        aumm.setRate(1e18);
+        gauges.setApproved(address(venue), true);
+        svzchf.mint(buyer, amount);
+        vm.prank(buyer);
+        svzchf.approve(address(registry), amount);
+
+        vm.prank(buyer);
+        uint256 entitlement = registry.buyBoost(address(venue), address(svzchf), amount);
+
+        assertGt(entitlement, 0);
+        assertEq(svzchf.balanceOf(buyer), 0);
+        assertEq(channel.lastAmount(), amount);
+    }
+}
