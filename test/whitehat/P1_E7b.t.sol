@@ -98,7 +98,7 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
 
     /// @dev Deploys a fresh gauge + distributor stack for one measurement, accrues both efficiency
     ///      legs, clears the cold-start and smoothing windows with three advances, then returns the
-    ///      gas consumed by the fourth `advanceTournament`. `runIndex` selects a forward-only block
+    ///      gas consumed by the fourth tournament, accumulate plus finalize. `runIndex` selects a forward-only block
     ///      base so a second call in the same test never rolls backward. The advances begin TWO
     ///      epochs after the first scoring block rather than one: the very first `recordScore`
     ///      finds `totalScore` at zero, so that epoch records fees but accrues no emissions, and an
@@ -206,8 +206,8 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         uint256 gasSmall = _measureFourthAdvanceGas(SMALL_N, 0);
         uint256 gasLarge = _measureFourthAdvanceGas(LARGE_N, 1);
 
-        emit log_named_uint("advanceTournament gas SMALL_N=30", gasSmall);
-        emit log_named_uint("advanceTournament gas LARGE_N=90", gasLarge);
+        emit log_named_uint("tournament gas SMALL_N=30", gasSmall);
+        emit log_named_uint("tournament gas LARGE_N=90", gasLarge);
 
         // Premise per PP-D56 (ix): these figures measure the RANKING path only if the pools
         // actually rank. This file carried no such check, which is why it went on passing as a
@@ -245,7 +245,7 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
     }
 
     /// @notice Caps written by the last affordable snapshot stay in force when no later
-    ///         advanceTournament runs.
+    ///         tournament runs.
     function test_P1_E7b_capsFreezeAtWhateverTheLastAffordableSnapshotWrote() public {
         _measureFourthAdvanceGas(SMALL_N, 0);
 
@@ -260,12 +260,12 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         assertEq(
             lastRegistry.poolEmissionCapBps(highest),
             capHighest,
-            "computeEpochSnapshot is the only writer of poolEmissionCapBps; caps freeze without a later snapshot"
+            "finalizeEpochSnapshot is the only writer of poolEmissionCapBps; caps freeze without a later snapshot"
         );
         assertEq(
             lastRegistry.poolEmissionCapBps(lowest),
             capLowest,
-            "computeEpochSnapshot is the only writer of poolEmissionCapBps; caps freeze without a later snapshot"
+            "finalizeEpochSnapshot is the only writer of poolEmissionCapBps; caps freeze without a later snapshot"
         );
     }
 }
