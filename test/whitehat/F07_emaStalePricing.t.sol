@@ -76,7 +76,8 @@ contract F07_EmaStalePricingTest is Test {
             IERC20(address(svzchf)),
             IERC20(address(susds)),
             IGaugeRegistry(address(gauges)),
-            GENESIS_BLOCK
+            GENESIS_BLOCK,
+            address(this)
         );
     }
 

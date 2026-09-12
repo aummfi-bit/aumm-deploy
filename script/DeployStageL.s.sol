@@ -67,7 +67,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  *        SV_ZCHF               address  — svZCHF rail (ctor arg 5)
  *        SUSDS                 address  — sUSDS rail (ctor arg 6)
  *        GAUGE_REGISTRY        address  — IGaugeRegistry (ctor arg 7)
- *        EMISSION_DISTRIBUTOR  address  — proposeIncendiaryRegistry / acceptIncendiaryRegistry target
+ *        EMISSION_DISTRIBUTOR  address  — proposeIncendiaryRegistry / acceptIncendiaryRegistry target (ctor arg 9)
  */
 contract DeployStageL is Script {
     /// @notice Reverts when `distributor.governance() != governor` at the start of
@@ -139,7 +139,8 @@ contract DeployStageL is Script {
             IERC20(vm.envAddress("SV_ZCHF")),
             IERC20(vm.envAddress("SUSDS")),
             IGaugeRegistry(vm.envAddress("GAUGE_REGISTRY")),
-            aumm.GENESIS_BLOCK()
+            aumm.GENESIS_BLOCK(),
+            address(distributor)
         );
         channel.addAuthorizedDonator(address(registry));
         distributor.proposeIncendiaryRegistry(address(registry));

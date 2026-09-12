@@ -11,9 +11,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title IncendiaryRegistryHarness
 /// @notice Test-only inheriting wrapper exposing IncendiaryRegistry's internal observation and placement helpers per L-D26.
-/// @dev Inherits `IncendiaryRegistry` with 8-arg constructor pass-through. Adds seven `external` wrappers — six `view` delegations to internal helpers plus one mutating `extPlaceBoost` — for L8.1—L8.4 unit fixtures. No additional state, no override of parent behavior, no modifiers, no events. `_payTokenIndex` is exercised transitively via `extValueInAuMM`; `updateRailEMA` / `buyBoost` / `integratedSkim` / `boostIntegral` remain tested on the harness instance directly.
+/// @dev Inherits `IncendiaryRegistry` with 9-arg constructor pass-through. Adds seven `external` wrappers — six `view` delegations to internal helpers plus one mutating `extPlaceBoost` — for L8.1—L8.4 unit fixtures. No additional state, no override of parent behavior, no modifiers, no events. `_payTokenIndex` is exercised transitively via `extValueInAuMM`; `updateRailEMA` / `buyBoost` / `integratedSkim` / `boostIntegral` remain tested on the harness instance directly.
 contract IncendiaryRegistryHarness is IncendiaryRegistry {
-    constructor(SwapAndDepositToBodensee bodenseeChannel_, address bodenseePool_, IVaultExplorer vaultExplorer_, IAuMM aumm_, IERC20 svzchf_, IERC20 susds_, IGaugeRegistry gaugeRegistry_, uint256 genesisBlock_) IncendiaryRegistry(bodenseeChannel_, bodenseePool_, vaultExplorer_, aumm_, svzchf_, susds_, gaugeRegistry_, genesisBlock_) {}
+    constructor(SwapAndDepositToBodensee bodenseeChannel_, address bodenseePool_, IVaultExplorer vaultExplorer_, IAuMM aumm_, IERC20 svzchf_, IERC20 susds_, IGaugeRegistry gaugeRegistry_, uint256 genesisBlock_, address distributor_) IncendiaryRegistry(bodenseeChannel_, bodenseePool_, vaultExplorer_, aumm_, svzchf_, susds_, gaugeRegistry_, genesisBlock_, distributor_) {}
 
     /// @notice Delegates to parent's `_spotRate(payToken)` internal view helper per L-D26.
     function extSpotRate(address payToken) external view returns (uint256) {

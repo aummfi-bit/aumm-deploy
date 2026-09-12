@@ -86,6 +86,11 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @notice Protocol genesis block — the AureumTime epoch / era basis for placement and cap windows.
     uint256 public immutable GENESIS_BLOCK;
 
+    /// @notice The emission distributor this registry delivers boosts through (PP-D56 (vi), amended by
+    ///         (xvi)), held as an address immutable per G-D16d and cast to the concrete
+    ///         `EmissionDistributor` wherever it is read.
+    address public immutable DISTRIBUTOR;
+
     /* ---------- Storage ---------- */
 
     /// @notice Per-rail price EMA state — the AuMM price in the pay token (stable-per-AuMM, L-D11); pricing
@@ -172,7 +177,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /* ---------- Constructor ---------- */
 
-    /// @notice Wires the eight immutables; ZeroAddress-guards the seven address-bearing arguments.
+    /// @notice Wires the nine immutables; ZeroAddress-guards the eight address-bearing arguments.
     /// @dev `genesisBlock_` is unguarded — deploy correctness is governance's responsibility, the
     ///      AureumGovernance / EmissionDistributor convention (L-D16).
     constructor(
@@ -183,7 +188,8 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         IERC20 svzchf_,
         IERC20 susds_,
         IGaugeRegistry gaugeRegistry_,
-        uint256 genesisBlock_
+        uint256 genesisBlock_,
+        address distributor_
     ) {
         if (address(bodenseeChannel_) == address(0)) revert ZeroAddress();
         if (bodenseePool_ == address(0)) revert ZeroAddress();
@@ -192,6 +198,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         if (address(svzchf_) == address(0)) revert ZeroAddress();
         if (address(susds_) == address(0)) revert ZeroAddress();
         if (address(gaugeRegistry_) == address(0)) revert ZeroAddress();
+        if (distributor_ == address(0)) revert ZeroAddress();
 
         BODENSEE_CHANNEL = bodenseeChannel_;
         BODENSEE_POOL = bodenseePool_;
@@ -201,6 +208,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         SUSDS = susds_;
         GAUGE_REGISTRY = gaugeRegistry_;
         GENESIS_BLOCK = genesisBlock_;
+        DISTRIBUTOR = distributor_;
     }
 
     /* ---------- IIncendiaryRegistry views (L5.3 / L-D23 direct epoch-walk) ---------- */
