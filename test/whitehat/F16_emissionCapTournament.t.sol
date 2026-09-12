@@ -21,7 +21,7 @@ import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
 /// @notice F-16 end-to-end PoC (P-D17) — the emission-cap tournament SEAM: a flash-spiked TVL seed
 ///         inflates a fee-less pool's F-5 score toward a dominant emission share, but the REAL gauge
-///         stack (GaugeRegistry.advanceTournament driving GaugeEligibility.computeEpochSnapshot) ranks it
+///         stack (GaugeRegistry paging accumulateTournament and finalizeTournament into GaugeEligibility) ranks it
 ///         bottom-5% by efficiency and assigns a 10 bps (0.1%) cap, which the REAL
 ///         EmissionDistributor.recordScore clamp reads through IGaugeRegistry and enforces — holding the
 ///         attacker's share at or below 0.1% of emissions regardless of the seed magnitude. Standalone

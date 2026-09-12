@@ -137,10 +137,10 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
         _scoreAll();
     }
 
-    /// @dev Four `advanceTournament` calls, each in a distinct protocol epoch. Re-scores before
+    /// @dev Four tournaments, each accumulated and finalized in a distinct protocol epoch. Re-scores before
     ///      every advance so the real oracle's SMA window still carries a nonzero denominator
     ///      at the ranking call; without that the finalized accrual epoch ages out of the
-    ///      three-epoch lookback and pass 1 skips every pool.
+    ///      three-epoch lookback and accumulation skips every pool.
     function _runWarmupToCaps() internal {
         vm.roll(ADVANCE_1_BLOCK);
         _scoreAll();
