@@ -27,7 +27,7 @@ interface IGaugeEligibility {
 
     /**
      * @notice Returns whether `pool` sits in the favored cohort from the last efficiency snapshot.
-     * @dev Top-15% favored cohort semantics per **G-D3** / **OQ-G1** — `true` when the pool ranks inside the ceiling-favored set after the F-10 efficiency tournament at the last `computeEpochSnapshot` boundary.
+     * @dev Top-15% favored cohort semantics per **G-D3** / **OQ-G1** — `true` when the pool ranks inside the ceiling-favored set after the F-10 efficiency tournament at the epoch boundary its last finalize page closed.
      * @param pool The pool address.
      * @return favored Whether the pool is in the favored cohort at the last epoch snapshot.
      */

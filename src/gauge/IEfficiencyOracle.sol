@@ -6,7 +6,7 @@ pragma solidity ^0.8.26;
 /// @notice Returns pre-smoothed F-10 efficiency inputs for a Balancer V3 pool — the numerator
 ///         (`swap_fee_revenue_i + yield_fee_revenue_i`) and denominator (`emissions_received_i`) of the
 ///         canonical OQ-G1 formula, both 3-epoch SMA-smoothed at oracle scope.
-/// @dev Per G-D23 (i) the oracle owns the 3-epoch SMA; `GaugeEligibility.computeEpochSnapshot` reads
+/// @dev Per G-D23 (i) the oracle owns the 3-epoch SMA; `GaugeEligibility.accumulateEpochSnapshot` reads
 ///      pre-smoothed inputs and computes the dimensionless ratio `(numeratorSma * 1e18) / denominatorSma`.
 ///      Per G-D23 (ii) this interface is a sibling to `ITVLOracle` — not an extension — so the F-10
 ///      efficiency path and the OQ-G2 TVL-floor path remain independently swappable.

@@ -133,7 +133,7 @@ interface IGaugeRegistry {
     function feeRailConjunctSatisfied(address pool) external view returns (bool satisfied);
 
     /// @notice F-10 efficiency-tournament emission cap for `pool` in basis points — delegates to `GaugeEligibility.poolEmissionCapBps`.
-    /// @dev The `GaugeRegistry` implementation forwards to its `gaugeEligibility` immutable via a concrete `GaugeEligibility` cast (the mapping is concrete-only on `GaugeEligibility`, absent from `IGaugeEligibility`, per F16d). Tier values: 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%). Consumed by `EmissionDistributor.recordScore` (F16f) to clamp a capped pool's emission share. Assigned each epoch by `computeEpochSnapshot`; a tournament-skipped pool retains its prior value (**P-D15 (4)**). Cross-references: **P-D13 (5)**.
+    /// @dev The `GaugeRegistry` implementation forwards to its `gaugeEligibility` immutable via a concrete `GaugeEligibility` cast (the mapping is concrete-only on `GaugeEligibility`, absent from `IGaugeEligibility`, per F16d). Tier values: 0 (uncapped, top 85%), 100 (bottom 15–10%, 1%), 50 (bottom 10–5%, 0.5%), 10 (bottom 5%, 0.1%). Consumed by `EmissionDistributor.recordScore` (F16f) to clamp a capped pool's emission share. Assigned by the finalize pages of each tournament; a tournament-skipped pool retains its prior value (**P-D15 (4)**). Cross-references: **P-D13 (5)**.
     /// @param pool The pool whose F-10 emission cap is queried.
     /// @return capBps The emission cap in basis points — 0 when uncapped (top 85%), otherwise 100, 50, or 10 per the efficiency tournament tier.
     function poolEmissionCapBps(address pool) external view returns (uint256 capBps);
