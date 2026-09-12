@@ -563,7 +563,7 @@ contract GaugeEligibilityEvaluateTest is GaugeEligibilityFixture {
     }
 }
 
-/// @notice T-I5 arbitrary-contract caller test helper for `computeEpochSnapshot` modifier coverage.
+/// @notice T-I5 arbitrary-contract caller test helper for `accumulateEpochSnapshot` modifier coverage.
 contract _SnapshotAttacker {
     GaugeEligibility public eligibility;
 
@@ -576,7 +576,7 @@ contract _SnapshotAttacker {
     }
 }
 
-/// @notice G2.7c — computeEpochSnapshot matrix per STAGE_G_PLAN.md L357-L361.
+/// @notice G2.7c — epoch-snapshot matrix per STAGE_G_PLAN.md L357-L361, repointed onto the paged entries at PP4.13 per PP-D56 (xii).
 contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     /// @dev Per-call tournament epoch for the paged entries per **PP-D56 (xii)**. Each snapshot is
     ///      a COMPLETE accumulation, so a fresh value each time is correct: finalize clears
@@ -650,7 +650,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function testZeroInputPoolIsSkippedBeforeTheColdStartStamp() public {
         // PP-D56 (viii) — both zero-input skips precede the cold `SSTORE`, so a pool with no usable
         // data never registers a grace epoch it cannot measure. `seeing` is the positive control:
-        // without it a `computeEpochSnapshot` that stamped NOTHING would satisfy the zero vacuously.
+        // without it an accumulation that stamped NOTHING would satisfy the zero vacuously.
         address blind = makeAddr("pZeroInputs");
         address seeing = makeAddr("pUsableData");
         mockEfficiencyOracle.setEfficiencyInputs(seeing, 100e18, 50e18);
@@ -723,7 +723,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         assertEq(eligibility.lastSnapshotEpoch(p), 4);
 
         // Epoch 5, the feed dies: excluded from ranking, no cap, no revert per P-D15 (3). One dead
-        // gauge must not brick the permissionless tournament. Pass 3 walks only the ranked survivors,
+        // gauge must not brick the permissionless tournament. Finalize walks only the ranked survivors,
         // so nothing is emitted and nothing the pool already holds is rewritten.
         mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 0);
         vm.recordLogs();
