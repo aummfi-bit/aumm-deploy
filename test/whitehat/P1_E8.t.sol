@@ -18,6 +18,14 @@ import {MockAuMM, MockBpt, MockEMASampler, MockCCBMultiplier, MockMiliariumRegis
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
+import {IncendiaryRegistry} from "src/incendiary/IncendiaryRegistry.sol";
+import {MockBodenseeExplorer, MockWeightedVenue, MockBodenseeChannel, MockAuMMRate} from "test/fork/mocks/StageLMocks.sol";
+import {MockGaugeRegistry} from "test/fork/mocks/CCBMocks.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
+import {SwapAndDepositToBodensee} from "src/gauge/SwapAndDepositToBodensee.sol";
+import {IVaultExplorer} from "@balancer-labs/v3-interfaces/contracts/vault/IVaultExplorer.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 /// @notice Honest boost counterparty: returns rate * inclusive window width, so a longer window
 ///         bills proportionally more. The over-mint under E.8 arises against this honest shape,
 ///         not a malicious constant return.
