@@ -23,10 +23,16 @@
 #      carry a literal --match-path with no glob, and --threads 1 (D35, D36,
 #      RB-023). Any --rpc-url is refused; runs against a node are the user's.
 #
+# The body of a quoted heredoc (<<'EOF' or <<"EOF") is data, not commands:
+# it is fed to a command that is itself judged, and it cannot expand. It is
+# removed before any rule runs, which is what lets a payload be measured
+# through a pipeline before handoff (PB18). An unquoted heredoc body expands
+# $( ) and is judged line by line like everything else.
+#
 # Unknown commands pass. Refusals err toward refusing: a mutating verb inside
-# a quoted string or a heredoc body still refuses, and the caller rephrases.
-# Fails closed on a missing jq or unparseable input. Tools are pinned to
-# /usr/bin so a caller's PATH cannot change how a pattern is read.
+# a quoted string still refuses, and the caller rephrases. Fails closed on a
+# missing jq or unparseable input. Tools are pinned to /usr/bin so a caller's
+# PATH cannot change how a pattern is read.
 #
 # Wired from .claude/settings.json as:
 #   bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/guard-bash.sh
@@ -57,7 +63,39 @@ root="${CLAUDE_PROJECT_DIR:-$PWD}"
 checker=0
 [ "$agent" = "checker" ] && checker=1
 
-has() { printf '%s' "$cmd" | $G -Eq -e "$1"; }
+# Drop the bodies of quoted heredocs. A line opens one when it carries
+# <<'NAME' or <<"NAME" outside any open quote on that line, quoting state
+# being counted from the last $( on the line because a subshell resets it;
+# the body runs to the first line that equals NAME after leading whitespace.
+# The opening line itself is kept and judged, so the consumer of the heredoc
+# is still seen.
+strip_quoted_heredocs() {
+  delim=""
+  printf '%s\n' "$cmd" | while IFS= read -r line; do
+    if [ -n "$delim" ]; then
+      bare="${line#"${line%%[![:space:]]*}"}"
+      [ "$bare" = "$delim" ] && delim=""
+      continue
+    fi
+    printf '%s\n' "$line"
+    case "$line" in
+      *'<<'*)
+        d="$(printf '%s' "$line" | $S -En "s/.*<<-?[[:space:]]*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"].*/\1/p")"
+        [ -n "$d" ] || continue
+        pre="${line%%<<*}"
+        pre="${pre##*'$('}"
+        dq="$(printf '%s' "$pre" | $T -cd '"' | /usr/bin/wc -c | $T -d ' ')"
+        sq="$(printf '%s' "$pre" | $T -cd "'" | /usr/bin/wc -c | $T -d ' ')"
+        if [ $((dq % 2)) -eq 0 ] && [ $((sq % 2)) -eq 0 ]; then
+          delim="$d"
+        fi
+        ;;
+    esac
+  done
+}
+judged="$(strip_quoted_heredocs)"
+
+has() { printf '%s' "$judged" | $G -Eq -e "$1"; }
 seghas() { printf '%s' "$2" | $G -Eq -e "$1"; }
 unquote() { printf '%s' "$1" | $T -d "\"'"; }
 
@@ -72,10 +110,10 @@ has '(^|[^A-Za-z0-9_./-])(eval|xargs|parallel|source|alias|trap|fc|enable)([^A-Z
 has '[[:space:]]-(exec|execdir|ok|okdir|delete|fprint|fprintf|fls)([^A-Za-z0-9_-]|$)' && refuse "find -exec, -ok, -delete and -fprint run or write; list instead."
 has '\.ssh/|\.aws/|\.gnupg/|\.netrc|\.npmrc|\.pypirc|keystores?/|id_(rsa|ed25519|ecdsa)' && refuse "key material is never read from an agent."
 
-stripped="$(printf '%s' "$cmd" | $S 's/\.env\.example//g')"
+stripped="$(printf '%s' "$judged" | $S 's/\.env\.example//g')"
 printf '%s' "$stripped" | $G -Eq -e '\.env(\.|[^A-Za-z0-9_.]|$)' && refuse "reading a .env file; only .env.example is readable (PB-D36, PP2)."
 
-targets="$(printf '%s' "$cmd" | $G -Eo -e '(&>|>>|>)[[:space:]]*[^[:space:];&|()]+' || true)"
+targets="$(printf '%s' "$judged" | $G -Eo -e '(&>|>>|>)[[:space:]]*[^[:space:];&|()]+' || true)"
 if [ -n "$targets" ]; then
   while IFS= read -r t; do
     t="$(printf '%s' "$t" | $S -E 's/^(&>|>>|>)[[:space:]]*//')"
@@ -197,10 +235,13 @@ check_cast() {
 
 check_shell() {
   sh="$1"; shift
-  if [ "$sh" = "bash" ] && [ $# -eq 2 ] && [ "$1" = "-n" ]; then
-    case "$2" in -*) ;; *) return 0 ;; esac
+  if [ "$sh" = "bash" ] && [ $# -ge 1 ] && [ "$1" = "-n" ]; then
+    [ $# -eq 1 ] && return 0
+    if [ $# -eq 2 ]; then
+      case "$2" in -*) ;; *) return 0 ;; esac
+    fi
   fi
-  refuse "$sh would run a script or an inline command; agents do not spawn shells. Only 'bash -n <file>' as a syntax check runs from an agent."
+  refuse "$sh would run a script or an inline command; agents do not spawn shells. Only 'bash -n' or 'bash -n <file>' as a syntax check runs from an agent."
 }
 
 check_sed() {
@@ -267,7 +308,7 @@ judge() {
   return 0
 }
 
-segments="$(printf '%s\n' "$cmd" | $T ';|&(){}' '\n\n\n\n\n\n\n')"
+segments="$(printf '%s\n' "$judged" | $T ';|&(){}' '\n\n\n\n\n\n\n')"
 while IFS= read -r seg; do
   seg="${seg#"${seg%%[![:space:]]*}"}"
   [ -n "$seg" ] || continue
