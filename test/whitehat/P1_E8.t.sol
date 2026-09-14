@@ -244,13 +244,14 @@ contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
     }
 }
 
-/// @notice Reproduction PoC for the registry-side face of seam-1 root cause E.8, per PP-D56 (vi) and
-///         (xvii): `buyBoost` reads no distributor binding, so a purchase still takes the buyer's
-///         funds after the distributor unbinds the registry through its real two-step, buying a boost
-///         stream nothing will deliver. The distributor stands on placeholder collaborators, since its
-///         constructor makes no external call and the two-step touches only storage and the proposed
-///         registry's code size.
-contract P1_E8_BuyBoostKeepsSellingWhileUnboundTest is Test {
+/// @notice Regression for the registry-side face of seam-1 root cause E.8, per PP-D56 (vi) and (xvii):
+///         `buyBoost` now reverts `NotBoundToDistributor` unless the distributor's live binding names
+///         this registry, so a purchase after the distributor unbinds or rebinds it through its real
+///         two-step takes nothing from the buyer. The PoC is inverted beside the done-criteria case on
+///         the F.1 precedent. The distributor stands on placeholder collaborators, since its constructor
+///         makes no external call and the two-step touches only storage and the proposed registry's
+///         code size.
+contract P1_E8_BuyBoostRequiresLiveBindingTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant BAL_AUMM = 1_000_000e18;
     uint256 internal constant BAL_SVZCHF = 750_000e18;
@@ -336,10 +337,10 @@ contract P1_E8_BuyBoostKeepsSellingWhileUnboundTest is Test {
         );
     }
 
-    /// @notice A purchase goes through after the distributor has unbound the registry: the binding is
-    ///         live at genesis plus one, cleared to address(0) through the real two-step once boosts
-    ///         open, and the buyer still pays in full for an entitlement no settle will ever deliver.
-    function test_P1_E8_buyBoostKeepsSellingAfterTheDistributorUnbinds() public {
+    /// @notice The registry-side face of E.8, inverted per PP-D56 (xvii): once the distributor unbinds
+    ///         the registry through its real two-step, a purchase reverts naming the zero address and
+    ///         the buyer keeps the funds, where before the guard it paid in full for nothing delivered.
+    function test_P1_E8_buyBoostStopsSellingOnceTheDistributorUnbinds() public {
         address buyer = makeAddr("boostBuyer");
         uint256 amount = 1000e18;
 
@@ -366,11 +367,53 @@ contract P1_E8_BuyBoostKeepsSellingWhileUnboundTest is Test {
         vm.prank(buyer);
         svzchf.approve(address(registry), amount);
 
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.NotBoundToDistributor.selector, address(0)));
         vm.prank(buyer);
-        uint256 entitlement = registry.buyBoost(address(venue), address(svzchf), amount);
+        registry.buyBoost(address(venue), address(svzchf), amount);
 
-        assertGt(entitlement, 0);
-        assertEq(svzchf.balanceOf(buyer), 0);
+        assertEq(svzchf.balanceOf(buyer), amount);
+        assertEq(channel.lastAmount(), 0);
+    }
+
+    /// @notice The done-criteria case for the registry-side face of E.8 per PP-D56 (xvii): a purchase
+    ///         succeeds while the distributor binding names this registry, and once the distributor
+    ///         rebinds to a different registry the next purchase reverts naming that registry.
+    function test_buyBoostRequiresLiveBinding() public {
+        address buyer = makeAddr("boostBuyer");
+        uint256 amount = 1000e18;
+        address otherRegistry = address(new LinearBoostRegistry(1));
+
+        registry.updateRailEMA(address(svzchf));
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(address(registry));
+        vm.roll(GENESIS_BLOCK + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), address(registry));
+
+        vm.roll(BOOSTS_OPEN_BLOCK);
+        registry.updateRailEMA(address(svzchf));
+        aumm.setRate(1e18);
+        gauges.setApproved(address(venue), true);
+        svzchf.mint(buyer, 2 * amount);
+        vm.prank(buyer);
+        svzchf.approve(address(registry), 2 * amount);
+
+        vm.prank(buyer);
+        assertGt(registry.buyBoost(address(venue), address(svzchf), amount), 0);
         assertEq(channel.lastAmount(), amount);
+
+        vm.prank(GOV);
+        distributor.proposeIncendiaryRegistry(otherRegistry);
+        vm.roll(BOOSTS_OPEN_BLOCK + 1);
+        vm.prank(GOV);
+        distributor.acceptIncendiaryRegistry();
+        assertEq(distributor.incendiaryRegistry(), otherRegistry);
+
+        vm.expectRevert(abi.encodeWithSelector(IncendiaryRegistry.NotBoundToDistributor.selector, otherRegistry));
+        vm.prank(buyer);
+        registry.buyBoost(address(venue), address(svzchf), amount);
+
+        assertEq(svzchf.balanceOf(buyer), amount);
     }
 }

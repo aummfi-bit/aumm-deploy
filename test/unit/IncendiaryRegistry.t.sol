@@ -82,6 +82,13 @@ contract IncendiaryRegistryTest is Test {
         );
     }
 
+    /// @notice Stands in for the distributor this fixture passes to the registry as `address(this)`:
+    ///         `buyBoost` reads `incendiaryRegistry()` from it per PP-D56 (xvii), and this answers with
+    ///         the registry under test.
+    function incendiaryRegistry() external view returns (address) {
+        return address(registry);
+    }
+
     function test_extSpotRate_svzchf() public view {
         // 750_000·0.4 / (1_000_000·0.3) = 1.0 — svZCHF-per-AuMM spot at the fixture weights
         assertEq(registry.extSpotRate(address(svzchf)), 1e18);

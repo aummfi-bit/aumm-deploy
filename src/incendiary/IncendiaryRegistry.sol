@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import {IIncendiaryRegistry} from "./IIncendiaryRegistry.sol";
 import {SwapAndDepositToBodensee} from "../gauge/SwapAndDepositToBodensee.sol";
+import {EmissionDistributor} from "../emission/EmissionDistributor.sol";
 import {IGaugeRegistry} from "../ccb/IGaugeRegistry.sol";
 import {IAuMM} from "../token/IAuMM.sol";
 import {AureumTime} from "../lib/AureumTime.sol";
@@ -175,6 +176,11 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /// @notice `buyBoost` called with a zero deposit amount.
     error ZeroAmount();
 
+    /// @notice `buyBoost` called while the live distributor binding is not this registry, so no settle
+    ///         would deliver the boost (PP-D56 (xvii)); `address(0)` after an unbind.
+    /// @param boundRegistry The `incendiaryRegistry` the distributor holds at the call.
+    error NotBoundToDistributor(address boundRegistry);
+
     /* ---------- Constructor ---------- */
 
     /// @notice Wires the nine immutables; ZeroAddress-guards the eight address-bearing arguments.
@@ -279,6 +285,8 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
         if (payToken != address(SVZCHF) && payToken != address(SUSDS)) revert UnknownRail(payToken);
         if (!GAUGE_REGISTRY.isGaugeApproved(pool)) revert PoolNotGauged(pool);
         if (amount == 0) revert ZeroAmount();
+        address boundRegistry = EmissionDistributor(DISTRIBUTOR).incendiaryRegistry();
+        if (boundRegistry != address(this)) revert NotBoundToDistributor(boundRegistry);
 
         entitlement = (_valueInAuMM(payToken, amount) * (10_000 - HAIRCUT_BPS)) / 10_000;
 
