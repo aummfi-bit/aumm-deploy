@@ -9,9 +9,6 @@
       "Read(/.env.sepolia)",
       "Read(/.env.mainnet)",
       "Read(/.env.local)",
-      "Bash(git push *)",
-      "Bash(git commit *)",
-      "Bash(git add *)",
       "Bash(git tag *)",
       "Bash(git reset *)",
       "Bash(git rebase *)",
@@ -40,7 +37,14 @@
       "Bash(npm install *)",
       "Bash(brew install *)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "CronCreate",
+      "ScheduleWakeup",
+      "RemoteTrigger",
+      "mcp__scheduled-tasks__create_scheduled_task",
+      "mcp__scheduled-tasks__update_scheduled_task",
+      "mcp__scheduled-tasks__run_scheduled_task",
+      "mcp__ccd_session_mgmt__send_message"
     ],
     "ask": [
       "Bash(forge script *)"
@@ -57,6 +61,20 @@
       "Bash(git branch)",
       "Bash(git branch -a)",
       "Bash(git worktree list)",
+      "Bash(git -C /Users/janus/code/aumm-deploy status *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy log *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy diff *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy show *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy rev-parse *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy add *)",
+      "Bash(git -C /Users/janus/code/aumm-deploy commit --only *)",
+      "Bash(GIT_TERMINAL_PROMPT=0 git -C /Users/janus/code/aumm-deploy push)",
+      "Bash(git -C /Users/janus/code/aumm-site pull --ff-only)",
+      "Bash(GIT_TERMINAL_PROMPT=0 git -C /Users/janus/code/aumm-site pull --ff-only)",
+      "Bash(cp .env.mainnet .env)",
+      "Bash(cp .env.sepolia .env)",
+      "Bash(cmp *)",
+      "Bash(python3 -I -S tools/*)",
       "Bash(wc *)",
       "Bash(shasum *)",
       "Bash(cat *)",
@@ -97,10 +115,21 @@
       "Bash(.venv/bin/slither *)",
       "Bash(slither *)",
       "Bash(hevm *)",
-      "Bash(cast to-check-sum-address *)"
+      "Bash(cast *)"
     ]
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/record-go-ahead.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit",
@@ -121,6 +150,16 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "ScheduleWakeup|CronCreate|RemoteTrigger|SendMessage|Workflow|Agent|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-injection.sh",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -130,6 +169,16 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/record-write.sh",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/record-terminal.sh",
             "timeout": 15
           }
         ]
