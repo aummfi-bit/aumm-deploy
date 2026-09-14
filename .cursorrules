@@ -121,6 +121,8 @@ This section defines how Cursor operates inside the project's current
 workflow. Effective 2026-04-19, replacing the prior "text-editor only"
 lockdown. The authoritative workflow document is `CLAUDE.md` §8e.
 
+**Fallback status (2026-09-13).** The executor role this section describes is now held by the `composer` agent defined in `.claude/agents/composer.md`, working inside the Claude Code session that plans and audits (`CLAUDE.md` §7 and §8e). These rules govern the Cursor application only when the user chooses it as a manual fallback executor. A Claude Code session cannot act as Cursor in this repository: the hooks wired from `.claude/settings.json` refuse every in-repo write from any caller other than the composer agent, and every git mutation from every caller.
+
 ### Role
 
 Cursor is the **executor** of baby-step sub-step prompts authored by
