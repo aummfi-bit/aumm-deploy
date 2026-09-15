@@ -197,10 +197,14 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         lastRegistry.finalizeTournament(type(uint256).max);
     }
 
-    /// @dev Pool addresses are built and seeded in ascending order so the registry's active set
-    ///      iterates already-sorted, which is insertion sort's best case and makes these figures a
-    ///      LOWER bound; production activation order bears no relation to address order, so the
-    ///      real sort term is larger and the extrapolation is conservative.
+    /// @dev Pools are seeded in ascending ADDRESS order and each pool's TVL grows with its index
+    ///      while fees stay constant, so efficiency RATIOS arrive in DESCENDING order. The ranked
+    ///      list is kept descending by ratio, so descending-ratio arrival appends without shifting,
+    ///      which is insertion sort's best case and makes these figures a LOWER bound. The sort is
+    ///      keyed on ratio, not address: this order is the best case only because this seeding
+    ///      makes ascending address and descending ratio coincide, per PP-D56 (xxiv). Production
+    ///      activation order bears no relation to either, so the real sort term is larger and the
+    ///      extrapolation is conservative.
     /// @notice Tournament gas grows at least in proportion to the unbounded active set.
     function test_P1_E7b_tournamentGasScalesWithTheUnboundedActiveSet() public {
         uint256 gasSmall = _measureFourthAdvanceGas(SMALL_N, 0);
