@@ -100,6 +100,13 @@ interface IEmissionDistributor {
     /// @param sink The bound `IPositionCloseSink` address.
     event VotingWeightBound(address indexed sink);
 
+    /// @notice Emitted when the F-10 emission cap binds at settle, reducing a pool's effective score before its allocation is computed (E.7c).
+    /// @dev Per PP-D56 (v), (xviii), (xix) and (xx) — fired from the clamp at the head of `_settlePool` ONLY when it reduces the score, so an idempotent second settle in the same interval emits nothing and the double-settle paths `_syncDown` reaches stay silent. The record-time clamp in `recordScore` is KEPT beside it per (xix), holding uncapped wei out of `totalScore` so that a capped pool's excess still redistributes to uncapped pools pro rata; `ScoreUpdated` therefore continues to carry the CAPPED effective score, and this event is the settle-time clamp's COMPLETE emit set per (xx), the only signal that it bound. Declared here rather than concrete-only because this contract keeps every event on the interface and an added interface event imposes nothing on an inheritor.
+    /// @param pool The Balancer V3 pool whose effective score the cap reduced.
+    /// @param uncappedScore The effective score as it stood before the clamp, the value `poolScore[pool]` carries.
+    /// @param cappedScore The clamped score the pool's allocation is computed against.
+    event EmissionCapApplied(address indexed pool, uint256 uncappedScore, uint256 cappedScore);
+
     /// @notice Thrown when `recordScore` is called for a pool that is not gauge-approved.
     /// @dev Per H-D17 (a) and H-D5 per-call `isGaugeApproved` gate — prevents `totalScore` corruption
     ///      from stale recordings on revoked gauges.

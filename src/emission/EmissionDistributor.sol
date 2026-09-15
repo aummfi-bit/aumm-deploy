@@ -450,6 +450,37 @@ contract EmissionDistributor is IEmissionDistributor {
      * @param pool The Balancer V3 pool address to settle. No registry/gauge check here — `_settlePool` trusts the upstream caller to have already established gauge eligibility via the H-D17 / H-D5 `isGaugeApproved` check at `recordScore` (revoked-gauge pools entering `_settlePool` via stale state simply settle at the current accumulator with their last-known `poolScore`, then writing the debt baseline; no exploit surface because `poolScore` cannot grow without a fresh `recordScore` which itself requires gauge approval).
      */
     function _settlePool(address pool) internal {
+        // E.7c / PP-D56 (v), (xviii), (xix) and (xx) — the F-10 emission cap is re-derived HERE, at the
+        // moment the share is realised, against a denominator that may have moved since the score was
+        // written. It runs before `poolAllocation` below, so a stored score that has drifted above its
+        // cap is allocated at the capped value rather than at the drifted one, which is the latch E.7c
+        // reports. This sits BESIDE the record-time cap in `recordScore`, which (xix) KEEPS: that one
+        // holds uncapped wei out of `totalScore`, so a capped pool's excess still redistributes to
+        // uncapped pools pro rata per `08_bootstrap.md:125`, while this one keeps a stored score
+        // honest once the limit has moved. Deleting either reopens a different face of E.7c.
+        // Idempotent by construction — the paired write preserves `totalScore - poolScore[pool]`, so a
+        // second settle in the same interval recomputes the identical limit, finds the score already at
+        // or under it, writes nothing and emits nothing, which is what keeps the doubled settles on the
+        // `_syncDown` paths silent. `EmissionCapApplied` is this clamp's COMPLETE emit set per (xx): no
+        // `ScoreUpdated` fires here, that event staying `recordScore`-only. The clamp reduces the score
+        // BEFORE the elapsed interval is allocated, so that interval accrued against the pre-clamp
+        // denominator and the difference reaches no pool — a residual bounded by one settle interval
+        // times the cap overhang, signalled by every `EmissionCapApplied` and self-closing at the next
+        // settle, accepted at (xix) and filed as RB-031. `deregisterScore` settles before zeroing, so a
+        // clamp on a score about to be cleared is wasted work and harmless.
+        if (block.number >= AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) {
+            uint256 capBps = _gaugeRegistry.poolEmissionCapBps(pool);
+            if (capBps != 0) {
+                uint256 uncappedScore = poolScore[pool];
+                uint256 capT = capBps * 1e14; // bps -> 1e18 fixed-point (100 bps = 1e16 = 1%)
+                uint256 capLimit = capT.divDown(1e18 - capT).mulDown(totalScore - uncappedScore);
+                if (uncappedScore > capLimit) {
+                    totalScore = _applySignedDelta(totalScore, capLimit.toInt256() - uncappedScore.toInt256());
+                    poolScore[pool] = capLimit;
+                    emit EmissionCapApplied(pool, uncappedScore, capLimit);
+                }
+            }
+        }
         uint256 acc = accRewardPerScoreUnit;
         uint256 deltaAcc = acc - poolAccDebt[pool];
         uint256 poolAllocation = deltaAcc.mulDown(poolScore[pool]);
