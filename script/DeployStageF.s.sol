@@ -65,11 +65,11 @@ contract DeployStageF is Script {
     EMASampler public emaSampler;
     CCBMultiplier public ccbMultiplier;
 
-    /// @notice The address authorized to trigger the post-G-stack `sealGaugeRegistry` — captured as the
+    /// @notice The address authorized to trigger the two CCBMultiplier seals, `sealGaugeRegistry` and `sealMiliariumRegistry` — captured as the
     ///         caller of `deploy()` (the DeployStageP orchestrator per PB-D18 (v)); zero until `deploy()` runs.
     address public sealAuthority;
 
-    /// @notice `sealGaugeRegistry` reverts when the caller is not the `deploy()`-captured `sealAuthority` —
+    /// @notice `sealGaugeRegistry` and `sealMiliariumRegistry` revert when the caller is not the `deploy()`-captured `sealAuthority` —
     ///         blocks a live-broadcast front-run from driving this script's one-shot setter authority.
     error NotSealAuthority(address caller, address expected);
 
@@ -105,6 +105,17 @@ contract DeployStageF is Script {
     function sealGaugeRegistry(IGaugeRegistry gaugeRegistry) external {
         if (msg.sender != sealAuthority) revert NotSealAuthority(msg.sender, sealAuthority);
         ccbMultiplier.setGaugeRegistry(gaugeRegistry);
+    }
+
+    /// @notice Post-orchestration seal per PP-D57 (vi) and (xiii). The CCBMultiplier was constructed inside
+    ///         `_deploy`, so its `registrySetter` is THIS script (`address(this)`); only this script can seal it.
+    ///         Its constructor already received the concrete Stage J MiliariumRegistry, so the orchestrator
+    ///         passes that same registry and the call's whole effect is burning `registrySetter`. Guarded to
+    ///         the `deploy()`-captured `sealAuthority`, as `sealGaugeRegistry` is.
+    /// @param miliariumRegistry The concrete Stage J MiliariumRegistry the CCBMultiplier already reads.
+    function sealMiliariumRegistry(IMiliariumRegistry miliariumRegistry) external {
+        if (msg.sender != sealAuthority) revert NotSealAuthority(msg.sender, sealAuthority);
+        ccbMultiplier.setMiliariumRegistry(miliariumRegistry);
     }
 
     function _deploy(address deployer) internal {

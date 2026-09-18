@@ -15,12 +15,13 @@ import {MockFeeController} from "test/mocks/MockFeeController.sol";
 
 import {MockMiliariumRegistry, MockEMASampler, MockGaugeRegistry} from "test/unit/CCBMultiplier.t.sol";
 
-/// @notice Reproduction PoC for seam-1 root cause C.7 (Medium, author-validated).
-///         Two one-shot admin slots that were never fired remain live on the deployer:
-///         `AureumFeeRoutingHook`'s private `_incendiaryAdmin`, and `CCBMultiplier`'s
-///         `registrySetter`. Both slots buy availability rather than magnitude — the CCB
-///         multiplier's [0.75, 1.25] clamp is an inductive invariant independent of which
-///         registry is bound. D.8 shares this row's redeploy unit.
+/// @notice Regression for seam-1 root cause C.7 (Medium, author-validated), inverted from its PP3.2
+///         reproduction per PP-D57 (vi), (vii) and (xiii). The two one-shot admin slots that stayed live
+///         on the deployer are now closed by the deploy spine: `CCBMultiplier`'s `registrySetter` by a
+///         same-registry seal on both deploy paths, and `AureumFeeRoutingHook`'s `_incendiaryAdmin` by
+///         `renounceIncendiaryAdmin`, each asserted by a `DeployStageP` post-condition and by the
+///         done-criteria cases in `test/fork/StagePRunRehearsal.t.sol`. These unit cases pin the two
+///         primitives the spine calls. D.8 shares this row's redeploy unit.
 contract P1_C7_UnfiredOneShotAdminSlotsRemainLiveOnTheDeployerTest is Test {
     AureumFeeRoutingHook internal hook;
     CCBMultiplier internal multiplier;
@@ -39,6 +40,9 @@ contract P1_C7_UnfiredOneShotAdminSlotsRemainLiveOnTheDeployerTest is Test {
     MockMiliariumRegistry internal miliReg;
     MockEMASampler internal ema;
     MockGaugeRegistry internal gauges;
+
+    /// @dev Redeclared for `vm.expectEmit`, as the hook's unit suite does.
+    event IncendiaryAdminRenounced(address indexed formerAdmin);
 
     function setUp() public {
         vault = makeAddr("vault");
@@ -69,59 +73,56 @@ contract P1_C7_UnfiredOneShotAdminSlotsRemainLiveOnTheDeployerTest is Test {
         multiplier = new CCBMultiplier(miliReg, ema, gauges);
     }
 
-    /// @notice The hook's constructor-set `_incendiaryAdmin` still authorises
-    ///         `setIncendiaryModule`; the slot was never rotated or renounced.
-    function test_P1_C7_theHooksIncendiaryAdminSlotIsStillLiveOnTheDeployer() public {
-        // The hook's slot must be proved behaviorally because `_incendiaryAdmin` is private
-        // with no getter at src/fee_router/AureumFeeRoutingHook.sol L137 — the missing getter
-        // is itself part of what C.7 reports.
+    /// @notice Inverts the reproduction that fired `setIncendiaryModule` from the still-live admin: after
+    ///         `renounceIncendiaryAdmin` the slot reads zero through the new getter, and no caller, the
+    ///         former admin included, can set a module or renounce again (PP-D57 (vii) and (xiii)).
+    function test_P1_C7_theRenouncedIncendiaryAdminCanNeverSetAModule() public {
         address module = makeAddr("incendiaryModule");
+        assertEq(hook.incendiaryAdmin(), moduleAdmin, "premise - the constructor seats moduleAdmin, now readable");
 
         vm.expectRevert(AureumFeeRoutingHook.NotIncendiaryAdmin.selector);
         vm.prank(stranger);
-        hook.setIncendiaryModule(module);
+        hook.renounceIncendiaryAdmin();
 
+        vm.expectEmit(true, false, false, false, address(hook));
+        emit IncendiaryAdminRenounced(moduleAdmin);
+        vm.prank(moduleAdmin);
+        hook.renounceIncendiaryAdmin();
+        assertEq(hook.incendiaryAdmin(), address(0), "the renounce burns the slot");
+
+        vm.expectRevert(AureumFeeRoutingHook.NotIncendiaryAdmin.selector);
         vm.prank(moduleAdmin);
         hook.setIncendiaryModule(module);
 
-        assertEq(
-            hook.incendiaryModule(),
-            module,
-            "constructor-set moduleAdmin still fires setIncendiaryModule; the one-shot slot is live as at deploy"
-        );
+        vm.expectRevert(AureumFeeRoutingHook.NotIncendiaryAdmin.selector);
+        vm.prank(moduleAdmin);
+        hook.renounceIncendiaryAdmin();
+
+        assertEq(hook.incendiaryModule(), address(0), "no module was ever set");
     }
 
-    /// @notice CCBMultiplier's deployer-pinned registrySetter still fires
-    ///         setMiliariumRegistry; no deploy script ever sealed it.
-    function test_P1_C7_theCCBMultiplierRegistrySetterIsStillLiveOnTheDeployer() public {
-        // Verified asymmetry: CCBMultiplier carries TWO sibling one-shot slots pinned to the
-        // deployer at construction, registrySetter and gaugeRegistrySetter. script/DeployStageP.s.sol
-        // L201 calls setGaugeRegistry and therefore seals the gauge one; no script anywhere calls
-        // setMiliariumRegistry on CCBMultiplier — the only setMiliariumRegistry in script/ is
-        // DeployStageK.s.sol L161 on TVLOracle. Sealing one sibling but not the other is what makes
-        // this an omission rather than a design choice.
+    /// @notice Inverts the reproduction that showed `registrySetter` live on its deployer: the spine's seal
+    ///         re-sets the registry the multiplier already reads, burning the setter without moving the
+    ///         registry, after which no caller can set it again (PP-D57 (vi) and (xiii)).
+    function test_P1_C7_theSameRegistrySealBurnsTheSetterForever() public {
         IMiliariumRegistry replacement = IMiliariumRegistry(makeAddr("replacementRegistry"));
+        assertEq(multiplier.registrySetter(), address(this), "premise - the constructor pins the deployer");
         assertEq(
-            multiplier.registrySetter(),
-            address(this),
-            "slot is unsealed and still pinned to the address that deployed the contract"
+            address(multiplier.miliariumRegistry()),
+            address(miliReg),
+            "premise - the constructor already bound the registry"
+        );
+
+        multiplier.setMiliariumRegistry(miliReg);
+
+        assertEq(multiplier.registrySetter(), address(0), "the same-registry seal burns the setter");
+        assertEq(
+            address(multiplier.miliariumRegistry()),
+            address(miliReg),
+            "and leaves the bound registry where the constructor put it"
         );
 
         vm.expectRevert(CCBMultiplier.OnlyRegistrySetter.selector);
-        vm.prank(stranger);
         multiplier.setMiliariumRegistry(replacement);
-
-        multiplier.setMiliariumRegistry(replacement);
-        assertEq(
-            multiplier.registrySetter(),
-            address(0),
-            "firing the setter seals it; production never fires this one, so the slot stays at its deploy-time value forever"
-        );
-
-        assertEq(
-            address(multiplier.miliariumRegistry()),
-            address(replacement),
-            "test-contract registrySetter still fires setMiliariumRegistry; the one-shot slot is live as at deploy"
-        );
     }
 }

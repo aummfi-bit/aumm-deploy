@@ -40,10 +40,12 @@ import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
  *      unknown at construction time (Stage K / Stage L modules and the
  *      Stage H EmissionDistributor are all deployed after this Stage D
  *      hook); set post-deploy via one-shot setters mirroring Stage C's
- *      AuMM.setMinter per C-D11 — three independent admin slots, each
- *      zeroed atomically with its module-set. Post-state invariant:
+ *      AuMM.setMinter per C-D11 — three independent admin slots. The
+ *      governance and emission-recorder slots are zeroed atomically with
+ *      their module-set; the Incendiary slot is renounced without a module
+ *      per PP-D57 (vii). Post-state invariant:
  *      governanceModule != 0 AND _governanceAdmin == 0 AND
- *      incendiaryModule != 0 AND _incendiaryAdmin == 0 AND
+ *      _incendiaryAdmin == 0, with incendiaryModule left zero AND
  *      emissionRecorder != 0 AND _emissionRecorderAdmin == 0 — no owner,
  *      no upgrade path.
  */
@@ -209,6 +211,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @param module The Incendiary module address.
     event IncendiaryModuleSet(address indexed module);
 
+    /// @notice Emitted when the Incendiary admin renounces its one-shot
+    ///         authority without setting a module, per PP-D57 (vii).
+    /// @param formerAdmin The admin that renounced.
+    event IncendiaryAdminRenounced(address indexed formerAdmin);
+
     /// @notice Emitted when the emission recorder is set (exactly once,
     ///         via the one-shot setter).
     /// @param recorder The emission recorder (EmissionDistributor) address.
@@ -302,6 +309,27 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         incendiaryModule = module;
         _incendiaryAdmin = address(0);
         emit IncendiaryModuleSet(module);
+    }
+
+    /// @notice Burn the Incendiary admin without setting a module, per
+    ///         PP-D57 (vii). Callable only by the constructor-set moduleAdmin.
+    /// @dev `routeIncendiaryDeposit` has no caller in src/, so the module is
+    ///      never bound. Renouncing leaves `incendiaryModule` zero, so
+    ///      `setIncendiaryModule` reverts `NotIncendiaryAdmin` and
+    ///      `routeIncendiaryDeposit` reverts `ModuleNotSet` forever: the
+    ///      surface stays, per PP-D2, but can never be armed.
+    function renounceIncendiaryAdmin() external {
+        address formerAdmin = _incendiaryAdmin;
+        if (msg.sender != formerAdmin) revert NotIncendiaryAdmin();
+        _incendiaryAdmin = address(0);
+        emit IncendiaryAdminRenounced(formerAdmin);
+    }
+
+    /// @notice The Incendiary module's one-shot setter authority; zero once
+    ///         the module is set or the authority is renounced.
+    /// @return The current Incendiary admin, or zero.
+    function incendiaryAdmin() external view returns (address) {
+        return _incendiaryAdmin;
     }
 
     /// @notice Set the Aureum emission recorder exactly once. Callable

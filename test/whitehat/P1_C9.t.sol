@@ -69,12 +69,12 @@ contract P1_C9_RecoveryReportsSuccessIndependentOfDeliveryTest is Test {
     function test_P1_C9_theSuccessEventReportsTheFullAmountWhileTheHookStillHoldsIt() public {
         // The single mock is legitimate under lesson PP10 and is not circular: the mechanism
         // under test is the EVENT's unconditional emission, not the callback. amountIn is read
-        // from balanceOf at L831 BEFORE the unlock, the unlock's return is explicitly discarded
-        // at L834-L840, and the event is emitted after it regardless of outcome, so making the
+        // from balanceOf at L858 BEFORE the unlock, the unlock's return is explicitly discarded
+        // at L862-L868, and the event is emitted after it regardless of outcome, so making the
         // callback a no-op is what renders that independence observable. The assertion is a
         // MISMATCH between what the event claims and what the chain still holds. In production
-        // the same mismatch arises without any mock, because L611's depositAmount == 0 early
-        // return returns before the ReserveDidNotRise proof-of-delivery at L640-L642 can run.
+        // the same mismatch arises without any mock, because L639's depositAmount == 0 early
+        // return returns before the ReserveDidNotRise proof-of-delivery at L669-L671 can run.
         vm.prank(moduleAdmin);
         hook.setGovernanceModule(governance);
 

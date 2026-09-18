@@ -63,7 +63,7 @@ import { DeployIxMetallum } from "../../script/pools/DeployIxMetallum.s.sol";
  *         close gate stays byte-identical): setUp deploys the base layer with a real-EOA governor and
  *         a full stub roster replayed in-process from DeployTestnetStubs, at GENESIS_BLOCK = fork
  *         block + one epoch, then drives the composed DeployStageP.run() (the production spine, not
- *         deploy()). The test body re-asserts the four post-conditions (d2c) and the Router seat (d2d).
+ *         deploy()). The test body re-asserts the six post-conditions (d2c, PP-D57) and the Router seat (d2d).
  * @dev    Run file-scoped per D35/D36: forge test match-path on this file, fork-url mainnet, threads 1.
  */
 contract StagePRunRehearsalTest is Test {
@@ -335,7 +335,7 @@ contract StagePRunRehearsalTest is Test {
         // --- Orchestrate: the PRODUCTION spine per PB-D25 — run(), never the deploy() entry the P10
         // fixture drives. run() reads GOVERNANCE_MULTISIG back as the real EOA governor rather than
         // overriding it, asserts the base-layer seat matches, composes the sub-scripts' own run()
-        // entries under nested governor broadcasts (proven at PB3.4d1), and fires the four
+        // entries under nested governor broadcasts (proven at PB3.4d1), and fires the six
         // post-conditions in-run at the future genesis. ---
         orchestrator.run();
         // PP-D46 — `run()` ARMS the incendiary registry and stops, because `DeployStageL.run()` only proposes under the PP-D44 two-step, so the production procedure is TWO invocations and the rehearsal drives both; this is the PRODUCTION entry, not the testable twin, which is the whole point of rehearsing it.
@@ -573,6 +573,33 @@ contract StagePRunRehearsalTest is Test {
             address(orchestrator.ccbMultiplier().gaugeRegistry()) != address(orchestrator),
             "CCB seal still points at the deploy-time placeholder"
         );
+    }
+
+    /// @notice Post-condition (5) — the PP-D57 (vi) seal on the CCB Miliarium-registry setter. Under run()
+    ///         it lands through the governor's direct `setMiliariumRegistry` call, the leg PP-D57 (vi) flags
+    ///         as PP15's risk, so reading the slot back through the production spine is the witness a name
+    ///         grep cannot give. The seal re-sets the registry already bound, so the bound registry must
+    ///         still be the Stage-J instance.
+    function test_registrySetterIsSealedByTheSpine() public view {
+        assertEq(
+            orchestrator.ccbMultiplier().registrySetter(),
+            address(0),
+            "CCB Miliarium-registry setter still live after run()"
+        );
+        assertEq(
+            address(orchestrator.ccbMultiplier().miliariumRegistry()),
+            address(orchestrator.miliariumRegistry()),
+            "the seal moved the CCB Miliarium registry off the Stage-J instance"
+        );
+    }
+
+    /// @notice Post-condition (6) — the PP-D57 (vii) burn of the hook's Incendiary admin, fired by the
+    ///         governor inside the Stage-I wiring. The hook was deployed above with GOVERNOR as its
+    ///         moduleAdmin_, so the slot held the governor before run() and must read zero after it, with
+    ///         no module ever bound.
+    function test_incendiaryAdminIsBurnedByTheSpine() public view {
+        assertEq(hook.incendiaryAdmin(), address(0), "hook Incendiary admin still live after run()");
+        assertEq(hook.incendiaryModule(), address(0), "an Incendiary module was bound");
     }
 
     /// @notice The spine alone leaves `incendiaryRegistry` at zero; the assertion holds only because `setUp`

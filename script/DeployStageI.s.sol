@@ -15,7 +15,8 @@ import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
  *         script only binds them:
  *
  *           1. hook.setEmissionRecorder(distributor)             — I-D16 one-shot
- *           2. distributor.setAuMTContractForPool(pilot, hook) ×3 — I-D9 one-shot
+ *           2. hook.renounceIncendiaryAdmin()                    — PP-D57 (vii) burn
+ *           3. distributor.setAuMTContractForPool(pilot, hook) ×3 — I-D9 one-shot
  *
  * @dev I-D18 — wiring authority is GOVERNANCE_MULTISIG only; there is no
  *      deployer→multisig handoff. By the time this script runs in the
@@ -29,12 +30,14 @@ import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
  *      and `setAuMTContractForPool`'s `onlyGovernance` gate (I-D9). The
  *      `setEmissionRecorder` call self-zeroes `_emissionRecorderAdmin` as
  *      its second flag, so no separate hook-side handoff is needed either.
+ *      The same `moduleAdmin_` seed makes the multisig the hook's
+ *      `_incendiaryAdmin`, which step 2 renounces per PP-D57 (vii).
  *
  * @dev Production execution — GOVERNANCE_MULTISIG is the Stage A—K
  *      Authorizer Safe, which has no EOA private key. `run()` is therefore a
  *      simulation / calldata reference: `vm.startBroadcast(governor)` sets the
  *      simulated sender to the multisig so the gated calls succeed under
- *      `forge script` simulation; real on-chain submission is the same four
+ *      `forge script` simulation; real on-chain submission is the same five
  *      calls executed as a Safe transaction batch. The fork test
  *      (`test/fork/DeployStageI.t.sol`) exercises the `deploy(governor)`
  *      entry, which applies the multisig identity via `vm.startPrank` so the
@@ -65,7 +68,7 @@ contract DeployStageI is Script {
     ///         Step 7 already handed distributor governance to GOVERNANCE_MULTISIG.
     error GovernanceNotMultisig(address actual);
 
-    /// @notice `forge script` entry — broadcasts the four wiring calls as the
+    /// @notice `forge script` entry — broadcasts the five wiring calls as the
     ///         GOVERNANCE_MULTISIG read from env (simulation / Safe-batch reference).
     function run() external {
         address governor = vm.envAddress("GOVERNANCE_MULTISIG");
@@ -100,7 +103,11 @@ contract DeployStageI is Script {
         //    _emissionRecorderAdmin, so no separate hook-side handoff is needed.
         hook.setEmissionRecorder(address(distributor));
 
-        // 2. Bind each pilot pool's recorder gate to the hook (I-D9) — one-shot per
+        // 2. Burn the hook's Incendiary admin (PP-D57 (vii) / (xiii)): routeIncendiaryDeposit has no
+        //    caller, so the module is never bound and its one-shot authority is renounced, not left live.
+        hook.renounceIncendiaryAdmin();
+
+        // 3. Bind each pilot pool's recorder gate to the hook (I-D9) — one-shot per
         //    pool. Slots 01/05/14 = ixHelvetia / ixEdelweiss / ixAurebit (Stage E).
         address[3] memory pilots = [
             vm.envAddress("MILIARIUM_POOL_01"),

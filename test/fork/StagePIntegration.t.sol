@@ -348,7 +348,7 @@ abstract contract StagePIntegrationFixture is Test {
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv("MILIARIUM_POOL_28", vm.toString(stageNPools[17]));
 
-        // --- Orchestrate: DeployStageP runs J→F→G→H→setEmissionsRecorder→I→M→N→(seedFoundingPool×3 + setGovernanceContract)→L→K, then asserts the four post-conditions in-run ---
+        // --- Orchestrate: DeployStageP runs J→F→G→H→setEmissionsRecorder→I→M→N→(seedFoundingPool×3 + setGovernanceContract)→L→K, then asserts the six post-conditions in-run ---
         orchestrator.deploy();
         // PP-D46 — the spine ARMS the incendiary registry and stops, because `DeployStageL.run()` only proposes under the PP-D44 two-step; the accept is a separate invocation one block later, and this fixture drives it explicitly rather than having it buried inside `DeployStageL.deploy()`, which PP4.1c20a rejected on the ground that it would make a fork test assert a binding that production reaches only by a separate operator action.
         vm.roll(block.number + 1);
@@ -637,7 +637,7 @@ abstract contract StagePIntegrationFixture is Test {
 /**
  * @title StagePWiringTest
  * @notice P-D34 two-layer split wiring layer (H13) — the independent external witness of the
- *         orchestrator's wiring. The four in-run post-conditions already reverted inside
+ *         orchestrator's wiring. The six in-run post-conditions already reverted inside
  *         `deploy()`; this contract re-asserts the key binds from outside.
  * @dev Reads the fixture's own pool arrays and typed handles (`orchestrator`, `hook`, `vault`,
  *      `aumm`, `bodenseePool`) — never `vm.env`, so the env oracle the orchestrator's
@@ -1691,7 +1691,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         assertGt(amountOutExempt, 0, "pool is still trading after the three-call sequence");
         // Exact flatness is the wrong shape here: the hook does not compute its own fee but
         // collects the Vault's already-charged aggregate through collectSwapAggregateFeesForHook
-        // at AureumFeeRoutingHook.sol L381-L383, so recovery mode starves the path at its source.
+        // at AureumFeeRoutingHook.sol L409-L411, so recovery mode starves the path at its source.
         // Measured on this fixture the control rise is 24963783544357 and the recovery-mode rise
         // is 2483268481, a ratio of about 10053 to 1; the hook held ZERO svZCHF and ZERO sUSDS
         // immediately before the recovery-mode swap, as the emitted logs show, so the residual is

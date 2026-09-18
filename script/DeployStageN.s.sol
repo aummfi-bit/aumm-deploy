@@ -49,7 +49,7 @@ import { EmissionDistributor } from "../src/emission/EmissionDistributor.sol";
  *        MILIARIUM_REGISTRY    address  — IMiliariumSlotRegistry (replaceSlot target)
  *        GAUGE_REGISTRY        address  — GaugeRegistry (seedFoundingPool target)
  *        EMISSION_DISTRIBUTOR  address  — EmissionDistributor (setAuMTContractForPool target)
- *        FEE_ROUTING_HOOK      address  — shared-hook recorder (I-D9; per DeployStageI:111)
+ *        FEE_ROUTING_HOOK      address  — shared-hook recorder (I-D9; per DeployStageI:118)
  *        MILIARIUM_POOL_02     address  — ixAetheron (slot 02)
  *        MILIARIUM_POOL_06     address  — ixLibertas (slot 06)
  *        MILIARIUM_POOL_12     address  — ixStrata (slot 12)

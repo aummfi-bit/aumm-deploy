@@ -30,11 +30,12 @@ import { VotingWeight } from "../src/governance/VotingWeight.sol";
 import { AureumGovernance } from "../src/governance/AureumGovernance.sol";
 import { AureumGovernanceAuthorizer } from "../src/governance/AureumGovernanceAuthorizer.sol";
 import { AuMMMinterRouter } from "../src/token/AuMMMinterRouter.sol";
+import { AureumFeeRoutingHook } from "../src/fee_router/AureumFeeRoutingHook.sol";
 
 /**
  * @title DeployStageP
  * @notice Thin P9.5 orchestrator per P-D32 — deploys no contract itself; delegates to J/F/G/H/I/M/N/L/K
- *         in chain order, 3 direct binds, 4 post-conditions.
+ *         in chain order, 3 direct binds, the two CCBMultiplier seals, and its post-condition checks.
  * @dev The base layer (tokens/vault/factory/hook/der Bodensee/26 pools) is a fixture/env input per P-D31
  *      Tier A and MUST be deployed with GOVERNANCE_MULTISIG == address(this) — fixture ordering:
  *      new DeployStageP → setEnv GOVERNANCE_MULTISIG=address(orchestrator) → deploy base layer → deploy().
@@ -47,6 +48,10 @@ contract DeployStageP is Script {
     error RosterPoolRecorderUnbound(address pool);
     error AuthorizerNotMigrated(address expected, address actual);
     error CCBGaugeRegistryNotSealed(address expected, address actual);
+    /// @dev Fires when the CCBMultiplier's Miliarium-registry setter is still live after the seal, per PP-D57 (xiii).
+    error CCBMiliariumRegistryNotSealed(address registrySetter);
+    /// @dev Fires when the hook's Incendiary admin is still live after DeployStageI's renounce, per PP-D57 (xiii).
+    error HookIncendiaryAdminNotBurned(address incendiaryAdmin);
     /// @dev Fires when the accept entry completes with the L-D25 boost leg still at `address(0)`, per PP-D46.
     error IncendiaryRegistryNotBound();
 
@@ -144,6 +149,9 @@ contract DeployStageP is Script {
         // PB-D18 (v) — seal the CCBMultiplier delta_global enumeration to the concrete GaugeRegistry now that
         // the G-stack exists; forwarded through `f` because f (not this orchestrator) is the pinned setter.
         f.sealGaugeRegistry(gaugeRegistry);
+        // PP-D57 (xiii) — burn the CCBMultiplier registrySetter by re-setting the Miliarium registry it already
+        // reads, through the same forwarder authority.
+        f.sealMiliariumRegistry(miliariumRegistry);
 
         DeployStageH h = new DeployStageH();
         emissionDistributor = h.deploy(address(h));
@@ -226,6 +234,8 @@ contract DeployStageP is Script {
         // CCB seal — direct governor call (PB-D23 (i) dual-path; broadcast rewrote the CREATE sender to governor).
         vm.startBroadcast(governor);
         ccbMultiplier.setGaugeRegistry(gaugeRegistry);
+        // PP-D57 (xiii) — the Miliarium seal, re-setting the registry the CCBMultiplier already reads.
+        ccbMultiplier.setMiliariumRegistry(miliariumRegistry);
         vm.stopBroadcast();
 
         DeployStageH h = new DeployStageH();
@@ -296,6 +306,15 @@ contract DeployStageP is Script {
         if (sealedGauge != address(gaugeRegistry)) {
             revert CCBGaugeRegistryNotSealed(address(gaugeRegistry), sealedGauge);
         }
+
+        // Post-condition (5) — the CCBMultiplier Miliarium-registry seal burned registrySetter (PP-D57 (xiii)). The gauge
+        // seal's value check would pass unsealed here, since the constructor already received the concrete registry.
+        address liveRegistrySetter = ccbMultiplier.registrySetter();
+        if (liveRegistrySetter != address(0)) revert CCBMiliariumRegistryNotSealed(liveRegistrySetter);
+
+        // Post-condition (6) — DeployStageI renounced the hook's Incendiary admin (PP-D57 (vii) / (xiii)).
+        address liveIncendiaryAdmin = AureumFeeRoutingHook(hook).incendiaryAdmin();
+        if (liveIncendiaryAdmin != address(0)) revert HookIncendiaryAdminNotBurned(liveIncendiaryAdmin);
     }
 
     function _rosterPools() internal view returns (address[26] memory) {
