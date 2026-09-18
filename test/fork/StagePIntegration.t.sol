@@ -804,7 +804,8 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
 
     /// @notice P-D36 Leg D — CCB month-walk: updateMultiplier's BLOCKS_PER_EPOCH cadence + F-8
     ///         anti-cyclical evolution on the orchestrator-deployed engine reading the K-wire-(8)-bound
-    ///         registry. Only pilot 01 is EMA-matured (via _matureStack), so poolEMA >> currentAgg/28 and
+    ///         registry. Only pilot 01 is EMA-matured (via _matureStack), so the readiness gate zeroes every other
+    ///         pool the Miliarium walk reads, poolEMA sits far above the mean of the pools walked (PP-D57 (iii)), and
     ///         the intra channel steps M_i down -STEP_SIZE each epoch off INITIAL_MULTIPLIER. No prank —
     ///         updateMultiplier is permissionless (the P-D38 handle-cache is kept for uniformity).
     function test_legD_ccbMonthWalkEvolvesMultiplier() public {

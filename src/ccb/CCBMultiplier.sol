@@ -15,8 +15,9 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  *         `updateMultiplier` per `BLOCKS_PER_EPOCH` cadence. The `delta_global` baseline aggregates
  *         over ALL currently-Active gauges via `IGaugeRegistry` enumeration per PB-D18 (ii),
  *         superseding the Miliarium-only OQ-23 (iii.b) universe; the `delta_intra` baseline keeps
- *         its own Miliarium-only sum per PB-D18 (iii) (OQ-23 (iv.a) unchanged). Aggregate baseline
- *         updates atomically with per-pool F-8 evolution.
+ *         its own Miliarium-only sum per PB-D18 (iii), OQ-23 (iv.a)'s simple mean taken over the live
+ *         Miliarium count rather than a fixed 28 per PP-D57 (iii). Aggregate baseline updates
+ *         atomically with per-pool F-8 evolution.
  * @dev Stage F scaffold (F3.3a) — storage layout, constants, errors only. Constructor + setter land
  *      at F3.3b; `updateMultiplier` at F3.3d; `getMultiplier` at F3.3e. A gauge-gated boost activation
  *      path was removed at P6.6 per P-D22 (O-D4) — dead since the auto-gauge pivot removed its sole
@@ -57,9 +58,6 @@ contract CCBMultiplier {
 
     /// @notice Multiplier baseline — 1.0 in 1e18 fixed-point. F-8 per-pool initial value; referenced by `getMultiplier` for non-Miliarium and unwritten pools.
     uint256 public constant INITIAL_MULTIPLIER = 1e18;
-
-    /// @notice Fixed Miliarium constellation size — 28 pools per `04_tokenomics.md` §vii. Divisor for the `delta_intra` baseline `miliariumAvg = miliariumAgg / MILIARIUM_POOL_COUNT` per PB-D18 (iii) (OQ-23 (iv.a) simple mean).
-    uint256 public constant MILIARIUM_POOL_COUNT = 28;
 
     // -------------------------------------------------------------------------
     // Storage — registries (one-shot setter pattern per F-D20, mirrored per PB-D18 (v))
@@ -205,7 +203,7 @@ contract CCBMultiplier {
 
     /**
      * @notice Evolve pool `M_i` by epoch-gated anti-cyclical F-8 steps when outside aggregate and intra dead zones.
-     * @dev Per F-D6, F-D16, F-D18, F-D19, F-D25, PB-D18 (ii)/(iii), PP-D52 (xii). Gate-order convention —
+     * @dev Per F-D6, F-D16, F-D18, F-D19, F-D25, PB-D18 (ii)/(iii), PP-D52 (xii), PP-D57 (iii). Gate-order convention —
      *      (1) Miliarium → (2) cadence → (3) readiness — so non-member, too-early and not-yet-readable calls
      *      revert. The readiness gate is `EmaNotReady`, evaluated once on `pool`'s own EMA immediately after
      *      the cadence check and reused as `poolEMA` at the intra comparison; it writes nothing and consumes
@@ -221,8 +219,11 @@ contract CCBMultiplier {
      *      ITS OWN prior cadence window, closing D.4's second face, where one global slot re-keyed by whoever
      *      updated last cost every subsequent updater in the same epoch its entire global channel.
      *      delta_intra baseline per PB-D18 (iii): its own Miliarium-only sum — decoupled from the global
-     *      aggregate — with simple mean `miliariumAgg / MILIARIUM_POOL_COUNT` against `pool`'s gated TVL EMA
-     *      (OQ-23 (iv.a) unchanged); Miliarium pools legitimately appear in both roster walks. Prior-value
+     *      aggregate — with simple mean `miliariumAgg / poolCount` against `pool`'s gated TVL EMA, the
+     *      divisor being the `miliariumPoolsCount()` entries the loop walks rather than a fixed 28 per
+     *      PP-D57 (iii) and left unguarded because `MiliariumRegistry` membership, checked first, implies
+     *      `poolCount >= 1` (OQ-23 (iv.a)'s simple mean); Miliarium pools legitimately appear in both
+     *      roster walks. Prior-value
      *      sentinel: `M_i[pool] == 0 → INITIAL_MULTIPLIER` ahead of summed steps and clamps (F-D25).
      *      Strict-inequality dead-zone comparisons (`>` / `<`): boundary equality stays neutral across both
      *      channels per F-D19. Anti-cyclical `delta_global` polarity per F-D19.
@@ -257,7 +258,7 @@ contract CCBMultiplier {
             miliariumAgg += _gatedTvlEMA(miliariumRegistry.miliariumPoolAt(i));
         }
 
-        uint256 miliariumAvg = miliariumAgg / MILIARIUM_POOL_COUNT;
+        uint256 miliariumAvg = miliariumAgg / poolCount;
         int256 deltaIntra;
         uint256 upperBoundIntra = miliariumAvg * (FixedPoint.ONE + DEAD_ZONE) / FixedPoint.ONE;
         uint256 lowerBoundIntra = miliariumAvg * (FixedPoint.ONE - DEAD_ZONE) / FixedPoint.ONE;

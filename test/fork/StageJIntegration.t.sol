@@ -97,7 +97,7 @@ abstract contract StageJIntegrationFixture is Test {
 
 contract StageJDenseEnumerationTest is StageJIntegrationFixture {
     uint256 internal constant UNIFORM_TVL = 1_000e18;
-    uint256 internal constant EXPECTED_POST_STEP_M = 95e16;
+    uint256 internal constant INITIAL_MULTIPLIER = 1e18;
 
     function test_StageJ_DenseEnumeration_RealRegistryThreePoolsNoZero() external {
         assertEq(registry.miliariumPoolsCount(), 3, "dense count = 3 real pools");
@@ -128,8 +128,8 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
 
         multiplier.updateMultiplier(pilotPools[0]);
 
-        // deltaGlobal = 0 (F-D18 cold-start sentinel: lastProtocolAggregateEMA[pilotPools[0]] == 0); poolEMA (1_000e18) far exceeds miliariumAgg/28, so deltaIntra = -STEP
-        assertEq(multiplier.M_i(pilotPools[0]), EXPECTED_POST_STEP_M, "F-8 step from real-registry aggregate (deltaIntra = -STEP)");
+        // deltaGlobal = 0 (F-D18 cold-start sentinel: lastProtocolAggregateEMA[pilotPools[0]] == 0); poolEMA (1_000e18) equals miliariumAgg/3 over the three real-registry pools walked (PP-D57 (iii)), so deltaIntra = 0
+        assertEq(multiplier.M_i(pilotPools[0]), INITIAL_MULTIPLIER, "F-8 neutral from real-registry aggregate: the mean of the 3 walked equals the pool (deltaIntra = 0)");
         assertEq(multiplier.lastProtocolAggregateEMA(pilotPools[0]), 3 * UNIFORM_TVL, "aggregate = gauge-roster sum (mirrors the 3 pilots per PB-D18 (ii))");
     }
 
@@ -181,8 +181,9 @@ contract StageJDenseEnumerationTest is StageJIntegrationFixture {
         // PB-D18 (ii)/(iii) decoupling — the aggregate walks the UNMOVED gauge roster {pilot0, pilot1, pilot2}
         // = 9_000e18 + 2 × UNIFORM_TVL: pilot0's distinctive TVL survives, newPool is absent. The Miliarium
         // universe followed the swap: updateMultiplier(newPool) passes the isMiliarium gate (post-swap member)
-        // and its intra mean is the post-swap sum {newPool, pilot1, pilot2}/28, far below newPool's EMA.
+        // and its intra mean is the post-swap sum {newPool, pilot1, pilot2}/3, equal to newPool's EMA, so the step
+        // is neutral; were the dropped pilot0's 9_000e18 in that walk, newPool would sit below the mean (PP-D57 (x)).
         assertEq(multiplier.lastProtocolAggregateEMA(newPool), 9_000e18 + 2 * UNIFORM_TVL, "aggregate decoupled from swap - dropped pilot0 survives in gauge roster");
-        assertEq(multiplier.M_i(newPool), EXPECTED_POST_STEP_M, "F-8 step on post-swap newPool (deltaIntra = -STEP from the post-swap Miliarium mean)");
+        assertEq(multiplier.M_i(newPool), INITIAL_MULTIPLIER, "F-8 neutral on post-swap newPool: the post-swap Miliarium mean excludes the dropped pilot0 (deltaIntra = 0)");
     }
 }

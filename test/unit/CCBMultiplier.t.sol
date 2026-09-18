@@ -307,7 +307,7 @@ contract CCBMultiplierTest is Test {
         ema.setTVLEMA(POOL_A, 1000e18);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 1000e18);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
     }
 
     function test_updateMultiplier_globalRising_decrement() public {
@@ -335,7 +335,7 @@ contract CCBMultiplierTest is Test {
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(secondEpochEnd);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - STEP_SIZE);
     }
 
     function test_updateMultiplier_globalFalling_increment() public {
@@ -393,9 +393,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBeforeSecond = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        int256 deltaIntraOnly = -STEP_DELTA_I256;
-        uint256 expected = _applySignedDelta(miBeforeSecond, deltaIntraOnly);
-        assertEq(multiplier.M_i(POOL_A), expected);
+        assertEq(multiplier.M_i(POOL_A), miBeforeSecond);
     }
 
     function test_updateMultiplier_globalOneWeiAboveBoundary_decrement() public {
@@ -426,7 +424,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miAfterFirst = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        assertEq(multiplier.M_i(POOL_A), miAfterFirst - 2 * STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), miAfterFirst - STEP_SIZE);
     }
 
     function test_updateMultiplier_globalLowerBoundary_neutral() public {
@@ -457,9 +455,7 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch2);
         uint256 miBeforeSecond = multiplier.M_i(POOL_A);
         multiplier.updateMultiplier(POOL_A);
-        int256 deltaIntraOnly = -STEP_DELTA_I256;
-        uint256 expected = _applySignedDelta(miBeforeSecond, deltaIntraOnly);
-        assertEq(multiplier.M_i(POOL_A), expected);
+        assertEq(multiplier.M_i(POOL_A), miBeforeSecond);
     }
 
     function test_updateMultiplier_globalOneWeiBelowBoundary_increment() public {
@@ -559,7 +555,9 @@ contract CCBMultiplierTest is Test {
         multiplier.updateMultiplier(POOL_A);
         uint256 miAfterFirst = multiplier.M_i(POOL_A);
         uint256 inc = (unit * 110) / 100;
-        ema.setTVLEMA(POOL_A, inc);
+        // POOL_A doubles against its peers, above the Miliarium mean, so the intra step fires
+        // alongside the global one (PP-D57 (iii)).
+        ema.setTVLEMA(POOL_A, 2 * inc);
         ema.setTVLEMA(POOL_B, inc);
         ema.setTVLEMA(POOL_C, inc);
         uint256 secondEpochEnd = firstEpochEnd + AureumTime.BLOCKS_PER_EPOCH;
@@ -602,21 +600,25 @@ contract CCBMultiplierTest is Test {
         registry.setMiliarium(POOL_A, true);
         registry.setMiliarium(POOL_B, true);
         registry.setMiliarium(POOL_C, true);
-        uint256 unit = 28_000e18;
-        ema.setTVLEMA(POOL_A, unit);
-        ema.setTVLEMA(POOL_B, unit);
-        ema.setTVLEMA(POOL_C, unit);
+        // POOL_A dominates a rising aggregate, so both channels step down every epoch and the
+        // clamp binds before the loop ends, mirroring clampCeiling below (PP-D57 (iii)).
+        uint256 u0 = 10_000e18;
+        ema.setTVLEMA(POOL_A, u0);
+        ema.setTVLEMA(POOL_B, u0);
+        ema.setTVLEMA(POOL_C, u0);
         uint256 b = START_BLOCK + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(b);
         multiplier.updateMultiplier(POOL_A);
-        uint256 inc = (unit * 110) / 100;
-        for (uint256 k = 0; k < 3; ++k) {
-            ema.setTVLEMA(POOL_A, inc);
-            ema.setTVLEMA(POOL_B, inc);
-            ema.setTVLEMA(POOL_C, inc);
+        uint256 sum = 31_000e18;
+        for (uint256 k = 0; k < 4; ++k) {
+            uint256 rest = sum - 200e18;
+            ema.setTVLEMA(POOL_A, rest);
+            ema.setTVLEMA(POOL_B, 100e18);
+            ema.setTVLEMA(POOL_C, 100e18);
             b = b + AureumTime.BLOCKS_PER_EPOCH;
             vm.roll(b);
             multiplier.updateMultiplier(POOL_A);
+            sum += 1000e18;
         }
         assertEq(multiplier.M_i(POOL_A), CLAMP_FLOOR);
     }
@@ -746,7 +748,7 @@ contract CCBMultiplierTest is Test {
         ema.setTVLEMA(poolX, 777e18);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 777e18);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
     }
 
     function test_updateMultiplier_decoupling_nonMiliariumGaugeDrivesGlobal() public {
@@ -811,14 +813,14 @@ contract CCBMultiplierTest is Test {
         vm.roll(epoch1);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 0);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
         ema.setTVLEMA(POOL_A, 10_000e18);
         ema.setTVLEMA(POOL_B, 10_000e18);
         uint256 epoch2 = epoch1 + AureumTime.BLOCKS_PER_EPOCH;
         vm.roll(epoch2);
         multiplier.updateMultiplier(POOL_A);
         assertEq(multiplier.lastProtocolAggregateEMA(POOL_A), 0);
-        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER - 2 * STEP_SIZE);
+        assertEq(multiplier.M_i(POOL_A), INITIAL_MULTIPLIER);
     }
 
     function test_updateMultiplier_decoupling_gaugeLeavesSet_globalFalls() public {

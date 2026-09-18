@@ -42,8 +42,8 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
  * @notice Stage E pilot pools wired through CCB mock interfaces — `EMASampler` / `CCBScore` / `CCBShare` /
  *         `CCBMultiplier` end-to-end.
  * @dev **F-D11** layout and invocation discipline; **F-D26 (a)** replicates `MiliariumPilotPoolBase` E-D24 pattern
- *      locally, does not extend; **F-D23** one-shot gauge-registry seal exercised in `setUp`; **F-D26** 3 pilot pools +
- *      divisor-28 partial-constellation harness scope.
+ *      locally, does not extend; **F-D23** one-shot gauge-registry seal exercised in `setUp`; **F-D26** 3 pilot pools as a
+ *      partial-constellation harness scope, its divisor-28 clause withdrawn by F-D26 v2 per PP-D57 (iii).
  */
 abstract contract CCBEngineFixture is Test {
     // Constants — D-D21 / E-D24 parity
@@ -378,7 +378,6 @@ contract CCBEngineEMAPathTest is CCBEngineFixture {
 contract CCBEngineCompositionTest is CCBEngineFixture {
     uint256 internal constant UNIFORM_TVL = 1_000e18;
     uint256 internal constant INITIAL_MULTIPLIER = 1e18;
-    uint256 internal constant EXPECTED_POST_STEP_M = 95e16;
     uint256 internal constant SHARE_SUM_TOLERANCE = 3;
 
     function test_Fork_CCBEngine_Composition_SharesSumToOne() external {
@@ -410,7 +409,7 @@ contract CCBEngineCompositionTest is CCBEngineFixture {
         );
     }
 
-    function test_Fork_CCBEngine_Composition_DeltaIntraNegStepUnderNearEqualTVL() external {
+    function test_Fork_CCBEngine_Composition_DeltaIntraNeutralUnderEqualTVL() external {
         for (uint256 i = 0; i < 3; ++i) {
             mockOracle.set(pilotPools[i], UNIFORM_TVL);
             sampler.updateEMA(pilotPools[i]);
@@ -432,8 +431,8 @@ contract CCBEngineCompositionTest is CCBEngineFixture {
 
         assertEq(
             multiplier.M_i(pool),
-            EXPECTED_POST_STEP_M,
-            "F-D26 (f) deltaIntra = -STEP_SIZE under near-equal TVL"
+            INITIAL_MULTIPLIER,
+            "PP-D57 (iii): three pilots at equal TVL sit at the mean of the three walked, so deltaIntra is neutral"
         );
     }
 }

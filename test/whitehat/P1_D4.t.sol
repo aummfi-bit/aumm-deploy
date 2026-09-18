@@ -122,7 +122,9 @@ contract P1_D4_UngatedMultiplierTest is Test {
     ///      sample floor and maturity window are genuinely met the step lands at exactly the value
     ///      the pre-fix defect used to reach on a zero-block-old EMA.
     function test_multiplierGatesOnEmaMaturity() public {
-        _seedPoolEma(poolA, SEEDED_EMA);
+        // poolA sits above the constellation mean so the matured positive control has a real intra
+        // step to land; with all three equal the corrected divisor reads it neutral (PP-D57 (iii)).
+        _seedPoolEma(poolA, 2 * SEEDED_EMA);
         _seedPoolEma(poolB, SEEDED_EMA);
         _seedPoolEma(poolZ, SEEDED_EMA);
 
@@ -167,8 +169,10 @@ contract P1_D4_UngatedMultiplierTest is Test {
     ///         untouched by poolA's write to a DIFFERENT mapping slot — and correctly detects the same
     ///         growth poolA did, taking the identical step.
     function test_perPoolBaselineGivesEveryUpdaterTheGlobalStep() public {
-        _seedPoolEma(poolA, SEEDED_EMA);
-        _seedPoolEma(poolB, SEEDED_EMA);
+        // poolA and poolB sit above the Miliarium mean, so each takes a real intra step in both
+        // rounds alongside the global step under test (PP-D57 (iii)).
+        _seedPoolEma(poolA, 2 * SEEDED_EMA);
+        _seedPoolEma(poolB, 2 * SEEDED_EMA);
         _seedPoolEma(poolZ, SEEDED_EMA);
         _seedPoolEma(gaugeC, SEEDED_EMA);
         address[] memory allFour = new address[](4);
@@ -195,7 +199,7 @@ contract P1_D4_UngatedMultiplierTest is Test {
             "round 1: symmetric with poolA, same cold start"
         );
 
-        // gaugeC joins the roster; the aggregate grows from 3x SEEDED_EMA to 4x. One epoch clears
+        // gaugeC joins the roster; the aggregate grows from 5x SEEDED_EMA to 6x. One epoch clears
         // both pools' cadence guards for round 2.
         address[] memory gauges = new address[](4);
         gauges[0] = poolA;
@@ -206,7 +210,7 @@ contract P1_D4_UngatedMultiplierTest is Test {
         vm.roll(block.number + AureumTime.BLOCKS_PER_EPOCH);
 
         // Round 2: poolA first, poolB immediately after, same block. Each reads its OWN round-1
-        // baseline (3x SEEDED_EMA), not a slot the other's call could have overwritten.
+        // baseline (5x SEEDED_EMA), not a slot the other's call could have overwritten.
         multiplier.updateMultiplier(poolA);
         multiplier.updateMultiplier(poolB);
 
