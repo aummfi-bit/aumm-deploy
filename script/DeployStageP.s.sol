@@ -214,7 +214,7 @@ contract DeployStageP is Script {
         // script contract: under --broadcast the script is ephemeral and never deployed, so its
         // address is meaningless. Any non-zero address satisfies the CCBMultiplier constructor,
         // which zero-checks all three registries and calls none of them, and this slot is sealed
-        // to the real GaugeRegistry below once the G stack lands. The fork `deploy()` path at L102
+        // to the real GaugeRegistry below once the G stack lands. The fork `deploy()` path at L134
         // keeps `address(this)` deliberately — there the script contract genuinely exists.
         vm.setEnv("GAUGE_REGISTRY_PLACEHOLDER", vm.toString(governor));
 

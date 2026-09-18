@@ -532,7 +532,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             // No-op: hook already holds `amount` of the deposit token from the caller.
         } else if (address(depositToken) == address(SV_ZCHF) && address(feeToken) == address(ZCHF)) {
             IERC20(address(ZCHF)).forceApprove(address(SV_ZCHF), amount);
-            // Balance-sweep: phase-2 reads depositToken.balanceOf(this) at L336; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
+            // Balance-sweep: phase-2 reads depositToken.balanceOf(this) at L547; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
             // slither-disable-next-line unused-return,calls-loop
             IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
         } else {

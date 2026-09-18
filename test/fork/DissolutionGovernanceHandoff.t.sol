@@ -16,7 +16,7 @@ import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity
 /**
  * @title DissolutionGovernanceHandoffWitness
  * @notice PB2.6 dissolution-time rotation witness per PB-D2 / PB-D11 / PB-D12
- * @dev The in-fork multisig identity is address(orchestrator) (DeployStageP.s.sol L81); the rotation target is orchestrator.governance() (the AureumGovernance instance from DeployStageK)
+ * @dev The in-fork multisig identity is address(orchestrator) (DeployStageP.s.sol L118); the rotation target is orchestrator.governance() (the AureumGovernance instance from DeployStageK)
  * @dev The freeze's "no successor path" — AureumGovernance v1 exposes no generic-call hatch to reach these setters (typed execute dispatch, STAGE_K_NOTES K-D9 / PB-D12 ii) — is the documented structural fact; this witness runtime-asserts only the multisig lockout.
  */
 contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {

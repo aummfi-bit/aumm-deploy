@@ -78,7 +78,7 @@ contract F22_VaultAdminSurfaceUnreachable is StagePIntegrationFixture {
         );
     }
     /// @notice The multisig held this surface through Stages A-K and lost it at the handoff.
-    /// @dev In-fork multisig identity is address(orchestrator) per DeployStageP.s.sol L81. After
+    /// @dev In-fork multisig identity is address(orchestrator) per DeployStageP.s.sol L118. After
     ///      DeployStageK.s.sol L163 seats AureumGovernanceAuthorizer on the Vault, canPerform
     ///      returns false for this account on a non-emergency action, so the Vault rejects it.
     ///      With governance unable to express the call and the multisig unable to make it, no
