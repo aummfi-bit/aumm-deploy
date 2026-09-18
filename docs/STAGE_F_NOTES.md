@@ -528,6 +528,10 @@ The four lines of suppression-justification comments at L268-L269 and L274-L275 
 - **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
 - **`src/ccb/CCBMultiplier.sol` L268-L269** — `deltaIntra` ± step assignments under intra-channel inequality.
 
+### F-D26 v2 amendment (PP4.14, 2026-09-18) — the fixed divisor 28 and the always-stepping intra channel it produced are WITHDRAWN as intended behaviour per PP-D57 (iii) and (x); the three-pilot harness scope stands — status LOCKED
+
+F-D26 accepted the harness's permanent intra step-down under equal TVL as "mechanical-divisor arithmetic, not an implementation defect". It was the defect: seam-1 root cause D.8, ledgered as F-55, files the same divide-by-28 over a smaller walked count, at the twenty-six live pools where this harness walked three. PP4.14 deletes `MILIARIUM_POOL_COUNT`, and `CCBMultiplier.updateMultiplier` now divides the Miliarium sum by `poolCount`, the `miliariumPoolsCount()` entries its loop walks, so OQ-23 (iv.a)'s simple mean survives with its divisor the count walked, and with the three pilots at equal TVL the intra channel reads NEUTRAL rather than `-STEP_SIZE`. What is withdrawn is the divisor clause, the intra-channel consequence drawn from it, and the assertion-scope item pinning `deltaIntra = -STEP_SIZE` under near-equal TVL; the three-pilot scope and the harness mocks stand. PP-D57 (x) renames the CCBEngine case that asserted the step to `test_Fork_CCBEngine_Composition_DeltaIntraNeutralUnderEqualTVL` and has it assert neutral.
+
 ### F-D27 — Unit-test mocks must align with `MILIARIUM_POOL_COUNT == 28` divisor semantics
 
 **Resolved 2026-05-04 at F3.4-fix2.** `CCBMultiplier.sol` L263 derives `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` using the hardcoded canonical divisor 28 (per OQ-23 (iv.a) — `04_tokenomics.md` §vii). Unit tests using `MockMiliariumRegistry` with sub-28-pool lists produce the same partial-constellation artifact F-D26 (f) flags for fork tests: per-pool `tvlEMA` values stay above `miliariumAvg` under any reasonable uniform-TVL setup, forcing `deltaIntra = -STEP_SIZE` independent of the pool's actual intra-band relationship.
@@ -546,6 +550,10 @@ The four lines of suppression-justification comments at L268-L269 and L274-L275 
 - **`src/ccb/CCBMultiplier.sol` L65** — `MILIARIUM_POOL_COUNT = 28` constant declaration.
 - **`src/ccb/CCBMultiplier.sol` L263** — `miliariumAvg = currentAgg / MILIARIUM_POOL_COUNT` consumption.
 - **`test/unit/CCBMultiplier.t.sol`** — `test_updateMultiplier_globalFalling_increment`, `test_updateMultiplier_intraBelow_increment`, `test_updateMultiplier_boostNoOp_noStateChange` corrected at F3.4-fix2 per this rule.
+
+### F-D27 v2 amendment (PP4.14, 2026-09-18) — the pad-to-28 rule is WITHDRAWN as a requirement per PP-D57 (iii) and (x); tests already padded stay correct and are not unpadded — status LOCKED
+
+F-D27 required unit tests asserting `M_i` deltas to pad the mock registry to twenty-eight entries so the fixed divisor would not force the intra step, and named four sub-28 tests as passing by "a coincidence rather than a correctness property". The coincidence was the defect D.8 files. With the divisor now the count walked and OQ-23 (iv.a)'s simple mean otherwise unchanged, a mock registry of any size yields a correct intra baseline, so padding is no longer required, and the padded tests stay correct and are not unpadded. Of the four named tests, `test_updateMultiplier_globalRising_decrement` drops the phantom step from its expectation and `test_updateMultiplier_channelsReinforce` seeds its subject above the mean so the step it asserts is genuine. `test_updateMultiplier_intraAbove_decrement` and `test_updateMultiplier_channelsCancel` pass unedited for two reasons together: each asserts relative to its own first call, which absorbs that call's changed step, and each second call places POOL_A genuinely on the side of the mean its assertion needs, above it in the first test and below it in the second, where the intra step up cancels the global step down.
 
 ---
 
