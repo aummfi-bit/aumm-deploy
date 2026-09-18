@@ -225,7 +225,7 @@ abstract contract StageGIntegrationFixture is Test {
         // synthetic recordDeposit — an artificial "credited but holdless" state the F-17 balanceOf-receipt cap
         // correctly treats as a phantom (zero weight / zero mint). Mock the pilot pools' PUBLIC balanceOf to a
         // dominating value so EmissionDistributor._syncDown and VotingWeight._positionPower no-op across these
-        // fixtures — the receipt invariant is proven in the unit suites and the real-BPT faithful test. Vault
+        // fixtures — unit suites neutralise these reads too; coverage: StageK's real-BPT test and RB-033. Vault
         // BPT accounting is untouched: BalancerPoolToken.balanceOf (L78) is a view into the Vault ledger and
         // removeLiquidity burns via the Vault-internal _burn (Vault.sol:1018), never the pool's public balanceOf.
         for (uint256 i = 0; i < pilotPools.length; ++i) {

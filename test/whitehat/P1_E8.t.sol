@@ -56,8 +56,8 @@ contract LinearBoostRegistry {
 ///         `EmissionDistributor.sol` L532 sits inside the non-zero-registry guard, so unbinding
 ///         freezes `poolBoostCursor` while settles continue, and a later rebind bills the whole
 ///         unbound window as one backlog. E.8's other face — `buyBoost` holding no distributor
-///         reference, so purchases continue while unbound — lives in the registry contract and is
-///         reproduced separately.
+///         reference, so purchases continue while unbound — lives in the registry contract, fixed
+///         at PP4.13 with its regression in `P1_E8_BuyBoostRequiresLiveBindingTest` below.
 contract P1_E8_UnbindingFreezesTheBoostCursorTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant SCORE_BLOCK = GENESIS_BLOCK + 2_628_000 + 1;
