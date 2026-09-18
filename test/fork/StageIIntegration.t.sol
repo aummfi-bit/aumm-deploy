@@ -164,6 +164,47 @@ abstract contract StageIIntegrationFixture is StageGIntegrationFixture {
         }
     }
 
+    /// @dev `_depositOneSided` with the BPT minted to `lp` itself, for a test that reads live balances
+    ///      unmasked: the recorder credits only BPT the named holder holds when the hook fires (PP-D58
+    ///      (v)), while this chain's other helpers keep the BPT with the harness under the StageG mock.
+    function _depositOneSidedToLp(address pool, address lp, uint256 fractionBps)
+        internal
+        returns (uint256 bptOut)
+    {
+        _lpSender = lp;
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, , uint256[] memory balancesRaw, ) = vault.getPoolTokenInfo(pool);
+        uint256[] memory amountsIn = new uint256[](tokens.length);
+        amountsIn[0] = (balancesRaw[0] * fractionBps) / 10_000;
+        deal(address(tokens[0]), address(this), amountsIn[0]);
+        bytes memory result = vault.unlock(abi.encodeCall(this._depositToLpCallback, (pool, amountsIn, lp)));
+        bptOut = abi.decode(result, (uint256));
+    }
+
+    function _depositToLpCallback(address pool, uint256[] memory amountsIn, address lp)
+        external
+        returns (uint256 bptOut)
+    {
+        require(msg.sender == address(vault), "onlyVault");
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        (, bptOut, ) = vault.addLiquidity(
+            AddLiquidityParams({
+                pool: pool,
+                to: lp,
+                maxAmountsIn: amountsIn,
+                minBptAmountOut: 0,
+                kind: AddLiquidityKind.UNBALANCED,
+                userData: ""
+            })
+        );
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            if (amountsIn[i] > 0) {
+                tokens[i].transfer(address(vault), amountsIn[i]);
+                vault.settle(tokens[i], amountsIn[i]);
+            }
+        }
+    }
+
     function _withdrawProportional(address pool, uint256 bptAmount)
         internal
         returns (uint256[] memory amountsOut)
@@ -281,6 +322,9 @@ contract StageIAgingWithdrawalTest is StageIIntegrationFixture {
         // emissionDistributor. Any nonzero withdrawal resets effectiveQualBlock to 0
         // per I-D14 / §viii, regardless of how aged the position was.
         _lpSender = lp;
+        // PP-D58 (v): the burn comes from the harness, so the StageG balanceOf mock would show lp's BPT
+        // unmoved and the recorder would debit nothing; give lp the zero balance a full exit leaves.
+        vm.mockCall(pool, abi.encodeWithSelector(IERC20.balanceOf.selector, lp), abi.encode(uint256(0)));
         _withdrawProportional(pool, bptOut);
         assertEq(
             emissionDistributor.effectiveQualBlock(pool, lp),

@@ -156,6 +156,9 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         votingWeight.poke(lp);
         assertGt(votingWeight.governanceWeight(lp), 0, "baseline qualified before withdrawal");
         _lpSender = lp;
+        // PP-D58 (v): the burn comes from the harness, so the StageG balanceOf mock would show lp's BPT
+        // unmoved and the recorder would debit nothing; give lp the zero balance a full exit leaves.
+        vm.mockCall(pilotPools[0], abi.encodeWithSelector(IERC20.balanceOf.selector, lp), abi.encode(uint256(0)));
         _withdrawProportional(pilotPools[0], bptOut);
         votingWeight.poke(lp);
         assertEq(votingWeight.governanceWeight(lp), 0, "withdrawal resets weight at the eqb==0 gate");
@@ -163,7 +166,7 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
     }
 
     /// @notice F-17 / P-D18 faithful end-to-end (S9) — proves the receipt invariant on the REAL stack with a real
-    ///         BPT holder, unmasked. Clears the fixture's F-17 balanceOf no-op mock, hands the freshly-minted BPT
+    ///         BPT holder, unmasked. Clears the fixture's F-17 balanceOf no-op mock, mints the BPT straight
     ///         to the recorded LP (so balanceOf(lp) == userLP), and shows (a) an in-sync holder past the cliff
     ///         confers nonzero weight, then (b) moving the BPT out-of-band via a plain ERC-20 transfer — which
     ///         skips the recorder — drops balanceOf(lp) to zero and the VotingWeight._positionPower read-cap
@@ -174,8 +177,8 @@ contract StageKVotingWeightPokeTest is StageKIntegrationFixture {
         address pool = pilotPools[0];
         address lp = makeAddr("faithfulLp");
 
-        uint256 bptOut = _depositOneSided(pool, lp, 100); // recorder credits lp; BPT is minted to the harness
-        IERC20(pool).transfer(lp, bptOut);                // hand the receipt to the recorded LP: balanceOf(lp) == userLP
+        // PP-D58 (v): the Vault mints to lp itself, so the recorder sees the BPT it credits.
+        uint256 bptOut = _depositOneSidedToLp(pool, lp, 100);
         assertEq(IERC20(pool).balanceOf(lp), emissionDistributor.userLP(pool, lp), "lp holds BPT == recorded userLP (in sync)");
 
         vm.roll(block.number + AureumTime.QUALIFICATION_PERIOD_BLOCKS + 1);

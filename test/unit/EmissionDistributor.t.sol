@@ -286,6 +286,15 @@ contract EmissionDistributorTest is Test {
         return makeAddr(vm.toString(seed));
     }
 
+    /// @dev B.6 / PP-D58 (v): the recorder debits only what live BPT has fallen below the recorded
+    ///      position by, so a withdrawal test first moves the holder's BPT down to what the exit
+    ///      leaves, standing in for the Vault's burn the hook would have followed.
+    function _setLiveBpt(address pool, address user, uint256 target) internal {
+        uint256 held = ERC20(pool).balanceOf(user);
+        vm.prank(user);
+        ERC20(pool).transfer(address(0xB0B5), held - target);
+    }
+
     function _rollTo(uint256 blockNumber) internal {
         vm.roll(blockNumber);
     }
@@ -833,6 +842,7 @@ contract EmissionDistributorTest is Test {
     function test_RecordWithdrawal_OverWithdrawalClampsToStakeNoRevert() public {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        _setLiveBpt(POOL_A, USER_1, 0);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 150e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 0);
@@ -851,6 +861,7 @@ contract EmissionDistributorTest is Test {
     function test_RecordWithdrawal_PartialWithdrawalUpdatesUserLPAndPoolTotalLP() public {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        _setLiveBpt(POOL_A, USER_1, 70e18);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 70e18);
@@ -861,6 +872,7 @@ contract EmissionDistributorTest is Test {
     function test_RecordWithdrawal_FullWithdrawalZerosUserLPAndPoolTotalLP() public {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        _setLiveBpt(POOL_A, USER_1, 0);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 100e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 0);
@@ -871,6 +883,7 @@ contract EmissionDistributorTest is Test {
     function test_RecordWithdrawal_EmitsWithdrawalRecorded() public {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
+        _setLiveBpt(POOL_A, USER_1, 70e18);
         vm.expectEmit(true, true, false, true);
         emit IEmissionDistributor.WithdrawalRecorded(POOL_A, USER_1, 30e18);
         vm.prank(AUMT_REC);
@@ -898,6 +911,7 @@ contract EmissionDistributorTest is Test {
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
         vm.roll(AureumTime.year1EndBlock(GENESIS_BLOCK_) + 1);
+        _setLiveBpt(POOL_A, USER_1, 70e18);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 30e18);
         assertEq(distributor.userLP(POOL_A, USER_1), 70e18);

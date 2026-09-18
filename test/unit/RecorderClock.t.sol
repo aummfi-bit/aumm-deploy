@@ -69,6 +69,13 @@ contract RecorderClockTest is Test {
         vm.roll(GENESIS_BLOCK_);
     }
 
+    /// @dev B.6 / PP-D58 (v): the recorder credits and debits only what live BPT shows, so a test
+    ///      that moves a position gives the holder the balance a real deposit or exit would leave,
+    ///      as a per-holder `balanceOf` mock matched on exact calldata ahead of the fixture-wide one.
+    function _mockLiveBpt(address pool, address user, uint256 held) internal {
+        vm.mockCall(pool, abi.encodeWithSignature("balanceOf(address)", user), abi.encode(held));
+    }
+
     /// @notice First `recordDeposit` for a (pool, user) whose `effectiveQualBlock` is zero fresh-starts the qualification clock to `block.number` (I4.3 / I-D14 fresh-start branch) and accrues `userLP`. Proven against a non-genesis block so the clock is shown to track the live block, not a constant.
     function test_RecordDeposit_FirstDepositFreshStartsEffectiveQualBlock() public {
         uint256 depositBlock = GENESIS_BLOCK_ + 5_000;
@@ -101,6 +108,7 @@ contract RecorderClockTest is Test {
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), GENESIS_BLOCK_);
 
         vm.roll(GENESIS_BLOCK_ + 50_000);
+        _mockLiveBpt(POOL_A, USER_1, 99e18);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 1e18);
 
@@ -114,6 +122,7 @@ contract RecorderClockTest is Test {
         distributor.recordDeposit(POOL_A, USER_1, 100e18);
 
         vm.roll(GENESIS_BLOCK_ + 50_000);
+        _mockLiveBpt(POOL_A, USER_1, 99e18);
         vm.prank(AUMT_REC);
         distributor.recordWithdrawal(POOL_A, USER_1, 1e18);
         assertEq(distributor.effectiveQualBlock(POOL_A, USER_1), 0);
@@ -121,6 +130,7 @@ contract RecorderClockTest is Test {
 
         uint256 redepositBlock = GENESIS_BLOCK_ + 60_000;
         vm.roll(redepositBlock);
+        _mockLiveBpt(POOL_A, USER_1, 149e18);
         vm.prank(AUMT_REC);
         distributor.recordDeposit(POOL_A, USER_1, 50e18);
 

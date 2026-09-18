@@ -76,7 +76,17 @@ contract EmissionConservationHandler is Test {
     }
 
     function withdraw(uint256 poolSeed, uint256 userSeed, uint256 amtSeed) external {
-        distributor.recordWithdrawal(_pool(poolSeed), _user(userSeed), bound(amtSeed, 1, 1_000_000e18));
+        address pool = _pool(poolSeed);
+        address u = _user(userSeed);
+        uint256 amt = bound(amtSeed, 1, 1_000_000e18);
+        // PP-D58 (v): the recorder debits only what live BPT has fallen below the recorded position by,
+        // so the holder's balance is mocked to what the exit leaves, then restored above every stake so
+        // later deposits keep crediting under the fixture-wide 1e30 mock.
+        uint256 recorded = distributor.userLP(pool, u);
+        uint256 live = amt < recorded ? recorded - amt : 0;
+        vm.mockCall(pool, abi.encodeWithSignature("balanceOf(address)", u), abi.encode(live));
+        distributor.recordWithdrawal(pool, u, amt);
+        vm.mockCall(pool, abi.encodeWithSignature("balanceOf(address)", u), abi.encode(uint256(1e30)));
     }
 
     function claim(uint256 poolSeed, uint256 userSeed) external {

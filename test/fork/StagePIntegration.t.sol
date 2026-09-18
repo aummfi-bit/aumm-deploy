@@ -515,7 +515,9 @@ abstract contract StagePIntegrationFixture is Test {
     /// @dev Recorded LP for the next liquidity op. The hook resolves the LP via
     ///      IRouterSender(router).getSender(); this fixture IS the router (it
     ///      calls Vault.addLiquidity directly inside unlock), so getSender()
-    ///      returns _lpSender. Decoupled from the BPT recipient (address(this)).
+    ///      returns _lpSender. It is also the BPT recipient per PP-D58 (v): the
+    ///      recorder credits only BPT the named holder holds when the hook fires,
+    ///      so the Vault mints to the LP, as a real Router mints to its sender.
     address internal _lpSender;
 
     /// @notice IRouterSender shim — the hook calls this on every add/remove.
@@ -550,7 +552,7 @@ abstract contract StagePIntegrationFixture is Test {
         (, bptOut, ) = vault.addLiquidity(
             AddLiquidityParams({
                 pool: pool,
-                to: address(this),
+                to: _lpSender,
                 maxAmountsIn: amountsIn,
                 minBptAmountOut: 0,
                 kind: AddLiquidityKind.UNBALANCED,
@@ -571,9 +573,9 @@ abstract contract StagePIntegrationFixture is Test {
         orchestrator.tvlOracle().setTokenUnderlying(address(svZchf), address(svZchf));
         orchestrator.tvlOracle().setTokenUnderlying(address(susds), address(susds));
         vm.stopPrank();
-        // StageKIntegration L172 pattern — balanceOf(lp) == userLP for F-17
+        // StageKIntegration L172 pattern — balanceOf(lp) == userLP for F-17, the BPT minted
+        // straight to lp by _depositCallback so the recorder sees it when the hook fires.
         bptOut = _depositOneSided(pilotPools[0], lp, 100);
-        IERC20(pilotPools[0]).transfer(lp, bptOut);
         // EMA seed
         orchestrator.emaSampler().updateEMA(pilotPools[0]);
         // PP-D52 (xii) / D.1 (PP4.10f2) — sixty daily samples, not one refresh: the D.1 sample floor

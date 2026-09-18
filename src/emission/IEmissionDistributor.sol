@@ -45,11 +45,21 @@ interface IEmissionDistributor {
     /// @param amount The AuMT amount deposited (same unit as `userLP`).
     event DepositRecorded(address indexed pool, address indexed user, uint256 amount);
 
+    /// @notice Emitted when `recordDeposit` refuses a credit the named holder's live BPT does not
+    ///         show, per B.6 / PP-D58 (v); the call records nothing else.
+    /// @param pool The Balancer V3 pool address.
+    /// @param user The holder the caller named.
+    /// @param amount The AuMT amount the caller asked to credit.
+    /// @param held The holder's live BPT, below recorded `userLP` plus `amount`.
+    event DepositRefused(address indexed pool, address indexed user, uint256 amount, uint256 held);
+
     /// @notice Emitted when the AuMT contract records a withdrawal for `user` in `pool`.
     /// @dev Per H-D16 and H-D4 — withdrawal stops accrual immediately after settle-then-decrement.
     /// @param pool The Balancer V3 pool address.
     /// @param user The AuMT holder whose stake decreased.
-    /// @param amount The AuMT amount withdrawn (same unit as `userLP`).
+    /// @param amount The AuMT amount debited (same unit as `userLP`): what recorded `userLP` exceeded
+    ///        the holder's live BPT by, per B.6 / PP-D58 (v); zero when the burn did not reach the
+    ///        recorded position, as for a named holder whose BPT did not move.
     event WithdrawalRecorded(address indexed pool, address indexed user, uint256 amount);
 
     /// @notice Emitted when `claim` mints AuMM to `to` on behalf of `claimer`.
@@ -194,24 +204,26 @@ interface IEmissionDistributor {
     function deregisterScore(address pool) external;
 
     /// @notice Records a deposit of `amount` AuMT for `user` in `pool` — AuMT-recorder gated.
-    /// @dev Per H-D16 single-snapshot MasterChef variant: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; run
-    ///      `_accrueGlobal` then `_settlePool` then settle the user's pending claim against pre-deposit
-    ///      `userLP`; increment `userLP[pool][user]` and `poolTotalLP[pool]` by `amount`; update
-    ///      `userRewardDebt[pool][user]` to the new pool-effective accumulator; emit `DepositRecorded`.
-    ///      Cross-refs H-D4 pull semantics, H-D16, H-D21.
+    /// @dev Per H-D16 single-snapshot MasterChef variant: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; refuse with
+    ///      `DepositRefused` and record nothing when `user`'s live BPT is below recorded `userLP` plus `amount`
+    ///      (B.6 / PP-D58 (v)); otherwise run `_accrueGlobal` then `_settlePool` then settle the user's
+    ///      pending claim against pre-deposit `userLP`; increment `userLP[pool][user]` and `poolTotalLP[pool]`
+    ///      by `amount`; update `userRewardDebt[pool][user]` to the new pool-effective accumulator; emit
+    ///      `DepositRecorded`. Cross-refs H-D4 pull semantics, H-D16, H-D21.
     /// @param pool The Balancer V3 pool address.
     /// @param user The AuMT holder receiving the stake credit.
     /// @param amount The AuMT amount deposited.
     function recordDeposit(address pool, address user, uint256 amount) external;
 
-    /// @notice Records a withdrawal of `amount` AuMT for `user` in `pool` — AuMT-recorder gated.
-    /// @dev Symmetric to `recordDeposit` per H-D16: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; settle user
-    ///      pending against pre-withdrawal `userLP`; decrement `userLP[pool][user]` and
-    ///      `poolTotalLP[pool]` by `amount`; update `userRewardDebt`; emit `WithdrawalRecorded`. Cross-refs
-    ///      H-D4, H-D16, H-D21.
+    /// @notice Records a withdrawal for `user` in `pool` — AuMT-recorder gated.
+    /// @dev Symmetric to `recordDeposit` per H-D16: revert `NotAuMTContract(pool, msg.sender)` if `msg.sender != auMTContractByPool[pool]` per I-D9; sync the
+    ///      position down to `user`'s live BPT plus `amount`; settle user pending against pre-withdrawal
+    ///      `userLP`; decrement `userLP[pool][user]` and `poolTotalLP[pool]` by what recorded `userLP`
+    ///      exceeds live BPT, resetting the clock only when that debit is positive (B.6 / PP-D58 (v));
+    ///      update `userRewardDebt`; emit `WithdrawalRecorded` with the debit. Cross-refs H-D4, H-D16, H-D21.
     /// @param pool The Balancer V3 pool address.
     /// @param user The AuMT holder whose stake is reduced.
-    /// @param amount The AuMT amount withdrawn.
+    /// @param amount The BPT the caller reports burned; it bounds the sync-down, never the debit.
     function recordWithdrawal(address pool, address user, uint256 amount) external;
 
     /// @notice Permissionlessly reconciles `holder`'s recorded stake in `pool` down to their live BPT balance (F-17 / P-D18).
@@ -320,7 +332,8 @@ interface IEmissionDistributor {
     /// @dev Per-user qualification clock per I-D14 / I-D6 — the block from which `time_in_pool` accrues for
     ///      the value-weighted voting view; fresh-started at `block.number` on the first qualified deposit
     ///      (or the first deposit after a withdrawal reset), weighted-average top-up on later deposits, reset
-    ///      to 0 on any withdrawal (§viii "remove any amount — even 1% — drops to zero"). 0 means no
+    ///      to 0 on any withdrawal from the recorded position (§viii "remove any amount — even 1% — drops to
+    ///      zero"; burning BPT the recorder never credited is not one, per PP-D58 (v)). 0 means no
     ///      qualified position. Interface getter added at K3.0c (I13-class fix-forward) so the Stage K
     ///      `VotingWeight` reader binds it typed per I-D15 / K-D5.
     /// @param pool The Balancer V3 pool address.

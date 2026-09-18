@@ -13,6 +13,7 @@ import {AureumFeeRoutingHook} from "src/fee_router/AureumFeeRoutingHook.sol";
 import {GaugeRegistry} from "src/gauge/GaugeRegistry.sol";
 import {GaugeEligibility} from "src/gauge/GaugeEligibility.sol";
 import {EmissionDistributorHarness} from "test/unit/harness/EmissionDistributorHarness.sol";
+import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
 
 import {IAuMM} from "src/token/IAuMM.sol";
@@ -54,10 +55,12 @@ contract SenderRouter {
     }
 }
 
-/// @notice Reproduction PoC for seam-1 root cause B.6 (High). Both liquidity callbacks
-///         resolve the liquidity provider through `IRouterSender(router).getSender()` rather
-///         than through the Vault's own `AddLiquidityParams.to` or `RemoveLiquidityParams.from`.
-///         The seat's lifetime is C.9's concern rather than this row's.
+/// @notice Seam-1 root cause B.6 (High). Both liquidity callbacks resolve the liquidity provider
+///         through `IRouterSender(router).getSender()`; the Vault forwards no `to` or `from` to a
+///         hook, so attribution stays there per PP-D58 (ii) and (v). The first case is the B.6
+///         regression, the recorder crediting or debiting a named holder only for BPT their live
+///         balance shows moving; the second, the un-trusting face, stays a reproduction, the seat's
+///         lifetime being C.9's concern rather than this row's.
 contract P1_B6_TrustedRouterNamesAnyHolderThroughGetSenderTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant DEPOSIT_BLOCK = GENESIS_BLOCK;
@@ -170,12 +173,14 @@ contract P1_B6_TrustedRouterNamesAnyHolderThroughGetSenderTest is Test {
         vm.roll(GENESIS_BLOCK);
     }
 
-    /// @notice A trusted router naming any holder zeroes that holder's matured clock for one wei.
-    function test_P1_B6_aTrustedRouterZeroesAnyHoldersMaturedClockForADustBurn() public {
+    /// @notice B.6 / PP-D58 (v) regression, inverted at PP4.15d from the PoC in which a trusted
+    ///         router naming any holder zeroed that holder's matured clock for a one-wei burn: the
+    ///         recorder now credits or debits a named holder only for BPT their live balance shows.
+    function test_namedHolderIsCreditedOrDebitedOnlyWhenTheirBptMoves() public {
         // Verified negative this row carries and which this file must not contradict: a hostile
         // router CANNOT fabricate weight, because the F-17 read-cap in VotingWeight bounds any
-        // position at live BPT and claim syncs down first. This file therefore claims destruction
-        // and denial only, never inflation, consistent with the B-family negative results at
+        // position at live BPT and claim syncs down first. The regression therefore closes
+        // destruction and denial, never inflation, consistent with the B-family negative results at
         // docs/STAGE_P_PRIME_PLAN.md L77.
         address victim = makeAddr("victim");
         trustedRouter.setSender(victim);
@@ -195,19 +200,20 @@ contract P1_B6_TrustedRouterNamesAnyHolderThroughGetSenderTest is Test {
             empty,
             bytes("")
         );
-
-        vm.roll(MATURE_BLOCK);
-        assertTrue(
-            distributor.effectiveQualBlock(address(pool), victim) != 0,
-            "victim clock is nonzero after the on-ramp window"
-        );
         assertEq(
             distributor.userLP(address(pool), victim),
             DEPOSIT_AMOUNT,
-            "victim recorded userLP is the full deposit"
+            "an honest deposit the victim's live BPT shows is credited in full"
         );
 
-        uint256 bptBefore = pool.balanceOf(victim);
+        vm.roll(MATURE_BLOCK);
+        uint256 maturedClock = distributor.effectiveQualBlock(address(pool), victim);
+        assertTrue(maturedClock != 0, "victim clock is nonzero after the on-ramp window");
+
+        // The dust burn the PoC drove: the victim's BPT does not move, so the recorder debits
+        // nothing, reports a zero debit, and the matured clock survives.
+        vm.expectEmit(true, true, false, true, address(distributor));
+        emit IEmissionDistributor.WithdrawalRecorded(address(pool), victim, 0);
         vm.prank(vault);
         hook.onAfterRemoveLiquidity(
             address(trustedRouter),
@@ -219,21 +225,60 @@ contract P1_B6_TrustedRouterNamesAnyHolderThroughGetSenderTest is Test {
             empty,
             bytes("")
         );
+        assertEq(
+            distributor.effectiveQualBlock(address(pool), victim),
+            maturedClock,
+            "a burn the victim's live BPT does not show leaves the matured clock intact"
+        );
+        assertEq(distributor.userLP(address(pool), victim), DEPOSIT_AMOUNT, "and debits nothing");
 
+        // The deposit face the row does not list: a credit the victim's BPT does not show is
+        // refused, where the sync-down it replaced zeroed the named holder's clock.
+        vm.expectEmit(true, true, false, true, address(distributor));
+        emit IEmissionDistributor.DepositRefused(address(pool), victim, DUST, DEPOSIT_AMOUNT);
+        vm.prank(vault);
+        hook.onAfterAddLiquidity(
+            address(trustedRouter),
+            address(pool),
+            AddLiquidityKind.UNBALANCED,
+            empty,
+            empty,
+            DUST,
+            empty,
+            bytes("")
+        );
+        assertEq(
+            distributor.effectiveQualBlock(address(pool), victim),
+            maturedClock,
+            "a refused credit leaves the matured clock intact"
+        );
+        assertEq(distributor.userLP(address(pool), victim), DEPOSIT_AMOUNT, "and credits nothing");
+
+        // An honest exit still debits and still resets: the victim's own BPT falls first, standing
+        // in for the Vault's burn, so the recorder follows it by exactly the burned amount.
+        uint256 burned = DEPOSIT_AMOUNT / 4;
+        vm.prank(victim);
+        IERC20(address(pool)).transfer(makeAddr("burnSink"), burned);
+        vm.prank(vault);
+        hook.onAfterRemoveLiquidity(
+            address(trustedRouter),
+            address(pool),
+            RemoveLiquidityKind.PROPORTIONAL,
+            burned,
+            empty,
+            empty,
+            empty,
+            bytes("")
+        );
         assertEq(
             distributor.effectiveQualBlock(address(pool), victim),
             0,
-            "dust burn through a router the seat trusts destroys a matured clock the victim spent an on-ramp period earning"
+            "a withdrawal the victim's live BPT shows still resets the clock per section viii"
         );
         assertEq(
             distributor.userLP(address(pool), victim),
-            DEPOSIT_AMOUNT - DUST,
-            "recorded userLP fell by only one wei; the attacker supplied no capital of their own"
-        );
-        assertEq(
-            pool.balanceOf(victim),
-            bptBefore,
-            "live BPT balance is essentially untouched; the attacker supplied no capital of their own"
+            DEPOSIT_AMOUNT - burned,
+            "and debits exactly the burned amount"
         );
     }
 
