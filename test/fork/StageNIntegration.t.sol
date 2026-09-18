@@ -31,6 +31,7 @@ import { DeployIxAurix } from "../../script/pools/DeployIxAurix.s.sol";
 import { DeployIxMetallum } from "../../script/pools/DeployIxMetallum.s.sol";
 import { TokenInfo } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
+import { Vm } from "forge-std/Vm.sol";
 
 /**
  * @title StageNIntegrationFixture
@@ -357,15 +358,34 @@ contract StageNStrandedFeeRecoveryTest is StageNIntegrationFixture {
         uint256 reserveBefore = _bodenseeReserve(svZchf);
         uint256 supplyBefore = IERC20(bodenseePool).totalSupply();
 
-        hook.recoverStrandedFees(sfrxEth, svZchf, pools, outs, mins);
+        vm.recordLogs();
+        hook.recoverStrandedFees(sfrxEth, svZchf, pools, outs, mins, 1);
+        uint256 reserveRise = _bodenseeReserve(svZchf) - reserveBefore;
 
         assertEq(sfrxEth.balanceOf(address(hook)), 0, "strand fully spent");
         assertEq(IERC20(bodenseePool).totalSupply(), supplyBefore, "donation mints no BPT");
         assertGt(
-            _bodenseeReserve(svZchf),
-            reserveBefore,
+            reserveRise,
+            0,
             "PB-D68 (xvii) - reserve rose; exact delta is not a Vault guarantee for rate-bearing rails"
         );
+
+        // C.9 / PP-D58 (vii) and (xiv): the event's `donated` is what the hook measured leaving it,
+        // and on the real Vault it equals der Bodensee's raw reserve rise exactly, DONATION charging
+        // no swap fee and der Bodensee carrying no hook. The unit tests mock this callback away, so
+        // this is the one real-Vault witness of the measured amount.
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bytes32 sig = keccak256("StrandedFeesRecovered(address,address,uint256,uint256,uint256)");
+        uint256 found;
+        uint256 donated;
+        for (uint256 i = 0; i < logs.length; ++i) {
+            if (logs[i].emitter == address(hook) && logs[i].topics[0] == sig) {
+                (, donated, ) = abi.decode(logs[i].data, (uint256, uint256, uint256));
+                ++found;
+            }
+        }
+        assertEq(found, 1, "exactly one recovery event");
+        assertEq(donated, reserveRise, "the reported delivery equals der Bodensee's reserve rise");
     }
 }
 

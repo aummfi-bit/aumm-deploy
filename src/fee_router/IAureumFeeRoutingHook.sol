@@ -87,14 +87,17 @@ interface IAureumFeeRoutingHook {
     );
 
     /// @notice Emitted on a successful `recoverStrandedFees` sweep — one log
-    ///         line tying a recovery to the route that produced it. Carries
-    ///         no BPT figure, DONATION minting none by construction per
-    ///         PB-D68 (xiv), and no deposit-token amount, the terminal add
-    ///         sweeping `balanceOf` rather than the route's own output.
+    ///         line tying a recovery to the route that produced it and to the
+    ///         amount that reached der Bodensee. Carries no BPT figure,
+    ///         DONATION minting none by construction per PB-D68 (xiv).
+    ///         `donated` is what the terminal add delivered, measured as the
+    ///         drop in the hook's own deposit-token balance across it, and is
+    ///         never below the caller's `minDonated` (C.9 / PP-D58 (vii)).
     event StrandedFeesRecovered(
         address indexed feeToken,
         address indexed depositToken,
         uint256 amountIn,
+        uint256 donated,
         uint256 hops
     );
 
@@ -164,6 +167,17 @@ interface IAureumFeeRoutingHook {
     ///         rejected loudly rather than forwarded or silently dropped,
     ///         per PB-D68 (xiv).
     error BptFloorUnavailableOnDonation(uint256 minBptAmountOut);
+
+    /// @notice Thrown by `recoverStrandedFees` when `minDonated` is zero: a
+    ///         recovery must name a floor on what reaches der Bodensee, per
+    ///         C.9 / PP-D58 (vii), so a route that delivers nothing cannot
+    ///         report success.
+    error MinimumDonationRequired();
+
+    /// @notice Thrown by `recoverStrandedFees` when the amount that reached
+    ///         der Bodensee is below the caller's `minDonated`, the delivery
+    ///         post-condition per C.9 / PP-D58 (vii).
+    error DonationBelowMinimum(uint256 donated, uint256 minDonated);
 
     // -----------------------------------------------------------------
     //                       External primitives
@@ -266,24 +280,29 @@ interface IAureumFeeRoutingHook {
     ///         with no memory of which pool produced it.
     /// @dev Reverts `ZeroAmount` on a zero stranded balance per PB-D66 (xiv),
     ///      `InvalidDepositToken` when `depositToken` is neither `SV_ZCHF` nor
-    ///      `SUSDS`, `EmptySwapPath` on a zero-length route,
-    ///      `SwapPathLengthMismatch` when the three arrays disagree, and
-    ///      `TerminalTokenMismatch` when the route does not end at
-    ///      `depositToken`. No zero-hop fast path exists, deliberately.
-    ///      `minHopOuts` carries this entry's ENTIRE slippage protection per
-    ///      PB-D66 (xiii); the Bodensee leg takes no floor because DONATION
-    ///      admits none. Emits `StrandedFeesRecovered`.
+    ///      `SUSDS`, `MinimumDonationRequired` on a zero `minDonated`,
+    ///      `EmptySwapPath` on a zero-length route, `SwapPathLengthMismatch`
+    ///      when the three arrays disagree, and `TerminalTokenMismatch` when
+    ///      the route does not end at `depositToken`, all before the unlock
+    ///      opens; and `DonationBelowMinimum` after it, when less than
+    ///      `minDonated` reached der Bodensee, per C.9 / PP-D58 (vii). No
+    ///      zero-hop fast path exists, deliberately. `minHopOuts` bounds each
+    ///      hop and `minDonated` the delivery, the Bodensee leg taking no BPT
+    ///      floor because DONATION admits none. Emits `StrandedFeesRecovered`
+    ///      with the delivered amount.
     /// @param feeToken The stranded token; its full hook balance is spent.
     /// @param depositToken The der-Bodensee rail, `SV_ZCHF` or `SUSDS`.
     /// @param swapPools Pool per hop, in route order.
     /// @param hopTokenOuts Output token per hop; the last equals `depositToken`.
     /// @param minHopOuts Minimum output per hop.
+    /// @param minDonated Non-zero floor on the deposit token that must reach der Bodensee.
     function recoverStrandedFees(
         IERC20 feeToken,
         IERC20 depositToken,
         address[] calldata swapPools,
         IERC20[] calldata hopTokenOuts,
-        uint256[] calldata minHopOuts
+        uint256[] calldata minHopOuts,
+        uint256 minDonated
     ) external;
 
     // -----------------------------------------------------------------

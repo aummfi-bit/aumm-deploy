@@ -885,13 +885,15 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         IERC20 depositToken,
         address[] calldata swapPools,
         IERC20[] calldata hopTokenOuts,
-        uint256[] calldata minHopOuts
+        uint256[] calldata minHopOuts,
+        uint256 minDonated
     ) external override {
         if (governanceModule == address(0)) revert ModuleNotSet();
         if (msg.sender != governanceModule) revert UnauthorizedCaller(msg.sender);
         if (address(depositToken) != address(SV_ZCHF) && address(depositToken) != address(SUSDS)) {
             revert InvalidDepositToken(address(depositToken));
         }
+        if (minDonated == 0) revert MinimumDonationRequired();
 
         uint256 hops = swapPools.length;
         if (hops == 0) revert EmptySwapPath();
@@ -905,17 +907,22 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 amountIn = feeToken.balanceOf(address(this));
         if (amountIn == 0) revert ZeroAmount();
 
-        // Return discarded: the callback returns nothing, the recovery's effect being the donation itself. See PB-D66 (xiii).
-        // slither-disable-next-line unused-return
-        _vault.unlock(
-            abi.encodeCall(
-                this._recoverStrandedFeesUnlocked,
-                (feeToken, depositToken, swapPools, hopTokenOuts, minHopOuts, amountIn)
-            )
+        // C.9 / PP-D58 (vii) — the callback returns what the terminal add delivered and the entry
+        // refuses a recovery that delivered less than the caller's floor, so the DONATION helper's
+        // zero-amount early return can no longer end in a success event.
+        uint256 donated = abi.decode(
+            _vault.unlock(
+                abi.encodeCall(
+                    this._recoverStrandedFeesUnlocked,
+                    (feeToken, depositToken, swapPools, hopTokenOuts, minHopOuts, amountIn)
+                )
+            ),
+            (uint256)
         );
+        if (donated < minDonated) revert DonationBelowMinimum(donated, minDonated);
         // Emission follows unlock by causality; _vault.unlock is the Vault's reentrancy guard. Mirrors the route* entries. See D8 NOTES F17.
         // slither-disable-next-line reentrancy-events
-        emit StrandedFeesRecovered(address(feeToken), address(depositToken), amountIn, hops);
+        emit StrandedFeesRecovered(address(feeToken), address(depositToken), amountIn, donated, hops);
     }
 
     /// @notice Unlock callback for recoverStrandedFees. onlyVault; reached
@@ -928,7 +935,12 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      `depositToken.balanceOf(address(this))` rather than the last
     ///      hop's output, matching `_swapFeeAndDeposit` and collecting any
     ///      dust earlier routes left; its floor is 0 because DONATION admits
-    ///      no other value per PB-D68 (xiv).
+    ///      no other value per PB-D68 (xiv). Returns what that add delivered,
+    ///      measured as the drop in this hook's deposit-token balance across
+    ///      it, the helper moving to the Vault exactly the amount the donation
+    ///      settles; zero when the helper returns early on a zero amount,
+    ///      which the entry's `minDonated` post-condition then refuses
+    ///      (C.9 / PP-D58 (vii)).
     function _recoverStrandedFeesUnlocked(
         IERC20 feeToken,
         IERC20 depositToken,
@@ -936,7 +948,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         IERC20[] calldata hopTokenOuts,
         uint256[] calldata minHopOuts,
         uint256 amountIn
-    ) external onlyVault {
+    ) external onlyVault returns (uint256 donated) {
         IERC20 tokenIn = feeToken;
         uint256 hopAmount = amountIn;
         uint256 hops = swapPools.length;
@@ -950,6 +962,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             );
             tokenIn = hopTokenOuts[i];
         }
-        _addLiquidityOneSidedToBodenseeViaVault(depositToken, depositToken.balanceOf(address(this)), 0);
+        uint256 held = depositToken.balanceOf(address(this));
+        _addLiquidityOneSidedToBodenseeViaVault(depositToken, held, 0);
+        donated = held - depositToken.balanceOf(address(this));
     }
 }

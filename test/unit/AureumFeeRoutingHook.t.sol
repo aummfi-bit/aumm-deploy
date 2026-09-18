@@ -97,6 +97,7 @@ contract AureumFeeRoutingHookTest is Test {
         address indexed feeToken,
         address indexed depositToken,
         uint256 amountIn,
+        uint256 donated,
         uint256 hops
     );
 
@@ -1135,7 +1136,7 @@ contract AureumFeeRoutingHookTest is Test {
         (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
             _route(poolAb, IERC20(address(svZchf)), 0);
         vm.expectRevert(IAureumFeeRoutingHook.ModuleNotSet.selector);
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsForNonModuleCaller() public {
@@ -1144,7 +1145,7 @@ contract AureumFeeRoutingHookTest is Test {
             _route(poolAb, IERC20(address(svZchf)), 0);
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(IAureumFeeRoutingHook.UnauthorizedCaller.selector, stranger));
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsOnInvalidDepositToken() public {
@@ -1155,7 +1156,7 @@ contract AureumFeeRoutingHookTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IAureumFeeRoutingHook.InvalidDepositToken.selector, address(tokenY))
         );
-        hook.recoverStrandedFees(IERC20(address(zchf)), IERC20(address(tokenY)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(zchf)), IERC20(address(tokenY)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsOnEmptySwapPath() public {
@@ -1165,7 +1166,7 @@ contract AureumFeeRoutingHookTest is Test {
         uint256[] memory mins = new uint256[](0);
         vm.prank(gov);
         vm.expectRevert(IAureumFeeRoutingHook.EmptySwapPath.selector);
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsOnSwapPathLengthMismatch() public {
@@ -1180,7 +1181,7 @@ contract AureumFeeRoutingHookTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(IAureumFeeRoutingHook.SwapPathLengthMismatch.selector, 1, 2, 1)
         );
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsOnTerminalTokenMismatch() public {
@@ -1195,7 +1196,7 @@ contract AureumFeeRoutingHookTest is Test {
                 address(zchf)
             )
         );
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_revertsOnZeroStrandedBalance() public {
@@ -1205,7 +1206,7 @@ contract AureumFeeRoutingHookTest is Test {
         assertEq(tokenY.balanceOf(address(hook)), 0);
         vm.prank(gov);
         vm.expectRevert(IAureumFeeRoutingHook.ZeroAmount.selector);
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 1);
     }
 
     function test_recoverStrandedFees_forwardsRouteIntoUnlockPayload() public {
@@ -1213,7 +1214,11 @@ contract AureumFeeRoutingHookTest is Test {
         (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
             _route(poolAb, IERC20(address(svZchf)), 3e18);
 
-        vm.mockCall(vault, abi.encodeWithSelector(IVaultMain.unlock.selector), abi.encode(bytes("")));
+        // C.9 / PP-D58 (vii): the callback returns the delivered amount, which the entry decodes from
+        // the unlock's result and reports; the stub stands in for a callback that delivered 4e18.
+        vm.mockCall(
+            vault, abi.encodeWithSelector(IVaultMain.unlock.selector), abi.encode(abi.encode(uint256(4e18)))
+        );
         vm.expectCall(
             vault,
             abi.encodeCall(
@@ -1225,10 +1230,32 @@ contract AureumFeeRoutingHookTest is Test {
             )
         );
         vm.expectEmit(true, true, false, true, address(hook));
-        emit StrandedFeesRecovered(address(tokenY), address(svZchf), 5e18, 1);
+        emit StrandedFeesRecovered(address(tokenY), address(svZchf), 5e18, 4e18, 1);
 
         vm.prank(gov);
-        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 3e18);
+    }
+
+    function test_recoverStrandedFees_revertsOnZeroMinimum() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 0);
+        vm.prank(gov);
+        vm.expectRevert(IAureumFeeRoutingHook.MinimumDonationRequired.selector);
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 0);
+    }
+
+    function test_recoverStrandedFees_revertsWhenDonationBelowMinimum() public {
+        _seatGovAndStrand(5e18);
+        (address[] memory pools, IERC20[] memory outs, uint256[] memory mins) =
+            _route(poolAb, IERC20(address(svZchf)), 0);
+        vm.mockCall(
+            vault, abi.encodeWithSelector(IVaultMain.unlock.selector), abi.encode(abi.encode(uint256(2e18)))
+        );
+        vm.prank(gov);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAureumFeeRoutingHook.DonationBelowMinimum.selector, 2e18, 3e18)
+        );
+        hook.recoverStrandedFees(IERC20(address(tokenY)), IERC20(address(svZchf)), pools, outs, mins, 3e18);
     }
 }
-
