@@ -12,7 +12,7 @@ import {IMiliariumRegistry} from "../../../src/ccb/IMiliariumRegistry.sol";
 
 /// @title EmissionDistributorHarness
 /// @notice Test-only inheriting wrapper exposing EmissionDistributor's internal observation helpers per H-D34.
-/// @dev Inherits `EmissionDistributor` with 9-arg constructor pass-through. Adds two `external view` wrappers — `extLpTrancheIntegral` and `extLpTrancheEmission` — that delegate to the parent's `internal view` helpers for test-side conservation-invariant and AP-identity fixtures per H-D34. No additional state, no override of parent behavior, no modifiers, no events. Preserves prod ABI minimality — `EmissionDistributor` itself remains free of the test-only surface.
+/// @dev Inherits `EmissionDistributor` with 9-arg constructor pass-through. Adds three `external view` wrappers — `extLpTrancheIntegral` and `extLpTrancheEmission`, which delegate to the parent's `internal view` helpers for test-side conservation-invariant and AP-identity fixtures per H-D34, and `extScoredMiliariumCount`, which reads the scored-Miliarium count PP-D57 (xi) keeps internal. No additional state, no override of parent behavior, no modifiers, no events. Preserves prod ABI minimality — `EmissionDistributor` itself remains free of the test-only surface.
 contract EmissionDistributorHarness is EmissionDistributor {
     constructor(
         IAuMM aumm_,
@@ -34,5 +34,10 @@ contract EmissionDistributorHarness is EmissionDistributor {
     /// @notice Delegates to parent's `_lpTrancheEmission(block_)` internal view helper per H-D34.
     function extLpTrancheEmission(uint256 block_) external view returns (uint256) {
         return _lpTrancheEmission(block_);
+    }
+
+    /// @notice Reads the parent's internal `_scoredMiliariumCount` per PP-D57 (xi), which adds no public getter.
+    function extScoredMiliariumCount() external view returns (uint256) {
+        return _scoredMiliariumCount;
     }
 }

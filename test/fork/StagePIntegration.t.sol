@@ -587,7 +587,7 @@ abstract contract StagePIntegrationFixture is Test {
             vm.roll(blockCounter);
             orchestrator.emaSampler().updateEMA(pilotPools[0]);
         }
-        // F-5 score > 0 in bootstrap via the Miliarium f5Total/28 branch
+        // F-5 score > 0 in bootstrap via the Miliarium branch, f5Total over the scored-Miliarium count (PP-D57 (xi))
         orchestrator.emissionDistributor().recordScore(pilotPools[0]);
     }
 

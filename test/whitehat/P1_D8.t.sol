@@ -5,15 +5,32 @@ import {Test} from "forge-std/Test.sol";
 
 import {CCBMultiplier} from "src/ccb/CCBMultiplier.sol";
 import {AureumTime} from "src/lib/AureumTime.sol";
+import {IAuMM} from "src/token/IAuMM.sol";
+import {IGaugeRegistry} from "src/ccb/IGaugeRegistry.sol";
+import {IEMASampler} from "src/ccb/IEMASampler.sol";
+import {ICCBMultiplier} from "src/ccb/ICCBMultiplier.sol";
+import {IMiliariumRegistry} from "src/ccb/IMiliariumRegistry.sol";
+import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 import {MockMiliariumRegistry, MockEMASampler, MockGaugeRegistry} from "test/unit/CCBMultiplier.t.sol";
+import {EmissionDistributorHarness} from "test/unit/harness/EmissionDistributorHarness.sol";
+import {
+    MockAuMM,
+    MockCCBMultiplier,
+    MockEfficiencyOracle,
+    MockGaugeRegistry as EDMockGaugeRegistry,
+    MockEMASampler as EDMockEMASampler,
+    MockMiliariumRegistry as EDMockMiliariumRegistry
+} from "test/unit/EmissionDistributor.t.sol";
+import {MockRegisteredVault} from "test/mocks/MockRegisteredVault.sol";
 
 /// @notice Regression for seam-1 root cause D.8 (Medium), inverted from its PP3.2 reproduction per
 ///         PP-D57 (iii). The constellation mean divided a sum walked over the live pool count by the
 ///         literal 28, so a pool at the true mean was stepped down every epoch and reached CLAMP_FLOOR
 ///         in five; it now divides by the `poolCount` the loop walks, and the literal is deleted. The
-///         equal-leg divisor at `EmissionDistributor.sol` L599 is PP-D57 (iv)'s site and is not
-///         exercised by this file. C.7 shares this row's redeploy unit.
+///         second contract below covers site two, the equal-leg divisor in
+///         `EmissionDistributor.recordScore`, per PP-D57 (xi) and (xii). C.7 shares this row's
+///         redeploy unit.
 contract P1_D8_MeanDivisorIsALiteralNotTheLengthWalkedTest is Test {
     uint256 internal constant START_BLOCK = AureumTime.EMA_MATURITY_BLOCKS + 200_000;
     uint256 internal constant EPOCH_1_BLOCK = START_BLOCK;
@@ -154,5 +171,125 @@ contract P1_D8_MeanDivisorIsALiteralNotTheLengthWalkedTest is Test {
             listed[i] = pools[i];
         }
         miliReg.setPoolList(listed);
+    }
+}
+
+/// @notice D.8 site two per PP-D57 (xi) and (xii): the H-D33 equal leg in `recordScore` divides
+///         `f5Total` by the count of Miliarium pools whose scores sit in `totalScore`, where it
+///         divided by the literal 28.
+contract P1_D8_EqualLegDividesByTheScoredMiliariumCountTest is Test {
+    uint256 internal constant ED_GENESIS_BLOCK = 1_000_000;
+    address internal constant ED_GOV = address(0xC0FE);
+    uint256 internal constant MAX_MILIARIUM_COUNT = 28;
+    uint256 internal constant POOL_TVL_EMA = 1_000e18;
+    uint256 internal constant POOL_MULTIPLIER = 1e18;
+
+    MockAuMM internal edAumm;
+    EDMockGaugeRegistry internal edGauges;
+    EDMockEMASampler internal edEma;
+    MockCCBMultiplier internal edMult;
+    MockEfficiencyOracle internal edEffOracle;
+    EDMockMiliariumRegistry internal edMiliReg;
+    EmissionDistributorHarness internal distributor;
+
+    function setUp() public {
+        // Inside the bootstrap window, where alpha is zero and the equal leg is the whole score, and
+        // past EMA maturity for the mock's seed block of one.
+        vm.roll(ED_GENESIS_BLOCK);
+    }
+
+    /// @notice D.8's site-two done-criteria per PP-D57 (xii): at every count M from one to
+    ///         twenty-eight, with one Miliarium pool registered but never gauged and one gauged
+    ///         non-Miliarium pool beside them, the count is M and a Miliarium pool's score is
+    ///         `f5Total / M` exactly. The literal 28 fails at every M but twenty-eight, and the
+    ///         registry count and the gauged count, both M plus one, fail at every M.
+    function test_equalLegDividesByTheScoredMiliariumCount() public {
+        address ungaugedMiliarium = makeAddr("ungaugedMiliarium");
+        address nonMiliarium = makeAddr("nonMiliarium");
+
+        for (uint256 m = 1; m <= MAX_MILIARIUM_COUNT; m++) {
+            _deployFresh();
+            for (uint256 i = 0; i < m; i++) {
+                _seatGauged(_miliariumPool(i), true);
+            }
+            edMiliReg.setMiliarium(ungaugedMiliarium, true);
+            _seatGauged(nonMiliarium, false);
+
+            for (uint256 i = 0; i < m; i++) {
+                distributor.recordScore(_miliariumPool(i));
+            }
+            distributor.recordScore(nonMiliarium);
+            distributor.recordScore(_miliariumPool(0));
+
+            assertGt(distributor.f5Total(), 0, "premise - f5Total is non-zero, so no divisor passes vacuously");
+            assertEq(distributor.extScoredMiliariumCount(), m, "the count is the Miliarium pools recorded");
+            assertEq(
+                distributor.poolScore(_miliariumPool(0)),
+                distributor.f5Total() / m,
+                "the equal leg divides f5Total by the scored-Miliarium count"
+            );
+        }
+    }
+
+    /// @notice Both paths that lower the count, per PP-D57 (xi): a revoked pool leaves it at
+    ///         `deregisterScore`, and a pool re-slotted out of Miliarium leaves it at its next
+    ///         `recordScore`; re-recording a remaining Miliarium pool after each shows the divisor
+    ///         following the count.
+    function test_scoredMiliariumCountFollowsDeregistrationAndReslotting() public {
+        _deployFresh();
+        address kept = _miliariumPool(0);
+        address reslotted = _miliariumPool(1);
+        address revoked = _miliariumPool(2);
+        _seatGauged(kept, true);
+        _seatGauged(reslotted, true);
+        _seatGauged(revoked, true);
+        distributor.recordScore(kept);
+        distributor.recordScore(reslotted);
+        distributor.recordScore(revoked);
+        assertEq(distributor.extScoredMiliariumCount(), 3, "premise - three Miliarium pools counted");
+
+        edGauges.setApproved(revoked, false);
+        distributor.deregisterScore(revoked);
+        assertEq(distributor.extScoredMiliariumCount(), 2, "deregistering a revoked pool takes the count down by one");
+        distributor.recordScore(kept);
+        assertEq(distributor.poolScore(kept), distributor.f5Total() / 2, "the divisor follows the count after deregistration");
+
+        edMiliReg.setMiliarium(reslotted, false);
+        distributor.recordScore(reslotted);
+        assertEq(distributor.extScoredMiliariumCount(), 1, "a pool re-slotted out of Miliarium leaves the count at its next record");
+        distributor.recordScore(kept);
+        assertEq(distributor.poolScore(kept), distributor.f5Total(), "the divisor follows the count after re-slotting");
+    }
+
+    function _deployFresh() internal {
+        edAumm = new MockAuMM();
+        edGauges = new EDMockGaugeRegistry();
+        edEma = new EDMockEMASampler();
+        edMult = new MockCCBMultiplier();
+        edEffOracle = new MockEfficiencyOracle();
+        edMiliReg = new EDMockMiliariumRegistry();
+        distributor = new EmissionDistributorHarness(
+            IAuMM(address(edAumm)),
+            IGaugeRegistry(address(edGauges)),
+            IEMASampler(address(edEma)),
+            ICCBMultiplier(address(edMult)),
+            IEfficiencyOracle(address(edEffOracle)),
+            IMiliariumRegistry(address(edMiliReg)),
+            ED_GENESIS_BLOCK,
+            ED_GOV,
+            address(new MockRegisteredVault())
+        );
+        edEffOracle.setEmissionsRecorder(address(distributor));
+    }
+
+    function _seatGauged(address pool, bool miliarium) internal {
+        edGauges.setApproved(pool, true);
+        edEma.setTVLEMA(pool, POOL_TVL_EMA);
+        edMult.setMultiplier(pool, POOL_MULTIPLIER);
+        if (miliarium) edMiliReg.setMiliarium(pool, true);
+    }
+
+    function _miliariumPool(uint256 i) internal returns (address) {
+        return makeAddr(string.concat("miliarium", vm.toString(i)));
     }
 }

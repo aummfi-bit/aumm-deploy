@@ -638,19 +638,20 @@ contract EmissionDistributorTest is Test {
         assertEq(distributor.f5Total(), 300e18);
     }
 
-    /// @notice Confirms the H-D33 Miliarium branch at α=0 (default block ≤ month10EndBlock) reshapes effective to `f5Total / 28` per H-D6 1/28 literal supply-deflationary share — canonical F-1 equal-split baseline.
-    function test_RecordScore_BootstrapAlphaZeroMiliarium_EffectiveEqualsF5TotalOver28() public {
+    /// @notice Confirms the H-D33 Miliarium branch at α=0 (default block ≤ month10EndBlock) reshapes effective to `f5Total` over the scored-Miliarium count per PP-D57 (xi) — one Miliarium pool is recorded, so the count is one and that pool takes the whole equal leg, the F-1 equal split over the live Miliarium pools.
+    function test_RecordScore_BootstrapAlphaZeroMiliarium_EffectiveEqualsF5TotalOverScoredCount() public {
         miliReg.setMiliarium(POOL_A, true);
         gauges.setApproved(POOL_A, true);
         ema.setTVLEMA(POOL_A, 100e18);
         mult.setMultiplier(POOL_A, 1e18);
         vm.expectEmit(true, false, false, true);
-        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, uint256(100e18) / 28);
+        emit IEmissionDistributor.ScoreUpdated(POOL_A, 0, 100e18);
         distributor.recordScore(POOL_A);
         assertEq(distributor.f5Score(POOL_A), 100e18);
         assertEq(distributor.f5Total(), 100e18);
-        assertEq(distributor.poolScore(POOL_A), uint256(100e18) / 28);
-        assertEq(distributor.totalScore(), uint256(100e18) / 28);
+        assertEq(distributor.poolScore(POOL_A), 100e18);
+        assertEq(distributor.totalScore(), 100e18);
+        assertEq(distributor.extScoredMiliariumCount(), 1);
     }
 
     /// @notice Confirms the H-D33 non-Miliarium Option A branch at α=0 (default block ≤ month10EndBlock) reshapes effective to 0 per `10_constitution.md §xxviii` — non-Miliarium pools carry zero weight during F-1 bootstrap regime.
