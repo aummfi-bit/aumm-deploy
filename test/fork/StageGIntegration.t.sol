@@ -436,14 +436,23 @@ abstract contract StageGIntegrationFixture is Test {
         vm.stopPrank();
     }
 
+    /// @dev One accumulate page with the hints `rankHints` supplies per **PP-D56 (xxv)**. The hints
+    ///      are read BEFORE the prank, because a staticcall between `vm.prank` and the call it arms
+    ///      would consume the prank and leave the accumulate call unpranked.
+    function _accumulatePage(address[] memory pools) internal {
+        uint256 epoch = ++_snapshotEpoch;
+        address[] memory hints = gaugeEligibility.rankHints(pools, epoch);
+        vm.prank(address(gaugeRegistry));
+        gaugeEligibility.accumulateEpochSnapshot(pools, hints, epoch);
+    }
+
     function _warmupTournament(address[] memory pools) internal {
         uint256 smoothing = gaugeEligibility.SMOOTHING_EPOCHS();
-        vm.startPrank(address(gaugeRegistry));
         for (uint256 i = 0; i < smoothing; ++i) {
-            gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+            _accumulatePage(pools);
+            vm.prank(address(gaugeRegistry));
             gaugeEligibility.finalizeEpochSnapshot(pools.length);
         }
-        vm.stopPrank();
     }
 }
 
@@ -665,8 +674,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
-        vm.prank(address(gaugeRegistry));
-        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulatePage(pools);
         vm.prank(address(gaugeRegistry));
         gaugeEligibility.finalizeEpochSnapshot(pools.length);
         assertEq(gaugeEligibility.currentSnapshotEpoch(), 4);
@@ -688,8 +696,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
-        vm.prank(address(gaugeRegistry));
-        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulatePage(pools);
         vm.prank(address(gaugeRegistry));
         gaugeEligibility.finalizeEpochSnapshot(pools.length);
         // Cycle 1 — single-slot cohort; pools[0] is favored after epoch 4 snapshot.
@@ -699,8 +706,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         // Cycle 2 — expect Rising for new leader then Dropped for former leader at epoch 5.
         // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmits, which bind to the next call,
         // and BELOW the input changes it reads, because both crossing events fire in finalize.
-        vm.prank(address(gaugeRegistry));
-        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulatePage(pools);
         vm.expectEmit(true, true, false, true, address(gaugeEligibility));
         emit GaugeEfficiencyRising(pools[1], 5, 6e18, 1e18, 6e18);
         vm.expectEmit(true, true, false, true, address(gaugeEligibility));
@@ -739,8 +745,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(tied700,    3e18, 1e18);
 
         _warmupTournament(pools);
-        vm.prank(address(gaugeRegistry));
-        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulatePage(pools);
         vm.prank(address(gaugeRegistry));
         gaugeEligibility.finalizeEpochSnapshot(pools.length);
 
@@ -770,8 +775,7 @@ contract StageGEligibilityTest is StageGIntegrationFixture {
         mockEfficiencyOracle.setEfficiencyInputs(pools[3], 2e18, 1e18);
         mockEfficiencyOracle.setEfficiencyInputs(pools[4], 1e18, 1e18);
         _warmupTournament(pools);
-        vm.prank(address(gaugeRegistry));
-        gaugeEligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulatePage(pools);
         vm.prank(address(gaugeRegistry));
         gaugeEligibility.finalizeEpochSnapshot(pools.length);
 

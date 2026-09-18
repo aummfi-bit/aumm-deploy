@@ -160,8 +160,10 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
     }
 
     /// @dev One tournament epoch under the **PP-D56 (iv)** split, each phase taking a single page.
+    ///      The accumulate page takes its hints from `nextAccumulationPage` per **PP-D56 (xxv)**.
     function _advanceOnce() internal {
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        (, address[] memory hints) = gaugeRegistry.nextAccumulationPage(type(uint256).max);
+        gaugeRegistry.accumulateTournament(hints);
         gaugeRegistry.finalizeTournament(type(uint256).max);
     }
 

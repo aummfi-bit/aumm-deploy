@@ -130,9 +130,11 @@ contract F16_EmissionCapTournamentTest is Test {
     }
 
     /// @dev One whole tournament epoch under the **PP-D56 (iv)** two-phase split: accumulate every
-    ///      active gauge in one page, then finalize every ranked entry in one page.
+    ///      active gauge in one page, then finalize every ranked entry in one page. The accumulate
+    ///      page takes its hints from `nextAccumulationPage` per **PP-D56 (xxv)**.
     function _advanceOnce() internal {
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        (, address[] memory hints) = gaugeRegistry.nextAccumulationPage(type(uint256).max);
+        gaugeRegistry.accumulateTournament(hints);
         gaugeRegistry.finalizeTournament(type(uint256).max);
     }
 

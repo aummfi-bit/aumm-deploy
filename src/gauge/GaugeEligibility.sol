@@ -95,26 +95,34 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @notice **PP-D50** (viii) incoming admission authority awaiting its own `acceptAdmissionAuthority` call — zero when no rotation is pending.
     address public pendingAdmissionAuthority;
 
-    /// @notice One entry of the paginated tournament's ranked scratch per **PP-D56 (iv)**.
+    /// @notice One pool's entry in the tournament's sorted ranked list per **PP-D56 (xxv)**.
     /// @dev Carries the two SMAs the transition events already emit, so a finalize page can emit
-    ///      without re-reading the oracle. Storage, because accumulation spans transactions.
+    ///      without re-reading the oracle, plus the link to the next entry and the epoch stamp that
+    ///      marks it as ranked in the accumulation carrying that epoch. Keyed by pool, so the pool is
+    ///      not a member; `next` and `rankedEpoch` share a slot, keeping an entry at three slots.
     struct RankedEntry {
-        address pool;
         uint128 numeratorSma;
         uint128 denominatorSma;
         uint256 efficiencyRatio;
+        address next;
+        uint64 rankedEpoch;
     }
 
-    /// @notice Ranked scratch for the paginated tournament, kept SORTED by insertion during
-    ///         accumulation per **PP-D56 (x)**, so finalize needs no global pass.
-    /// @dev Ordering is **G-D23 (iv)** / **T-T3** unchanged: descending by ratio, address-ascending
-    ///      on a tie. Entries beyond `nRanked` are STALE BY DESIGN, because the last finalize page
-    ///      clears the scratch LOGICALLY by zeroing `nRanked` rather than deleting entries: a
-    ///      physical clear is one unbounded write set per epoch, which would reinstate on that page
-    ///      the very bound (x) exists to impose, and overwriting a nonzero slot is cheaper anyway.
-    RankedEntry[] internal _rankedScratch;
+    /// @notice Each pool's ranked entry per **PP-D56 (xxv)**. An entry counts only in the
+    ///         accumulation whose epoch it carries.
+    /// @dev Entries an earlier accumulation wrote are STALE BY DESIGN and are never cleared: a
+    ///      physical clear is one unbounded write set per epoch, which would reinstate the very bound
+    ///      **PP-D56 (x)** exists to impose, and a stale stamp is enough to exclude an entry.
+    mapping(address => RankedEntry) public rankedEntryOf;
 
-    /// @notice Live entry count at the head of `_rankedScratch` per **PP-D56 (iv)**. Final once
+    /// @notice First entry of the sorted ranked list per **PP-D56 (xxv)**.
+    /// @dev Ordering is **G-D23 (iv)** / **T-T3** unchanged: descending by ratio, address-ascending
+    ///      on a tie. Zeroed together with `nRanked` by every page that seats an epoch, and only there:
+    ///      once a finalize closes an epoch this still names that epoch's first entry, and no contract
+    ///      path reads it again before the next seating page resets it.
+    address public rankedHead;
+
+    /// @notice Entries ranked in the accumulation in progress per **PP-D56 (iv)**. Final once
     ///         accumulation completes, so every finalize page derives the same percentile bands.
     uint256 public nRanked;
 
@@ -122,9 +130,13 @@ contract GaugeEligibility is IGaugeEligibility {
     /// @dev Mirrors the slot of the same name on `GaugeRegistry`; a page carrying a different epoch reseats it per **PP-D56 (xiv)**.
     uint256 public accumulationEpoch;
 
-    /// @notice Next `_rankedScratch` index awaiting cap assignment per **PP-D56 (x)**. Reaching
+    /// @notice Rank of the next entry awaiting cap assignment per **PP-D56 (x)**. Reaching
     ///         `nRanked` marks finalization complete; there is no completion boolean, by design.
     uint256 public finalizeCursor;
+
+    /// @notice Entry the next finalize page starts from per **PP-D56 (xxv)**; the first page starts
+    ///         from `rankedHead` instead, so this is zero until a finalize page has run.
+    address public finalizeNext;
 
     // -------------------------------------------------------------------------
     // Post-deploy wiring (F-D23 pattern per G-D22)
@@ -219,6 +231,8 @@ contract GaugeEligibility is IGaugeEligibility {
     error RevocationNotMatured(address pool, uint256 effectiveBlock);
 
     error OnlyPendingAdmissionAuthority(address caller);
+
+    error RankHintInvalid(address pool, address hint);
 
     // -------------------------------------------------------------------------
     // Modifiers
@@ -364,34 +378,60 @@ contract GaugeEligibility is IGaugeEligibility {
     // External — F-10 efficiency tournament (G-D3 + OQ-G1 + G-D22 + G-D23)
     // -------------------------------------------------------------------------
 
-    /// @dev Inserts one survivor at its sorted position per **PP-D56 (x)**, descending by ratio
-    ///      with an address-ascending tie, which is **G-D23 (iv)** / **T-T3** unchanged.
-    function _insertRanked(address pool, uint256 num, uint256 den, uint256 ratio) internal {
-        uint256 n = nRanked;
-        if (_rankedScratch.length == n) _rankedScratch.push();
-        uint256 j = n;
-        while (
-            j > 0 &&
-            (_rankedScratch[j - 1].efficiencyRatio < ratio ||
-                (_rankedScratch[j - 1].efficiencyRatio == ratio && _rankedScratch[j - 1].pool > pool))
-        ) {
-            _rankedScratch[j] = _rankedScratch[j - 1];
-            --j;
+    /// @dev True when ratio `ra` held by `a` ranks strictly before ratio `rb` held by `b` under
+    ///      **G-D23 (iv)** / **T-T3**: the higher ratio first, and on a tie the lower address first.
+    function _ranksBefore(uint256 ra, address a, uint256 rb, address b) internal pure returns (bool) {
+        return ra > rb || (ra == rb && a < b);
+    }
+
+    /// @dev Links one survivor into the sorted list behind `hint` per **PP-D56 (xxv)**. The hint must
+    ///      be zero, meaning the head, or an entry stamped with `epoch` that ranks strictly before the
+    ///      pool, and the entry after it must be zero or rank strictly after the pool, else the whole
+    ///      page reverts `RankHintInvalid`, so the list is sorted after every page that succeeds. A pool
+    ///      already stamped with `epoch` is skipped: no duplicate is reachable, but one would corrupt
+    ///      the list and leave `nRanked` unreachable.
+    function _linkRanked(address pool, uint256 num, uint256 den, uint256 ratio, address hint, uint256 epoch) internal {
+        RankedEntry storage entry = rankedEntryOf[pool];
+        if (entry.rankedEpoch == epoch) return;
+        address successor;
+        if (hint == address(0)) {
+            successor = rankedHead;
+        } else {
+            RankedEntry storage prev = rankedEntryOf[hint];
+            if (prev.rankedEpoch != epoch || !_ranksBefore(prev.efficiencyRatio, hint, ratio, pool)) {
+                revert RankHintInvalid(pool, hint);
+            }
+            successor = prev.next;
         }
-        _rankedScratch[j] = RankedEntry(pool, SafeCast.toUint128(num), SafeCast.toUint128(den), ratio);
-        nRanked = n + 1;
+        if (
+            successor != address(0) &&
+            !_ranksBefore(ratio, pool, rankedEntryOf[successor].efficiencyRatio, successor)
+        ) {
+            revert RankHintInvalid(pool, hint);
+        }
+        entry.numeratorSma = SafeCast.toUint128(num);
+        entry.denominatorSma = SafeCast.toUint128(den);
+        entry.efficiencyRatio = ratio;
+        entry.next = successor;
+        entry.rankedEpoch = SafeCast.toUint64(epoch);
+        if (hint == address(0)) {
+            rankedHead = pool;
+        } else {
+            rankedEntryOf[hint].next = pool;
+        }
+        ++nRanked;
     }
 
     /// @dev One pool's accumulation work in the **PP-D56 (viii)** gate order: oracle read,
     ///      zero-numerator skip, zero-denominator skip, cold-start stamp, warmup gate, then the
-    ///      ranked insert. The numerator skip is E.7a's fix per **PP-D56 (iii)**: a zero numerator
+    ///      ranked link. The numerator skip is E.7a's fix per **PP-D56 (iii)**: a zero numerator
     ///      gives every pool alike a zero ratio, which would collapse the sort onto its address
     ///      tiebreak and assign cap tiers by ADDRESS. The denominator skip is **P-D15 (3)**: one dead
     ///      gauge must not brick the permissionless tournament. Both precede the cold `SSTORE`, so
     ///      `firstTournamentEpoch` marks the first epoch with usable data rather than the first
     ///      sighting, a skipped pool never pays that store, and a pool that later loses its feed keeps
     ///      its grace epoch and re-ranks without re-warming once the feed returns.
-    function _accumulateOne(address pool, uint256 newEpoch) internal {
+    function _accumulateOne(address pool, address hint, uint256 newEpoch, uint256 epoch) internal {
         (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
         if (num == 0) return;
         if (den == 0) return;
@@ -400,22 +440,30 @@ contract GaugeEligibility is IGaugeEligibility {
             return;
         }
         if (newEpoch - firstTournamentEpoch[pool] < SMOOTHING_EPOCHS) return;
-        _insertRanked(pool, num, den, (num * 1e18) / den);
+        _linkRanked(pool, num, den, (num * 1e18) / den, hint, epoch);
     }
 
-    /// @notice Accumulates one page of this epoch's tournament per **PP-D56 (iv)**.
-    /// @dev A page carrying any epoch other than the seated one seats it and resets the counters.
-    ///      That is also how an abandoned accumulation is discarded per **PP-D56 (xiv)**: the
-    ///      registry, the only caller, passes a new epoch only on a first page or a reseat.
-    function accumulateEpochSnapshot(address[] calldata page, uint256 epoch) external onlyGaugeRegistry {
+    /// @notice Accumulates one page of this epoch's tournament per **PP-D56 (iv)**, linking each ranked
+    ///         pool behind the entry its hint names per **PP-D56 (xxv)**.
+    /// @dev A page carrying any epoch other than the seated one seats it and resets the counters and
+    ///      the list. That runs on every tournament's first page, a finished finalize having returned
+    ///      the seated epoch to zero, and it is how an abandoned accumulation is discarded per
+    ///      **PP-D56 (xiv)**: the registry, the only caller, passes a new epoch only on a first page or
+    ///      a reseat, and hands over one hint per pool. `hints[i]` is checked only when `page[i]` ranks.
+    function accumulateEpochSnapshot(address[] calldata page, address[] calldata hints, uint256 epoch)
+        external
+        onlyGaugeRegistry
+    {
         if (accumulationEpoch != epoch) {
             accumulationEpoch = epoch;
             nRanked = 0;
             finalizeCursor = 0;
+            rankedHead = address(0);
+            finalizeNext = address(0);
         }
         uint256 newEpoch = currentSnapshotEpoch + 1;
         for (uint256 i = 0; i < page.length; ++i) {
-            _accumulateOne(page[i], newEpoch);
+            _accumulateOne(page[i], hints[i], newEpoch, epoch);
         }
     }
 
@@ -429,51 +477,113 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /// @dev Emits the **G-D5** crossing event for one entry, at most once per pool per epoch.
-    function _emitCrossing(RankedEntry storage e, uint256 newEpoch, bool wasFavored, bool isFavored) internal {
+    function _emitCrossing(address pool, RankedEntry storage e, uint256 newEpoch, bool wasFavored, bool isFavored)
+        internal
+    {
         if (wasFavored && !isFavored) {
-            emit GaugeEfficiencyDropped(e.pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
+            emit GaugeEfficiencyDropped(pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
         } else if (!wasFavored && isFavored) {
-            emit GaugeEfficiencyRising(e.pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
+            emit GaugeEfficiencyRising(pool, newEpoch, e.numeratorSma, e.denominatorSma, e.efficiencyRatio);
         }
     }
 
-    /// @dev One ranked entry's finalize work: the crossing event, then the cap, cohort and epoch writes.
-    function _finalizeOne(uint256 i, uint256 newEpoch) internal {
+    /// @dev One ranked entry's finalize work at rank `i`: the crossing event, then the cap, cohort and
+    ///      epoch writes. Returns the entry after it in the sorted list per **PP-D56 (xxv)**.
+    function _finalizeOne(uint256 i, address pool, uint256 newEpoch) internal returns (address next) {
         uint256 n = nRanked;
-        RankedEntry storage e = _rankedScratch[i];
-        address pool = e.pool;
+        RankedEntry storage e = rankedEntryOf[pool];
         bool isFavored = i < (n * 15 + 99) / 100;
-        _emitCrossing(e, newEpoch, isFavoredCohort[pool], isFavored);
+        _emitCrossing(pool, e, newEpoch, isFavoredCohort[pool], isFavored);
         poolEmissionCapBps[pool] = _capBpsFor(i, n);
         isFavoredCohort[pool] = isFavored;
         lastSnapshotEpoch[pool] = newEpoch;
+        next = e.next;
     }
 
-    /// @notice Finalizes one page of the ranked scratch per **PP-D56 (x)**; true when the epoch closes.
+    /// @notice Finalizes one page of the ranked list per **PP-D56 (x)**; true when the epoch closes.
     /// @dev For each entry on the page: the favored cohort by the **G-D3** ceiling cutoff
     ///      `(nRanked * 15 + 99) / 100`, the floor-percentile emission cap by `_capBpsFor` per
     ///      **P-D13 (3)** / **P-D15 (1)**, and the **G-D5** crossing event, fired at most once per pool
     ///      per epoch, `GaugeEfficiencyDropped` top to bottom (**T-T2**) and `GaugeEfficiencyRising`
     ///      bottom to top (**T-T1**). Every page reads the same settled `nRanked`, so the bands are
-    ///      identical across pages. `maxPools` bounds the page and saturates per **PP-D56 (xv)**. The
-    ///      `EmissionDistributor` reads the caps through `IGaugeRegistry` (F16e / F16f). Only the page
-    ///      that reaches `nRanked` closes the epoch, advancing `currentSnapshotEpoch` and clearing the
-    ///      accumulation state.
+    ///      identical across pages. Each page walks the sorted list per **PP-D56 (xxv)**, the first
+    ///      from `rankedHead` and every later one from `finalizeNext`. `maxPools` bounds the page and
+    ///      saturates per **PP-D56 (xv)**. The `EmissionDistributor` reads the caps through
+    ///      `IGaugeRegistry` (F16e / F16f). Only the page that reaches `nRanked` closes the epoch,
+    ///      advancing `currentSnapshotEpoch` and clearing the accumulation state.
     function finalizeEpochSnapshot(uint256 maxPools) external onlyGaugeRegistry returns (bool done) {
         uint256 newEpoch = currentSnapshotEpoch + 1;
         uint256 i = finalizeCursor;
+        address pool = i == 0 ? rankedHead : finalizeNext;
         // Saturates rather than overflowing, so type(uint256).max means every remaining entry per PP-D56 (xv).
         uint256 end = maxPools < nRanked - i ? i + maxPools : nRanked;
         for (; i < end; ++i) {
-            _finalizeOne(i, newEpoch);
+            pool = _finalizeOne(i, pool, newEpoch);
         }
         finalizeCursor = i;
+        finalizeNext = pool;
         done = i == nRanked;
         if (done) {
             currentSnapshotEpoch = newEpoch;
             accumulationEpoch = 0;
             nRanked = 0;
             finalizeCursor = 0;
+        }
+    }
+
+    /// @dev The entry `pool` must follow per **PP-D56 (xxv)**: the last entry ranking strictly before
+    ///      it, taken over the stored list walked from `head` and the pools this page links ahead of it.
+    function _hintFor(
+        address pool,
+        uint256 ratio,
+        address head,
+        address[] memory linked,
+        uint256[] memory linkedRatio,
+        uint256 nLinked
+    ) internal view returns (address hint) {
+        uint256 hintRatio;
+        for (address e = head; e != address(0); e = rankedEntryOf[e].next) {
+            uint256 r = rankedEntryOf[e].efficiencyRatio;
+            if (!_ranksBefore(r, e, ratio, pool)) break;
+            hint = e;
+            hintRatio = r;
+        }
+        for (uint256 k = 0; k < nLinked; ++k) {
+            if (!_ranksBefore(linkedRatio[k], linked[k], ratio, pool)) continue;
+            if (hint == address(0) || _ranksBefore(hintRatio, hint, linkedRatio[k], linked[k])) {
+                hint = linked[k];
+                hintRatio = linkedRatio[k];
+            }
+        }
+    }
+
+    /// @notice Returns the hint each pool on `page` needs from `accumulateEpochSnapshot` under `epoch`
+    ///         per **PP-D56 (xxv)**, zero for a pool the gates skip.
+    /// @dev Replays **PP-D56 (viii)**'s gates and the insertions in memory, and treats the list as empty
+    ///      whenever `epoch` differs from the seated `accumulationEpoch`, exactly as the reset branch
+    ///      would on that page. The walk is unbounded, which is acceptable only because no transaction
+    ///      calls this: it serves callers through `eth_call`, and every hint it returns is still
+    ///      verified on-chain when the page lands.
+    function rankHints(address[] calldata page, uint256 epoch) external view returns (address[] memory hints) {
+        hints = new address[](page.length);
+        bool seated = accumulationEpoch == epoch;
+        address head = seated ? rankedHead : address(0);
+        uint256 newEpoch = currentSnapshotEpoch + 1;
+        address[] memory linked = new address[](page.length);
+        uint256[] memory linkedRatio = new uint256[](page.length);
+        uint256 nLinked;
+        for (uint256 i = 0; i < page.length; ++i) {
+            address pool = page[i];
+            (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
+            if (num == 0 || den == 0) continue;
+            uint256 first = firstTournamentEpoch[pool];
+            if (first == 0 || newEpoch - first < SMOOTHING_EPOCHS) continue;
+            if (seated && rankedEntryOf[pool].rankedEpoch == epoch) continue;
+            uint256 ratio = (num * 1e18) / den;
+            hints[i] = _hintFor(pool, ratio, head, linked, linkedRatio, nLinked);
+            linked[nLinked] = pool;
+            linkedRatio[nLinked] = ratio;
+            ++nLinked;
         }
     }
 

@@ -572,7 +572,7 @@ contract _SnapshotAttacker {
     }
 
     function attack(address[] calldata pools) external {
-        eligibility.accumulateEpochSnapshot(pools, 1);
+        eligibility.accumulateEpochSnapshot(pools, new address[](0), 1);
     }
 }
 
@@ -600,10 +600,19 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         uint256 efficiencyRatio
     );
 
+    /// @dev One accumulate page with the hints `rankHints` supplies per **PP-D56 (xxv)**. The hints
+    ///      are read BEFORE the prank, because a staticcall between `vm.prank` and the call it arms
+    ///      would consume the prank and leave the accumulate call unpranked.
+    function _accumulate(address[] memory pools) internal {
+        uint256 epoch = ++_snapshotEpoch;
+        address[] memory hints = eligibility.rankHints(pools, epoch);
+        vm.prank(gaugeRegistry);
+        eligibility.accumulateEpochSnapshot(pools, hints, epoch);
+    }
+
     function _advanceWarmup(address[] memory pools) internal {
         for (uint256 i = 0; i < 3; ++i) {
-            vm.prank(gaugeRegistry);
-            eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+            _accumulate(pools);
             vm.prank(gaugeRegistry);
             eligibility.finalizeEpochSnapshot(pools.length);
         }
@@ -613,13 +622,13 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address eoa = makeAddr("eoa");
         vm.prank(eoa);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, eoa));
-        eligibility.accumulateEpochSnapshot(new address[](0), 1);
+        eligibility.accumulateEpochSnapshot(new address[](0), new address[](0), 1);
     }
 
     function testNonGaugeRegistrySetterReverts() public {
         vm.prank(gaugeRegistrySetter);
         vm.expectRevert(abi.encodeWithSelector(GaugeEligibility.OnlyGaugeRegistry.selector, gaugeRegistrySetter));
-        eligibility.accumulateEpochSnapshot(new address[](0), 1);
+        eligibility.accumulateEpochSnapshot(new address[](0), new address[](0), 1);
     }
 
     function testNonGaugeRegistryArbitraryContractReverts() public {
@@ -635,8 +644,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[0] = p;
 
         vm.recordLogs();
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -659,8 +667,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[1] = seeing;
 
         vm.recordLogs();
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -682,17 +689,14 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address[] memory pools = new address[](1);
         pools[0] = p;
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
         vm.recordLogs();
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -715,8 +719,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[0] = p;
 
         _advanceWarmup(pools);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
         assertEq(eligibility.firstTournamentEpoch(p), 1);
@@ -727,8 +730,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         // so nothing is emitted and nothing the pool already holds is rewritten.
         mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 0);
         vm.recordLogs();
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -741,8 +743,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         // very next epoch. A cleared or rewritten stamp would have put it back in warmup and left
         // lastSnapshotEpoch at 4.
         mockEfficiencyOracle.setEfficiencyInputs(p, 100e18, 50e18);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -760,8 +761,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmit, which binds to the next call,
         // because the crossing event now fires in finalize and accumulate emits nothing.
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(p, 4, 100e18, 50e18, 2e18);
         vm.prank(gaugeRegistry);
@@ -782,8 +782,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -791,8 +790,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
         // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmits, which bind to the next call,
         // and BELOW the input changes it reads, because both crossing events fire in finalize.
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(b, 5, 200e18, 50e18, 4e18);
         vm.expectEmit(true, true, false, true, address(eligibility));
@@ -817,8 +815,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmit, which binds to the next call,
         // because the crossing event now fires in finalize and accumulate emits nothing.
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(low, 4, 100e18, 50e18, 2e18);
         vm.prank(gaugeRegistry);
@@ -836,8 +833,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -853,8 +849,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -874,8 +869,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -896,8 +890,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -920,8 +913,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -939,8 +931,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -955,32 +946,27 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
     function testMonotonicSnapshotEpochIncrementsByOne() public {
         address[] memory empty = new address[](0);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        _accumulate(empty);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(1));
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        _accumulate(empty);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(2));
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        _accumulate(empty);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(3));
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        _accumulate(empty);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(4));
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(empty, ++_snapshotEpoch);
+        _accumulate(empty);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(empty.length);
         assertEq(eligibility.snapshotEpoch(), uint256(5));
@@ -996,8 +982,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         assertEq(eligibility.lastSnapshotEpoch(p), 0);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -1010,8 +995,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address[] memory pools = new address[](1);
         pools[0] = p;
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -1025,12 +1009,10 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address[] memory pools = new address[](1);
         pools[0] = p;
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -1047,16 +1029,14 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
 
         // PP-D56 (xiii): accumulate sits ABOVE the armed expectEmit, which binds to the next call,
         // because the crossing event now fires in finalize and accumulate emits nothing.
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.expectEmit(true, true, false, true, address(eligibility));
         emit GaugeEfficiencyRising(p, 4, 100e18, 50e18, 2e18);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
         vm.recordLogs();
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
 
@@ -1081,14 +1061,12 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         address[] memory stalePage = new address[](1);
         stalePage[0] = a;
         mockEfficiencyOracle.setEfficiencyInputs(a, 500e18, 50e18);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(stalePage, ++_snapshotEpoch);
+        _accumulate(stalePage);
         assertEq(eligibility.nRanked(), 1);
 
         mockEfficiencyOracle.setEfficiencyInputs(a, 50e18, 50e18);
         mockEfficiencyOracle.setEfficiencyInputs(b, 200e18, 50e18);
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         assertEq(eligibility.nRanked(), 2);
         vm.prank(gaugeRegistry);
         eligibility.finalizeEpochSnapshot(pools.length);
@@ -1110,8 +1088,7 @@ contract GaugeEligibilitySnapshotTest is GaugeEligibilityFixture {
         pools[1] = b;
         _advanceWarmup(pools);
 
-        vm.prank(gaugeRegistry);
-        eligibility.accumulateEpochSnapshot(pools, ++_snapshotEpoch);
+        _accumulate(pools);
         vm.prank(gaugeRegistry);
         assertFalse(eligibility.finalizeEpochSnapshot(1));
         assertEq(eligibility.finalizeCursor(), 1);

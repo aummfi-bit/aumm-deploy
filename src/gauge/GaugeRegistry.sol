@@ -14,7 +14,7 @@ import {AureumTime} from "../lib/AureumTime.sol";
 /**
  * @title GaugeRegistry
  * @notice Gauge state machine for pool activation — three paths: permissionless `activateGauge` (**OQ-G3** anti-spam fee + eligibility), governance `registerGaugeFromComposition`, and governance `seedFoundingPool` / `seedFoundingPools`; revocation via `revokeGauge`. Cross-references: **G-D7** — three activation paths — **G-D17** — `Revoked` is terminal — no Stage G recovery to `Active`.
- * @dev **G3.5** concrete state machine over the **G3.2 → G3.5** lineage — **G3.2** scaffold + **G3.3** constructor + `setGovernanceContract` + `activateGauge` (with **G3.3-pre-fix2c** typed-domain correction and **G3.3-fix1** `abstract` keyword + `external override` modifier per **G-D24** Schedule (a)) + **G3.4** `registerGaugeFromComposition` + `revokeGauge` + `isGaugeApproved` + `gaugeStatus` + **G3.5** `seedFoundingPool` + `seedFoundingPools` with the `abstract` keyword removed (8 of 8 `IGaugeRegistry` functions implemented; contract concrete). Five-argument constructor — four address arguments with zero-address checks (**ZeroAddress**) and raw `address` stores per **G-D16d**, plus a fifth `genesisBlock_` (`uint256`) bound raw to `GENESIS_BLOCK` with no zero-check per **P-D14 (1)**; Stage K `setGovernanceContract` handoff with `GovernanceTransferred` emit; **OQ-G3** permissionless `activateGauge` per the **G-D16c** five-step ordering (status precheck → fee pull → fee push → Bodensee routing → fee event → try/catch eligibility → state write + activated event) with non-reverting failure path; governance composition (`registerGaugeFromComposition` per **G-D7** path 2) and governance founding (`seedFoundingPool` scalar + `seedFoundingPools` inlined batch per **G-D16b** + **STAGE_G_PRECHECK_AUTO_GAUGE** C-4) — both bypass eligibility and the anti-spam fee; `revokeGauge` flips `Active → Revoked` per **G-D17** (terminal at Stage G; no entrypoint writes `Revoked → Active`); `isGaugeApproved` returns `_gaugeStatus[pool] == GaugeStatus.Active` per Stage F compat (**G-D16a**). Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy. **F16c additions per P-D14** — `GENESIS_BLOCK` immutable (5th constructor arg, anchors F-10 tournament epoch cadence + month-13 gate); `lastTournamentEpoch` cadence storage (one snapshot per `BLOCKS_PER_EPOCH`); permissionless `accumulateTournament(maxPools)` + `finalizeTournament(maxPools)` per **PP-D56 (iv)** / **(x)** — the two-phase F-10 tournament, paged over `_activeGauges.at(i)`; concrete-only, not on `IGaugeRegistry`.
+ * @dev **G3.5** concrete state machine over the **G3.2 → G3.5** lineage — **G3.2** scaffold + **G3.3** constructor + `setGovernanceContract` + `activateGauge` (with **G3.3-pre-fix2c** typed-domain correction and **G3.3-fix1** `abstract` keyword + `external override` modifier per **G-D24** Schedule (a)) + **G3.4** `registerGaugeFromComposition` + `revokeGauge` + `isGaugeApproved` + `gaugeStatus` + **G3.5** `seedFoundingPool` + `seedFoundingPools` with the `abstract` keyword removed (8 of 8 `IGaugeRegistry` functions implemented; contract concrete). Five-argument constructor — four address arguments with zero-address checks (**ZeroAddress**) and raw `address` stores per **G-D16d**, plus a fifth `genesisBlock_` (`uint256`) bound raw to `GENESIS_BLOCK` with no zero-check per **P-D14 (1)**; Stage K `setGovernanceContract` handoff with `GovernanceTransferred` emit; **OQ-G3** permissionless `activateGauge` per the **G-D16c** five-step ordering (status precheck → fee pull → fee push → Bodensee routing → fee event → try/catch eligibility → state write + activated event) with non-reverting failure path; governance composition (`registerGaugeFromComposition` per **G-D7** path 2) and governance founding (`seedFoundingPool` scalar + `seedFoundingPools` inlined batch per **G-D16b** + **STAGE_G_PRECHECK_AUTO_GAUGE** C-4) — both bypass eligibility and the anti-spam fee; `revokeGauge` flips `Active → Revoked` per **G-D17** (terminal at Stage G; no entrypoint writes `Revoked → Active`); `isGaugeApproved` returns `_gaugeStatus[pool] == GaugeStatus.Active` per Stage F compat (**G-D16a**). Typed domain per **G-D16d** (Path (A), all-immutable) — `svZCHF`, `swapAndDeposit`, and `gaugeEligibility` are `address` immutables with `IERC20` / `SwapAndDepositToBodensee` / `IGaugeEligibility` casts at call sites only; deploy order per **G-D22** — `GaugeEligibility` first, `GaugeRegistry` second with `eligibility_` constructor arg, `GaugeEligibility.setGaugeRegistry(this)` post-deploy. **F16c additions per P-D14** — `GENESIS_BLOCK` immutable (5th constructor arg, anchors F-10 tournament epoch cadence + month-13 gate); `lastTournamentEpoch` cadence storage (one snapshot per `BLOCKS_PER_EPOCH`); permissionless `accumulateTournament(hints)` + `finalizeTournament(maxPools)` per **PP-D56 (iv)** / **(x)** / **(xxv)** — the two-phase F-10 tournament, paged over `_activeGauges.at(i)`, each accumulate page taking its hints from the `nextAccumulationPage` view; concrete-only, not on `IGaugeRegistry`.
  */
 contract GaugeRegistry is IGaugeRegistry {
     using SafeERC20 for IERC20;
@@ -257,36 +257,62 @@ contract GaugeRegistry is IGaugeRegistry {
         }
     }
 
-    /// @dev Gates and seats the epoch on a first page. Does NOT stamp `lastTournamentEpoch`; that
-    ///      moves to the last finalize page. A seat left from an earlier epoch follows
-    ///      **PP-D56 (xiv)**: an INCOMPLETE accumulation is abandoned and this call reseats through
-    ///      the same gates, which it passes because the abandoned epoch was never stamped; a
-    ///      COMPLETE one reverts `AccumulationEpochStale` instead, because finalize is permissionless
-    ///      and reads no oracle, so finishing it late is a delay rather than a mix. Either way one
-    ///      accumulation never mixes two oracle windows, which is **PP-D56 (xi)**.
-    function _seatAccumulationEpoch() internal {
+    /// @dev The epoch and cursor the next accumulate page runs under, gated as a first page would be.
+    ///      Does NOT stamp `lastTournamentEpoch`; that moves to the last finalize page. A seat left from
+    ///      an earlier epoch follows **PP-D56 (xiv)**: an INCOMPLETE accumulation is abandoned and the
+    ///      next page reseats through the same gates, which it passes because the abandoned epoch was
+    ///      never stamped; a COMPLETE one reverts `AccumulationEpochStale` instead, because finalize is
+    ///      permissionless and reads no oracle, so finishing it late is a delay rather than a mix.
+    ///      Either way one accumulation never mixes two oracle windows, which is **PP-D56 (xi)**. It is
+    ///      a view so that `nextAccumulationPage` mirrors exactly what `accumulateTournament` seats,
+    ///      per **PP-D56 (xxv)**.
+    function _previewSeat() internal view returns (uint256 epoch, uint256 cursor) {
         uint256 e = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
         if (accumulationEpoch != 0) {
-            if (accumulationEpoch == e) return;
+            if (accumulationEpoch == e) return (e, tournamentCursor);
             if (tournamentCursor >= _activeGauges.length()) revert AccumulationEpochStale(accumulationEpoch, e);
         }
         if (block.number < AureumTime.year1EndBlock(GENESIS_BLOCK) + 1) revert TournamentNotActive();
         if (e <= lastTournamentEpoch) revert TournamentEpochNotElapsed();
-        accumulationEpoch = e;
-        tournamentCursor = 0;
+        return (e, 0);
+    }
+
+    /// @dev The page `[from, to)` of at most `maxPools` gauges that starts at `cursor`.
+    function _pageBounds(uint256 cursor, uint256 maxPools) internal view returns (uint256 from, uint256 to) {
+        uint256 len = _activeGauges.length();
+        from = cursor;
+        // Past the length after a late revocation, per PP-D56 (xiv): clamp to an empty page.
+        if (from > len) from = len;
+        // Saturates rather than overflowing, so an oversized bound means every remaining gauge per PP-D56 (xv).
+        to = maxPools < len - from ? from + maxPools : len;
     }
 
     /// @notice Accumulates one page of the F-10 tournament per **PP-D56 (iv)**; permissionless.
-    function accumulateTournament(uint256 maxPools) external {
-        _seatAccumulationEpoch();
-        uint256 len = _activeGauges.length();
-        uint256 from = tournamentCursor;
-        // Past the length after a late revocation, per PP-D56 (xiv): clamp to an empty page.
-        if (from > len) from = len;
-        // Saturates rather than overflowing, so type(uint256).max means every remaining gauge per PP-D56 (xv).
-        uint256 to = maxPools < len - from ? from + maxPools : len;
+    /// @dev Per **PP-D56 (xxv)** the page is as many gauges from the cursor as there are `hints`,
+    ///      clamped to those remaining, and any hint past the clamp is never read. Take the hints from
+    ///      `nextAccumulationPage`; each is verified on-chain, so a wrong one reverts the page.
+    function accumulateTournament(address[] calldata hints) external {
+        (uint256 epoch, uint256 cursor) = _previewSeat();
+        if (accumulationEpoch != epoch) accumulationEpoch = epoch;
+        (uint256 from, uint256 to) = _pageBounds(cursor, hints.length);
         tournamentCursor = to;
-        GaugeEligibility(gaugeEligibility).accumulateEpochSnapshot(_buildPage(from, to), accumulationEpoch);
+        GaugeEligibility(gaugeEligibility).accumulateEpochSnapshot(_buildPage(from, to), hints, epoch);
+    }
+
+    /// @notice The page the next `accumulateTournament` would take, at most `maxPools` gauges, with the
+    ///         hint each needs, per **PP-D56 (xxv)**; reverts wherever that call would revert.
+    /// @dev For callers through `eth_call`. It mirrors `_previewSeat`, so a seat or reseat starts at
+    ///      cursor zero under the current epoch, and hands the page to `GaugeEligibility.rankHints`,
+    ///      which treats the list as empty under an epoch other than the seated one.
+    function nextAccumulationPage(uint256 maxPools)
+        external
+        view
+        returns (address[] memory page, address[] memory hints)
+    {
+        (uint256 epoch, uint256 cursor) = _previewSeat();
+        (uint256 from, uint256 to) = _pageBounds(cursor, maxPools);
+        page = _buildPage(from, to);
+        hints = GaugeEligibility(gaugeEligibility).rankHints(page, epoch);
     }
 
     /// @notice Finalizes one page of the F-10 tournament per **PP-D56 (x)**; permissionless.

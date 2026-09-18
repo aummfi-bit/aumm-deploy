@@ -21,11 +21,21 @@ import {MockEfficiencyTVLOracle} from "test/unit/EfficiencyOracle.t.sol";
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @notice Reproduction PoC for seam-1 root cause E.7b (Medium). `advanceTournament` passes
-///         the registry's whole active set into `computeEpochSnapshot` with a per-pool external
-///         call, a cold SSTORE on first sighting and an insertion sort over the ranked survivors,
-///         so cost scales with a set that nothing bounds and a snapshot that can no longer be
-///         afforded freezes the caps it last wrote. E.7a and E.7c are the other two F-16 faces.
+/// @notice E.7b's post-fix suite per **PP-D56 (xxvi)**. It began as the reproduction PoC for seam-1
+///         root cause E.7b (Medium), where `advanceTournament` passed the registry's whole active
+///         set into `computeEpochSnapshot` with a per-pool external call, a cold SSTORE on first
+///         sighting and an insertion sort over the ranked survivors, so cost scaled with a set that
+///         nothing bounded and a snapshot that could no longer be afforded froze the caps it last
+///         wrote. (xxv) replaced that design: `advanceTournament` is gone, accumulation pages
+///         through `accumulateTournament` against a sorted linked list, and `_linkRanked` verifies
+///         one caller-supplied hint instead of walking, which makes the transaction O(1) per entry
+///         at every arrival order. The two original cases survive as ATTESTATIONS rather than
+///         reproductions — the unbounded single page is a caller's CHOICE that (xv) keeps available
+///         without making it convenient, and caps hold until the next snapshot because
+///         `finalizeEpochSnapshot` is their sole writer, which was never itself the defect. The
+///         bound is carried by `test_accumulateAndFinalizeTournamentPaginates`, which measures the
+///         transaction alone. The contract's own name is kept for continuity with the audit row.
+///         E.7a and E.7c are the other two F-16 faces.
 contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant BLOCKS_PER_EPOCH = 100_800;
@@ -190,23 +200,38 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         gasUsed = gasBefore - gasAfter;
     }
 
+    /// @dev One accumulate page of at most `maxPools` gauges, with the hints `nextAccumulationPage`
+    ///      supplies per **PP-D56 (xxv)**. The view is read in the same call, so the hints describe
+    ///      exactly the page the transaction then builds.
+    function _accumulatePage(uint256 maxPools) internal {
+        (, address[] memory hints) = lastRegistry.nextAccumulationPage(maxPools);
+        lastRegistry.accumulateTournament(hints);
+    }
+
     /// @dev One tournament epoch under the **PP-D56 (iv)** split; the measured call spans BOTH
     ///      phases, so its figures remain comparable to the single-call ones (ix) recorded.
     function _advanceOnce() internal {
-        lastRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         lastRegistry.finalizeTournament(type(uint256).max);
     }
 
     /// @dev Pools are seeded in ascending ADDRESS order and each pool's TVL grows with its index
-    ///      while fees stay constant, so efficiency RATIOS arrive in DESCENDING order. The ranked
-    ///      list is kept descending by ratio, so descending-ratio arrival appends without shifting,
-    ///      which is insertion sort's best case and makes these figures a LOWER bound. The sort is
-    ///      keyed on ratio, not address: this order is the best case only because this seeding
-    ///      makes ascending address and descending ratio coincide, per PP-D56 (xxiv). Production
-    ///      activation order bears no relation to either, so the real sort term is larger and the
-    ///      extrapolation is conservative.
-    /// @notice Tournament gas grows at least in proportion to the unbounded active set.
-    function test_P1_E7b_tournamentGasScalesWithTheUnboundedActiveSet() public {
+    ///      while fees stay constant, so efficiency RATIOS arrive in DESCENDING order. Under the
+    ///      design (xxv) built that is the EXPENSIVE side rather than the cheap one, the reverse of
+    ///      what this comment said before PP-D56 (xxvi): the ranked list is kept descending by
+    ///      ratio, so a descending arrival ranks every pool LAST and `_hintFor` must walk the whole
+    ///      list to find its hint. That walk is `internal view`, so what grows with the active set
+    ///      here is the `eth_call` leg rather than the transaction — `_accumulatePage` reads
+    ///      `nextAccumulationPage` INSIDE the measured call, which is the very conflation (xxvi)
+    ///      separates, and it is left in place here on purpose, because this case is about the cost
+    ///      a caller meets when they ask for the whole tournament in one call.
+    /// @notice ATTESTATION rather than reproduction, per **PP-D56 (xxvi)**: the unbounded single
+    ///         page is a caller's CHOICE and no longer the only shape. Its cost still grows with the
+    ///         active set and still passes a block at the audit row's 890 pools, which is why (xv)
+    ///         keeps that shape available without making it convenient. The paged path that replaces
+    ///         it is measured beside this case in `test_accumulateAndFinalizeTournamentPaginates`,
+    ///         where ranking one more pool cost the same 129,235 gas at all eleven ranked counts.
+    function test_unboundedPageIsACallerChoiceNotTheOnlyShape() public {
         uint256 gasSmall = _measureFourthAdvanceGas(SMALL_N, 0);
         uint256 gasLarge = _measureFourthAdvanceGas(LARGE_N, 1);
 
@@ -248,9 +273,13 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
         );
     }
 
-    /// @notice Caps written by the last affordable snapshot stay in force when no later
-    ///         tournament runs.
-    function test_P1_E7b_capsFreezeAtWhateverTheLastAffordableSnapshotWrote() public {
+    /// @notice ATTESTATION rather than reproduction, per **PP-D56 (xxvi)**: `finalizeEpochSnapshot`
+    ///         is the sole writer of `poolEmissionCapBps`, so caps hold until the next snapshot
+    ///         finalizes. That held before the fix, holds after it, and was never itself the defect;
+    ///         AFFORDABLE carried the whole of the old framing, and no snapshot is unaffordable once
+    ///         it pages, so holding is now a delay the caller controls rather than a freeze they
+    ///         cannot lift. Every assertion below is unchanged from the reproduction.
+    function test_capsHoldOnlyUntilTheNextPagedSnapshot() public {
         _measureFourthAdvanceGas(SMALL_N, 0);
 
         address highest = lastPools[SMALL_N - 1];
@@ -270,6 +299,197 @@ contract P1_E7b_TournamentEnumeratesAnUnboundedActiveSetTest is Test {
             lastRegistry.poolEmissionCapBps(lowest),
             capLowest,
             "finalizeEpochSnapshot is the only writer of poolEmissionCapBps; caps freeze without a later snapshot"
+        );
+    }
+
+    /// @dev Builds the done-criteria case's roster: the same stack `_measureFourthAdvanceGas`
+    ///      builds, but with TVL FALLING as the index rises, so under constant fees each pool's
+    ///      efficiency RATIO rises with its index. Pools are seeded in ascending ADDRESS order, so
+    ///      ratios arrive ASCENDING and each pool ranks AHEAD of everything already ranked. Per
+    ///      PP-D56 (xxvi) that makes `_hintFor`'s walk break on its first entry, so this is the
+    ///      CHEAP side for the hint view — and immaterial to the transaction the done-criteria case
+    ///      measures, which `_linkRanked` makes O(1) per entry at every arrival order. Stops after
+    ///      the fourth scoring round, leaving the fourth tournament for the caller to page.
+    function _warmAscendingRatioRoster(uint256 poolCount, uint256 runIndex) internal {
+        uint256 base = TOURNAMENT_ORIGIN + runIndex * RUN_STRIDE;
+        uint256 score1 = base;
+        uint256 score2 = base + BLOCKS_PER_EPOCH;
+        uint256 adv1 = score2 + BLOCKS_PER_EPOCH;
+        uint256 adv2 = score2 + 2 * BLOCKS_PER_EPOCH;
+        uint256 adv3 = score2 + 3 * BLOCKS_PER_EPOCH;
+        uint256 adv4 = score2 + 4 * BLOCKS_PER_EPOCH;
+
+        lastElig = new GaugeEligibility(
+            PLACEHOLDER,
+            PLACEHOLDER,
+            PLACEHOLDER,
+            PLACEHOLDER,
+            PLACEHOLDER,
+            address(this),
+            address(effOracle),
+            PLACEHOLDER,
+            PLACEHOLDER
+        );
+        lastRegistry = new GaugeRegistry(
+            GOV,
+            address(lastElig),
+            PLACEHOLDER,
+            PLACEHOLDER,
+            GENESIS_BLOCK
+        );
+        lastElig.setGaugeRegistry(address(lastRegistry));
+
+        lastDistributor = new EmissionDistributorHarness(
+            IAuMM(address(aumm)),
+            IGaugeRegistry(address(lastRegistry)),
+            IEMASampler(address(ema)),
+            ICCBMultiplier(address(mult)),
+            IEfficiencyOracle(address(effOracle)),
+            IMiliariumRegistry(address(miliReg)),
+            GENESIS_BLOCK,
+            GOV,
+            address(new MockRegisteredVault())
+        );
+
+        vm.prank(GOV);
+        effOracle.setEmissionsRecorder(address(lastDistributor));
+
+        delete lastPools;
+        for (uint256 i = 0; i < poolCount; i++) {
+            lastPools.push(address(uint160(0xA00000 + runIndex * 1_000_000 + i)));
+        }
+
+        for (uint256 i = 0; i < poolCount; i++) {
+            ema.setTVLEMA(lastPools[i], (poolCount - i) * 100e18);
+            mult.setMultiplier(lastPools[i], 1e18);
+        }
+
+        vm.prank(GOV);
+        lastRegistry.seedFoundingPools(lastPools);
+
+        vm.roll(score1);
+        _scoreAll(lastDistributor, lastPools);
+        vm.roll(score2);
+        _scoreAll(lastDistributor, lastPools);
+
+        vm.roll(adv1);
+        _scoreAll(lastDistributor, lastPools);
+        _advanceOnce();
+
+        vm.roll(adv2);
+        _scoreAll(lastDistributor, lastPools);
+        _advanceOnce();
+
+        vm.roll(adv3);
+        _scoreAll(lastDistributor, lastPools);
+        _advanceOnce();
+
+        vm.roll(adv4);
+        _scoreAll(lastDistributor, lastPools);
+    }
+
+    /// @dev Marks the tournament stack's accounts and slots cold before a page, so a page does not
+    ///      read slots the call before it left warm. That is what makes each page's figure
+    ///      comparable to a separate transaction's rather than to a warm continuation of the last,
+    ///      and `vm.cool` was measured to reproduce `--isolate` to a constant.
+    function _coolTournamentStack() internal {
+        vm.cool(address(lastRegistry));
+        vm.cool(address(lastElig));
+        vm.cool(address(effOracle));
+        vm.cool(address(tvlMock));
+    }
+
+    /// @notice E.7b's done-criteria case per **PP-D56 (xxiv)** as amended by **(xxvi)**: the
+    ///         tournament pages, and a page's cost does not grow with the ranked count.
+    ///         THE MEASURED WINDOW IS THE TRANSACTION AND NOTHING ELSE. Hints come from
+    ///         `nextAccumulationPage` BEFORE the window opens, because that view is served through
+    ///         `eth_call` and no production caller pays for it on chain; bracketing it would price a
+    ///         transaction together with a view and report the sum as the protocol's cost.
+    ///         THE ARRIVAL ORDER IS STATED IN BOTH TERMS, which (xxiv) requires so a bound cannot
+    ///         come to depend on a seeding that happens to sort. Pools are seeded in ascending
+    ///         ADDRESS order with TVL falling as the index rises, so under constant fees the
+    ///         efficiency RATIOS arrive ASCENDING.
+    /// @dev Why no worst-case order is needed once the window is the transaction, per **(xxvi)**:
+    ///      `_linkRanked` carries no loop, verifying one hint and its successor and then writing, so
+    ///      the on-chain cost is O(1) per entry at EVERY arrival order. The only order-dependent
+    ///      term left in the design is `_hintFor`'s walk, which is `internal view`, reached only
+    ///      through `rankHints`, and measured separately as an accepted off-chain cost. Ascending
+    ///      arrival is therefore the CHEAP side for that view and immaterial to this measurement —
+    ///      the opposite of what (xxiv) concluded from `_insertRanked`, which (xxv) deleted.
+    ///      The one-entry figure is an EQUALITY rather than a tolerance: the same operations at the
+    ///      same warmth cost the same gas whatever the list already holds. The TERMINAL one-entry
+    ///      page is excluded, being the page that exhausts the cursor, so the equality binds the
+    ///      non-terminal pages; the multi-entry page is governed by the per-page BOUND instead.
+    function test_accumulateAndFinalizeTournamentPaginates() public {
+        uint256 poolCount = 300;
+        _warmAscendingRatioRoster(poolCount, 0);
+
+        uint256 oneEntryGas = 0;
+        uint256 oneEntryPages = 0;
+        uint256 worstAccPage = 0;
+        uint256 page = 0;
+
+        while (lastRegistry.tournamentCursor() < poolCount) {
+            uint256 size = 24;
+            if (page % 2 == 1) size = 1;
+
+            // Outside the window on purpose: this is the `eth_call` leg, not the transaction.
+            (, address[] memory hints) = lastRegistry.nextAccumulationPage(size);
+
+            _coolTournamentStack();
+            uint256 accGasBefore = gasleft();
+            lastRegistry.accumulateTournament(hints);
+            uint256 accGasUsed = accGasBefore - gasleft();
+
+            if (accGasUsed > worstAccPage) worstAccPage = accGasUsed;
+            emit log_named_uint("acc page nRanked after", lastElig.nRanked());
+            emit log_named_uint("acc tx gas", accGasUsed);
+
+            if (size == 1 && lastRegistry.tournamentCursor() < poolCount) {
+                if (oneEntryPages == 0) {
+                    oneEntryGas = accGasUsed;
+                } else {
+                    assertEq(
+                        accGasUsed,
+                        oneEntryGas,
+                        "a one-entry page costs the same however many pools are already ranked"
+                    );
+                }
+                oneEntryPages++;
+            }
+            page++;
+        }
+
+        assertEq(lastElig.nRanked(), poolCount, "premise: all pools ranked on the paged fourth tournament");
+        assertEq(oneEntryPages, 11, "premise: eleven non-terminal one-entry pages were measured");
+        assertLt(
+            worstAccPage,
+            BLOCK_GAS_LIMIT / 10,
+            "no accumulate transaction reaches a tenth of a block, at any ranked count"
+        );
+
+        uint256 worstFinPage = 0;
+        while (lastRegistry.accumulationEpoch() != 0) {
+            _coolTournamentStack();
+            uint256 finGasBefore = gasleft();
+            lastRegistry.finalizeTournament(25);
+            uint256 finGasUsed = finGasBefore - gasleft();
+            if (finGasUsed > worstFinPage) worstFinPage = finGasUsed;
+            emit log_named_uint("fin tx gas", finGasUsed);
+        }
+        assertLt(
+            worstFinPage,
+            BLOCK_GAS_LIMIT / 10,
+            "no finalize transaction reaches a tenth of a block, at any ranked count"
+        );
+
+        assertTrue(
+            lastElig.isFavoredCohort(lastPools[poolCount - 1]),
+            "premise: the highest address carries the highest ratio"
+        );
+        assertFalse(
+            lastElig.isFavoredCohort(lastPools[0]),
+            "premise: the lowest address carries the lowest ratio"
         );
     }
 }
@@ -341,10 +561,17 @@ contract P1_E7b_PaginationRegressionTest is Test {
         _advanceOnce();
     }
 
+    /// @dev One accumulate page of at most `maxPools` gauges, with the hints `nextAccumulationPage`
+    ///      supplies per **PP-D56 (xxv)**.
+    function _accumulatePage(uint256 maxPools) internal {
+        (, address[] memory hints) = gaugeRegistry.nextAccumulationPage(maxPools);
+        gaugeRegistry.accumulateTournament(hints);
+    }
+
     /// @dev One whole tournament epoch under the **PP-D56 (iv)** two-phase split: accumulate every
     ///      active gauge in one page, then finalize every ranked entry in one page.
     function _advanceOnce() internal {
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         gaugeRegistry.finalizeTournament(type(uint256).max);
     }
 
@@ -358,13 +585,13 @@ contract P1_E7b_PaginationRegressionTest is Test {
         uint256 e5 = AureumTime.epochIndex(GENESIS_BLOCK, T5);
         vm.roll(T4);
         effOracle.setEfficiencyInputs(pools[0], 100e18, 1e18);
-        gaugeRegistry.accumulateTournament(1);
+        _accumulatePage(1);
         assertEq(gaugeRegistry.accumulationEpoch(), e4);
         assertEq(gaugeRegistry.tournamentCursor(), 1);
         vm.roll(T5);
         effOracle.setEfficiencyInputs(pools[0], 1, 1e18);
         effOracle.setEfficiencyInputs(pools[1], 10e18, 1e18);
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         assertEq(gaugeRegistry.accumulationEpoch(), e5);
         assertEq(gaugeElig.nRanked(), 4);
         gaugeRegistry.finalizeTournament(type(uint256).max);
@@ -384,18 +611,23 @@ contract P1_E7b_PaginationRegressionTest is Test {
         uint256 e5 = AureumTime.epochIndex(GENESIS_BLOCK, T5);
 
         vm.roll(T4);
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         assertEq(gaugeRegistry.tournamentCursor(), 4);
 
         vm.roll(T5);
+        // This one site cannot route through `_accumulatePage`. The helper reads
+        // `nextAccumulationPage` before it calls the entry, and that view opens with the same
+        // `_previewSeat` gate, so an expectation armed here cannot bind to `accumulateTournament`.
+        // The hints are never reached — the gate reverts before the page is built — so an empty
+        // array is the honest argument.
         vm.expectRevert(abi.encodeWithSelector(GaugeRegistry.AccumulationEpochStale.selector, e4, e5));
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        gaugeRegistry.accumulateTournament(new address[](0));
 
         gaugeRegistry.finalizeTournament(type(uint256).max);
         assertEq(gaugeRegistry.lastTournamentEpoch(), e4);
         assertEq(gaugeElig.currentSnapshotEpoch(), 5);
 
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         assertEq(gaugeRegistry.accumulationEpoch(), e5);
     }
 
@@ -406,7 +638,7 @@ contract P1_E7b_PaginationRegressionTest is Test {
         _warmup();
         uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
         vm.roll(T4);
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
 
         vm.prank(GOV);
         gaugeRegistry.revokeGauge(pools[3]);
@@ -427,11 +659,11 @@ contract P1_E7b_PaginationRegressionTest is Test {
         uint256 e4 = AureumTime.epochIndex(GENESIS_BLOCK, T4);
 
         vm.roll(T4);
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         vm.prank(GOV);
         gaugeRegistry.revokeGauge(pools[3]);
 
-        gaugeRegistry.accumulateTournament(1);
+        _accumulatePage(1);
         assertEq(gaugeRegistry.tournamentCursor(), 3);
         assertEq(gaugeElig.nRanked(), 4);
 
@@ -447,12 +679,12 @@ contract P1_E7b_PaginationRegressionTest is Test {
         _warmup();
 
         vm.roll(T4);
-        gaugeRegistry.accumulateTournament(2);
+        _accumulatePage(2);
         vm.prank(GOV);
         gaugeRegistry.revokeGauge(pools[0]);
         assertEq(gaugeRegistry.gaugeAt(0), pools[3]);
 
-        gaugeRegistry.accumulateTournament(type(uint256).max);
+        _accumulatePage(type(uint256).max);
         assertEq(gaugeRegistry.tournamentCursor(), 3);
         gaugeRegistry.finalizeTournament(type(uint256).max);
 
