@@ -120,7 +120,7 @@ Layout at the repo root:
 * **Numbered spec docs** — `01_intro.json` through `16_team.md` (with `07a_tokens.md` as a sub-doc). Canonical sections referenced from this repo include tokenomics (§ix in `04_tokenomics.md`), constitution (§xxix in `10_constitution.md`), formulas F-0 through F-12 (`11_formulas.md`), bootstrap rules (`08_bootstrap.md`), appendices (`13_appendices.md`), CCB narrative + multiplier engine (`03_theoretical_foundation.md`).
 * **Pool profiles** — `miliarium_profiles/` directory holds the 28 individual Miliarium pool documents.
 * **Other prose** — `aureum_schedule.md`, `project_aureum_design_final.md`, `script.md`, `15_overview.md`.
-* **AI-consumption versions** — `llms.txt` (curated index) and `llms-full.txt` (full corpus concatenation) at the repo root, for cases where a single round-trip read is preferred over per-doc fetches.
+* **AI-consumption versions** — `llms.txt` at the repo root is a curated index, 177 lines, and matches that description. `llms-full.txt` does NOT: measured at PP4.14 it is 54 lines and 2,360 bytes carrying a bare list of `https://aumm.fi/…` URLs and no spec prose at all, so it is useless for a single round-trip corpus read and a grep for any formula id returns zero. Read the numbered docs directly, or `llms.txt` for the index.
 
 When a stage plan says "read `11_formulas.md` F-7" or "per §xxix in `10_constitution.md`" — read the file from the clone, e.g. `grep -n` / `sed -n` on `/Users/janus/code/aumm-site/11_formulas.md`. **Do not fabricate spec content.** If the clone is missing or the relevant section is ambiguous after reading, ask the user to paste from the GitHub web view. FINDINGS.md often quotes or summarises the relevant spec passages; checking there first can avoid an unneeded read.
 
