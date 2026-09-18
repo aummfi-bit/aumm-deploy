@@ -224,6 +224,13 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice Emitted when governance allowlists or de-allowlists a router for recorder attribution (F-09).
     event TrustedRouterSet(address indexed router, bool trusted);
 
+    /// @notice Emitted when a liquidity callback's recorder dispatch fails and the
+    ///         operation completes unrecorded, per C.8 / PP-D58 (vi).
+    /// @param pool The pool whose liquidity operation went unrecorded.
+    /// @param lp The provider the trusted router named, or zero when it could not be read.
+    /// @param isDeposit True for an add, false for a remove.
+    event RecorderDispatchFailed(address indexed pool, address indexed lp, bool isDeposit);
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
@@ -442,8 +449,10 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      I-D16: `emissionRecorder` is unbound through Stages D—H (bound at
     ///      I6/I7) yet `getHookFlags` (I4.1) calls this on every add, so an
     ///      unguarded dispatch into `address(0)` would revert all
-    ///      add-liquidity pre-binding. No amount adjustment — `amountsInRaw`
-    ///      passes through.
+    ///      add-liquidity pre-binding. The dispatch runs through
+    ///      `_dispatchToRecorder`, so a recorder or router fault degrades
+    ///      accounting and never reverts the add (C.8 / PP-D58 (vi)). No
+    ///      amount adjustment — `amountsInRaw` passes through.
     function onAfterAddLiquidity(
         address router,
         address pool,
@@ -454,12 +463,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256[] memory,
         bytes memory
     ) public override onlyVault returns (bool, uint256[] memory) {
-        address recorder = emissionRecorder;
-        // F-09: credit the recorder only from a governance-allowlisted router; a non-allowlisted (e.g. self-)router is skipped (no credit, no revert) so getSender() cannot spoof LP identity.
-        if (recorder != address(0) && trustedRouter[router]) {
-            address lp = IRouterSender(router).getSender();
-            IEmissionDistributor(recorder).recordDeposit(pool, lp, bptAmountOut);
-        }
+        _dispatchToRecorder(router, pool, bptAmountOut, true);
         return (true, amountsInRaw);
     }
 
@@ -468,8 +472,9 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      resolves the liquidity provider via `IRouterSender(router).getSender()`
     ///      and forwards `bptAmountIn` to the EmissionDistributor recorder
     ///      clock as a withdrawal. Recorder-unset guard per I-D16 (see
-    ///      `onAfterAddLiquidity`). No amount adjustment — `amountsOutRaw`
-    ///      passes through.
+    ///      `onAfterAddLiquidity`); the dispatch runs through
+    ///      `_dispatchToRecorder`, so a fault never reverts the remove. No
+    ///      amount adjustment — `amountsOutRaw` passes through.
     function onAfterRemoveLiquidity(
         address router,
         address pool,
@@ -480,13 +485,55 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256[] memory,
         bytes memory
     ) public override onlyVault returns (bool, uint256[] memory) {
+        _dispatchToRecorder(router, pool, bptAmountIn, false);
+        return (true, amountsOutRaw);
+    }
+
+    /// @dev C.8 / PP-D58 (vi) — the recorder dispatch both liquidity callbacks share. The F-09
+    ///      trusted-router gate and the I-D16 recorder-unset guard are unchanged: a router off the
+    ///      allowlist or an unbound recorder is skipped with no event. Past them, no fault in the
+    ///      dispatch reverts the liquidity operation; each emits `RecorderDispatchFailed` and the
+    ///      operation completes unrecorded. `try` / `catch` covers a revert INSIDE the called
+    ///      contract only, not a failed decode of returned data nor the extcodesize check Solidity
+    ///      inserts in THIS contract ahead of a call with no return value. So the sender is read by
+    ///      a low-level `staticcall` and accepted only as exactly one clean address word, which a
+    ///      codeless, reverting or malformed router fails into the event rather than a revert, and
+    ///      a codeless recorder is checked explicitly before the `try`. The caller of the liquidity
+    ///      operation sets its gas, so starving the inner call skips only that caller's own
+    ///      recording: a skipped withdrawal leaves `userLP` above live BPT, which the F-17
+    ///      read-cap zeroes and `syncPosition` heals.
+    /// @param router The router the Vault reports for the liquidity operation.
+    /// @param pool The pool the operation touched.
+    /// @param amount The BPT minted (deposit) or burned (withdrawal).
+    /// @param isDeposit True for an add, false for a remove.
+    function _dispatchToRecorder(address router, address pool, uint256 amount, bool isDeposit) internal {
         address recorder = emissionRecorder;
         // F-09: credit the recorder only from a governance-allowlisted router; a non-allowlisted (e.g. self-)router is skipped (no credit, no revert) so getSender() cannot spoof LP identity.
-        if (recorder != address(0) && trustedRouter[router]) {
-            address lp = IRouterSender(router).getSender();
-            IEmissionDistributor(recorder).recordWithdrawal(pool, lp, bptAmountIn);
+        if (recorder == address(0) || !trustedRouter[router]) return;
+        (bool ok, bytes memory ret) = router.staticcall(abi.encodeCall(IRouterSender.getSender, ()));
+        if (!ok || ret.length != 32) {
+            emit RecorderDispatchFailed(pool, address(0), isDeposit);
+            return;
         }
-        return (true, amountsOutRaw);
+        uint256 word = abi.decode(ret, (uint256));
+        if (word >> 160 != 0) {
+            emit RecorderDispatchFailed(pool, address(0), isDeposit);
+            return;
+        }
+        address lp = address(uint160(word));
+        if (recorder.code.length == 0) {
+            emit RecorderDispatchFailed(pool, lp, isDeposit);
+            return;
+        }
+        if (isDeposit) {
+            try IEmissionDistributor(recorder).recordDeposit(pool, lp, amount) {} catch {
+                emit RecorderDispatchFailed(pool, lp, true);
+            }
+        } else {
+            try IEmissionDistributor(recorder).recordWithdrawal(pool, lp, amount) {} catch {
+                emit RecorderDispatchFailed(pool, lp, false);
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

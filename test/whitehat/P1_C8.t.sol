@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import {Test} from "forge-std/Test.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {AddLiquidityKind, HookFlags} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {AddLiquidityKind, HookFlags, RemoveLiquidityKind} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
 
 import {AureumFeeRoutingHook} from "src/fee_router/AureumFeeRoutingHook.sol";
 import {GaugeRegistry} from "src/gauge/GaugeRegistry.sol";
@@ -27,11 +27,16 @@ import {MockAuMM, MockEMASampler, MockCCBMultiplier, MockMiliariumRegistry} from
 import {MockEfficiencyOracle} from "test/fork/mocks/StageGMocks.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @dev Seats permanently because setEmissionRecorder guards non-zero only and never probes the interface.
+/// @dev Seats permanently because setEmissionRecorder guards non-zero only and never probes the interface;
+///      after PP4.15c2 its reverts reach the hook's dispatch and degrade rather than lock.
 contract RevertingRecorder {
     error RecorderAlwaysReverts();
 
     function recordDeposit(address, address, uint256) external pure {
+        revert RecorderAlwaysReverts();
+    }
+
+    function recordWithdrawal(address, address, uint256) external pure {
         revert RecorderAlwaysReverts();
     }
 }
@@ -49,9 +54,35 @@ contract SenderRouter {
     }
 }
 
-/// @notice Reproduction PoC for seam-1 root cause C.8 (Medium). The row spans fifteen
-///         irreversible seatings from the G12 table; this file reproduces the CLASS on its
-///         two sharpest instances rather than enumerating all fifteen. The remaining instances
+/// @dev A trusted router whose getSender reverts, so the hook can name no holder.
+contract RevertingSenderRouter {
+    function getSender() external pure returns (address) {
+        revert("no sender");
+    }
+}
+
+/// @dev A trusted router that answers getSender with arbitrary raw bytes through its fallback,
+///      for the return shapes a typed call would fail to decode in the caller.
+contract RawReturnRouter {
+    bytes private _ret;
+
+    constructor(bytes memory ret_) {
+        _ret = ret_;
+    }
+
+    fallback() external {
+        bytes memory r = _ret;
+        assembly {
+            return(add(r, 32), mload(r))
+        }
+    }
+}
+
+/// @notice Seam-1 root cause C.8 (Medium). The row spans fifteen irreversible seatings from the
+///         G12 table; this file holds the CLASS on its two sharpest instances rather than
+///         enumerating all fifteen. The first, the hook's uncaught recorder dispatch, is FIXED at
+///         PP4.15c2 per PP-D58 (vi) and its case is the regression below; the second, the AuMT
+///         binding, stays a reproduction for rung 16's binding hygiene. The remaining instances
 ///         named in the row — TVLOracle.setMiliariumRegistry sealing on a codeless target, the
 ///         authorizer constructor accepting a codeless governance and governance equal to the
 ///         emergency multisig, the immutable approvedFactory, the conditional moduleAdmin burn,
@@ -147,14 +178,15 @@ contract P1_C8_IrreversibleBindingsAreGuardedOnlyAgainstZeroTest is Test {
         vm.roll(GENESIS_BLOCK);
     }
 
-    /// @notice A reverting recorder seats permanently; its uncaught dispatch locks add-liquidity.
-    function test_P1_C8_aRevertingRecorderSeatsPermanentlyAndItsUncaughtDispatchLocksLiquidity() public {
-        // Survey claim verified rather than asserted: exactly ONE code.length guard exists in all
-        // of src/, at AureumGovernance.sol L279, and it sits on proposeVaultAuthorizerChange, a
-        // proposal path a vote can defeat and therefore the one REVERSIBLE seating; every
-        // irreversible one-shot in the tree guards non-zero only.
-        // src/gauge/SwapAndDepositToBodensee.sol L294 explicitly declines the check in NatSpec,
-        // calling the review duty operational rather than on-chain.
+    /// @notice C.8 / PP-D58 (vi) regression, inverted at PP4.15c3 from the PoC that pinned a
+    ///         reverting recorder's uncaught dispatch locking add-liquidity: every recorder or
+    ///         router fault on the dispatch path now emits `RecorderDispatchFailed` and the
+    ///         liquidity operation completes, on the add callback and the remove callback alike.
+    function test_recorderFaultDegradesNotLocks() public {
+        // The seating half of the class still stands and is rung 16's: the recorder seat below
+        // guards non-zero only and probes nothing, like the other irreversible one-shot seatings
+        // the row names, and `src/gauge/SwapAndDepositToBodensee.sol:297` declines the
+        // `code.length` check in NatSpec, calling the review duty operational rather than on-chain.
         RevertingRecorder recorder = new RevertingRecorder();
         address other = makeAddr("otherRecorder");
 
@@ -163,40 +195,103 @@ contract P1_C8_IrreversibleBindingsAreGuardedOnlyAgainstZeroTest is Test {
         assertEq(
             hook.emissionRecorder(),
             address(recorder),
-            "reverting recorder seats: the only guard is non-zero, nothing probes the interface"
+            "a reverting recorder still seats: the only guard is non-zero, nothing probes the interface"
         );
 
         vm.expectRevert(AureumFeeRoutingHook.NotEmissionRecorderAdmin.selector);
         vm.prank(moduleAdmin);
         hook.setEmissionRecorder(other);
 
-        SenderRouter router = new SenderRouter(makeAddr("lp"));
+        address lp = makeAddr("lp");
+        address pool = makeAddr("pool");
+        SenderRouter router = new SenderRouter(lp);
         vm.prank(moduleAdmin);
         hook.setGovernanceModule(governance);
         vm.prank(governance);
         hook.setTrustedRouter(address(router), true);
 
-        address pool = makeAddr("pool");
-        uint256[] memory empty = new uint256[](0);
-
         HookFlags memory flags = hook.getHookFlags();
         assertTrue(
-            flags.shouldCallAfterAddLiquidity,
-            "the Vault genuinely invokes this callback, so the uncaught dispatch sits on the live add-liquidity path rather than a dormant one and a recorder fault therefore reverts the whole liquidity operation"
+            flags.shouldCallAfterAddLiquidity && flags.shouldCallAfterRemoveLiquidity,
+            "the Vault genuinely invokes both callbacks, so the dispatch sits on the live liquidity path"
         );
 
-        vm.expectRevert(RevertingRecorder.RecorderAlwaysReverts.selector);
-        vm.prank(vault);
-        hook.onAfterAddLiquidity(
-            address(router),
-            pool,
-            AddLiquidityKind.UNBALANCED,
-            empty,
-            empty,
-            BPT_OUT,
-            empty,
-            bytes("")
+        // A reverting recorder degrades the add and the remove rather than reverting them.
+        _assertAddDegrades(hook, address(router), pool, lp);
+        _assertRemoveDegrades(hook, address(router), pool, lp);
+
+        // A trusted router whose sender cannot be read as one clean address word degrades too,
+        // naming no holder: a reverting getSender, a codeless address, a dirty upper word and a
+        // short return, the last three being shapes a typed call would fail to decode in the hook.
+        address[4] memory unreadable = [
+            address(new RevertingSenderRouter()),
+            makeAddr("codelessRouter"),
+            address(new RawReturnRouter(abi.encode(type(uint256).max))),
+            address(new RawReturnRouter(hex"1234"))
+        ];
+        for (uint256 i = 0; i < unreadable.length; i++) {
+            vm.prank(governance);
+            hook.setTrustedRouter(unreadable[i], true);
+            _assertAddDegrades(hook, unreadable[i], pool, address(0));
+        }
+
+        // A codeless recorder degrades as well: the hook's explicit code check stands in for the
+        // extcodesize check a `try` cannot catch. It needs a fresh hook, the recorder seat being
+        // one-shot.
+        AureumFeeRoutingHook codelessHook = new AureumFeeRoutingHook(
+            vault,
+            bodensee,
+            IERC20(address(svZchf)),
+            IERC20(address(susds)),
+            IERC20(address(aummToken)),
+            address(feeController),
+            moduleAdmin
         );
+        vm.startPrank(moduleAdmin);
+        codelessHook.setEmissionRecorder(makeAddr("codelessRecorder"));
+        codelessHook.setGovernanceModule(governance);
+        vm.stopPrank();
+        vm.prank(governance);
+        codelessHook.setTrustedRouter(address(router), true);
+        _assertAddDegrades(codelessHook, address(router), pool, lp);
+    }
+
+    /// @dev Drives the add callback as the Vault and asserts it completes, passes its amounts
+    ///      through unadjusted and emits `RecorderDispatchFailed` naming `namedLp`.
+    function _assertAddDegrades(AureumFeeRoutingHook target, address router, address pool, address namedLp)
+        internal
+    {
+        uint256[] memory empty = new uint256[](0);
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = 7;
+        amountsIn[1] = 11;
+        vm.expectEmit(address(target));
+        emit AureumFeeRoutingHook.RecorderDispatchFailed(pool, namedLp, true);
+        vm.prank(vault);
+        (bool ok, uint256[] memory out) = target.onAfterAddLiquidity(
+            router, pool, AddLiquidityKind.UNBALANCED, empty, amountsIn, BPT_OUT, empty, bytes("")
+        );
+        assertTrue(ok, "the add completes rather than reverting");
+        assertEq(out, amountsIn, "the add's amounts pass through unadjusted");
+    }
+
+    /// @dev Drives the remove callback as the Vault and asserts it completes, passes its amounts
+    ///      through unadjusted and emits `RecorderDispatchFailed` naming `namedLp`.
+    function _assertRemoveDegrades(AureumFeeRoutingHook target, address router, address pool, address namedLp)
+        internal
+    {
+        uint256[] memory empty = new uint256[](0);
+        uint256[] memory amountsOut = new uint256[](2);
+        amountsOut[0] = 13;
+        amountsOut[1] = 17;
+        vm.expectEmit(address(target));
+        emit AureumFeeRoutingHook.RecorderDispatchFailed(pool, namedLp, false);
+        vm.prank(vault);
+        (bool ok, uint256[] memory out) = target.onAfterRemoveLiquidity(
+            router, pool, RemoveLiquidityKind.PROPORTIONAL, BPT_OUT, empty, amountsOut, empty, bytes("")
+        );
+        assertTrue(ok, "the remove completes rather than reverting");
+        assertEq(out, amountsOut, "the remove's amounts pass through unadjusted");
     }
 
     /// @notice AuMT binding accepts a codeless pool and cannot be rebound once set.
