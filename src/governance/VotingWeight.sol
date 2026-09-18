@@ -231,7 +231,7 @@ contract VotingWeight is IVotingWeight, IPositionCloseSink {
     /// @notice F-9 pool-aggregate governance power for `holder` in `pool` — live, gauge-gated.
     /// @dev (a) gauge gate — unapproved pools confer 0 (read-time per OQ-25); (b) EMA maturity + freshness — a pool whose TVL EMA has been seeding for fewer than EMA_MATURITY_BLOCKS (60 days), has never seeded, or was last refreshed more than EMA_STALENESS_BLOCKS (14 days) ago confers 0 (F-04 anti-spot-pump; F-05 anti-stale-seed); (c) clock from the recorder
     ///      `effectiveQualBlock` — 0 (no/withdrawn position) or sub-cliff time confers 0; (d) poolPower = `tvlEMA(pool)^exponent` with the F-9 era root (F-04 — the 60-day EMA, never spot tvl); (e) share = recorder
-    ///      `userLP / poolTotalLP`, but a phantom position (recorded userLP over live BPT balance, from an out-of-band BPT move) confers ZERO rather than a capped share per B.5 / PP-D53 (i) — the F-17 / P-D18 cap handled the share and never the clock, so a desynced holder kept a mature `timeFactor` an honest `recordWithdrawal` had already reset; denominator left uncapped (heals via `syncPosition`), so this only under-counts (OQ-25); timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
+    ///      `userLP / poolTotalLP`, but a phantom position (recorded userLP over live BPT balance, from an out-of-band BPT move) confers ZERO rather than a capped share per B.5 / PP-D53 (i) — the F-17 / P-D18 cap handled the share and never the clock, so a desynced holder kept a mature `timeFactor` an honest `recordWithdrawal` had already reset; the denominator `poolTotalLP` is clamped to live BPT supply per B.3 / PP-D58 (iv), so a tally flash-inflated above supply cannot dilute a forced poke, and it heals via `syncPosition` (OQ-25); timeFactor = capped on-ramp fraction `min(timeInPool, ON_RAMP)/ON_RAMP`; (f) power =
     ///      poolPower * share * timeFactor — the holder leg is linear, so the position is split-invariant across wallets (F-02). Every
     ///      degenerate input (immature/never-seeded/stale EMA, zero LP, fully-moved capped LP, zero supply, zero EMA, dust share) short-circuits to 0 before `powDown`.
     /// @param pool The Miliarium pool.
@@ -262,7 +262,13 @@ contract VotingWeight is IVotingWeight, IPositionCloseSink {
         if (block.number - EMA_SAMPLER.lastEMAUpdateBlock(pool) > EMA_STALENESS_BLOCKS) return (0, true);
         uint256 timeInPool = block.number - eqb;
         if (timeInPool < AureumTime.QUALIFICATION_PERIOD_BLOCKS) return (0, false);
+        // B.3 / PP-D58 (iv) — the share denominator is the recorder tally clamped to live BPT supply. With
+        // the seed recorded per PP-D58 (iii) the tally sits at supply less the unrecorded dust and minimum,
+        // so the clamp binds only in an inflated state, a trusted-Router add removed through a self-unlock
+        // the hook never sees, and a forced poke then banks at most that remainder rather than the collapse.
         uint256 totalLP = RECORDER.poolTotalLP(pool);
+        uint256 supply = IERC20(pool).totalSupply();
+        if (supply < totalLP) totalLP = supply;
         if (totalLP == 0) return (0, false);
         uint256 lp = RECORDER.userLP(pool, holder);
         // B.5 / PP-D53 (i) — a phantom position confers NOTHING, not a capped share. The F-17 / P-D18
@@ -270,9 +276,9 @@ contract VotingWeight is IVotingWeight, IPositionCloseSink {
         // `effectiveQualBlock` above and applied `timeFactor` below, keeping a mature clock on residual BPT
         // where an honest `recordWithdrawal` had already been reset to zero (I-D14, and `04_tokenomics.md`
         // L105 "even 1%"). That gap is the row's ~12.9x — `ON_RAMP_PERIOD_BLOCKS / QUALIFICATION_PERIOD_BLOCKS`,
-        // 1_296_000 / 100_800 = 12.857 — a time-factor ratio and not a share ratio. The denominator
-        // (`poolTotalLP`) stays uncapped and heals via `EmissionDistributor.syncPosition`, so this only ever
-        // under-counts. `_syncDown`'s unconditional clock reset is UNCHANGED and correct: it mirrors
+        // 1_296_000 / 100_800 = 12.857 — a time-factor ratio and not a share ratio. The denominator,
+        // `poolTotalLP` clamped to live supply per B.3 / PP-D58 (iv), heals via `EmissionDistributor.syncPosition`.
+        // `_syncDown`'s unconditional clock reset is UNCHANGED and correct: it mirrors
         // `recordWithdrawal`, and PP-D53 (ii) amends PP-D18's full-drain conjunct away as canon-hostile.
         uint256 held = IERC20(pool).balanceOf(holder);
         if (held < lp) return (0, false);

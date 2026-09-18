@@ -16,10 +16,13 @@ import {AureumTime} from "src/lib/AureumTime.sol";
 import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry} from "test/unit/VotingWeight.t.sol";
 import {MockBpt, MockCCBMultiplier, MockEfficiencyOracle} from "test/unit/EmissionDistributor.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
+import {MockERC20} from "test/mocks/MockERC20.sol";
 
-/// @title P1 B.3 — share denominator omits unrecorded seed
-/// @notice Reproduction PoC for seam-1 root cause B.3 (High). Covers the seed-omission face only;
-///         the flash-inflation face requires the real Vault and lands separately.
+/// @title P1 B.3 — share denominator: unrecorded seed and flash inflation
+/// @notice Seam-1 root cause B.3 (High). The two seed-omission cases stay as pins of the pre-fix
+///         construction, the fix being procedural: the seed recorded through the trusted Router per
+///         PP-D58 (iii), witnessed on the fork. The last case is the flash-face regression, the
+///         governance denominator clamped to live supply per PP-D58 (iv) and (xv).
 contract P1_B3_ShareDenominatorOmitsUnrecordedSeedTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
     uint256 internal constant SEED_BPT = 99e18;
@@ -198,6 +201,66 @@ contract P1_B3_ShareDenominatorOmitsUnrecordedSeedTest is Test {
             distributor.userLP(address(seededBpt), holder),
             HOLDER_BPT,
             "holder recorded stake unchanged after syncPosition"
+        );
+    }
+
+    /// @notice B.3 / PP-D58 (iv) regression: with the seed recorded, a trusted add that is then
+    ///         burned through an exit the recorder never sees leaves the tally above live supply, and
+    ///         a stranger's forced poke of an honest holder banks the weight it banks at rest, because
+    ///         VotingWeight divides by min(poolTotalLP, totalSupply). A burnable pool token stands in
+    ///         for the Vault's burn on the untrusted exit, which the fork witness covers separately.
+    function test_forcedPokeCannotBankAFlashInflatedDenominator() public {
+        MockERC20 flashBpt = new MockERC20("Flash BPT", "FBPT", 18);
+        address aumtFlash = makeAddr("aumtFlash");
+        address attacker = makeAddr("attacker");
+        distributor.setAuMTContractForPool(address(flashBpt), aumtFlash);
+        gauges.setApproved(address(flashBpt), true);
+        miliReg.setMiliarium(address(flashBpt), true);
+        address[] memory pools = new address[](1);
+        pools[0] = address(flashBpt);
+        miliReg.setPoolList(pools);
+        ema.setTvlEMA(address(flashBpt), TVL_EMA);
+        ema.setSeedBlock(address(flashBpt), 1);
+        ema.setLastUpdateBlock(address(flashBpt), GENESIS_BLOCK);
+
+        // The seed is recorded through the trusted path per PP-D58 (iii), and so is an honest holder.
+        flashBpt.mint(seeder, SEED_BPT);
+        vm.prank(aumtFlash);
+        distributor.recordDeposit(address(flashBpt), seeder, SEED_BPT);
+        flashBpt.mint(holder, HOLDER_BPT);
+        vm.prank(aumtFlash);
+        distributor.recordDeposit(address(flashBpt), holder, HOLDER_BPT);
+        assertEq(
+            distributor.poolTotalLP(address(flashBpt)),
+            flashBpt.totalSupply(),
+            "at rest the recorded tally equals live supply"
+        );
+
+        vm.roll(MATURED_BLOCK);
+        ema.setLastUpdateBlock(address(flashBpt), MATURED_BLOCK);
+        vm.prank(stranger);
+        vw.poke(holder);
+        uint256 atRest = vw.governanceWeight(holder);
+        assertGt(atRest, 0, "the honest holder carries weight at rest");
+
+        // The flash: an add the trusted path records, then a burn through an exit it never sees.
+        uint256 flash = 1_000_000e18;
+        flashBpt.mint(attacker, flash);
+        vm.prank(aumtFlash);
+        distributor.recordDeposit(address(flashBpt), attacker, flash);
+        flashBpt.burn(attacker, flash);
+        assertEq(
+            distributor.poolTotalLP(address(flashBpt)),
+            flashBpt.totalSupply() + flash,
+            "the recorded tally now sits above live supply by the flashed amount"
+        );
+
+        vm.prank(stranger);
+        vw.poke(holder);
+        assertEq(
+            vw.governanceWeight(holder),
+            atRest,
+            "a forced poke banks the at-rest weight, not the collapse the inflated tally would give"
         );
     }
 }

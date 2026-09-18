@@ -164,6 +164,10 @@ contract VotingWeightTest is Test {
         vm.mockCall(POOL_A, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(POOL_B, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(POOL_C, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        // B.3 / PP-D58 (xv): a large `totalSupply` keeps the share-denominator clamp from binding.
+        vm.mockCall(POOL_A, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_B, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_C, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
         vm.roll(START_BLOCK);
     }
     // --- constructor zero-checks ---

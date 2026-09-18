@@ -4,7 +4,14 @@ pragma solidity ^0.8.26;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { IVault } from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
-import { RemoveLiquidityParams, RemoveLiquidityKind } from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import {
+    RemoveLiquidityParams,
+    RemoveLiquidityKind,
+    TokenConfig,
+    TokenType,
+    PoolRoleAccounts
+} from "@balancer-labs/v3-interfaces/contracts/vault/VaultTypes.sol";
+import { IRateProvider } from "@balancer-labs/v3-interfaces/contracts/solidity-utils/helpers/IRateProvider.sol";
 import { Router } from "@balancer-labs/v3-vault/contracts/Router.sol";
 import { IPermit2 } from "permit2/src/interfaces/IPermit2.sol";
 
@@ -210,6 +217,83 @@ contract RouterIntegrationTest is StagePIntegrationFixture {
         assertEq(distributor.userLP(pilotPools[0], lp), 0, "the exit did not reach the recorder");
         assertEq(vw.governanceWeight(lp), 0, "a stale EMA blocked the storage-only close");
         assertEq(vw.totalSupply(), supplyBefore - weightBefore, "the denominator kept the closed position");
+    }
+
+    /* ---------- B.3 / PP-D58 (iii) — the seed recorded through the path that already records ---------- */
+
+    /// @dev A fresh awpf pool on the canonical hook, created after `orchestrator.deploy()` so the recorder
+    ///      and the Router seat can both precede its seeding, which RB-033 found the pilots cannot express:
+    ///      they are initialized before any recorder is wired. Mirrors StagePEndToEndTest's candidate builder.
+    function _buildSeedWitnessPool() internal returns (address pool) {
+        TokenConfig[] memory tokens = new TokenConfig[](2);
+        tokens[0] = TokenConfig({
+            token: IERC20(address(susds)),
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SUSDS_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        tokens[1] = TokenConfig({
+            token: svZchf,
+            tokenType: TokenType.WITH_RATE,
+            rateProvider: IRateProvider(SV_ZCHF_RATE_PROVIDER),
+            paysYieldFees: true
+        });
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 0.6e18;
+        weights[1] = 0.4e18;
+        pool = awpf.create(
+            "B3 Seed Witness",
+            "B3SEED",
+            tokens,
+            weights,
+            PoolRoleAccounts({ pauseManager: address(0), swapFeeManager: address(0), poolCreator: address(0) }),
+            0.0075e18,
+            address(hook),
+            false,
+            false,
+            keccak256("pp4_15_b3_seed_witness")
+        );
+    }
+
+    /// @notice B.3 / PP-D58 (iii) witness — a pool seeded AFTER the recorder is bound and the Router
+    ///         seated, by a dust initialize through the Vault and then the seed through the trusted
+    ///         Router, records the seeder's whole seed, and at rest its live supply exceeds the recorded
+    ///         tally by exactly the dust initialize's BPT plus the Vault's 1e6 minimum.
+    function test_seedRecordedThroughTheTrustedRouterAgreesWithSupplyAtRest() public {
+        _seatRouter();
+        address pool = _buildSeedWitnessPool();
+        vm.prank(gov);
+        distributor.setAuMTContractForPool(pool, address(hook));
+
+        IERC20[] memory tokens = vault.getPoolTokens(pool);
+        uint256[] memory dust = new uint256[](tokens.length);
+        uint256[] memory seed = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; ++i) {
+            dust[i] = 1e12;
+            seed[i] = 1_000e18;
+        }
+        uint256 dustBpt = _initializePool(pool, tokens, dust);
+        assertEq(IERC20(pool).totalSupply(), dustBpt + 1e6, "initialize mints the dust BPT plus the 1e6 minimum");
+        assertEq(distributor.poolTotalLP(pool), 0, "initialize reaches no recorder, the hook having no initialize callback");
+
+        // PP-D58 (xv): a PROPORTIONAL add, as the script makes it — an unbalanced add from dust would
+        // multiply the invariant past the weighted pool's 3x cap. One dust unit of slack stays under
+        // the funded seed, which bounds maxAmountsIn.
+        address seeder = makeAddr("b3Seeder");
+        uint256 seedBpt = IERC20(pool).totalSupply() * (seed[0] / dust[0] - 2);
+        _fundAndPermit(seeder, tokens, seed);
+        vm.prank(seeder);
+        Router(payable(router)).addLiquidityProportional(pool, seed, seedBpt, false, "");
+
+        assertEq(IERC20(pool).balanceOf(seeder), seedBpt, "the Router mints the exact proportional BPT to the seeder");
+        assertEq(distributor.userLP(pool, seeder), seedBpt, "the trusted add records the seeder's whole seed");
+        assertEq(distributor.poolTotalLP(pool), seedBpt, "the seeder is the pool's whole recorded tally");
+        assertEq(
+            IERC20(pool).totalSupply() - distributor.poolTotalLP(pool),
+            dustBpt + 1e6,
+            "at rest supply exceeds the tally by exactly the dust BPT plus the minimum"
+        );
+        assertEq(IERC20(pool).balanceOf(address(0)), 1e6, "the Vault's minimum sits at address zero");
     }
 }
 

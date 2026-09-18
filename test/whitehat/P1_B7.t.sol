@@ -97,6 +97,11 @@ contract P1_B7_VetoDenominatorDeflationTest is Test {
         vm.mockCall(POOL_VETOER2, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(POOL_NEUTRAL, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(POOL_DORMANT, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        // B.3 / PP-D58 (xv): a large `totalSupply` keeps the share-denominator clamp from binding.
+        vm.mockCall(POOL_VETOER1, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_VETOER2, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_NEUTRAL, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(POOL_DORMANT, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
 
         vm.roll(START_BLOCK);
 

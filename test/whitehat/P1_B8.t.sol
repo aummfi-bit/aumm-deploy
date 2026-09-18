@@ -55,6 +55,9 @@ contract P1_B8_LazyEraExponentTest is Test {
 
         vm.mockCall(poolA, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
         vm.mockCall(poolB, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        // B.3 / PP-D58 (xv): a large `totalSupply` keeps the share-denominator clamp from binding.
+        vm.mockCall(poolA, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
+        vm.mockCall(poolB, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
 
         uint256 eqb = startBlock - AureumTime.ON_RAMP_PERIOD_BLOCKS;
         _configureIdenticalPosition(poolA, twinA, eqb);

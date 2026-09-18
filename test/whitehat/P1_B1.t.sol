@@ -90,6 +90,8 @@ contract P1_B1_QuorumDenominatorCountsOnlyPokedHoldersTest is Test {
         emaSampler.setLastUpdateBlock(pool, START_BLOCK);
 
         vm.mockCall(pool, abi.encodeWithSignature("balanceOf(address)"), abi.encode(uint256(1e30)));
+        // B.3 / PP-D58 (xv): a large `totalSupply` keeps the share-denominator clamp from binding.
+        vm.mockCall(pool, abi.encodeWithSignature("totalSupply()"), abi.encode(uint256(1e30)));
 
         slotReg.setPoolAtSlot(1, incumbent);
         vm.mockCall(
