@@ -23,7 +23,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  *
  * @dev L-D28 — wiring authority is GOVERNANCE_MULTISIG only; there is no deployer→multisig
  *      handoff. Post-Stage-K both gates remain multisig-held: `channel.donateAuthorizer()`
- *      stays at the multisig (DeployStageK:158 only `addAuthorizedDonator`s AureumGovernance,
+ *      stays at the multisig (DeployStageK:151 only `addAuthorizedDonator`s AureumGovernance,
  *      never `setDonateAuthorizer`) and `distributor.governance()` stays at the multisig
  *      (K-D9 hands only gauge + Miliarium governance to AureumGovernance). A single broadcast
  *      authored by the multisig therefore satisfies both `onlyDonateAuthorizer` and
@@ -54,7 +54,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @dev Ctor arg 1 sources `SWAP_AND_DEPOSIT` (the G-D21 donate channel typed
  *      `SwapAndDepositToBodensee`) — NOT `BODENSEE_CHANNEL`, which names the separate Stage-H
  *      `BodenseeBootstrapChannel`. `genesisBlock_` (ctor arg 8) is read as `aumm.GENESIS_BLOCK()`,
- *      not a separate env var (DeployStageK:117 precedent). `VAULT` is cast `IVaultExplorer`
+ *      not a separate env var (DeployStageK:111 precedent). `VAULT` is cast `IVaultExplorer`
  *      — L8.6 proved `getPoolData` resolves on the mainnet Vault.
  *
  * @dev Env vars required (no defaults — a real deploy must never silently fall back to zero values):

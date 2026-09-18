@@ -41,7 +41,7 @@ contract P1_F2_MintCapabilityIsVestedWithNoAmountPolicyTest is Test {
             bootstrapChannel,
             emissionDistributor
         );
-        // Mirrors script/DeployStageK.s.sol L156 — one-shot seats the router as minter.
+        // Mirrors script/DeployStageK.s.sol L158 — one-shot seats the router as minter.
         aumm.setMinter(address(router));
     }
 

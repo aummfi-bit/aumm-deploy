@@ -1243,7 +1243,7 @@ contract EmissionDistributorTest is Test {
 
     /* ---------- LP tranche integral observation tests (H5 / H-D34 / H-D27) ---------- */
 
-    /// @notice Closed-form AP fixture mirroring _bootstrapApSum at src/emission/EmissionDistributor.sol L239-L243 — integer arithmetic identity per H-D27; used to compute expected Bodensee deduction for extLpTrancheIntegral assertions.
+    /// @notice Closed-form AP fixture mirroring _bootstrapApSum at src/emission/EmissionDistributor.sol L345-L349 — integer arithmetic identity per H-D27; used to compute expected Bodensee deduction for extLpTrancheIntegral assertions.
     function _apSumFixture(
         uint256 from_,
         uint256 to_,

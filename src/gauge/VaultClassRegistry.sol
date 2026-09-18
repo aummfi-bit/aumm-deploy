@@ -348,7 +348,7 @@ contract VaultClassRegistry is IVaultClassRegistry {
     // -------------------------------------------------------------------------
 
     /// @notice Governance-gated revocation per G-D9 "Revocable-with-grandfather"; pool grace-period logic is GaugeRegistry G3 (G-D8).
-    /// @dev Class-layer is non-terminal per G-D17: re-admission follows propose-veto-finalize. PP-D49 (v) WITHDRAWS this line's former claim that the type survives a revocation — `admissionTypes` is deleted here alongside the flag, and `lastRevokedBlock` is stamped so proposals predating the revocation cannot finalize. Note that `AdmissionType` has no "none" value: deleting yields enum zero, `ImplementationAddress`, so `admissionType()` must always be read behind `isAdmittedClass()`, which is how the sole consumer at `GaugeEligibility.sol:417` uses this registry.
+    /// @dev Class-layer is non-terminal per G-D17: re-admission follows propose-veto-finalize. PP-D49 (v) WITHDRAWS this line's former claim that the type survives a revocation — `admissionTypes` is deleted here alongside the flag, and `lastRevokedBlock` is stamped so proposals predating the revocation cannot finalize. Note that `AdmissionType` has no "none" value: deleting yields enum zero, `ImplementationAddress`, so `admissionType()` must always be read behind `isAdmittedClass()`, which is how the sole consumer at `GaugeEligibility.sol:639` uses this registry.
     function revokeVaultClass(address admissionValue) external onlyGovernance {
         if (!admittedClasses[admissionValue]) revert ClassNotAdmitted(admissionValue);
         admittedClasses[admissionValue] = false;

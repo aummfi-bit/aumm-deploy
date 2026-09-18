@@ -85,7 +85,7 @@ contract MockBodenseeChannel {
 
 /// @title MockAuMMRate — minimal IAuMM stub for IncendiaryRegistry `_epochEmissionIntegral` / cap reads
 /// @notice Implements only `blockEmissionRate`; deliberately does NOT inherit `IAuMM` — consumers cast `IAuMM(address(mockAumm))` per the F-D11 / G-D25c mock-cast precedent.
-/// @dev Flat rate via `setRate`; halving-straddle scenarios override via `vm.mockCall` at the test site (`EmissionDistributor.t.sol:1190-1191` precedent).
+/// @dev Flat rate via `setRate`; halving-straddle scenarios override via `vm.mockCall` at the test site (`EmissionDistributor.t.sol:1352-1353` precedent).
 contract MockAuMMRate {
     uint256 internal _rate;
 

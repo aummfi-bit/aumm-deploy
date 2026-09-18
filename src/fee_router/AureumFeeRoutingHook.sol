@@ -681,7 +681,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      pre/post snapshot pair the `ReserveDidNotRise` assertion
     ///      compares per PB-D68 (v). Mirrors
     ///      `BodenseeBootstrapChannel._currentReserve`
-    ///      (`src/emission/BodenseeBootstrapChannel.sol` L321) with a
+    ///      (`src/emission/BodenseeBootstrapChannel.sol` L322) with a
     ///      `uint256` index, since `getPoolTokenCountAndIndexOfToken`
     ///      returns `uint256` where that channel carries a `uint8` field.
     function _currentBodenseeReserve(uint256 idx) private view returns (uint256) {

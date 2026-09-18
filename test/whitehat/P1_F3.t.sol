@@ -74,7 +74,7 @@ contract P1_F3_ScheduleIntegralExceedsTheSupplyCapTest is Test {
     /// @notice The existing cap invariant only sees realised supply; it cannot see schedule > cap.
     function test_P1_F3_theExistingCapInvariantCannotSeeTheDisagreement() public {
         // The audit filing's claim that INV-2 is unimplemented is STALE, because P6 built the
-        // harness and INV-2 lives at test/invariant/EmissionConservation.t.sol L189; the real
+        // harness and INV-2 lives at test/invariant/EmissionConservation.t.sol L191; the real
         // gap is the absent schedule-versus-cap assertion, not an absent invariant.
         uint256 supply = aumm.totalSupply();
         uint256 cap = aumm.MAX_SUPPLY();

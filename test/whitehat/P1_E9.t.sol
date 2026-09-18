@@ -19,7 +19,7 @@ import {MockAuMM, MockBpt, MockEMASampler, MockCCBMultiplier, MockMiliariumRegis
 import {MockEfficiencyTVLOracle} from "test/unit/EfficiencyOracle.t.sol";
 import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 
-/// @notice Reproduction PoC for seam-1 root cause E.9 (Medium). `EmissionDistributor.sol` L396
+/// @notice Reproduction PoC for seam-1 root cause E.9 (Medium). `EmissionDistributor.sol` L494
 ///         pushes `recordEmissions` un-caught inside `_settlePool`, so repointing or clearing the
 ///         oracle's emissions recorder bricks deposits, withdrawals and scoring protocol-wide. The
 ///         Router-mediated add and remove faces are the same defect through a different entry and

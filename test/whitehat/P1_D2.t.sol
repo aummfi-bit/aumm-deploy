@@ -37,7 +37,7 @@ contract P1_D2_SamplingCadenceIsOwnedByWhoeverCallsFirstTest is Test {
 
     /// @notice Whoever calls first each day keeps the slot by re-anchoring the window to their block.
     function test_P1_D2_theFirstCallerEachDayOwnsTheSlotAndReAnchorsTheWindowToTheirOwnBlock() public {
-        // Verified: src/emission/TVLOracle.sol L359-L370 computes tvl as a bare sum over
+        // Verified: src/emission/TVLOracle.sol L375-L386 computes tvl as a bare sum over
         // balancesLiveScaled18 scaled by a constellation ratio, with no time weighting of any
         // kind, so any balance change moves it instantly. Out of scope: the row's further claim
         // that a proportional add through an UNTRUSTED router moves that sum without touching

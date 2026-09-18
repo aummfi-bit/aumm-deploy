@@ -873,7 +873,7 @@ contract AureumFeeRoutingHookForkTest is Test {
      *      the reproduction invert together and neither needed its own remedy: the
      *      amount is bounded because it is no longer a PARAMETER, and the ledger is
      *      debited because the slot is zeroed before the hook is approved, mirroring
-     *      `_withdrawProtocolFees` (`src/vault/AureumProtocolFeeController.sol:791-799`).
+     *      `_withdrawProtocolFees` (`src/vault/AureumProtocolFeeController.sol:888-896`).
      *      The `deal` the reproduction called the finding itself is RETAINED and is now
      *      the control: the controller holds twenty times the pool's credit and the route
      *      still moves only the credit. `authenticate` is deliberately still on the entry

@@ -33,7 +33,7 @@ import { IAuthentication } from "@balancer-labs/v3-interfaces/contracts/solidity
  *      was never among them.
  * @dev Prior art and the boundary of what is new. That AureumGovernance v1 exposes no generic-call
  *      hatch is already recorded, at K-D9 and at PB-D12 (ii), and the sibling witness
- *      DissolutionGovernanceHandoff.t.sol L16 states it. Both concern AUREUM-OWNED setters gated by
+ *      DissolutionGovernanceHandoff.t.sol L20 states it. Both concern AUREUM-OWNED setters gated by
  *      each contract's own governanceContract slot. What no document enumerates is the VAULT's own
  *      admin surface, reached instead through the authorizer, which the same fixed dispatch strands
  *      identically. Two live artifacts presuppose the opposite: docs/STAGE_A_PLAN.md row 4 states
@@ -79,7 +79,7 @@ contract F22_VaultAdminSurfaceUnreachable is StagePIntegrationFixture {
     }
     /// @notice The multisig held this surface through Stages A-K and lost it at the handoff.
     /// @dev In-fork multisig identity is address(orchestrator) per DeployStageP.s.sol L118. After
-    ///      DeployStageK.s.sol L163 seats AureumGovernanceAuthorizer on the Vault, canPerform
+    ///      DeployStageK.s.sol L165 seats AureumGovernanceAuthorizer on the Vault, canPerform
     ///      returns false for this account on a non-emergency action, so the Vault rejects it.
     ///      With governance unable to express the call and the multisig unable to make it, no
     ///      caller remains.

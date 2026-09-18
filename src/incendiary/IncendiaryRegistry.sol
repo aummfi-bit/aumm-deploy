@@ -301,7 +301,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     /* ---------- Price EMA sampler (L3.2 / L-D19) ---------- */
 
     /// @notice Sample der Bodensee's AuMM/`payToken` spot and fold it into the rail's 60-day price EMA.
-    /// @dev L-D19, the `EMASampler.updateEMA` mirror (`EMASampler.sol:122-154`). Permissionless — anyone
+    /// @dev L-D19, the `EMASampler.updateEMA` mirror (`EMASampler.sol:141-155`). Permissionless — anyone
     ///      may poke once the cadence permits. Order: (1) `UnknownRail` unless `payToken` is a configured
     ///      rail; (2) `TooEarly` unless `block.number >= lastSampleBlock + BLOCKS_PER_DAY`; (3) read
     ///      `_spotRate`; (4) seed (`seedBlock == 0` ⇒ `ema = spot`, write `seedBlock`) or smooth
@@ -337,7 +337,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /// @notice The rail's mature 60-day price EMA, stable-per-AuMM per L-D17 — the price the L4.1
     ///         `buyBoost` valuation divides the deposit by; reverts unless seasoned 60 days.
-    /// @dev L-D19. Mirrors the F-04 / F-05 `VotingWeight._positionPower` gates (`VotingWeight.sol:134-138`) but
+    /// @dev L-D19. Mirrors the F-04 / F-05 `VotingWeight._positionPower` gates (`VotingWeight.sol:242-246 + 262`) but
     ///      reverts rather than returning 0: unseeded (`seedBlock == 0`, age 0) or still-ramping
     ///      (`block.number - seedBlock < EMA_MATURITY_BLOCKS`) reverts `EMANotMature`, stale
     ///      (`block.number - rail.lastSampleBlock > EMA_STALENESS_BLOCKS`) reverts `EMAStale`, else returns
@@ -361,7 +361,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
     ///         L-D5 60-day price EMA smooths (L3.2). Internal, no public view: the raw spot is never
     ///         priced (L-D5), so it cannot be mistaken for a callable price oracle.
     /// @dev L-D18. der Bodensee registers its three tokens address-sorted
-    ///      (`DeployDerBodensee.s.sol:45-61`), so AuMM's and `payToken`'s positions are
+    ///      (`DeployDerBodensee.s.sol:95-111`), so AuMM's and `payToken`'s positions are
     ///      deploy-address-dependent — resolved by identity-matching `getPoolData(BODENSEE_POOL).tokens[i]`
     ///      against the `AUMM` immutable and `payToken` (the `TVLOracle._venueRatio` pattern), never
     ///      hardcoded. One `getPoolData` supplies `tokens` + `balancesLiveScaled18` (the rate-scaled
@@ -439,7 +439,7 @@ contract IncendiaryRegistry is IIncendiaryRegistry {
 
     /// @notice Gross AuMM-wei emission integrated over the whole of epoch `epoch` — the L-D6 cap basis.
     /// @dev L-D21. Era-split cursor walk mirroring `EmissionDistributor._lpTrancheIntegral`
-    ///      (`EmissionDistributor.sol:335-349`) over `[epochStartBlock, epochEndBlock]` (the L-D13
+    ///      (`EmissionDistributor.sol:414-428`) over `[epochStartBlock, epochEndBlock]` (the L-D13
     ///      helpers), summing `blockEmissionRate(cursor) × subLen` per era sub-interval. An epoch
     ///      (`BLOCKS_PER_EPOCH` = 100_800) straddles at most one halving (`BLOCKS_PER_ERA` = 10_512_000),
     ///      so the loop runs at most two iterations; `blockEmissionRate` is piecewise-constant within an

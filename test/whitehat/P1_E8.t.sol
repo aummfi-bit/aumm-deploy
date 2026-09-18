@@ -53,7 +53,7 @@ contract LinearBoostRegistry {
 }
 
 /// @notice Reproduction PoC for seam-1 root cause E.8 (Medium). The cursor assignment at
-///         `EmissionDistributor.sol` L413 sits inside the non-zero-registry guard, so unbinding
+///         `EmissionDistributor.sol` L532 sits inside the non-zero-registry guard, so unbinding
 ///         freezes `poolBoostCursor` while settles continue, and a later rebind bills the whole
 ///         unbound window as one backlog. E.8's other face — `buyBoost` holding no distributor
 ///         reference, so purchases continue while unbound — lives in the registry contract and is

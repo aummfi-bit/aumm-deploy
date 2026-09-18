@@ -68,7 +68,7 @@ abstract contract WK18ThinVenuePumpSimFixture is StageNIntegrationFixture {
         vm.roll(block.number + 1);
     }
 
-    /// @dev Hookless USDC/svZChf weighted venue — StageHIntegration.t.sol L465-506 shape, distinct salt per call.
+    /// @dev Hookless USDC/svZChf weighted venue — StageHIntegration.t.sol L528-569 shape, distinct salt per call.
     function _buildUsdcSvzchfVenue(bytes32 salt) internal returns (address venue) {
         address[2] memory addrs;
         addrs[0] = USDC;

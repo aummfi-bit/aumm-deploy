@@ -143,7 +143,7 @@ contract StageHBootstrapPhaseTest is StageHIntegrationFixture {
         bootstrapChannel.setGovernanceContract(GOVERNANCE_MULTISIG);
     }
 
-    /// @notice Test-side mirror of BodenseeBootstrapChannel._apSum for expected-value assertions — bit-for-bit port of test/unit/BodenseeBootstrapChannel.t.sol L333-L348.
+    /// @notice Test-side mirror of BodenseeBootstrapChannel._apSum for expected-value assertions — bit-for-bit port of test/unit/BodenseeBootstrapChannel.t.sol L352-L367.
     function _expectedApSum(
         uint256 from,
         uint256 to,

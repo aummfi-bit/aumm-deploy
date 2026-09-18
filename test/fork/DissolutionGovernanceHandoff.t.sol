@@ -254,7 +254,7 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
      *      authority carrying an observable getter at `:38` and is nobody else's exploit; the other
      *      four retained slots are asserted by read alone.
      * @dev `EMERGENCY_MULTISIG` and the governance multisig are DISTINCT addresses in this fixture
-     *      (`StagePIntegration.t.sol:96` against `address(orchestrator)`). The report records that
+     *      (`StagePIntegration.t.sol:95` against `address(orchestrator)`). The report records that
      *      their distinctness is not determinable from the deployed artifacts, so nothing asserted
      *      here turns on the two being one principal.
      */
@@ -324,7 +324,7 @@ contract DissolutionGovernanceHandoffWitness is StagePIntegrationFixture {
      *      the dissolution, at which point the constitution says no such authority exists.
      * @dev The one-key-holds-everything collapse is a Sepolia deployment fact and is NOT asserted
      *      here; in this fixture the seat is `address(orchestrator)` from the pool's registration at
-     *      `StagePIntegration.t.sol:181-182`.
+     *      `StagePIntegration.t.sol:180-181`.
      */
     function test_P1_C1_thePauseManagerRoleHolderOutlivesTheWindowAndTheDissolution() public {
         _executeDissolutionRotation();

@@ -7,7 +7,7 @@ import {IVotingWeight} from "src/governance/IVotingWeight.sol";
 
 /// @title StageGMocks
 /// @notice Fork-side mock contract home for Stage G integration tests (`test/fork/StageGIntegration.t.sol`) per **G-D25c**.
-/// @dev `MockEfficiencyOracle` mirrors verbatim from `test/unit/GaugeEligibility.t.sol:49`; `MockVotingWeight` mirrors verbatim from `test/unit/VaultClassRegistry.t.sol:29`. Unit-test embeds remain the ABI-stability source-of-truth per the §12 anchor at `test/unit/GaugeEligibility.t.sol:161`. Any future signature change to either mock MUST be propagated to the unit-test embed and this mirror in the same commit. `MockTVLOracle` triplet unification (canonical at `test/fork/mocks/CCBMocks.sol:10` + inline copies at `test/unit/GaugeEligibility.t.sol:34` + `test/unit/EMASampler.t.sol:325`) is out of scope per **G-D25c** Out-of-scope clause; deferred to a post-Stage-G housekeeping beat.
+/// @dev `MockEfficiencyOracle` mirrors verbatim from `test/unit/GaugeEligibility.t.sol:62`; `MockVotingWeight` mirrors verbatim from `test/unit/VaultClassRegistry.t.sol:29`. Unit-test embeds remain the ABI-stability source-of-truth per the §12 anchor at `test/unit/GaugeEligibility.t.sol:185`. Any future signature change to either mock MUST be propagated to the unit-test embed and this mirror in the same commit. `MockTVLOracle` triplet unification (canonical at `test/fork/mocks/CCBMocks.sol:10` + inline copies at `test/unit/GaugeEligibility.t.sol:43` + `test/unit/EMASampler.t.sol:370`) is out of scope per **G-D25c** Out-of-scope clause; deferred to a post-Stage-G housekeeping beat.
 
 /// @notice Minimal IEfficiencyOracle double storing SMA pair per pool.
 contract MockEfficiencyOracle is IEfficiencyOracle {

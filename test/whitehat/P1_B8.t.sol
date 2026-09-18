@@ -9,7 +9,7 @@ import {MockEMASampler, MockGaugeRegistry, MockMiliariumRegistry, MockRecorder} 
 /// @title P1 B.8 — era exponent applied only inside poke and stored
 /// @notice Reproduction PoC for seam-1 root cause B.8 (Low). After firstHalvingBlock the
 ///         electorate sums a mix of Era-0 and Era-1+ scaled weights until every holder
-///         individually re-pokes — the exponent at VotingWeight.sol:191-194 is read only
+///         individually re-pokes — the exponent at VotingWeight.sol:288-291 is read only
 ///         on the poke write path, never on the governanceWeight view.
 contract P1_B8_LazyEraExponentTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;

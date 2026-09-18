@@ -31,7 +31,7 @@ import { IMiliariumRegistry } from "../src/ccb/IMiliariumRegistry.sol";
  *      in `VAULT` with AuMM in its token roster — impossible if AuMM is
  *      deployed in-script (the address is not yet known when the Bodensee
  *      pool was registered). The canonical convention is established by
- *      `script/DeployDerBodensee.s.sol:L39` (`address aumm =
+ *      `script/DeployDerBodensee.s.sol:L88` (`address aumm =
  *      vm.envAddress("AUMM")`): any downstream script that references
  *      `BODENSEE_POOL` must consume AuMM via env var rather than redeploy.
  *      Implied production chain: DeployAuMM → DeployDerBodensee →

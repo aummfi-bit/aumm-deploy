@@ -30,7 +30,7 @@ import { AureumTime } from "../../src/lib/AureumTime.sol";
  *      and install it once via `vm.prank(GOVERNANCE_MULTISIG); vault.setAuthorizer(bridge)`, so the
  *      single-governor script then executes all ten wires (including the real wire (10) installing
  *      `AureumGovernanceAuthorizer`) as `address(this)`. This diverges from production — where wire (10)
- *      is signed by the real `GOVERNANCE_MULTISIG` Safe — exactly as `DeployStageH.t.sol` L208—L218
+ *      is signed by the real `GOVERNANCE_MULTISIG` Safe — exactly as `DeployStageH.t.sol` L178—L188
  *      diverges on its `setMinter` simulation; production multisig-path fidelity lives in the deploy
  *      script NatSpec and the K1 `AureumGovernanceAuthorizer` unit suite.
  *

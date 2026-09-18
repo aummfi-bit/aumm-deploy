@@ -241,7 +241,7 @@ contract StageKCompositionLifecycleTest is StageKIntegrationFixture {
     /// @notice P1 A.1 — pausing der Bodensee bricks every `propose*` entry, including
     ///         `proposeVaultUnpause`, the one proposal type that exists to exit a pause.
     ///         `_createProposal` welds the bond to a live Vault `addLiquidity` on der Bodensee
-    ///         (`AureumGovernance.sol:211-214`), so the pool's own pause bit halts proposal
+    ///         (`AureumGovernance.sol:220-230`), so the pool's own pause bit halts proposal
     ///         creation. The exit is inside the door it opens. PP-D29 orders G.1 after this.
     function test_P1_A1_pausedBodenseeBricksProposeVaultUnpause() public {
         // PP-D52 (v) clause 4 — `_createProposal` now refuses the bond at a zero electorate, so this

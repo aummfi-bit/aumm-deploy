@@ -13,7 +13,7 @@ pragma solidity ^0.8.26;
 ///      implements its own `IVault.unlock` callback path with AuMM as pay token and
 ///      `addLiquidity(AddLiquidityKind.DONATION)` to immutable `BODENSEE_POOL` — mirroring G-D11 /
 ///      G-D21 and NOT reusing `SwapAndDepositToBodensee.donate` (which rejects non-svZCHF/sUSDS pay
-///      tokens per `src/gauge/SwapAndDepositToBodensee.sol` L329 + L362–L364). Per H-D13 lifecycle
+///      tokens per `src/gauge/SwapAndDepositToBodensee.sol` L332 + L367–L369). Per H-D13 lifecycle
 ///      clamp, accrual is bounded by `month10EndBlock`. Per H-D14, `distribute()` is governance-only.
 ///      Concrete implementation lands at H3.2 in `src/emission/BodenseeBootstrapChannel.sol`.
 interface IBodenseeBootstrapChannel {

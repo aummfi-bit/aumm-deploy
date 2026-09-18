@@ -730,7 +730,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         hook.setTrustedRouter(address(this), true);
     }
 
-    // Transcribed from PilotPools.t.sol L325-L355 per P-D36/CLAUDE.md L330 — two-arg deal per E10; plain transfer, no SafeERC20.
+    // Transcribed from PilotPools.t.sol L330-L360 per P-D36/CLAUDE.md L330 — two-arg deal per E10; plain transfer, no SafeERC20.
     function _performSwap(address pool, IERC20 tokenIn, IERC20 tokenOut, uint256 amountIn)
         internal
         returns (uint256 amountOut)
@@ -820,7 +820,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         uint256 afterFirst = ccb.getMultiplier(pilotPools[0]);
         assertLt(afterFirst, initial);
         // cadence gate — immediate re-call reverts TooEarly(current, current + BLOCKS_PER_EPOCH);
-        // full encoding per the CCBMultiplier.t.sol L174 precedent (arg-carrying error — bare-selector exact-match fails).
+        // full encoding per the CCBMultiplier.t.sol L297 precedent (arg-carrying error — bare-selector exact-match fails).
         vm.expectRevert(
             abi.encodeWithSelector(CCBMultiplier.TooEarly.selector, block.number, block.number + 100_800)
         );
@@ -1710,7 +1710,7 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
     function test_P1_C5_theRecoveryBitSurvivesUnpauseAndDisqualifiesNothing() public {
         // Absence result verified by grep and not re-derived here: recovery mode appears in
         // Aureum source only in AureumGovernanceAuthorizer's action IDs and at
-        // AureumGovernance.sol L443's disableRecoveryMode exit call; nothing in src/gauge/ or
+        // AureumGovernance.sol L486's disableRecoveryMode exit call; nothing in src/gauge/ or
         // src/emission/ reads isPoolInRecoveryMode, which is why eligibility and scoring are
         // blind to it.
         address pool = pilotPools[0];

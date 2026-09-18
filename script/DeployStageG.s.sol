@@ -62,7 +62,7 @@ import { GaugeGenesisManifest } from "./config/GaugeGenesisManifest.sol";
  *
  * @dev **E-D16 naming trap / PB-D27 (ix):** `WEIGHTED_POOL_FACTORY` holds the UPSTREAM Balancer
  *      `WeightedPoolFactory` bound to the Aureum Vault — NOT `src/factory/AureumWeightedPoolFactory.sol`.
- *      `script/DeployAureumWeightedPoolFactory.s.sol` L37 constructs the upstream contract, and both
+ *      `script/DeployAureumWeightedPoolFactory.s.sol` L39 constructs the upstream contract, and both
  *      production spines cast that address to the Aureum type, so no existing path binds the real Aureum
  *      factory here and its factory-level `QualityGateUnsatisfied` guard never runs. The script-side
  *      MIN_ERC4626_WEIGHT check duplicates the same threshold, so the admitted set is unaffected

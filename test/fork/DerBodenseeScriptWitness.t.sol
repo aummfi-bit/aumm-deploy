@@ -26,7 +26,7 @@ import { DeployAureumWeightedPoolFactory } from "../../script/DeployAureumWeight
 contract DerBodenseeScriptWitnessTest is Test {
     address internal constant BALANCER_V3_VAULT_MAINNET = 0xbA1333333333a1BA1108E8412f11850A5C319bA9;
     bytes32 internal constant BODENSEE_SALT = bytes32(uint256(2));
-    // Mainnet literals hardcoded at DeployDerBodensee.s.sol L145 and L155 — used here only as the STUB_ lookup keys.
+    // Mainnet literals hardcoded at DeployDerBodensee.s.sol L167 and L177 — used here only as the STUB_ lookup keys.
     address internal constant SUSDS_RATE_PROVIDER = 0x1195BE91e78ab25494C855826FF595Eef784d47B;
     address internal constant SV_ZCHF_RATE_PROVIDER = 0xf32dc0eE2cC78Dca2160bb4A9B614108F28B176c;
     address internal constant GOVERNOR = address(uint160(uint256(keccak256("witnessGovernorEOA"))));
@@ -87,7 +87,7 @@ contract DerBodenseeScriptWitnessTest is Test {
         vm.setEnv("BODENSEE_SALT", vm.toString(BODENSEE_SALT));
 
         // (9) STUB_ keys built as string.concat("STUB_", vm.toString(<RP>)) so the key spelling cannot
-        //     drift from the script's own lookup at DeployDerBodensee.s.sol L51.
+        //     drift from the script's own lookup at DeployDerBodensee.s.sol L57.
         /// forge-lint: disable-next-line(unsafe-cheatcode)
         vm.setEnv(string.concat("STUB_", vm.toString(SUSDS_RATE_PROVIDER)), vm.toString(address(susdsRp)));
         /// forge-lint: disable-next-line(unsafe-cheatcode)
@@ -95,11 +95,11 @@ contract DerBodenseeScriptWitnessTest is Test {
 
         // (10) DEFAULT_SENDER is forge-std's default foundry sender (lib/forge-std/src/Base.sol L22),
         //      in scope through Test. DeployDerBodensee.run() opens a bare vm.startBroadcast()
-        //      (DeployDerBodensee.s.sol L101), whose sender resolves to that default when neither a
+        //      (DeployDerBodensee.s.sol L123), whose sender resolves to that default when neither a
         //      sender flag nor a single signer is configured. BasePoolFactory._computeFinalSalt hashes
         //      the create() caller (lib/balancer-v3-monorepo/pkg/pool-utils/contracts/BasePoolFactory.sol
         //      L126-L128) while the FACTORY is the CREATE3 creator. This is the deliberate delta from
-        //      StagePRunRehearsal.t.sol L136-L139, which is scoped to the test contract there only
+        //      StagePRunRehearsal.t.sol L150-L153, which is scoped to the test contract there only
         //      because it calls the factory create() inline rather than through the script.
         predictedPool = CREATE3.getDeployed(
             keccak256(abi.encode(DEFAULT_SENDER, block.chainid, BODENSEE_SALT)),
