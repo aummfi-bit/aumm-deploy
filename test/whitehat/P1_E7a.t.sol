@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 import {GaugeRegistry} from "src/gauge/GaugeRegistry.sol";
 import {GaugeEligibility} from "src/gauge/GaugeEligibility.sol";
@@ -26,9 +27,11 @@ import {MockRegisteredVault} from "../mocks/MockRegisteredVault.sol";
 ///         tie-break, handing the harshest emission cap to the highest-addressed pool. PP4.13g
 ///         added the `numeratorSma == 0` skip ahead of the cold `SSTORE` per PP-D56 (viii), so a
 ///         zero-numerator pool now leaves the tournament rather than entering it with no signal
-///         to be ordered by. The feed is STILL unwired at HEAD, PP-D34 as amended by PP-D56 (ii)
-///         having moved the producer and its wiring to rung 15, which is why the premise test
-///         below asserts something live about the tree rather than recording how it once was.
+///         to be ordered by. Rung 15 seats the feed per PP-D58 (ix) and (xvi): the hook produces the
+///         numerator and the spine wires both directions, so the skip now holds only while no feed is
+///         seated, and a seated feed ranks a zero numerator at ratio zero in the most severe tier. This
+///         unit fixture leaves the feed unset in setUp, so the premise and the skip test below describe
+///         an unseated oracle, while the two PP-D58 (xvi) cases at the end seat one inside their own test.
 ///         E.7b and E.7c are the other two F-16 faces.
 contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
     uint256 internal constant GENESIS_BLOCK = 1_000_000;
@@ -43,6 +46,15 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
     uint256 internal constant ADVANCE_3_BLOCK = ADVANCE_1_BLOCK + 2 * BLOCKS_PER_EPOCH;
     uint256 internal constant ADVANCE_4_BLOCK = ADVANCE_1_BLOCK + 3 * BLOCKS_PER_EPOCH;
     uint256 internal constant POOL_COUNT = 20;
+    /// @dev PP-D58 (xvi) — the feed a seated oracle accepts fees from, a fee token priced 1:1, and the
+    ///      count of lowest-addressed pools left without revenue.
+    address internal constant FEED = address(0xFEED);
+    address internal constant FEE_TOKEN = address(0xFEE0);
+    uint256 internal constant ZERO_FEE_POOLS = 3;
+    /// @dev PP-D58 (xvi)(4) — a settle one epoch boundary after SCORE_BLOCK (epoch 26), inside one accrual
+    ///      chunk, and a read in epoch 30, whose window of epochs 27 to 29 excludes epoch 26.
+    uint256 internal constant VINTAGE_SETTLE_BLOCK = GENESIS_BLOCK + 27 * BLOCKS_PER_EPOCH + 7_000;
+    uint256 internal constant VINTAGE_READ_BLOCK = GENESIS_BLOCK + 30 * BLOCKS_PER_EPOCH + 1;
 
     address internal constant GOV = address(0x9011);
     address internal constant PLACEHOLDER = address(0xDEAD);
@@ -65,8 +77,8 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
         mult = new MockCCBMultiplier();
         miliReg = new MockMiliariumRegistry();
         tvlMock = new MockEfficiencyTVLOracle();
-        // Real oracle — feeRecorder is deliberately left unset; that omission is the defect
-        // under reproduction, not an oversight. Never call setFeeRecorder in this file.
+        // Real oracle — feeRecorder is left unset here, as it was on chain before rung 15; only the
+        // PP-D58 (xvi) cases at the end of this file seat a feed, each inside its own test.
         effOracle = new EfficiencyOracle(tvlMock, address(aumm), GENESIS_BLOCK, GOV);
 
         gaugeElig = new GaugeEligibility(
@@ -218,6 +230,125 @@ contract P1_E7a_ZeroNumeratorPoolsAreSkippedNotRankedByAddressTest is Test {
             gaugeElig.currentSnapshotEpoch(),
             4,
             "all four advances completed without reverting, which is the denominator skip's own guarantee extended to the numerator"
+        );
+    }
+
+    /// @dev Records the same fee for every pool from index ZERO_FEE_POOLS up, as the seated feed, so the
+    ///      three lowest-addressed pools carry a zero numerator beside seventeen that earn. A constant fee
+    ///      against emissions that rise with TVL gives the earners distinct ratios.
+    function _feedFees() internal {
+        for (uint256 i = ZERO_FEE_POOLS; i < POOL_COUNT; i++) {
+            vm.prank(FEED);
+            effOracle.recordFees(pools[i], FEE_TOKEN, 10e18);
+        }
+    }
+
+    /// @dev `_accrueEmissionDenominators` then `_runWarmupToCaps`, with fees recorded after every scoring
+    ///      pass so each tournament's three-epoch window carries a numerator for the earners.
+    function _accrueAndWarmUpWithFees() internal {
+        vm.roll(SCORE_BLOCK);
+        _scoreAll();
+        _feedFees();
+        vm.roll(ADVANCE_1_BLOCK);
+        _scoreAll();
+        _feedFees();
+        _advanceOnce();
+        vm.roll(ADVANCE_2_BLOCK);
+        _scoreAll();
+        _feedFees();
+        _advanceOnce();
+        vm.roll(ADVANCE_3_BLOCK);
+        _scoreAll();
+        _feedFees();
+        _advanceOnce();
+        vm.roll(ADVANCE_4_BLOCK);
+        _scoreAll();
+        _feedFees();
+        _advanceOnce();
+    }
+
+    /// @notice PP-D58 (ix) and (xvi)(1)-(2): once a feed is seated a zero numerator is a signal rather
+    ///         than an absence. The three lowest-addressed pools earn nothing, rank at ratio zero at the
+    ///         tail of a twenty-pool list, and each takes the 10 bps cap and no favored slot. The address
+    ///         tie-break would have handed them 100, 50 and 10 bps in address order, and the rung-13 skip
+    ///         would have left them uncapped; the seventeen earners stay uncapped.
+    function test_zeroNumeratorRanksAtTheBottomOnceTheFeedIsSeated() public {
+        vm.prank(GOV);
+        effOracle.setFeeRecorder(FEED);
+        tvlMock.setRate(FEE_TOKEN, 1e18);
+
+        _accrueAndWarmUpWithFees();
+
+        assertEq(gaugeElig.currentSnapshotEpoch(), 4, "four tournaments closed");
+        for (uint256 i = 0; i < ZERO_FEE_POOLS; i++) {
+            (uint256 numeratorSma, uint256 denominatorSma) = effOracle.efficiencyInputs(pools[i]);
+            assertEq(numeratorSma, 0, "premise: this pool earned no fees");
+            assertGt(denominatorSma, 0, "premise: this pool drew emissions, so it is ranked rather than skipped");
+            assertEq(gaugeElig.lastSnapshotEpoch(pools[i]), 4, "the zero-ratio pool was ranked in the fourth tournament");
+            assertEq(
+                gaugeRegistry.poolEmissionCapBps(pools[i]), 10, "a zero-ratio pool takes the 10 bps cap whatever its address"
+            );
+            assertFalse(gaugeElig.isFavoredCohort(pools[i]), "a zero-ratio pool is never favored");
+        }
+        for (uint256 i = ZERO_FEE_POOLS; i < POOL_COUNT; i++) {
+            assertEq(
+                gaugeRegistry.poolEmissionCapBps(pools[i]), 0, "an earning pool above the bottom bands stays uncapped"
+            );
+        }
+    }
+
+    /// @notice PP-D58 (xvi)(3)-(5): a settle that crosses an epoch boundary credits the F-10 denominator to
+    ///         each epoch the emissions accrued in. One pool is scored alone in epoch 26 and settled once in
+    ///         epoch 27, inside a single accrual chunk. The oracle receives two pieces, epoch 26's and epoch
+    ///         27's, each matching the tranche integral over its own blocks, where before it received the
+    ///         whole allocation under epoch 27. The read in epoch 30, whose window is 27 to 29, therefore
+    ///         sees only epoch 27's piece.
+    function test_settledEmissionsCreditTheEpochTheyAccruedIn() public {
+        address pool = pools[0];
+        vm.roll(SCORE_BLOCK);
+        distributor.recordScore(pool);
+
+        vm.roll(VINTAGE_SETTLE_BLOCK);
+        vm.recordLogs();
+        distributor.recordScore(pool);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256[2] memory epochs;
+        uint256[2] memory amounts;
+        uint256 found;
+        for (uint256 k = 0; k < logs.length; k++) {
+            if (logs[k].emitter != address(effOracle)) continue;
+            if (logs[k].topics[0] != EfficiencyOracle.EmissionsRecorded.selector) continue;
+            assertLt(found, 2, "no more than two pieces for a settle spanning two epochs");
+            epochs[found] = uint256(logs[k].topics[2]);
+            (amounts[found],) = abi.decode(logs[k].data, (uint256, uint256));
+            found++;
+        }
+        assertEq(found, 2, "the settle is split into one piece per accrual epoch");
+        assertEq(epochs[0], 26, "the first piece is credited to epoch 26, where it accrued");
+        assertEq(epochs[1], 27, "the second piece is credited to epoch 27");
+
+        uint256 epoch27Start = GENESIS_BLOCK + 27 * BLOCKS_PER_EPOCH;
+        assertApproxEqAbs(
+            amounts[0],
+            distributor.extLpTrancheIntegral(SCORE_BLOCK + 1, epoch27Start - 1),
+            1e3,
+            "epoch 26's piece is the tranche over its own blocks"
+        );
+        assertApproxEqAbs(
+            amounts[1],
+            distributor.extLpTrancheIntegral(epoch27Start, VINTAGE_SETTLE_BLOCK),
+            1e3,
+            "epoch 27's piece is the tranche over its own blocks"
+        );
+        assertEq(distributor.poolDebtEpoch(pool), 27, "the debt epoch follows the accrual cursor");
+
+        vm.roll(VINTAGE_READ_BLOCK);
+        (, uint256 denominatorSma) = effOracle.efficiencyInputs(pool);
+        assertEq(
+            denominatorSma,
+            amounts[1] / 3,
+            "epoch 26's piece lies outside the epoch-30 window, where the pre-fix lump into epoch 27 would not"
         );
     }
 }

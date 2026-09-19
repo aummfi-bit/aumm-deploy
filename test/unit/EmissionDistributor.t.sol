@@ -182,7 +182,7 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
         revertOnRecord = flag;
     }
 
-    function recordEmissions(address pool, uint256 aummAmountScaled18) external override {
+    function recordEmissions(address pool, uint256, uint256 aummAmountScaled18) external override {
         if (revertOnRecord) revert("MockEfficiencyOracle: revert toggle");
         require(msg.sender == emissionsRecorder, "MockEfficiencyOracle: not recorder");
         calls.push(Call(pool, aummAmountScaled18));
@@ -190,6 +190,12 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
 
     function efficiencyInputs(address) external pure override returns (uint256, uint256) {
         return (0, 0);
+    }
+
+    function recordFees(address, address, uint256) external override {}
+
+    function feeRecorder() external pure override returns (address) {
+        return address(0);
     }
 
     function callsLength() external view returns (uint256) {

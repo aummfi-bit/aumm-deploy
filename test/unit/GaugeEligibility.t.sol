@@ -76,7 +76,18 @@ contract MockEfficiencyOracle is IEfficiencyOracle {
     }
 
     /// @notice No-op stub for H4.1.x-bis interface conformance; tests pin `efficiencyInputs` directly via `setEfficiencyInputs`.
-    function recordEmissions(address, uint256) external override {}
+    function recordEmissions(address, uint256, uint256) external override {}
+
+    /// @notice Settable fee feed for the PP-D58 (xvi)(2) conditional skip; zero by default, so the zero-numerator skip holds.
+    address public override feeRecorder;
+
+    /// @notice Seats a fee feed so a zero numerator ranks at ratio zero rather than being skipped, per PP-D58 (xvi)(2).
+    function setFeeRecorder(address feeRecorder_) external {
+        feeRecorder = feeRecorder_;
+    }
+
+    /// @notice No-op stub for PP-D58 (xvi)(2) interface conformance.
+    function recordFees(address, address, uint256) external override {}
 }
 
 /// @notice Factory-shaped double exposing only `isPoolFromFactory` for selector dispatch tests.

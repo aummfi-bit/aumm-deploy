@@ -84,8 +84,8 @@ contract EfficiencyOracle is IEfficiencyOracle {
     /// @notice Emitted on each `recordFees` invocation — `pool` and `token` are indexed for off-chain reconstruction; `amountScaled18` is the caller-supplied input, `svZCHFAmountScaled18` is the post-`quoteSvZCHF` conversion (0 when `token` is unmapped in TVLOracle, per H-D10 skip-on-zero semantics).
     event FeesRecorded(address indexed pool, address indexed token, uint256 amountScaled18, uint256 svZCHFAmountScaled18);
 
-    /// @notice Emitted on each `recordEmissions` invocation — `pool` is indexed for off-chain reconstruction; `aummAmountScaled18` is the caller-supplied AuMM emissions amount, `svZCHFAmountScaled18` is the post-`quoteSvZCHF(AuMM, ...)` conversion (0 when the AuMM mapping prerequisite is unsatisfied per H-D10 v2).
-    event EmissionsRecorded(address indexed pool, uint256 aummAmountScaled18, uint256 svZCHFAmountScaled18);
+    /// @notice Emitted on each `recordEmissions` invocation that writes — `pool` and `epoch` are indexed for off-chain reconstruction; `epoch` is the accrual epoch the allocation was credited to per PP-D58 (xvi), `aummAmountScaled18` is the caller-supplied AuMM emissions amount, `svZCHFAmountScaled18` is the post-`quoteSvZCHF(AuMM, ...)` conversion (0 when the AuMM mapping prerequisite is unsatisfied per H-D10 v2).
+    event EmissionsRecorded(address indexed pool, uint256 indexed epoch, uint256 aummAmountScaled18, uint256 svZCHFAmountScaled18);
 
     /// @notice Emitted when `_ensureCurrentEpoch` flushes an in-progress accumulator pair to the history ring — `pool` and `epoch` are indexed for off-chain reconstruction of the per-pool SMA window.
     event EpochFinalized(address indexed pool, uint256 indexed epoch, uint256 numerator, uint256 denominator);
@@ -215,16 +215,29 @@ contract EfficiencyOracle is IEfficiencyOracle {
     }
 
     /**
-     * @notice Records a per-pool AuMM emissions contribution per H-D10 v2 — converts `aummAmountScaled18` of the AuMM token to svZCHF via `tvlOracle.quoteSvZCHF(AuMM, ...)` and accumulates the result into `_accDenominator[pool]`.
-     * @dev `onlyEmissionsRecorder`-gated; triggers `_ensureCurrentEpoch(pool)` before accumulating. Skip-on-zero semantics: if the deploy prerequisite (`tvlOracle.tokenToUnderlying[AuMM]` seeded with a constellation venue pricing AuMM in svZCHF) is unsatisfied, contributions are silently zero — `efficiencyInputs` will return `denominatorSma = 0` and `GaugeEligibility` will skip the pool, excluded from ranking, not reverted, per **P-D15 (3)**, with **PP-D56 (viii)** placing that skip ahead of the cold-start stamp so the pool is never stamped either. Emits `EmissionsRecorded(pool, aummAmountScaled18, svZCHFAmountScaled18)` for off-chain reconstruction.
+     * @notice Records a per-pool AuMM emissions contribution to the epoch it accrued in per H-D10 v2 and PP-D58 (xvi) — converts `aummAmountScaled18` of the AuMM token to svZCHF via `tvlOracle.quoteSvZCHF(AuMM, ...)` and credits it to `epoch`'s denominator.
+     * @dev `onlyEmissionsRecorder`-gated. An `epoch` later than the current one, or more than three back, returns without a write or an event: the distributor drops pieces older than the window before calling, and nothing older is ever read by `efficiencyInputs`. Otherwise triggers `_ensureCurrentEpoch(pool)`, then credits the live `_accDenominator[pool]` when `epoch` is the current epoch, or ring slot `_history[pool][epoch % 3]` when it is one to three back, first resetting that slot to `(epoch, 0, 0)` when it holds another epoch. A slot holding a different epoch is always older than the window, since the slot for an in-window epoch can only have held epochs three or more earlier, so the reset discards nothing `efficiencyInputs` reads. A slot rewritten after its `EpochFinalized` fired is not re-announced, the ring rather than the event being the record. Every piece is priced at the current `quoteSvZCHF` because no price history exists: the vintage moves the epoch, not the price. Skip-on-zero semantics: if the deploy prerequisite (`tvlOracle.tokenToUnderlying[AuMM]` seeded with a constellation venue pricing AuMM in svZCHF) is unsatisfied, contributions are silently zero — `efficiencyInputs` will return `denominatorSma = 0` and `GaugeEligibility` will skip the pool, excluded from ranking, not reverted, per **P-D15 (3)**, with **PP-D56 (viii)** placing that skip ahead of the cold-start stamp so the pool is never stamped either. Emits `EmissionsRecorded(pool, epoch, aummAmountScaled18, svZCHFAmountScaled18)` for off-chain reconstruction.
      * @param pool The pool whose denominator is being accumulated.
+     * @param epoch The accrual epoch the allocation is credited to, indexed by `AureumTime.epochIndex(GENESIS_BLOCK, block)`.
      * @param aummAmountScaled18 The 18-decimal fixed-point AuMM emissions amount per Balancer V3 `balancesLiveScaled18` convention.
      */
-    function recordEmissions(address pool, uint256 aummAmountScaled18) external override onlyEmissionsRecorder {
+    function recordEmissions(address pool, uint256 epoch, uint256 aummAmountScaled18) external override onlyEmissionsRecorder {
+        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (epoch > currentEpoch || epoch + 3 < currentEpoch) return;
         _ensureCurrentEpoch(pool);
         uint256 svZCHFAmountScaled18 = tvlOracle.quoteSvZCHF(AuMM, aummAmountScaled18);
-        _accDenominator[pool] += svZCHFAmountScaled18;
-        emit EmissionsRecorded(pool, aummAmountScaled18, svZCHFAmountScaled18);
+        if (epoch == currentEpoch) {
+            _accDenominator[pool] += svZCHFAmountScaled18;
+        } else {
+            EpochEntry storage entry = _history[pool][epoch % 3];
+            if (entry.epoch != epoch) {
+                entry.epoch = epoch;
+                entry.numerator = 0;
+                entry.denominator = 0;
+            }
+            entry.denominator += svZCHFAmountScaled18;
+        }
+        emit EmissionsRecorded(pool, epoch, aummAmountScaled18, svZCHFAmountScaled18);
     }
 
     /* ---------- View (H-D10) ---------- */

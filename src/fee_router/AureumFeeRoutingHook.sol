@@ -10,11 +10,13 @@ import {IVault} from "@balancer-labs/v3-interfaces/contracts/vault/IVault.sol";
 
 import {BaseHooks} from "@balancer-labs/v3-vault/contracts/BaseHooks.sol";
 import {VaultGuard} from "@balancer-labs/v3-vault/contracts/VaultGuard.sol";
+import {ScalingHelpers} from "@balancer-labs/v3-solidity-utils/contracts/helpers/ScalingHelpers.sol";
 
 import {IAureumFeeRoutingHook} from "src/fee_router/IAureumFeeRoutingHook.sol";
 import {IAureumProtocolFeeControllerHookExtension} from "src/fee_router/IAureumProtocolFeeControllerHookExtension.sol";
 import {IRouterSender} from "src/fee_router/IRouterSender.sol";
 import {IEmissionDistributor} from "src/emission/IEmissionDistributor.sol";
+import {IEfficiencyOracle} from "src/gauge/IEfficiencyOracle.sol";
 
 /**
  * @title AureumFeeRoutingHook
@@ -149,6 +151,14 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice per-pool Bodensee deposit rail per P-D12 (2), set once at onRegister — svZCHF if the pool holds it (preferred), else sUSDS if the pool holds it, else address(0) (skip in onAfterSwap, no revert); immutable pool token sets so the cache never staleness-drifts.
     mapping(address => address) public poolBodenseeDepositToken;
 
+    /// @notice The EfficiencyOracle this hook feeds the F-10 numerator per PP-D58 (ix) and (xvi)(6)-(7); zero until the one-shot `setEfficiencyOracle` seats it, and while it is zero no fee is recorded. Declared after `poolBodenseeDepositToken`, as `trustedRouter` was before it, so the pinned layout of slots 0 to 7 is unchanged.
+    address public efficiencyOracle;
+
+    /// @dev One-shot setter authority for efficiencyOracle. Set in the
+    ///      constructor; zeroed atomically in setEfficiencyOracle. Same
+    ///      two-flag lock shape as the three module setters.
+    address private _efficiencyOracleAdmin;
+
     // -------------------------------------------------------------------------
     // Impl-side errors
     // -------------------------------------------------------------------------
@@ -176,6 +186,18 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @notice Reverts setEmissionRecorder when the recorder has already
     ///         been set.
     error EmissionRecorderAlreadySet();
+
+    /// @notice Reverts setEfficiencyOracle when msg.sender is not the
+    ///         constructor-set module admin.
+    error NotEfficiencyOracleAdmin();
+
+    /// @notice Reverts setEfficiencyOracle when the oracle has already
+    ///         been set.
+    error EfficiencyOracleAlreadySet();
+
+    /// @notice Reverts setEfficiencyOracle when the argument carries no
+    ///         code, per RB-025.
+    error EfficiencyOracleNotContract(address oracle);
 
     /// @notice Reverts the internal primitive when a non—ZCHF—family fee
     ///         token is supplied with no swap pool.
@@ -221,6 +243,11 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @param recorder The emission recorder (EmissionDistributor) address.
     event EmissionRecorderSet(address indexed recorder);
 
+    /// @notice Emitted when the EfficiencyOracle is set (exactly once,
+    ///         via the one-shot setter), per PP-D58 (xvi)(7).
+    /// @param oracle The EfficiencyOracle address.
+    event EfficiencyOracleSet(address indexed oracle);
+
     /// @notice Emitted when governance allowlists or de-allowlists a router for recorder attribution (F-09).
     event TrustedRouterSet(address indexed router, bool trusted);
 
@@ -230,6 +257,13 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     /// @param lp The provider the trusted router named, or zero when it could not be read.
     /// @param isDeposit True for an add, false for a remove.
     event RecorderDispatchFailed(address indexed pool, address indexed lp, bool isDeposit);
+
+    /// @notice Emitted when the EfficiencyOracle refuses a fee record and the swap or route
+    ///         completes with the F-10 numerator uncredited, per PP-D58 (xvi)(6).
+    /// @param pool The pool whose fee credit went unrecorded.
+    /// @param token The rail token the credit is denominated in.
+    /// @param amountScaled18 The credit, in Vault live-scaled18 units.
+    event FeeRecordingFailed(address indexed pool, address indexed token, uint256 amountScaled18);
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -280,6 +314,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         _governanceAdmin = moduleAdmin_;
         _incendiaryAdmin = moduleAdmin_;
         _emissionRecorderAdmin = moduleAdmin_;
+        _efficiencyOracleAdmin = moduleAdmin_;
     }
 
     // -------------------------------------------------------------------------
@@ -355,6 +390,31 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         emit EmissionRecorderSet(recorder);
     }
 
+    /// @notice Set the EfficiencyOracle this hook feeds exactly once, per
+    ///         PP-D58 (xvi)(7). Callable only by the constructor-set moduleAdmin.
+    /// @dev Two-flag lock as its siblings: on success, efficiencyOracle != 0
+    ///      AND _efficiencyOracleAdmin == 0. The argument must carry code
+    ///      per RB-025, so a mistyped address cannot be seated and burn the
+    ///      admin with the feed dead.
+    /// @param oracle The EfficiencyOracle address. Must be a contract.
+    function setEfficiencyOracle(address oracle) external {
+        if (msg.sender != _efficiencyOracleAdmin) revert NotEfficiencyOracleAdmin();
+        if (efficiencyOracle != address(0))       revert EfficiencyOracleAlreadySet();
+        if (oracle == address(0))                 revert ZeroAddress();
+        if (oracle.code.length == 0)              revert EfficiencyOracleNotContract(oracle);
+
+        efficiencyOracle = oracle;
+        _efficiencyOracleAdmin = address(0);
+        emit EfficiencyOracleSet(oracle);
+    }
+
+    /// @notice The EfficiencyOracle's one-shot setter authority; zero once
+    ///         the oracle is set.
+    /// @return The current EfficiencyOracle admin, or zero.
+    function efficiencyOracleAdmin() external view returns (address) {
+        return _efficiencyOracleAdmin;
+    }
+
     /// @notice Governance allowlist toggle for a router whose `getSender()` is trusted for recorder attribution (F-09).
     /// @dev Gated by `governanceModule` (the Stage K AureumGovernance authority) — reverts `UnauthorizedCaller` before governance is bound or from any other caller. Unlike the one-shot module setters this is a persistent, repeatable governance lever (routers added/removed over time); it sets no admin flag. The Stage O Aureum Router is allowlisted here when it ships; until then the allowlist is empty and the callback recorder dispatch is dormant (fail-closed).
     /// @param router  The router address to allow or disallow.
@@ -420,7 +480,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 len = tokens.length;
         for (uint256 i = 0; i < len; ++i) {
             if (forwardedAmounts[i] == 0) continue;
-            uint256 bptMinted = _swapFeeAndDeposit(
+            uint256 credit = _swapFeeAndDeposit(
                 tokens[i],
                 forwardedAmounts[i],
                 params.pool,
@@ -428,13 +488,16 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
                 0,
                 0
             );
+            // PP-D58 (xvi)(6) — this route's own output, capped at what landed, feeds the F-10 numerator;
+            // a refusing feed degrades to `FeeRecordingFailed` and the swap completes.
+            _recordFees(params.pool, depositToken, credit);
             // onAfterSwap is onlyVault under the Vault's open unlock; external calls are into the Vault itself (the protocol's reentrancy guard); CEI ordering preserved. See D8 NOTES F1.
             // slither-disable-next-line reentrancy-events
             emit SwapFeeRouted(
                 params.pool,
                 address(tokens[i]),
                 forwardedAmounts[i],
-                bptMinted
+                0
             );
         }
 
@@ -544,7 +607,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      three IAureumFeeRoutingHook external entry points. Two-phase
     ///      per the Stage D plan D3.3:
     ///      Phase 1 — convert `feeToken` to the deposit token on this hook's balance.
-    ///      If `amount == 0`, return `0` as `bptMinted`. If `feeToken` is the deposit token, no-op
+    ///      If `amount == 0`, return `0`. If `feeToken` is the deposit token, no-op
     ///      (hook already holds `amount` from the caller). If
     ///      `feeToken` is ZCHF and the deposit token is svZCHF, `forceApprove` then ERC-4626 `deposit`
     ///      into this hook. Otherwise require `swapPool != 0` and
@@ -554,8 +617,12 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      Phase 2 — one-sided DONATION of the hook's entire deposit-token
     ///      balance into der-Bodensee via
     ///      `_addLiquidityOneSidedToBodenseeViaVault`. No BPT is minted per
-    ///      PB-D68 (v), so `bptMinted` returns zero on every route and is
-    ///      retained for ABI stability per PB-D68 (vi).
+    ///      PB-D68 (v); the helper returns the landed amount in its place, and
+    ///      this primitive returns the route's own output capped at it, the
+    ///      F-10 credit per PP-D58 (xvi)(6): the same-token `amount`, the
+    ///      ERC-4626 shares minted, or the swap leg's `amountOut`. Callers
+    ///      that report a `bptMinted` report a literal zero, retained for ABI
+    ///      stability per PB-D68 (vi).
     ///      Balance-sweep is intentional: any deposit token held by this hook
     ///      is protocol-owned and Bodensee-bound, including dust from
     ///      prior partial fills or donations (per D3.3.4 Q1 / Option X).
@@ -572,28 +639,55 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         IERC20 depositToken,
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
-    ) private returns (uint256 bptMinted) {
+    ) private returns (uint256 credit) {
         if (amount == 0) return 0;
 
+        uint256 own;
         if (address(feeToken) == address(depositToken)) {
             // No-op: hook already holds `amount` of the deposit token from the caller.
+            own = amount;
         } else if (address(depositToken) == address(SV_ZCHF) && address(feeToken) == address(ZCHF)) {
             IERC20(address(ZCHF)).forceApprove(address(SV_ZCHF), amount);
             // Balance-sweep: phase-2 reads depositToken.balanceOf(this) at L547; bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F2/F3.
-            // slither-disable-next-line unused-return,calls-loop
-            IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
+            // slither-disable-next-line calls-loop
+            own = IERC4626(address(SV_ZCHF)).deposit(amount, address(this));
         } else {
             if (swapPool == address(0)) revert UnsupportedFeeToken(feeToken);
-            _swapExactInFeeTokenToDepositTokenViaVault(feeToken, amount, swapPool, depositToken, minDepositTokenOut);
+            own = _swapExactInFeeTokenToDepositTokenViaVault(feeToken, amount, swapPool, depositToken, minDepositTokenOut);
         }
 
         // Traced external call inside bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool). See D8 NOTES F4.
         // slither-disable-next-line calls-loop
-        bptMinted = _addLiquidityOneSidedToBodenseeViaVault(
+        uint256 landed = _addLiquidityOneSidedToBodenseeViaVault(
             depositToken,
             depositToken.balanceOf(address(this)),
             minBptAmountOut
         );
+        // PP-D58 (xvi)(6) — the route's own output, capped at what landed. A balance anyone sent to the
+        // hook still lands in der Bodensee with this sweep but counts for no pool.
+        credit = own < landed ? own : landed;
+    }
+
+    /// @dev PP-D58 (xvi)(6) — records `credit`, the raw rail-token amount this pool's own route landed at
+    ///      der Bodensee, as F-10 fee revenue for `pool`. The credit is converted to Vault live scaled18 with
+    ///      der Bodensee's own scaling factor and token rate, rounding down as the Vault does, the unit
+    ///      `TVLOracle.tvl` sums and PP-D56 (iii) pins. No call is made while the oracle is unset or the
+    ///      credit is zero. The call is caught, `setFeeRecorder` being multi-shot and accepting zero, so a
+    ///      repointed or refusing feed emits `FeeRecordingFailed` and the swap or route completes, as C.8
+    ///      degrades its recorder dispatch; the oracle carries code, `setEfficiencyOracle` having checked it.
+    function _recordFees(address pool, address depositToken, uint256 credit) private {
+        address oracle = efficiencyOracle;
+        if (oracle == address(0) || credit == 0) return;
+        // Vault views inside the bounded fee-token loop in onAfterSwap (max 8 per BAL v3 pool).
+        // slither-disable-next-line calls-loop
+        (, uint256 idx) = _vault.getPoolTokenCountAndIndexOfToken(DER_BODENSEE, IERC20(depositToken));
+        // slither-disable-next-line calls-loop
+        (uint256[] memory scalingFactors, uint256[] memory rates) = _vault.getPoolTokenRates(DER_BODENSEE);
+        uint256 amountScaled18 = ScalingHelpers.toScaled18ApplyRateRoundDown(credit, scalingFactors[idx], rates[idx]);
+        // slither-disable-next-line calls-loop
+        try IEfficiencyOracle(oracle).recordFees(pool, depositToken, amountScaled18) {} catch {
+            emit FeeRecordingFailed(pool, depositToken, amountScaled18);
+        }
     }
 
     /// @dev Nested swap from this hook: inside `IVault.swap`, `msg.sender`
@@ -648,9 +742,10 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
     ///      No BPT is minted at
     ///      all, so there is no recipient and no `sendTo` credit leg;
     ///      `AddLiquidityParams.to` is this contract only because the field
-    ///      is non-optional. `bptAmountOut` is therefore always zero, kept
-    ///      for ABI stability per PB-D68 (vi) and asserted via
-    ///      `BptMintedOnDonation` rather than assumed. `minBptAmountOut` is
+    ///      is non-optional. `bptOut` is always zero, asserted via
+    ///      `BptMintedOnDonation` rather than assumed, and the helper returns
+    ///      the landed amount, `amountsIn[depositIndex]`, in its place per
+    ///      PP-D58 (xvi)(6). `minBptAmountOut` is
     ///      rejected nonzero via `BptFloorUnavailableOnDonation` per
     ///      PB-D68 (xiv): no floor above zero is satisfiable under DONATION,
     ///      and F-13's bounded-route protection rests on `minDepositTokenOut`
@@ -680,7 +775,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         IERC20 depositToken,
         uint256 depositAmount,
         uint256 minBptAmountOut
-    ) private returns (uint256 bptAmountOut) {
+    ) private returns (uint256 landed) {
         // depositAmount is a uint256 function argument (not a balance read); == 0 vs < 1 equivalent for uint; early-return guard, not auth or fund-routing. See D8 NOTES F10.
         // slither-disable-next-line incorrect-equality
         if (depositAmount == 0) return 0;
@@ -709,7 +804,6 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             })
         );
         if (bptOut != 0) revert BptMintedOnDonation(bptOut);
-        bptAmountOut = bptOut;
 
         uint256 postReserve = _currentBodenseeReserve(depositIndex);
         // PB-D68 (xvii) — strict rise, not an exact delta: the DONATION branch computes amountsInRaw by round-tripping raw through scaled18 rather than deep-copying maxAmountsIn the way UNBALANCED does, so the consumed amount is not predictable by the caller.
@@ -722,6 +816,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         // settle returns credit equal to amountsIn[depositIndex] by construction; bounded fee-token loop. See D8 NOTES F12/F15.
         // slither-disable-next-line unused-return,calls-loop
         _vault.settle(depositToken, amountsIn[depositIndex]);
+        landed = amountsIn[depositIndex];
     }
 
     /// @dev Reads der Bodensee's raw reserve for token index `idx`, the
@@ -777,7 +872,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
-        bptMinted = _swapFeeAndDeposit(
+        uint256 credit = _swapFeeAndDeposit(
             feeToken,
             feeAmount,
             pool,
@@ -785,6 +880,8 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
             minDepositTokenOut,
             minBptAmountOut
         );
+        // PP-D58 (xvi)(6) — a yield route feeds the F-10 numerator as a swap does; `bptMinted` stays zero.
+        _recordFees(pool, poolBodenseeDepositToken[pool], credit);
     }
 
     /// @inheritdoc IAureumFeeRoutingHook
@@ -823,7 +920,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
-        bptMinted = _swapFeeAndDeposit(
+        _swapFeeAndDeposit(
             token,
             amount,
             address(0),
@@ -869,7 +966,7 @@ contract AureumFeeRoutingHook is BaseHooks, IAureumFeeRoutingHook, VaultGuard {
         uint256 minDepositTokenOut,
         uint256 minBptAmountOut
     ) external onlyVault returns (uint256 bptMinted) {
-        bptMinted = _swapFeeAndDeposit(
+        _swapFeeAndDeposit(
             token,
             amount,
             address(0),

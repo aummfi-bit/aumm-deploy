@@ -424,16 +424,21 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /// @dev One pool's accumulation work in the **PP-D56 (viii)** gate order: oracle read,
     ///      zero-numerator skip, zero-denominator skip, cold-start stamp, warmup gate, then the
-    ///      ranked link. The numerator skip is E.7a's fix per **PP-D56 (iii)**: a zero numerator
-    ///      gives every pool alike a zero ratio, which would collapse the sort onto its address
-    ///      tiebreak and assign cap tiers by ADDRESS. The denominator skip is **P-D15 (3)**: one dead
-    ///      gauge must not brick the permissionless tournament. Both precede the cold `SSTORE`, so
-    ///      `firstTournamentEpoch` marks the first epoch with usable data rather than the first
-    ///      sighting, a skipped pool never pays that store, and a pool that later loses its feed keeps
-    ///      its grace epoch and re-ranks without re-warming once the feed returns.
+    ///      ranked link. The numerator skip is E.7a's fix per **PP-D56 (iii)**, narrowed by
+    ///      **PP-D58 (ix)** and **(xvi)(2)**: it holds only while the oracle's `feeRecorder` is unset,
+    ///      where a zero numerator means no feed and every pool alike would read a zero ratio,
+    ///      collapsing the sort onto its address tiebreak; once a feed is seated a zero numerator means
+    ///      no revenue, and the pool ranks at ratio zero and takes the most severe cap in
+    ///      `_finalizeOne`. The feed is read only on a zero numerator. The denominator skip is
+    ///      **P-D15 (3)**: one dead gauge must not brick the permissionless tournament, and a pool
+    ///      drawing no emissions, a zero-TVL pool among them, stays out of the ranking rather than at
+    ///      its bottom. Both precede the cold `SSTORE`, so `firstTournamentEpoch` marks the first epoch
+    ///      with usable data rather than the first sighting, a skipped pool never pays that store, and a
+    ///      pool that later loses its feed keeps its grace epoch and re-ranks without re-warming once the
+    ///      feed returns.
     function _accumulateOne(address pool, address hint, uint256 newEpoch, uint256 epoch) internal {
         (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
-        if (num == 0) return;
+        if (num == 0 && IEfficiencyOracle(efficiencyOracle).feeRecorder() == address(0)) return;
         if (den == 0) return;
         if (firstTournamentEpoch[pool] == 0) {
             firstTournamentEpoch[pool] = newEpoch;
@@ -488,13 +493,18 @@ contract GaugeEligibility is IGaugeEligibility {
     }
 
     /// @dev One ranked entry's finalize work at rank `i`: the crossing event, then the cap, cohort and
-    ///      epoch writes. Returns the entry after it in the sorted list per **PP-D56 (xxv)**.
+    ///      epoch writes. Returns the entry after it in the sorted list per **PP-D56 (xxv)**. A zero-ratio
+    ///      entry takes the 10 bps cap, the most severe band `_capBpsFor` assigns, and is never favored,
+    ///      whatever `nRanked` is, per **PP-D58 (xvi)(1)** (user-adjudicated): the zero group ends the
+    ///      sorted list, so its members would otherwise be split across bands by the address tiebreak, and
+    ///      in a small constellation the percentile table leaves position `n - 1` lightly capped or uncapped.
     function _finalizeOne(uint256 i, address pool, uint256 newEpoch) internal returns (address next) {
         uint256 n = nRanked;
         RankedEntry storage e = rankedEntryOf[pool];
-        bool isFavored = i < (n * 15 + 99) / 100;
+        bool zeroRatio = e.efficiencyRatio == 0;
+        bool isFavored = !zeroRatio && i < (n * 15 + 99) / 100;
         _emitCrossing(pool, e, newEpoch, isFavoredCohort[pool], isFavored);
-        poolEmissionCapBps[pool] = _capBpsFor(i, n);
+        poolEmissionCapBps[pool] = zeroRatio ? 10 : _capBpsFor(i, n);
         isFavoredCohort[pool] = isFavored;
         lastSnapshotEpoch[pool] = newEpoch;
         next = e.next;
@@ -559,7 +569,8 @@ contract GaugeEligibility is IGaugeEligibility {
 
     /// @notice Returns the hint each pool on `page` needs from `accumulateEpochSnapshot` under `epoch`
     ///         per **PP-D56 (xxv)**, zero for a pool the gates skip.
-    /// @dev Replays **PP-D56 (viii)**'s gates and the insertions in memory, and treats the list as empty
+    /// @dev Replays **PP-D56 (viii)**'s gates, the zero-numerator skip conditioned on the feed per
+    ///      **PP-D58 (xvi)(2)**, and the insertions in memory, and treats the list as empty
     ///      whenever `epoch` differs from the seated `accumulationEpoch`, exactly as the reset branch
     ///      would on that page. The walk is unbounded, which is acceptable only because no transaction
     ///      calls this: it serves callers through `eth_call`, and every hint it returns is still
@@ -572,10 +583,12 @@ contract GaugeEligibility is IGaugeEligibility {
         address[] memory linked = new address[](page.length);
         uint256[] memory linkedRatio = new uint256[](page.length);
         uint256 nLinked;
+        bool feedSeated = IEfficiencyOracle(efficiencyOracle).feeRecorder() != address(0);
         for (uint256 i = 0; i < page.length; ++i) {
             address pool = page[i];
             (uint256 num, uint256 den) = IEfficiencyOracle(efficiencyOracle).efficiencyInputs(pool);
-            if (num == 0 || den == 0) continue;
+            if (den == 0) continue;
+            if (num == 0 && !feedSeated) continue;
             uint256 first = firstTournamentEpoch[pool];
             if (first == 0 || newEpoch - first < SMOOTHING_EPOCHS) continue;
             if (seated && rankedEntryOf[pool].rankedEpoch == epoch) continue;

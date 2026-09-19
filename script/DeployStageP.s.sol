@@ -52,6 +52,12 @@ contract DeployStageP is Script {
     error CCBMiliariumRegistryNotSealed(address registrySetter);
     /// @dev Fires when the hook's Incendiary admin is still live after DeployStageI's renounce, per PP-D57 (xiii).
     error HookIncendiaryAdminNotBurned(address incendiaryAdmin);
+    /// @dev Fires when the hook's EfficiencyOracle slot does not hold the deployed oracle, per PP-D58 (xvi)(7).
+    error HookEfficiencyOracleNotSeated(address efficiencyOracle);
+    /// @dev Fires when the EfficiencyOracle's fee recorder is not the hook, per PP-D58 (xvi)(7).
+    error OracleFeeRecorderNotHook(address feeRecorder);
+    /// @dev Fires when the hook's EfficiencyOracle admin is still live after the seat, per PP-D58 (xvi)(7).
+    error HookEfficiencyOracleAdminNotBurned(address efficiencyOracleAdmin);
     /// @dev Fires when the accept entry completes with the L-D25 boost leg still at `address(0)`, per PP-D46.
     error IncendiaryRegistryNotBound();
 
@@ -160,6 +166,10 @@ contract DeployStageP is Script {
         vm.setEnv("BODENSEE_CHANNEL", vm.toString(address(bodenseeBootstrapChannel)));
 
         efficiencyOracle.setEmissionsRecorder(address(emissionDistributor));
+        // PP-D58 (xvi)(7) — the F-10 fee feed, seated both ways by the same governor, which is also the
+        // hook's moduleAdmin per I-D18: the hook's one-shot oracle slot, then the oracle's fee recorder.
+        AureumFeeRoutingHook(vm.envAddress("FEE_ROUTING_HOOK")).setEfficiencyOracle(address(efficiencyOracle));
+        efficiencyOracle.setFeeRecorder(vm.envAddress("FEE_ROUTING_HOOK"));
 
         (new DeployStageI()).deploy(address(this));
 
@@ -246,6 +256,10 @@ contract DeployStageP is Script {
 
         vm.startBroadcast(governor);
         efficiencyOracle.setEmissionsRecorder(address(emissionDistributor));
+        // PP-D58 (xvi)(7) — the F-10 fee feed, seated both ways by the same governor, which is also the
+        // hook's moduleAdmin per I-D18: the hook's one-shot oracle slot, then the oracle's fee recorder.
+        AureumFeeRoutingHook(vm.envAddress("FEE_ROUTING_HOOK")).setEfficiencyOracle(address(efficiencyOracle));
+        efficiencyOracle.setFeeRecorder(vm.envAddress("FEE_ROUTING_HOOK"));
         vm.stopBroadcast();
 
         (new DeployStageI()).run();
@@ -315,6 +329,15 @@ contract DeployStageP is Script {
         // Post-condition (6) — DeployStageI renounced the hook's Incendiary admin (PP-D57 (vii) / (xiii)).
         address liveIncendiaryAdmin = AureumFeeRoutingHook(hook).incendiaryAdmin();
         if (liveIncendiaryAdmin != address(0)) revert HookIncendiaryAdminNotBurned(liveIncendiaryAdmin);
+
+        // Post-condition (7) — the F-10 fee feed is seated both ways and the hook's oracle admin is burned
+        // (PP-D58 (xvi)(7)).
+        address seatedOracle = AureumFeeRoutingHook(hook).efficiencyOracle();
+        if (seatedOracle != address(efficiencyOracle)) revert HookEfficiencyOracleNotSeated(seatedOracle);
+        address liveFeeRecorder = efficiencyOracle.feeRecorder();
+        if (liveFeeRecorder != hook) revert OracleFeeRecorderNotHook(liveFeeRecorder);
+        address liveOracleAdmin = AureumFeeRoutingHook(hook).efficiencyOracleAdmin();
+        if (liveOracleAdmin != address(0)) revert HookEfficiencyOracleAdminNotBurned(liveOracleAdmin);
     }
 
     function _rosterPools() internal view returns (address[26] memory) {

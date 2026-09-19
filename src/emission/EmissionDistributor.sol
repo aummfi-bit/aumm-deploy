@@ -168,6 +168,12 @@ contract EmissionDistributor is IEmissionDistributor {
     /// @notice Per-pool flag recording whether `pool` is counted in `_scoredMiliariumCount` per PP-D57 (xi).
     mapping(address => bool) internal _countedAsMiliarium;
 
+    /* ---------- F-10 vintage (PP-D58 (xvi)) ---------- */
+    /// @notice The global accumulator at the last block of `epoch`, recorded by `_accrueGlobal` as a side value when the accrual cursor leaves that epoch per PP-D58 (xvi)(3); zero for an epoch no accrual crossed, which only the cold start's jump produces.
+    mapping(uint256 => uint256) public accAtEpochEnd;
+    /// @notice The accrual cursor's epoch at `pool`'s last settle, written on every settle beside `poolAccDebt` per PP-D58 (xvi)(4), so the next settle knows where its elapsed allocation starts.
+    mapping(address => uint256) public poolDebtEpoch;
+
     /* ---------- Constructor ---------- */
 
     /**
@@ -445,8 +451,22 @@ contract EmissionDistributor is IEmissionDistributor {
         }
         uint256 span = block.number - last;
         uint256 to = span > MAX_ACCRUAL_SPAN_BLOCKS ? last + MAX_ACCRUAL_SPAN_BLOCKS : block.number;
+        uint256 accBefore = accRewardPerScoreUnit;
         uint256 contribution = _lpTrancheIntegral(last + 1, to);
-        accRewardPerScoreUnit += contribution.divDown(total);
+        uint256 accAfter = accBefore + contribution.divDown(total);
+        accRewardPerScoreUnit = accAfter;
+        // PP-D58 (xvi)(3) — the vintage mark. The accumulator above advances exactly as before, one
+        // integral and one divDown, so the LP leg is bit-identical and the mark is a SIDE value. A chunk
+        // crosses at most one epoch boundary because MAX_ACCRUAL_SPAN_BLOCKS equals BLOCKS_PER_EPOCH.
+        // When the previous chunk ended exactly on the boundary the first side is empty, integrates to
+        // zero, and the mark is still written. It is clamped at the new accumulator because
+        // `_bootstrapApSum` floors each endpoint, so the integral is not exactly additive across a split.
+        uint256 lastEpoch = AureumTime.epochIndex(GENESIS_BLOCK, last);
+        if (lastEpoch < AureumTime.epochIndex(GENESIS_BLOCK, to)) {
+            uint256 boundary = GENESIS_BLOCK + (lastEpoch + 1) * AureumTime.BLOCKS_PER_EPOCH - 1;
+            uint256 mark = accBefore + _lpTrancheIntegral(last + 1, boundary).divDown(total);
+            accAtEpochEnd[lastEpoch] = mark < accAfter ? mark : accAfter;
+        }
         lastAccrualBlock = to;
     }
 
@@ -490,16 +510,21 @@ contract EmissionDistributor is IEmissionDistributor {
             }
         }
         uint256 acc = accRewardPerScoreUnit;
-        uint256 deltaAcc = acc - poolAccDebt[pool];
-        uint256 poolAllocation = deltaAcc.mulDown(poolScore[pool]);
+        uint256 debt = poolAccDebt[pool];
+        uint256 score = poolScore[pool];
+        uint256 poolAllocation = (acc - debt).mulDown(score);
+        uint256 cursorEpoch = AureumTime.epochIndex(GENESIS_BLOCK, lastAccrualBlock);
         if (poolAllocation > 0) {
-            _efficiencyOracle.recordEmissions(pool, poolAllocation);
+            // PP-D58 (xvi)(4) — the F-10 denominator is credited per accrual epoch; the LP leg below
+            // still takes the whole allocation.
+            _pushVintagedEmissions(pool, debt, acc, score, cursorEpoch);
             uint256 totalLP = poolTotalLP[pool];
             if (totalLP > 0) {
                 poolAccRewardPerLP[pool] += poolAllocation.divDown(totalLP);
             }
         }
         poolAccDebt[pool] = acc;
+        poolDebtEpoch[pool] = cursorEpoch;
 
         address registry = incendiaryRegistry;
         if (registry != address(0)) {
@@ -532,6 +557,30 @@ contract EmissionDistributor is IEmissionDistributor {
                 }
             }
             poolBoostCursor[pool] = block.number;
+        }
+    }
+
+    /// @dev PP-D58 (xvi)(4) — cuts `[debt, acc]` at the epoch marks `_accrueGlobal` records and pushes each
+    ///      non-zero piece, times `score`, to the F-10 denominator under the epoch it accrued in. The walk
+    ///      runs from `max(poolDebtEpoch[pool], current - 3)` through `cursorEpoch` and pushes nothing when
+    ///      the cursor's epoch is older than that start, so pieces older than the window `efficiencyInputs`
+    ///      reads are DROPPED (user-adjudicated) and a settle makes at most four pushes however long the pool
+    ///      slept. The first piece runs from `debt` when the walk starts at the debt's epoch, else from the
+    ///      prior epoch's mark, and the last runs to `acc`; a settle inside one epoch makes exactly one push,
+    ///      as before. A mark never exceeds a later mark or `acc`, but each difference is floored at zero
+    ///      anyway, so no rounding in the marks can revert a settle, or the claim riding on it.
+    function _pushVintagedEmissions(address pool, uint256 debt, uint256 acc, uint256 score, uint256 cursorEpoch)
+        private
+    {
+        uint256 debtEpoch = poolDebtEpoch[pool];
+        uint256 start = debtEpoch;
+        uint256 currentEpoch = AureumTime.epochIndex(GENESIS_BLOCK, block.number);
+        if (currentEpoch > 3 && start < currentEpoch - 3) start = currentEpoch - 3;
+        for (uint256 e = start; e <= cursorEpoch; ++e) {
+            uint256 from = e == debtEpoch ? debt : accAtEpochEnd[e - 1];
+            uint256 to = e == cursorEpoch ? acc : accAtEpochEnd[e];
+            uint256 piece = to > from ? (to - from).mulDown(score) : 0;
+            if (piece > 0) _efficiencyOracle.recordEmissions(pool, e, piece);
         }
     }
 

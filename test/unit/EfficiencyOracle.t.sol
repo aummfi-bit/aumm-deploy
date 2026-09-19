@@ -65,8 +65,10 @@ contract EfficiencyOracleTest is Test {
     }
 
     function _recordEmissions(address pool, uint256 aummAmountScaled18) internal {
+        // F10 / F15: the cheatcode read cannot be merged across a vm.roll the way a bare block.number can.
+        uint256 epoch = AureumTime.epochIndex(GENESIS_BLOCK, vm.getBlockNumber());
         vm.prank(EMIT_REC);
-        oracle.recordEmissions(pool, aummAmountScaled18);
+        oracle.recordEmissions(pool, epoch, aummAmountScaled18);
     }
 
     /* ---------- Constructor tests ---------- */
@@ -217,13 +219,13 @@ contract EfficiencyOracleTest is Test {
         address randomCaller = _addr(0xBAD);
         vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, randomCaller));
         vm.prank(randomCaller);
-        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+        oracle.recordEmissions(_addr(0xCAFE), 0, 1_000e18);
     }
 
     function test_recordEmissions_revertsOnGovernanceCaller() public {
         vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, GOV));
         vm.prank(GOV);
-        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+        oracle.recordEmissions(_addr(0xCAFE), 0, 1_000e18);
     }
 
     function test_recordEmissions_revertsAfterEmissionsRecorderDeprecation() public {
@@ -231,7 +233,7 @@ contract EfficiencyOracleTest is Test {
         oracle.setEmissionsRecorder(address(0));
         vm.expectRevert(abi.encodeWithSelector(EfficiencyOracle.NotEmissionsRecorder.selector, EMIT_REC));
         vm.prank(EMIT_REC);
-        oracle.recordEmissions(_addr(0xCAFE), 1_000e18);
+        oracle.recordEmissions(_addr(0xCAFE), 0, 1_000e18);
     }
 
     /* ---------- recordFees + recordEmissions mechanics tests ---------- */
@@ -271,7 +273,7 @@ contract EfficiencyOracleTest is Test {
         uint256 aummAmount = 10e18;
         uint256 expectedSvZCHF = (aummAmount * 3e18) / 1e18;
         vm.expectEmit(true, true, true, true, address(oracle));
-        emit EfficiencyOracle.EmissionsRecorded(pool, aummAmount, expectedSvZCHF);
+        emit EfficiencyOracle.EmissionsRecorded(pool, AureumTime.epochIndex(GENESIS_BLOCK, block.number), aummAmount, expectedSvZCHF);
         _recordEmissions(pool, aummAmount);
     }
 
@@ -279,7 +281,7 @@ contract EfficiencyOracleTest is Test {
         address pool = _addr(0xCAFE);
         uint256 aummAmount = 10e18;
         vm.expectEmit(true, true, true, true, address(oracle));
-        emit EfficiencyOracle.EmissionsRecorded(pool, aummAmount, 0);
+        emit EfficiencyOracle.EmissionsRecorded(pool, AureumTime.epochIndex(GENESIS_BLOCK, block.number), aummAmount, 0);
         _recordEmissions(pool, aummAmount);
     }
 
@@ -287,7 +289,7 @@ contract EfficiencyOracleTest is Test {
         address pool = _addr(0xCAFE);
         _setRate(AUMM, 3e18);
         vm.expectEmit(true, true, true, true, address(oracle));
-        emit EfficiencyOracle.EmissionsRecorded(pool, 0, 0);
+        emit EfficiencyOracle.EmissionsRecorded(pool, AureumTime.epochIndex(GENESIS_BLOCK, block.number), 0, 0);
         _recordEmissions(pool, 0);
     }
 

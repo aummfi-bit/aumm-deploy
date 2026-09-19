@@ -3,6 +3,7 @@
 pragma solidity ^0.8.26;
 
 import { Test } from "forge-std/Test.sol";
+import { Vm } from "forge-std/Vm.sol";
 import { ForkEnvGuard } from "./ForkEnvGuard.sol";
 import { EmissionDistributor } from "../../src/emission/EmissionDistributor.sol";
 import { CCBMultiplier } from "../../src/ccb/CCBMultiplier.sol";
@@ -13,6 +14,7 @@ import { GaugeRegistry } from "../../src/gauge/GaugeRegistry.sol";
 import { GaugeEligibility } from "../../src/gauge/GaugeEligibility.sol";
 import { IGaugeRegistry } from "../../src/ccb/IGaugeRegistry.sol";
 import { AureumTime } from "../../src/lib/AureumTime.sol";
+import { EfficiencyOracle } from "../../src/emission/EfficiencyOracle.sol";
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
@@ -802,6 +804,56 @@ contract StagePEndToEndTest is StagePIntegrationFixture {
         // zero hook residue
         assertLt(svZchf.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
         assertLt(susds.balanceOf(address(hook)), 1_000_000, "PB-D68 (xix) - dust only, swept by the next route");
+    }
+
+    /// @notice E.7a / PP-D58 (ix) and (xvi)(6)-(7) fork witness — the spine seats the F-10 fee feed both
+    ///         ways and burns the hook's oracle admin, and a real railed swap then lands its protocol fee at
+    ///         der Bodensee and credits the source pool's efficiency numerator in the epoch it landed. The
+    ///         seat is read back through the production path, and the credit is found by the oracle's
+    ///         `FeesRecorded` event rather than by any setter name, per PP15.
+    function test_landedSwapFeesFeedTheEfficiencyNumerator() public {
+        EfficiencyOracle oracle = orchestrator.efficiencyOracle();
+        assertEq(hook.efficiencyOracle(), address(oracle), "the spine seated the oracle on the hook");
+        assertEq(oracle.feeRecorder(), address(hook), "the spine seated the hook as the oracle's fee feed");
+        assertEq(hook.efficiencyOracleAdmin(), address(0), "the hook's one-shot oracle admin is burned");
+
+        // P-D36 (4) governance token-map seed, as _matureStack seeds it, so the rail prices at unit ratio.
+        // startPrank rather than prank: the chained tvlOracle() getter would consume a single-shot prank (PB10).
+        vm.startPrank(address(orchestrator));
+        orchestrator.tvlOracle().setTokenUnderlying(address(svZchf), address(svZchf));
+        vm.stopPrank();
+
+        // Three epochs past genesis first, so the swap lands in epoch 3 and the epoch-4 read covers
+        // epochs 1 to 3, excluding anything setUp recorded in epoch 0. vm.getBlockNumber rather than a
+        // bare block.number, which via_ir may merge across the two rolls (F10 / F15).
+        vm.roll(vm.getBlockNumber() + 3 * AureumTime.BLOCKS_PER_EPOCH);
+        vm.recordLogs();
+        _performSwap(pilotPools[0], IERC20(address(susds)), svZchf, 1e18);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        uint256 found;
+        uint256 recorded;
+        for (uint256 k = 0; k < logs.length; k++) {
+            if (logs[k].emitter == address(hook)) {
+                assertTrue(
+                    logs[k].topics[0] != AureumFeeRoutingHook.FeeRecordingFailed.selector, "the fee record did not degrade"
+                );
+            }
+            if (logs[k].emitter != address(oracle)) continue;
+            if (logs[k].topics[0] != EfficiencyOracle.FeesRecorded.selector) continue;
+            assertEq(address(uint160(uint256(logs[k].topics[1]))), pilotPools[0], "credited to the source pool");
+            assertEq(address(uint160(uint256(logs[k].topics[2]))), address(svZchf), "denominated in the landed rail");
+            (uint256 amountScaled18, uint256 svZchfAmount) = abi.decode(logs[k].data, (uint256, uint256));
+            assertGt(amountScaled18, 0, "the route's own output landed and was credited");
+            assertEq(svZchfAmount, amountScaled18, "the rail prices at unit ratio in its own numeraire");
+            recorded += svZchfAmount;
+            found++;
+        }
+        assertGt(found, 0, "the landed swap fee was recorded");
+
+        vm.roll(vm.getBlockNumber() + AureumTime.BLOCKS_PER_EPOCH);
+        (uint256 numeratorSma,) = oracle.efficiencyInputs(pilotPools[0]);
+        assertEq(numeratorSma, recorded / 3, "the landed fee is the numerator of the epoch it landed in");
     }
 
     /// @notice P-D36 Leg D — CCB month-walk: updateMultiplier's BLOCKS_PER_EPOCH cadence + F-8
